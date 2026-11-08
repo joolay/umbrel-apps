@@ -2,7 +2,7 @@ manifestVersion: 1
 id: joolay-shutterworth
 category: files
 name: ShutterWorth
-version: "1.0.1"
+version: "1.0.2"
 tagline: Photograph your belongings and build an insurance inventory
 description: >-
   A dashboard shortcut to ShutterWorth, the self-hosted photo inventory with replacement and depreciated values.
@@ -19,7 +19,7 @@ gallery: []
 path: ""
 defaultUsername: ""
 defaultPassword: ""
-releaseNotes: "Fixes the install: adds a small relay container, which Umbrel requires."
+releaseNotes: "New app icon: a gold price tag in a cream viewfinder."
 submitter: joolay
 submission: https://github.com/joolay/ShutterWorth
 icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-shutterworth/icon.svg
