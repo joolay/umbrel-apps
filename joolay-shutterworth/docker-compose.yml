@@ -1,6 +1,7 @@
-# Umbrel needs at least one real container besides its own proxy ("no service selected" otherwise).
-# `web` is a tiny relay from this app's port 3880 to the ShutterWorth container that
-# deploy/install-on-umbrel.sh runs on umbrel_main_network; Umbrel's app_proxy (login + dashboard tile) sits in front of it.
+# ShutterWorth runs here as a real Umbrel app. Updating it in the App Store pulls the new image.
+# The image tag below is bumped automatically by the ShutterWorth release workflow (keep it equal to `version` in umbrel-app.yml).
+# Data (inventory, photos, AI key) lives in this app's data folder and survives updates.
+# Optional sign-in settings go in <app data>/data/pocketbase.env, never in this public repo.
 services:
   app_proxy:
     environment:
@@ -8,6 +9,10 @@ services:
       APP_PORT: 3880
 
   web:
-    image: caddy:2
+    image: ghcr.io/joolay/shutterworth:1.2.0
     restart: on-failure
-    command: caddy reverse-proxy --from :3880 --to shutterworth:3880
+    stop_grace_period: 1m
+    volumes:
+      - ${APP_DATA_DIR}/data:/data
+    environment:
+      - POCKETBASE_APP_ID=shutterworth

@@ -5,10 +5,9 @@ name: ShutterWorth
 version: "1.2.0"
 tagline: Photograph your belongings and build an insurance inventory
 description: >-
-  A dashboard shortcut to ShutterWorth, the self-hosted photo inventory with replacement and depreciated values.
-  This tile opens the ShutterWorth container that runs next to it on this Umbrel (container name "shutterworth",
-  port 3880), through Umbrel's own login. It does not install or update ShutterWorth itself: that is done with
-  deploy/install-on-umbrel.sh in the ShutterWorth repository.
+  Photograph your belongings and build an insurance inventory with replacement and depreciated values.
+  ShutterWorth runs on this Umbrel and keeps its inventory and photos in the app's own data folder.
+  Updates from the App Store update the app itself.
 developer: joolay
 website: https://github.com/joolay/ShutterWorth
 dependencies: []
