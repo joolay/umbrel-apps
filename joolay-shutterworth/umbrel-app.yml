@@ -2,7 +2,7 @@ manifestVersion: 1
 id: joolay-shutterworth
 category: files
 name: ShutterWorth
-version: "1.1.0"
+version: "1.2.0"
 tagline: Photograph your belongings and build an insurance inventory
 description: >-
   A dashboard shortcut to ShutterWorth, the self-hosted photo inventory with replacement and depreciated values.
@@ -19,7 +19,7 @@ gallery: []
 path: ""
 defaultUsername: ""
 defaultPassword: ""
-releaseNotes: "Swipe left to delete on touch screens, a refreshed green-and-gold look, and optional JoolzApp sign-in with an admin Users panel. Update the ShutterWorth container itself too (git pull, then docker compose up -d --build)."
+releaseNotes: "Swipe left to delete, a refreshed green-and-gold look, and optional JoolzApp sign-in with an admin Users panel. This update now installs ShutterWorth itself."
 submitter: joolay
 submission: https://github.com/joolay/ShutterWorth
 icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-shutterworth/icon.svg
