@@ -2,7 +2,7 @@ manifestVersion: 1
 id: joolay-shutterworth
 category: files
 name: ShutterWorth
-version: "1.2.1"
+version: "1.3.0"
 tagline: Photograph your belongings and build an insurance inventory
 description: >-
   Photograph your belongings and build an insurance inventory with replacement and depreciated values.
@@ -18,7 +18,7 @@ gallery: []
 path: ""
 defaultUsername: ""
 defaultPassword: ""
-releaseNotes: "Fixes the 1.2.0 install: ShutterWorth now runs as its own app and updates from the App Store."
+releaseNotes: "Sign in with your JoolzApp account to open ShutterWorth; Umbrel's login is off. Admins choose who can open the inventory."
 submitter: joolay
 submission: https://github.com/joolay/ShutterWorth
 icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-shutterworth/icon.svg
