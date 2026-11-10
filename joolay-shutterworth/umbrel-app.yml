@@ -2,7 +2,7 @@ manifestVersion: 1
 id: joolay-shutterworth
 category: files
 name: ShutterWorth
-version: "1.3.2"
+version: "1.4.0"
 tagline: Photograph your belongings and build an insurance inventory
 description: >-
   Photograph your belongings and build an insurance inventory with replacement and depreciated values.
@@ -18,7 +18,7 @@ gallery: []
 path: ""
 defaultUsername: ""
 defaultPassword: ""
-releaseNotes: "Settings now has tabs: Account, Inventory, Data and Admin. AI key, Users and sign-up rules moved to Admin."
+releaseNotes: "Each person now has their own inventory in PocketBase; your existing inventory moves to the first admin account the first time they open the app."
 submitter: joolay
 submission: https://github.com/joolay/ShutterWorth
 icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-shutterworth/icon.svg
