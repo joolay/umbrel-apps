@@ -11,10 +11,10 @@ description: >-
   Sign in with your PocketBase superuser account. Portal Admin keeps its data in your PocketBase
   (collections portal_apps, portal_settings, portal_audit) and stores nothing else.
 developer: joolay
-website: https://github.com/joolay/portal-admin
+website: https://github.com/joolay/umbrel-apps/tree/main/src/portal-admin
 dependencies: []
-repo: https://github.com/joolay/portal-admin
-support: https://github.com/joolay/portal-admin/issues
+repo: https://github.com/joolay/umbrel-apps
+support: https://github.com/joolay/umbrel-apps/issues
 port: 3890
 gallery: []
 path: ""
