@@ -15,6 +15,10 @@ const PUBLIC_DIR = path.join(__dirname, 'public');
 // The Umbrel PocketBase app publishes port 5400 on the host; host.docker.internal (host-gateway) reaches it from this container.
 const DEFAULT_PB_URL = 'http://host.docker.internal:5400';
 const ENV_PB_URL = (process.env.PB_URL || '').trim();
+// Umbrel app list (read-only: only list_apps and get_app_details are ever called). Token comes from the app's environment, never the repo.
+const UMBREL_MCP_URL = (process.env.UMBREL_MCP_URL || 'http://host.docker.internal/mcp').trim();
+const UMBREL_MCP_TOKEN = (process.env.UMBREL_MCP_TOKEN || '').trim();
+const UMBREL_APP_PREFIX = (process.env.UMBREL_APP_PREFIX || 'joolay-').trim().toLowerCase();
 
 const MIME = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
@@ -31,6 +35,41 @@ function normaliseUrl(v) {
 
 function currentPbUrl() {
   return (ENV_PB_URL && normaliseUrl(ENV_PB_URL)) || DEFAULT_PB_URL;
+}
+
+/* ---------- Umbrel app list (MCP over HTTP) ---------- */
+function parseMcp(text) {
+  const line = text.split('\n').find((l) => l.startsWith('data:'));
+  const j = JSON.parse(line ? line.slice(5) : text);
+  if (j.error) throw new Error(j.error.message || 'MCP error');
+  return j.result;
+}
+async function mcpCall(sid, id, method, params) {
+  const r = await fetch(UMBREL_MCP_URL, {
+    method: 'POST', signal: AbortSignal.timeout(15000),
+    headers: { Authorization: 'Bearer ' + UMBREL_MCP_TOKEN, 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream', ...(sid ? { 'Mcp-Session-Id': sid } : {}) },
+    body: JSON.stringify({ jsonrpc: '2.0', id, method, params }),
+  });
+  if (!r.ok) throw new Error('Umbrel MCP returned HTTP ' + r.status);
+  return { sid: r.headers.get('mcp-session-id') || sid, result: parseMcp(await r.text()) };
+}
+const toolJson = (res) => JSON.parse((res.content || []).map((c) => c.text || '').join(''));
+let umbrelCache = { at: 0, apps: null };
+async function umbrelApps() {
+  if (umbrelCache.apps && Date.now() - umbrelCache.at < 60000) return umbrelCache.apps;
+  let { sid } = await mcpCall('', 1, 'initialize', { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'portal-admin', version: '1' } });
+  const list = toolJson((await mcpCall(sid, 2, 'tools/call', { name: 'list_apps', arguments: {} })).result);
+  const mine = list.filter((a) => a.id.toLowerCase().startsWith(UMBREL_APP_PREFIX));
+  const apps = [];
+  for (const a of mine) {
+    const slug = a.id.toLowerCase().slice(UMBREL_APP_PREFIX.length).replace(/[^a-z0-9_-]/g, '-').replace(/^[^a-z0-9]+/, '').slice(0, 48);
+    if (!slug || slug === 'portal-admin') continue; // Portal Admin does not manage itself
+    let d = {};
+    try { d = toolJson((await mcpCall(sid, 10 + apps.length, 'tools/call', { name: 'get_app_details', arguments: { appId: a.id } })).result); } catch {}
+    apps.push({ id: a.id, slug, name: a.name, version: a.version, state: a.state, tagline: d.tagline || '', url: d.url || '' });
+  }
+  umbrelCache = { at: Date.now(), apps };
+  return apps;
 }
 
 function send(res, code, body, headers = {}) {
@@ -85,6 +124,13 @@ const server = http.createServer(async (req, res) => {
     if (pathname === '/config') {
       if (req.method !== 'GET') return send(res, 405, { message: 'Method not allowed' });
       return send(res, 200, { pbUrl: currentPbUrl(), locked: true, custom: !!(ENV_PB_URL && normaliseUrl(ENV_PB_URL)) });
+    }
+
+    if (pathname === '/umbrel/apps') {
+      if (req.method !== 'GET') return send(res, 405, { message: 'Method not allowed' });
+      if (!UMBREL_MCP_TOKEN) return send(res, 200, { configured: false, apps: [] });
+      try { return send(res, 200, { configured: true, prefix: UMBREL_APP_PREFIX, apps: await umbrelApps() }); }
+      catch (e) { return send(res, 502, { configured: true, message: 'Cannot read the Umbrel app list: ' + (e.message || e) }); }
     }
 
     if (pathname === '/pb' || pathname.startsWith('/pb/')) {

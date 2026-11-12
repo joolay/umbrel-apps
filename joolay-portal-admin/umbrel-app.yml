@@ -2,7 +2,7 @@ manifestVersion: 1
 id: joolay-portal-admin
 category: developer
 name: Portal Admin
-version: "0.1.1"
+version: "0.1.2"
 tagline: One admin panel for all your custom PocketBase apps
 description: >-
   A central admin panel for your custom apps that use PocketBase. Register each app, then manage
@@ -20,7 +20,7 @@ gallery: []
 path: ""
 defaultUsername: ""
 defaultPassword: ""
-releaseNotes: "Portal Admin now connects to your Umbrel PocketBase automatically. The PocketBase URL box is gone from the sign-in screen."
+releaseNotes: "Portal Admin now keeps its app list in step with your Umbrel: new joolay-* apps are registered automatically while you are signed in, plus a Sync from Umbrel button on the Apps page. Needs UMBREL_MCP_TOKEN in the app settings."
 submitter: joolay
 submission: https://github.com/joolay/umbrel-apps
 icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-portal-admin/icon.svg

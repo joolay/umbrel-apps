@@ -118,9 +118,36 @@ async function boot() {
 function showLogin() { $('#shell').classList.add('hidden'); $('#login').classList.remove('hidden'); }
 function showShell() {
   $('#login').classList.add('hidden'); $('#shell').classList.remove('hidden');
-  $('#who').textContent = state.actor; route();
+  $('#who').textContent = state.actor; route(); startSync();
 }
-function logout() { state.token = ''; state.actor = ''; store.set('pa.token', null); store.set('pa.actor', null); showLogin(); }
+/* ---------- Umbrel sync: keep portal_apps in step with the Umbrel app list ---------- */
+async function syncUmbrel(silent) {
+  const r = await fetch('/umbrel/apps'); const d = await r.json().catch(() => ({}));
+  if (!r.ok) { if (!silent) toast(d.message || 'Umbrel sync failed', true); return 0; }
+  if (!d.configured) { if (!silent) toast('Set UMBREL_MCP_TOKEN in this app\'s settings to enable Umbrel sync.', true); return 0; }
+  const have = new Map((await listAll('portal_apps')).map((a) => [a.slug, a]));
+  let added = 0, updated = 0;
+  for (const u of d.apps) {
+    const cur = have.get(u.slug);
+    if (!cur) {
+      const body = { slug: u.slug, name: u.name, url: u.url || '', description: u.tagline || '', enabled: true, maintenance: false, message: '' };
+      await api('POST', '/api/collections/portal_apps/records', body); await audit('app.create', u.slug, { ...body, source: 'umbrel-sync' }); added++;
+    } else {
+      const patch = {}; // only fill blanks: never overwrite what you set by hand
+      if (!cur.url && u.url) patch.url = u.url;
+      if (!cur.description && u.tagline) patch.description = u.tagline;
+      if (Object.keys(patch).length) { await api('PATCH', `/api/collections/portal_apps/records/${cur.id}`, patch); await audit('app.update', u.slug, { ...patch, source: 'umbrel-sync' }); updated++; }
+    }
+  }
+  if (!silent) toast(added || updated ? `Umbrel sync: ${added} added, ${updated} updated` : 'Umbrel sync: already up to date');
+  return added + updated;
+}
+let syncTimer;
+function startSync() {
+  const run = () => syncUmbrel(true).then((n) => { if (n && /^#?\/?apps\/?$/.test(location.hash.replace(/^#/, '#'))) route(); }).catch(() => {});
+  run(); clearInterval(syncTimer); syncTimer = setInterval(() => { if (state.token) run(); }, 5 * 60 * 1000);
+}
+function logout() { clearInterval(syncTimer); state.token = ''; state.actor = ''; store.set('pa.token', null); store.set('pa.actor', null); showLogin(); }
 $('#logout').onclick = logout;
 $('#login-form').onsubmit = async (e) => {
   e.preventDefault(); $('#login-err').textContent = '';
@@ -269,12 +296,13 @@ async function viewApps(slug) {
 }
 async function appList() {
   const apps = await listAll('portal_apps', { sort: 'name' });
-  main().innerHTML = `<div class="row spread"><div><h1>Apps</h1><p class="sub">Register each custom app so you can control it here.</p></div><button id="new" class="btn primary">+ Register app</button></div>
+  main().innerHTML = `<div class="row spread"><div><h1>Apps</h1><p class="sub">Register each custom app so you can control it here.</p></div><div class="row"><button id="sync" class="btn">Sync from Umbrel</button><button id="new" class="btn primary">+ Register app</button></div></div>
     <div class="card"><table><thead><tr><th>App</th><th>Status</th><th>URL</th></tr></thead><tbody>${apps.map((a) => `
       <tr class="click" data-slug="${esc(a.slug)}"><td><b>${esc(a.name)}</b><div class="muted small">${esc(a.slug)}</div></td>
       <td>${a.enabled ? '<span class="chip ok">enabled</span>' : '<span class="chip bad">disabled</span>'} ${a.maintenance ? '<span class="chip warn">maintenance</span>' : ''}</td>
       <td class="muted small">${esc(a.url)}</td></tr>`).join('') || '<tr><td colspan="3" class="muted">No apps yet.</td></tr>'}</tbody></table></div>`;
   $('#new').onclick = () => { location.hash = '#/apps/__new'; };
+  $('#sync').onclick = guard(async () => { await syncUmbrel(false); appList(); });
   main().onclick = (e) => { const tr = e.target.closest('tr[data-slug]'); if (tr) location.hash = '#/apps/' + encodeURIComponent(tr.dataset.slug); };
 }
 async function appDetail(slug) {

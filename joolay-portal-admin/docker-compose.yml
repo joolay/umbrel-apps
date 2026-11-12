@@ -10,7 +10,7 @@ services:
       PROXY_AUTH_ADD: "true"
 
   web:
-    image: ghcr.io/joolay/portal-admin:0.1.1
+    image: ghcr.io/joolay/portal-admin:0.1.2
     restart: on-failure
     stop_grace_period: 10s
     # Lets the container reach the PocketBase app (port 5400) published on this Umbrel.
@@ -21,3 +21,5 @@ services:
     environment:
       # Optional: override the built-in PocketBase address (default http://host.docker.internal:5400 = the Umbrel PocketBase app).
       - PB_URL=${PB_URL:-}
+      # Umbrel app sync (read-only list). Set your Umbrel MCP token here in the app's settings, never in this repo.
+      - UMBREL_MCP_TOKEN=${UMBREL_MCP_TOKEN:-}
