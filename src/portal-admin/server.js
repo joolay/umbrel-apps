@@ -1,7 +1,7 @@
 'use strict';
 // Portal Admin: tiny zero-dependency server.
 //  - serves the static admin UI
-//  - /config   : where PocketBase lives (env PB_URL locks it, otherwise stored in /data/config.json)
+//  - /config   : where PocketBase lives. Built in: the PocketBase app on this Umbrel (override with env PB_URL).
 //  - /pb/*     : transparent proxy to PocketBase (so the browser needs no CORS / network access to it).
 //                No credentials are held here: the browser signs in as a PocketBase superuser and sends its own token.
 const http = require('http');
@@ -11,9 +11,9 @@ const path = require('path');
 const { URL } = require('url');
 
 const PORT = Number(process.env.PORT || 3000);
-const DATA_DIR = process.env.DATA_DIR || '/data';
-const CONFIG_FILE = path.join(DATA_DIR, 'config.json');
 const PUBLIC_DIR = path.join(__dirname, 'public');
+// The Umbrel PocketBase app publishes port 5400 on the host; host.docker.internal (host-gateway) reaches it from this container.
+const DEFAULT_PB_URL = 'http://host.docker.internal:5400';
 const ENV_PB_URL = (process.env.PB_URL || '').trim();
 
 const MIME = {
@@ -29,15 +29,8 @@ function normaliseUrl(v) {
   return u.origin + u.pathname.replace(/\/+$/, '');
 }
 
-function readConfig() {
-  try { return JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8')); } catch { return {}; }
-}
-function writeConfig(cfg) {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
-  fs.writeFileSync(CONFIG_FILE, JSON.stringify(cfg, null, 2));
-}
 function currentPbUrl() {
-  return (ENV_PB_URL && normaliseUrl(ENV_PB_URL)) || normaliseUrl(readConfig().pbUrl || '') || '';
+  return (ENV_PB_URL && normaliseUrl(ENV_PB_URL)) || DEFAULT_PB_URL;
 }
 
 function send(res, code, body, headers = {}) {
@@ -90,21 +83,12 @@ const server = http.createServer(async (req, res) => {
     if (pathname === '/healthz') return send(res, 200, { ok: true });
 
     if (pathname === '/config') {
-      if (req.method === 'GET') return send(res, 200, { pbUrl: currentPbUrl(), locked: !!(ENV_PB_URL && normaliseUrl(ENV_PB_URL)) });
-      if (req.method === 'POST') {
-        if (ENV_PB_URL) return send(res, 409, { message: 'PB_URL is set by the environment and cannot be changed here.' });
-        let body; try { body = JSON.parse(await readBody(req)); } catch { return send(res, 400, { message: 'Invalid JSON' }); }
-        const u = normaliseUrl(body.pbUrl);
-        if (!u) return send(res, 400, { message: 'Enter a valid http(s) URL.' });
-        writeConfig({ ...readConfig(), pbUrl: u });
-        return send(res, 200, { pbUrl: u, locked: false });
-      }
-      return send(res, 405, { message: 'Method not allowed' });
+      if (req.method !== 'GET') return send(res, 405, { message: 'Method not allowed' });
+      return send(res, 200, { pbUrl: currentPbUrl(), locked: true, custom: !!(ENV_PB_URL && normaliseUrl(ENV_PB_URL)) });
     }
 
     if (pathname === '/pb' || pathname.startsWith('/pb/')) {
       const pb = currentPbUrl();
-      if (!pb) return send(res, 503, { message: 'PocketBase URL is not configured.' });
       const sub = pathname.slice(3) || '/';
       if (!sub.startsWith('/api/')) return send(res, 403, { message: 'Only /api/ is proxied.' });
       return proxy(req, res, pb, sub + (search || ''));

@@ -112,8 +112,6 @@ async function ensureSchema() {
 
 /* ---------- Auth ---------- */
 async function boot() {
-  const cfg = await (await fetch('/config')).json();
-  $('#login-url').value = cfg.pbUrl || ''; $('#login-url').readOnly = cfg.locked;
   if (state.token) { try { await api('GET', '/api/collections/portal_apps/records?perPage=1').catch((e) => { if (e.status !== 404) throw e; }); return showShell(); } catch {} }
   showLogin();
 }
@@ -127,11 +125,6 @@ $('#logout').onclick = logout;
 $('#login-form').onsubmit = async (e) => {
   e.preventDefault(); $('#login-err').textContent = '';
   try {
-    const url = $('#login-url').value.trim();
-    if (!$('#login-url').readOnly) {
-      const r = await fetch('/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pbUrl: url }) });
-      if (!r.ok) throw new Error((await r.json()).message);
-    }
     const email = $('#login-email').value.trim();
     const r = await api('POST', '/api/collections/_superusers/auth-with-password', { identity: email, password: $('#login-pass').value });
     state.token = r.token; state.actor = r.record.email; store.set('pa.token', state.token); store.set('pa.actor', state.actor);
@@ -432,7 +425,7 @@ async function viewAudit() {
 async function viewSetup() {
   const st = await schemaStatus(); const cfg = await (await fetch('/config')).json();
   main().innerHTML = `<h1>Setup &amp; integration</h1><p class="sub">Connection details and how your apps consume these settings.</p>
-    <div class="card"><h2>Connection</h2><p>PocketBase: <code>${esc(cfg.pbUrl)}</code> ${cfg.locked ? '<span class="chip">set by PB_URL</span>' : '<span class="muted small">(change it on the sign-in screen)</span>'}</p>
+    <div class="card"><h2>Connection</h2><p>PocketBase: <code>${esc(cfg.pbUrl)}</code> <span class="chip">${cfg.custom ? 'set by PB_URL' : 'built in: your Umbrel PocketBase'}</span></p>
       <label>Users collection<input id="uc" value="${esc(state.usersColl)}" style="max-width:260px"></label><button id="su" class="btn">Save</button></div>
     <div class="card"><h2>Collections</h2><ul>${st.map((s) => `<li><code>${s.name}</code> ${s.ok ? '<span class="chip ok">ready</span>' : '<span class="chip bad">missing</span>'}</li>`).join('')}</ul>
       <button id="mk" class="btn primary">${st.every((s) => s.ok) ? 'Re-check' : 'Create missing collections'}</button></div>
