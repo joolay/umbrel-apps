@@ -9,10 +9,10 @@ description: >-
   ShutterWorth runs on this Umbrel and keeps its inventory and photos in the app's own data folder.
   Updates from the App Store update the app itself.
 developer: joolay
-website: https://github.com/joolay/ShutterWorth
+website: https://github.com/joolay/umbrel-apps/tree/main/src/shutterworth
 dependencies: []
-repo: https://github.com/joolay/ShutterWorth
-support: https://github.com/joolay/ShutterWorth/issues
+repo: https://github.com/joolay/umbrel-apps
+support: https://github.com/joolay/umbrel-apps/issues
 port: 3881
 gallery: []
 path: ""
@@ -20,5 +20,5 @@ defaultUsername: ""
 defaultPassword: ""
 releaseNotes: "Restoring a backup file that has embedded photos now moves them into photo storage."
 submitter: joolay
-submission: https://github.com/joolay/ShutterWorth
+submission: https://github.com/joolay/umbrel-apps
 icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-shutterworth/icon.svg

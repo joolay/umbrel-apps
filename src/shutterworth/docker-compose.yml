@@ -1,0 +1,21 @@
+services:
+  shutterworth:
+    build: .
+    container_name: shutterworth
+    restart: unless-stopped
+    ports:
+      - "3880:3880"
+    volumes:
+      - ./data:/data
+    environment:
+      # Set a password to require a login (any username works). Leave blank for none.
+      - APP_PASSWORD=
+      # Google OAuth client ID (Web application) so users can keep their data in their own Google Drive.
+      - GOOGLE_CLIENT_ID=
+      # Accounts (optional). Fill all three to switch on sign-in, trials and the admin Users panel in Settings.
+      # POCKETBASE_URL must be reachable from this container, e.g. http://192.168.1.50:8090 (your Umbrel's IP and PocketBase's port).
+      - POCKETBASE_URL=
+      - POCKETBASE_SUPERUSER_EMAIL=
+      - POCKETBASE_SUPERUSER_PASSWORD=
+      # One JoolzApp account works across all your apps. Give each app its own name here; trials are kept per app.
+      - POCKETBASE_APP_ID=shutterworth

@@ -1,0 +1,21 @@
+# Portal Admin: central admin panel for custom apps backed by PocketBase.
+# Source: src/portal-admin in this repo (built by .github/workflows/build-images.yml).
+# Keep the image tag equal to `version` in umbrel-app.yml.
+services:
+  app_proxy:
+    environment:
+      APP_HOST: joolay-portal-admin_web_1
+      APP_PORT: 3000
+      # Umbrel's login stays ON: this is an admin panel. You also sign in with a PocketBase superuser.
+      PROXY_AUTH_ADD: "true"
+
+  web:
+    image: ghcr.io/joolay/portal-admin:0.1.0
+    restart: on-failure
+    stop_grace_period: 10s
+    volumes:
+      - ${APP_DATA_DIR}/data:/data
+    environment:
+      # Optional: pin the PocketBase URL (otherwise you enter it on the sign-in screen and it is remembered).
+      # Example: PB_URL=http://umbrel.local:8090
+      - PB_URL=${PB_URL:-}

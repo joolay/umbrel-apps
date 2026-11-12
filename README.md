@@ -1,10 +1,13 @@
 # umbrel-apps
 
-A tiny [Umbrel](https://umbrel.com) community app store. It currently has one entry:
+Joolay's [Umbrel](https://umbrel.com) community app store, and the source for every app in it.
 
-- **ShutterWorth**: a dashboard tile (icon and name) that opens a self-hosted ShutterWorth instance running on the same Umbrel, through Umbrel's own login.
+| App | Source | Store entry |
+|---|---|---|
+| **ShutterWorth**: photograph belongings, build an insurance inventory | `src/shutterworth/` | `joolay-shutterworth/` |
+| **Portal Admin**: central admin panel for PocketBase-backed apps (global, per-app, per-user settings, access, audit log) | `src/portal-admin/` | `joolay-portal-admin/` |
 
-The tile is only a shortcut. It contains no app code and no data.
+Each push builds every `src/<app>/Dockerfile` to `ghcr.io/joolay/<app>:<version>` (`.github/workflows/build-images.yml`). See `CLAUDE.md` for how to add or release an app.
 
 ## Add it to Umbrel
 

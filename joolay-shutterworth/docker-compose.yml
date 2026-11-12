@@ -1,5 +1,5 @@
 # ShutterWorth runs here as a real Umbrel app. Updating it in the App Store pulls the new image.
-# The image tag below is bumped automatically by the ShutterWorth release workflow (keep it equal to `version` in umbrel-app.yml).
+# Source: src/shutterworth in this repo, built by .github/workflows/build-images.yml. Keep the image tag equal to `version` in umbrel-app.yml.
 # Data (inventory, photos, AI key) lives in this app's data folder and survives updates.
 # Optional sign-in settings go in <app data>/data/pocketbase.env, never in this public repo.
 services:

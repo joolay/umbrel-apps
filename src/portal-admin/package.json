@@ -1,0 +1,9 @@
+{
+  "name": "portal-admin",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Centralised admin panel for custom apps backed by PocketBase",
+  "type": "commonjs",
+  "scripts": { "start": "node server.js" },
+  "engines": { "node": ">=20" }
+}
