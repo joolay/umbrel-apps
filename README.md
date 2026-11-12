@@ -1,6 +1,6 @@
-# umbrel-apps
+# umbrel-apps (JoolzApp community store)
 
-Joolay's [Umbrel](https://umbrel.com) community app store, and the source for every app in it.
+JoolzApp: Joolay's [Umbrel](https://umbrel.com) community app store, and the source for every app in it.
 
 | App | Source | Store entry |
 |---|---|---|
