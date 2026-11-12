@@ -13,4 +13,4 @@ Everything is managed here; never create a separate repo for a new app.
 5. The store only updates when the change is on `main`. Develop on the assigned `claude/...` branch, wait for the build to be green, then open a PR / merge when the user asks.
 
 Apps backed by PocketBase should read config via the Portal Admin settings (`src/portal-admin`).
-Externally built apps (e.g. ShutterWorth) keep their own repo and image.
+ShutterWorth (`src/shutterworth`) and Portal Admin (`src/portal-admin`) both follow this layout.

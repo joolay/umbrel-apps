@@ -1,0 +1,6 @@
+data/
+node_modules/
+.DS_Store
+auto-update.log
+.auto-update.lock
+*.log
