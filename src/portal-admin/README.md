@@ -10,13 +10,13 @@ Central admin panel for custom apps that share a PocketBase.
 Precedence: `global < app < user (all apps) < user × app`.
 
 ## How it works
-Zero-dependency Node server serving a static UI and proxying `/pb/*` to your PocketBase. No credentials are stored: you sign in as a PocketBase **superuser** and the browser keeps the token in `sessionStorage`. On first sign-in it offers to create three collections: `portal_apps`, `portal_settings`, `portal_audit`. `portal_settings` is readable by signed-in app users only for non-secret global/app rows and their own user rows; writes are superuser-only.
+Zero-dependency Node server serving a static UI and proxying `/pb/*` to your PocketBase (built in: the Umbrel PocketBase app at `http://host.docker.internal:5400`; override with `PB_URL`). No credentials are stored: you sign in as a PocketBase **superuser** and the browser keeps the token in `sessionStorage`. On first sign-in it offers to create three collections: `portal_apps`, `portal_settings`, `portal_audit`. `portal_settings` is readable by signed-in app users only for non-secret global/app rows and their own user rows; writes are superuser-only.
 
 Reserved key: `portal.access` = `false` blocks a user (app = blank → all apps). Apps must check it (see snippet on the Setup page).
 
 ## Run locally
 ```bash
-PB_URL=http://127.0.0.1:8090 DATA_DIR=./data PORT=3000 node server.js
+PB_URL=http://127.0.0.1:8090 PORT=3000 node server.js
 ```
 
 ## Umbrel
