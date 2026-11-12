@@ -1,5 +1,5 @@
 # Portal Admin: central admin panel for custom apps backed by PocketBase.
-# Source lives in /portal-admin in this repo; the image is built by .github/workflows/portal-admin-image.yml.
+# Source: https://github.com/joolay/portal-admin (its workflow builds the image).
 # Keep the image tag equal to `version` in umbrel-app.yml.
 services:
   app_proxy:
