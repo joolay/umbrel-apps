@@ -1,4 +1,4 @@
-// Settings tabs: Account, Inventory, Data, and Admin (AI key, users, ads, sign-up rules).
+// Settings tabs: Account, Inventory and Data. AI comes from the shared JoolzApp AI settings in Portal Admin, so there is no Admin tab.
 // Other scripts add their panels to #setView at their own pace, so panels are sorted into tabs as they appear.
 (() => {
   "use strict";
@@ -7,9 +7,8 @@
     { id: "account", label: "Account" },
     { id: "inventory", label: "Inventory" },
     { id: "data", label: "Data" },
-    { id: "admin", label: "Admin" },
   ];
-  const ADMIN_IDS = new Set(["aiPanel", "swUsersPanel", "swAdsPanel"]);
+  const ADMIN_IDS = new Set(["swUsersPanel", "swAdsPanel"]);   // admin-only panels, shown under Inventory
 
   const css = document.createElement("style");
   css.textContent = `
@@ -20,8 +19,7 @@
 #swTabs button:focus-visible{outline:2px solid var(--gold,#d9ab55);outline-offset:2px}
 #setView[data-tab="account"] .panel:not([data-tab="account"]),
 #setView[data-tab="inventory"] .panel:not([data-tab="inventory"]),
-#setView[data-tab="data"] .panel:not([data-tab="data"]),
-#setView[data-tab="admin"] .panel:not([data-tab="admin"]){display:none}
+#setView[data-tab="data"] .panel:not([data-tab="data"]){display:none}
 `;
   document.head.appendChild(css);
 
@@ -35,15 +33,13 @@
   try { current = sessionStorage.getItem(KEY) || ""; } catch (e) {}
 
   function tabFor(p) {
-    if (ADMIN_IDS.has(p.id)) return "admin";
+    if (ADMIN_IDS.has(p.id)) return "inventory";
     if (p.id === "swAccountPanel") return "account";
     if (p.id === "swStorePanel" || p.querySelector("#bkList")) return "data";
     if (p.querySelector(".rates")) return "inventory";
     return "data";
   }
-  // Admin tab: always there when accounts are off (the owner is the only user); with accounts on, only admins see it.
-  const adminVisible = () => !accountsOn || !!document.getElementById("swUsersPanel");
-  const visibleTabs = () => TABS.filter(t => (t.id === "account" ? accountsOn : t.id === "admin" ? adminVisible() : true));
+  const visibleTabs = () => TABS.filter(t => (t.id === "account" ? accountsOn : true));
 
   function paint() {
     const tabs = visibleTabs();
