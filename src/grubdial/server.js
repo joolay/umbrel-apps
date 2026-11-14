@@ -7,6 +7,7 @@ const path = require("path");
 const dns = require("dns").promises;
 const net = require("net");
 const pb = require("./pocketbase");
+const menus = require("./menus");
 
 const PORT = +process.env.PORT || 3893;
 const DATA_DIR = path.resolve(process.env.DATA_DIR || path.join(__dirname, "data"));
@@ -175,7 +176,7 @@ function readState(u) { try { return JSON.parse(fs.readFileSync(stateFile(u), "u
 function writeState(u, s) { const f = stateFile(u), t = f + ".tmp"; fs.writeFileSync(t, JSON.stringify(s)); fs.renameSync(t, f); }
 function cleanState(s) {
   if (!s || typeof s !== "object" || !Array.isArray(s.restaurants)) return null;
-  return { restaurants: s.restaurants.slice(0, 500), carts: s.carts && typeof s.carts === "object" && !Array.isArray(s.carts) ? s.carts : {}, at: Date.now() };
+  return { restaurants: [], carts: s.carts && typeof s.carts === "object" && !Array.isArray(s.carts) ? s.carts : {}, at: Date.now() };
 }
 
 /* ---------- HTTP ---------- */
@@ -195,7 +196,8 @@ const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, "http://x");
     const p = decodeURIComponent(url.pathname);
     const isPage = p === "/" || p === "/index.html";
-    const isData = p === "/api/state" || p === "/api/extract" || p === "/api/ai/status" || p === "/api/ai/config";
+    const isMenus = p === "/api/menus" || /^\/api\/menus\/[A-Za-z0-9]{1,40}$/.test(p);
+    const isData = isMenus || p === "/api/state" || p === "/api/extract" || p === "/api/ai/status" || p === "/api/ai/config";
 
     // The app and its data are only for signed-in people the admin has let in (admins always can).
     // Umbrel's own login is off for this app, so this is the lock: with REQUIRE_ACCOUNTS set it fails closed.
@@ -221,6 +223,19 @@ const server = http.createServer(async (req, res) => {
     if (p === "/api/app-config") return send(res, 200, { accounts: pb.enabled, ...(pb.enabled ? { signups: await pb.signupsOpen().catch(() => true) } : {}) });
     if (await accountRoutes(req, res, p)) return;
 
+    if (isMenus) {
+      if (!user) return send(res, 503, { code: "accounts_unavailable", message: "The shared menu archive needs accounts. Connect PocketBase first." });
+      const id = (p.match(/^\/api\/menus\/([A-Za-z0-9]+)$/) || [])[1];
+      if (!id && req.method === "GET") return send(res, 200, { menus: await menus.list(user) });
+      if (!id && req.method === "POST") {
+        const m = menus.cleanMenu(JSON.parse((await readBody(req)).toString() || "{}"));
+        if (!m) return send(res, 400, { code: "bad_menu", message: "That menu has no items." });
+        return send(res, 200, { menu: await menus.create(user, m) });
+      }
+      if (id && req.method === "PUT") { const r = await menus.update(user, id, JSON.parse((await readBody(req)).toString() || "{}")); return r.status ? send(res, r.status, { code: "menu_denied", message: r.message }) : send(res, 200, r); }
+      if (id && req.method === "DELETE") { const r = await menus.remove(user, id); return r.status ? send(res, r.status, { code: "menu_denied", message: r.message }) : send(res, 200, r); }
+      return send(res, 405, { message: "Method not allowed" });
+    }
     if (p === "/api/state" && req.method === "GET") return send(res, 200, { state: readState(user) });
     if (p === "/api/state" && req.method === "PUT") {
       const s = cleanState(JSON.parse((await readBody(req)).toString() || "{}"));
