@@ -196,7 +196,7 @@ async function accountRoutes(req, res, p) {
       const u = await currentUser(req);
       if (!u) return send(res, 401, { code: "signin_required", message: "Sign in to continue." }), true;
       setSessionCookie(req, res, tokenOf(req));
-      send(res, 200, { user: publicUser(await pb.getUser(u.id)) }); return true;
+      send(res, 200, { user: { ...publicUser(await pb.getUser(u.id)), portalUrl: await pb.portalUrl().catch(() => "") } }); return true;
     }
     if (p === "/api/account/logout" && req.method === "POST") { clearSessionCookie(res); send(res, 200, { ok: true }); return true; }
     send(res, 404, { code: "not_found" }); return true;

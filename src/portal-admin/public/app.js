@@ -13,6 +13,7 @@ const state = { token: sess('token'), actor: sess('actor'), role: sess('role') |
 const SLUG = /^[a-z0-9][a-z0-9_-]{0,47}$/;
 const RESERVED = [
   ['portal.access', 'boolean', 'false blocks a user (all apps, or one app) from using the app'],
+  ['portal.url', 'string', 'Address of this dashboard, used by the "Back to Dashboard" button in apps (blank = same address with port 3892)'],
 ];
 
 /* ---------- API ---------- */
@@ -143,6 +144,19 @@ async function boot() {
   $('#login-remember').checked = store.lget('pa.remember') === '1';
   $('#login-email').value = store.lget('pa.email');
   if (resetToken()) return showReset();
+  // Arriving from an app's "Back to Dashboard" button: sign in with the account the app already knows (only if not signed in here).
+  const hs = location.hash.match(/^#sso=([^&]+)/);
+  if (hs) {
+    history.replaceState(null, '', location.pathname + location.search);
+    if (!state.token) {
+      try {
+        state.token = decodeURIComponent(hs[1]);
+        const r = await api('POST', `/api/collections/${state.usersColl}/auth-refresh`);
+        Object.assign(state, { token: r.token, actor: r.record.email, role: 'user', uid: r.record.id }); saveSession(false);
+        location.hash = '#/me'; return showShell();
+      } catch { state.token = ''; }
+    }
+  }
   if (state.token) { try { await api('GET', '/api/collections/portal_apps/records?perPage=1').catch((e) => { if (e.status !== 404) throw e; }); return showShell(); } catch {} }
   showLogin();
 }

@@ -74,7 +74,14 @@
     if (t.unlimited) return "Unlimited photo identification.";
     return `${t.remaining} of ${t.limit} free photo identifications left.`;
   }
+  // Back to the JoolzApp dashboard (Portal Admin); it signs you in with the same account, so there is no second login.
+  function syncDash() {
+    const b = document.getElementById("dashBtn"); if (!b) return;
+    b.hidden = !user;
+    b.onclick = () => { const t = getToken(), base = (user && user.portalUrl) || (location.protocol + "//" + location.hostname + ":3892/"); location.href = base + (t ? "#sso=" + encodeURIComponent(t) : ""); };
+  }
   function renderAccount() {
+    syncDash();
     const p = accountPanel; p.textContent = "";
     p.appendChild(el("h2", "", "JoolzApp account"));
     if (user) {

@@ -164,7 +164,7 @@ function render() {
   bar.hidden = true;
   const back = t => `<button class="icon-btn" data-a="${t}">‹</button>`;
   if (view === 'home') {
-    h.innerHTML = `<h1>🍽️ GrubToGo</h1>${S.restaurants.length ? `<button class="icon-btn" data-a="save-all" title="Save all menus to file">💾</button>` : ''}${me ? `<button class="icon-btn" data-a="signout" title="Sign out ${esc(me.email)}">⎋</button>` : ''}`;
+    h.innerHTML = `<h1>🍽️ GrubToGo</h1>${S.restaurants.length ? `<button class="icon-btn" data-a="save-all" title="Save all menus to file">💾</button>` : ''}${me ? `<button class="icon-btn" data-a="dashboard" title="Back to Dashboard" aria-label="Back to Dashboard">🏠</button>` : ''}${me ? `<button class="icon-btn" data-a="signout" title="Sign out ${esc(me.email)}">⎋</button>` : ''}`;
     a.innerHTML = homeHTML();
     const n = activeRests().length;
     if (n) { bar.hidden = false; bar.innerHTML = `<div class="inner"><button class="btn" data-a="orders">View all orders · ${n} restaurant${n > 1 ? 's' : ''}</button></div>`; }
@@ -359,6 +359,12 @@ document.addEventListener('click', async e => {
   const el = e.target.closest('[data-a]'); if (!el) return;
   const a = el.dataset.a, id = el.dataset.id, v = el.dataset.v, i = +el.dataset.i;
   if (a === 'home') return go('home');
+  if (a === 'dashboard') {
+    // Back to the JoolzApp dashboard (Portal Admin); it signs you in with the same account, so there is no second login.
+    let t = ''; try { t = sessionStorage.getItem('gd.token') || localStorage.getItem('gd.token') || ''; } catch (e) {}
+    const base = (me && me.portalUrl) || (location.protocol + '//' + location.hostname + ':3892/');
+    location.href = base + (t ? '#sso=' + encodeURIComponent(t) : ''); return;
+  }
   if (a === 'signout') { try { localStorage.removeItem('gd.token'); sessionStorage.removeItem('gd.token'); } catch (e) {} await fetch('api/account/logout', { method: 'POST' }).catch(() => {}); return location.reload(); }
   if (a === 'ai-save') {
     const key = $('#ai-key').value.trim(); if (!key) return toast('Paste your API key first.');

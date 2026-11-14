@@ -338,4 +338,13 @@ async function setUserPrefs(userId, prefs) {
   }
   portalCache.delete("u:" + userId);
 }
-module.exports = { requestPasswordReset, setUserPrefs, portalAvailable, setPortalAccess, signupsOpen, enabled, PBError, login, verifyToken, createUser, listUsers, getUser, updateUser, updateAccess, deleteUser, countAdmins, findByEmail, firstAdmin, asSuper, superFetch, ensureSchema, collection: COLL, app: APP };
+
+// Address of the JoolzApp dashboard (Portal Admin), from the global "portal.url" setting. Empty means "work it out from the browser".
+async function portalUrl() {
+  return (await cached("purl", 30000, async () => {
+    const f = "scope = 'global' && key = 'portal.url'";
+    const j = await asSuper("GET", `/api/collections/portal_settings/records?page=1&perPage=1&filter=${q(f)}`);
+    const v = (j.items || [])[0] && j.items[0].value; return typeof v === "string" && /^https?:\/\//i.test(v) ? v : "";
+  })) || "";
+}
+module.exports = { portalUrl, requestPasswordReset, setUserPrefs, portalAvailable, setPortalAccess, signupsOpen, enabled, PBError, login, verifyToken, createUser, listUsers, getUser, updateUser, updateAccess, deleteUser, countAdmins, findByEmail, firstAdmin, asSuper, superFetch, ensureSchema, collection: COLL, app: APP };
