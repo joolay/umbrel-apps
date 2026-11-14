@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>GrubDial</title>
+<meta name="theme-color" content="#b4531a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%}
+body{font:16px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif;color:#f8f4ea;background:radial-gradient(120% 90% at 20% 0%,#e07a3c 0%,#b4531a 55%,#8a3d10 100%) fixed;display:flex;align-items:center;justify-content:center;padding:max(20px,env(safe-area-inset-top)) 16px max(20px,env(safe-area-inset-bottom))}
+main{width:100%;max-width:380px;text-align:center}
+.logo{width:88px;height:88px;border-radius:22px;box-shadow:0 10px 30px rgba(0,0,0,.28)}
+h1{margin:16px 0 4px;font-size:1.7rem;letter-spacing:-.01em}
+.sub{margin:0 0 22px;color:#d9e6df}
+form{display:grid;gap:10px;text-align:left}
+label{display:grid;gap:4px;font-size:.85rem;color:#d9e6df}
+input{font:inherit;color:#1c2b26;background:#fbf8f0;border:2px solid transparent;border-radius:12px;padding:11px 13px;width:100%}
+input:focus{outline:none;border-color:#d9ab55}
+.go{font:inherit;font-weight:700;border:0;border-radius:12px;padding:12px;margin-top:4px;color:#3a2a08;background:linear-gradient(135deg,#f1d28a,#d9ab55 55%,#b98633);cursor:pointer}
+.go:disabled{opacity:.6}
+.alt{font:inherit;background:none;border:0;color:#f1d28a;text-decoration:underline;margin-top:14px;cursor:pointer;padding:6px}
+.e{min-height:1.3em;margin:2px 0 0;color:#ffc9c4;font-size:.9rem}
+.note{background:rgba(255,255,255,.1);border-radius:14px;padding:14px 16px;margin:0 0 16px}
+.row{display:flex;gap:10px;justify-content:center}
+.row button{font:inherit;font-weight:600;border:2px solid rgba(248,244,234,.5);background:none;color:#f8f4ea;border-radius:12px;padding:9px 16px;cursor:pointer}
+</style>
+</head>
+<body>
+<main>
+  <img class="logo" src="icon.svg" alt="">
+  <h1>GrubDial</h1>
+  <p class="sub" id="sub">Sign in with your JoolzApp account</p>
+  <div id="view"></div>
+</main>
+<script>
+(function () {
+  "use strict";
+  var TOKEN = "gd.token", mode = "in", cfg = {}, view = document.getElementById("view"), sub = document.getElementById("sub");
+  function tok() { try { return localStorage.getItem(TOKEN) || ""; } catch (e) { return ""; } }
+  function setTok(t) { try { t ? localStorage.setItem(TOKEN, t) : localStorage.removeItem(TOKEN); } catch (e) {} }
+  function api(path, opts) {
+    opts = opts || {}; var h = { "content-type": "application/json" }; if (tok()) h["x-gd-token"] = tok();
+    return fetch(path, { method: opts.method || "GET", headers: h, body: opts.body, cache: "no-store" }).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok) { var e = new Error(j.message || "Something went wrong (" + r.status + ")"); e.status = r.status; throw e; } return j; });
+    });
+  }
+  function el(tag, cls, text) { var n = document.createElement(tag); if (cls) n.className = cls; if (text) n.textContent = text; return n; }
+  function field(label, type, auto) { var l = el("label", "", label), i = el("input"); i.type = type; i.autocomplete = auto; l.appendChild(i); return { l: l, i: i }; }
+
+  function form() {
+    var reg = mode === "up"; view.textContent = "";
+    sub.textContent = reg ? "Create your JoolzApp account. One account works in all JoolzApp apps." : "Sign in with your JoolzApp account";
+    var f = el("form"), name = field("Name", "text", "name"), email = field("Email", "email", "email"), pass = field("Password", "password", reg ? "new-password" : "current-password");
+    email.i.required = true; pass.i.required = true; if (reg) pass.i.minLength = 8;
+    if (reg) f.appendChild(name.l); f.append(email.l, pass.l);
+    var err = el("p", "e"); err.setAttribute("role", "alert");
+    var go = el("button", "go", reg ? "Create account" : "Sign in"); go.type = "submit";
+    f.append(err, go);
+    f.onsubmit = function (ev) {
+      ev.preventDefault(); err.textContent = ""; go.disabled = true;
+      api(reg ? "api/account/register" : "api/account/login", { method: "POST", body: JSON.stringify({ email: email.i.value, password: pass.i.value, name: name.i.value }) })
+        .then(function (j) { setTok(j.token); j.user.canOpen ? location.reload() : waiting(j.user); })
+        .catch(function (e) { err.textContent = e.message; go.disabled = false; });
+    };
+    view.appendChild(f);
+    if (reg || cfg.signups !== false) {
+      var alt = el("button", "alt", reg ? "I already have a JoolzApp account" : "Create a JoolzApp account"); alt.type = "button";
+      alt.onclick = function () { mode = reg ? "in" : "up"; form(); }; view.appendChild(alt);
+    }
+  }
+  function waiting(u) {
+    view.textContent = ""; sub.textContent = "Almost there";
+    view.appendChild(el("p", "note", "You're signed in as " + (u.name || u.email) + ". " + ((u.gate && u.gate.message) || "The admin hasn't opened GrubDial to you yet. Ask them to give you access, then check again.")));
+    var row = el("div", "row"), again = el("button", "", "Check again"), out = el("button", "", "Sign out");
+    again.onclick = function () { start(); }; out.onclick = signOut; row.append(again, out); view.appendChild(row);
+  }
+  function signOut() { setTok(""); try { localStorage.removeItem("gd_prefs"); } catch (e) {} fetch("api/account/logout", { method: "POST" }).catch(function () {}).then(function () { location.reload(); }); }
+  function problem(msg) {
+    view.textContent = ""; sub.textContent = "Can't reach the account server";
+    view.appendChild(el("p", "note", msg));
+    var row = el("div", "row"), b = el("button", "", "Try again"); b.onclick = start; row.appendChild(b); view.appendChild(row);
+  }
+  function start() {
+    api("api/app-config").then(function (c) { cfg = c; })
+      .catch(function () {})
+      .then(function () { return api("api/account/me"); })
+      .then(function (j) { if (j.user.canOpen) location.reload(); else waiting(j.user); })
+      .catch(function (e) { if (e.status === 401 || e.status === 404) { setTok(""); form(); } else problem(e.message); });
+  }
+  start();
+})();
+</script>
+</body>
+</html>
