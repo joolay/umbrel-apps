@@ -1,8 +1,8 @@
 {
   "name": "grubdial",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "private": true,
-  "description": "GrubDial: read a restaurant menu, order from several restaurants, add a tip and split the bill, then tap to call.",
+  "description": "GrubToGo: read a restaurant menu, order from several restaurants, add a tip and split the bill, then tap to call.",
   "main": "server.js",
   "scripts": { "start": "node server.js" },
   "engines": { "node": ">=20" }

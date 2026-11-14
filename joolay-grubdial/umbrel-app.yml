@@ -1,11 +1,11 @@
 manifestVersion: 1
 id: joolay-grubdial
 category: files
-name: GrubDial
-version: "1.1.0"
+name: GrubToGo
+version: "1.1.1"
 tagline: Read a menu, order from several restaurants, split the bill, tap to call
 description: >-
-  GrubDial reads a restaurant menu from a photo, PDF, link or pasted text, lets you build an order from one or more
+  GrubToGo reads a restaurant menu from a photo, PDF, link or pasted text, lets you build an order from one or more
   restaurants with special instructions, adds a tip, splits the bill equally or by item, and gives you the
   restaurant's phone number with a tap-to-call link. Sign in with your JoolzApp account; your saved menus follow you across devices.
 developer: joolay
@@ -18,7 +18,7 @@ gallery: []
 path: ""
 defaultUsername: ""
 defaultPassword: ""
-releaseNotes: "Menus now go into one shared archive that everyone signed in can order from. Only the person who uploaded a menu, or an admin, can edit or delete it. PocketBase is found automatically at the Umbrel PocketBase app; only the superuser login is needed in pocketbase.env."
+releaseNotes: "Renamed to GrubToGo. Menus now go into one shared archive that everyone signed in can order from. Only the person who uploaded a menu, or an admin, can edit or delete it. PocketBase is found automatically at the Umbrel PocketBase app; only the superuser login is needed in pocketbase.env."
 submitter: joolay
 submission: https://github.com/joolay/umbrel-apps
 icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-grubdial/icon.svg

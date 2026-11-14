@@ -1,4 +1,4 @@
-# GrubDial
+# GrubToGo
 
 Upload a restaurant menu (photo, PDF, link or pasted text), order from one or more restaurants, add special instructions,
 a tip and a bill split (equal or by item), then tap to call the restaurant.

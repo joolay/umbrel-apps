@@ -1,4 +1,4 @@
-// GrubDial server: JoolzApp sign-in (shared PocketBase account), per-person saved menus and carts, and menu reading
+// GrubToGo server: JoolzApp sign-in (shared PocketBase account), per-person saved menus and carts, and menu reading
 // through an AI service. No npm dependencies — runs on plain Node 20+.
 "use strict";
 const http = require("http");
@@ -77,7 +77,7 @@ async function fetchPage(raw) {
   const priv = a => /^(127\.|10\.|0\.|169\.254\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.)/.test(a) || /^(::1?$|fc|fd|fe80)/i.test(a);
   if (addrs.some(a => priv(a.address))) throw new AIError("bad_url", "That address isn't allowed.");
   let r;
-  try { r = await fetch(u, { redirect: "follow", signal: AbortSignal.timeout(15000), headers: { "user-agent": "Mozilla/5.0 (compatible; GrubDial/1.0)", accept: "text/html,*/*" } }); }
+  try { r = await fetch(u, { redirect: "follow", signal: AbortSignal.timeout(15000), headers: { "user-agent": "Mozilla/5.0 (compatible; GrubToGo/1.0)", accept: "text/html,*/*" } }); }
   catch { throw new AIError("bad_url", "Couldn't open that page."); }
   if (!r.ok) throw new AIError("bad_url", "That page answered with an error (" + r.status + ").");
   const html = (await r.text()).slice(0, 2e6);
@@ -91,11 +91,11 @@ async function fetchPage(raw) {
 // Who may open the app: with Portal Admin set up the portal decides (per-app approval, on/off, maintenance); admins always get in.
 function gateOf(u) {
   if (u.isAdmin) return { ok: true };
-  if (!u.portal) return u.access ? { ok: true } : { ok: false, reason: "no_access", message: "The admin hasn't opened GrubDial to you yet. Ask them to give you access, then check again." };
+  if (!u.portal) return u.access ? { ok: true } : { ok: false, reason: "no_access", message: "The admin hasn't opened GrubToGo to you yet. Ask them to give you access, then check again." };
   const a = u.portal.app;
-  if (a && a.enabled === false) return { ok: false, reason: "disabled", message: "GrubDial is switched off right now." };
-  if (a && a.maintenance) return { ok: false, reason: "maintenance", message: a.message || "GrubDial is under maintenance. Try again soon." };
-  if (!u.portal.access) return { ok: false, reason: "no_access", message: "You need approval to use GrubDial. Open Portal Admin, request access to GrubDial, then check again here." };
+  if (a && a.enabled === false) return { ok: false, reason: "disabled", message: "GrubToGo is switched off right now." };
+  if (a && a.maintenance) return { ok: false, reason: "maintenance", message: a.message || "GrubToGo is under maintenance. Try again soon." };
+  if (!u.portal.access) return { ok: false, reason: "no_access", message: "You need approval to use GrubToGo. Open Portal Admin, request access to GrubToGo, then check again here." };
   return { ok: true };
 }
 const publicUser = u => ({ id: u.id, email: u.email || "", name: u.name || "", isAdmin: !!u.isAdmin, canOpen: gateOf(u).ok, gate: gateOf(u), prefs: (u.portal && u.portal.prefs) || {} });
@@ -189,7 +189,7 @@ function readBody(req) {
   });
 }
 const send = (res, code, obj) => { res.writeHead(code, { "content-type": "application/json", "cache-control": "no-store" }); res.end(JSON.stringify(obj)); };
-const SETUP = "<!doctype html><meta name=viewport content='width=device-width'><body style='font:16px system-ui;padding:2rem;max-width:34rem;margin:auto'><h1>GrubDial isn't set up yet</h1><p>Accounts are required but PocketBase isn't connected. Add <code>pocketbase.env</code> to the app's data folder and restart the app.</p>";
+const SETUP = "<!doctype html><meta name=viewport content='width=device-width'><body style='font:16px system-ui;padding:2rem;max-width:34rem;margin:auto'><h1>GrubToGo isn't set up yet</h1><p>Accounts are required but PocketBase isn't connected. Add <code>pocketbase.env</code> to the app's data folder and restart the app.</p>";
 
 const server = http.createServer(async (req, res) => {
   try {
@@ -239,7 +239,7 @@ const server = http.createServer(async (req, res) => {
     if (p === "/api/state" && req.method === "GET") return send(res, 200, { state: readState(user) });
     if (p === "/api/state" && req.method === "PUT") {
       const s = cleanState(JSON.parse((await readBody(req)).toString() || "{}"));
-      if (!s) return send(res, 400, { code: "bad_state", message: "That isn't a GrubDial save." });
+      if (!s) return send(res, 400, { code: "bad_state", message: "That isn't a GrubToGo save." });
       writeState(user, s); return send(res, 200, { ok: true, at: s.at });
     }
 
@@ -280,4 +280,4 @@ const server = http.createServer(async (req, res) => {
     if (!res.headersSent) send(res, 500, { code: "server_error", message: e.message }); else res.end();
   }
 });
-server.listen(PORT, () => console.log(`GrubDial running on http://0.0.0.0:${PORT}`));
+server.listen(PORT, () => console.log(`GrubToGo running on http://0.0.0.0:${PORT}`));

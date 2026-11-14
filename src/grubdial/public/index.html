@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>GrubDial</title>
+<title>GrubToGo</title>
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <style>
 :root{--bg:#faf6f0;--card:#fff;--ink:#241c15;--mute:#7a6d60;--line:#eadfd2;--accent:#d9480f;--accent2:#fff1e8;--ok:#2b8a3e;--r:16px}
@@ -164,7 +164,7 @@ function render() {
   bar.hidden = true;
   const back = t => `<button class="icon-btn" data-a="${t}">‹</button>`;
   if (view === 'home') {
-    h.innerHTML = `<h1>🍽️ GrubDial</h1>${S.restaurants.length ? `<button class="icon-btn" data-a="save-all" title="Save all menus to file">💾</button>` : ''}${me ? `<button class="icon-btn" data-a="signout" title="Sign out ${esc(me.email)}">⎋</button>` : ''}`;
+    h.innerHTML = `<h1>🍽️ GrubToGo</h1>${S.restaurants.length ? `<button class="icon-btn" data-a="save-all" title="Save all menus to file">💾</button>` : ''}${me ? `<button class="icon-btn" data-a="signout" title="Sign out ${esc(me.email)}">⎋</button>` : ''}`;
     a.innerHTML = homeHTML();
     const n = activeRests().length;
     if (n) { bar.hidden = false; bar.innerHTML = `<div class="inner"><button class="btn" data-a="orders">View all orders · ${n} restaurant${n > 1 ? 's' : ''}</button></div>`; }
@@ -187,7 +187,7 @@ function render() {
 function aiNote() {
   if (ai.configured) return '';
   if (!ai.isAdmin) return `<div class="err">Menu reading isn't set up yet. Ask the admin to add an AI key.</div>`;
-  return `<div class="card"><div style="font-weight:700">Set up menu reading</div><p class="mute">Add an AI key so GrubDial can read menus from photos, PDFs and links. Only admins see this.</p>
+  return `<div class="card"><div style="font-weight:700">Set up menu reading</div><p class="mute">Add an AI key so GrubToGo can read menus from photos, PDFs and links. Only admins see this.</p>
     <select id="ai-prov"><option value="anthropic">Anthropic (Claude)</option><option value="gemini">Google Gemini</option><option value="openai">OpenAI</option></select><div style="height:8px"></div>
     <input id="ai-key" type="password" placeholder="API key" autocomplete="off"><div style="height:8px"></div>
     <input id="ai-model" type="text" placeholder="Model (optional)" autocomplete="off"><div style="height:8px"></div>
@@ -203,7 +203,7 @@ function homeHTML() {
   return `${aiNote()}${list || `<div class="card" style="text-align:center;padding:30px 16px"><div style="font-size:42px">📋</div><h2 style="margin:6px 0">No menus yet</h2><p class="mute">Upload a photo, PDF or link of a restaurant menu. It joins the shared archive for everyone.</p></div>`}
     <button class="btn" data-a="add">＋ Add a menu</button><div style="height:8px"></div>
     <label class="btn sec" style="cursor:pointer">📂 Import saved menu file(s)<input id="f-import" type="file" accept=".json,application/json" multiple hidden></label>
-    <p class="mute" style="text-align:center">Menus are shared with everyone who uses GrubDial. Only the person who added a menu, or an admin, can change it.</p>`;
+    <p class="mute" style="text-align:center">Menus are shared with everyone who uses GrubToGo. Only the person who added a menu, or an admin, can change it.</p>`;
 }
 
 function addHTML() {
@@ -350,7 +350,7 @@ async function importFiles(files) {
     } catch (e) { bad++; }
   }
   save(); render();
-  toast(added ? `Imported ${added} restaurant${added > 1 ? 's' : ''}` + (bad ? ` (${bad} skipped)` : '') : 'That file isn\'t a GrubDial menu file.');
+  toast(added ? `Imported ${added} restaurant${added > 1 ? 's' : ''}` + (bad ? ` (${bad} skipped)` : '') : 'That file isn\'t a GrubToGo menu file.');
 }
 
 /* ---------- events ---------- */
