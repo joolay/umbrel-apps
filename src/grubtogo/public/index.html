@@ -105,11 +105,12 @@ async function push() {
   catch (e) { if (e.status === 401 || e.status === 403) location.reload(); }
 }
 const myFamily = () => S.family && S.family.family;
+const famOn = () => { const f = myFamily(); return f && f.myTier !== 'extended' ? f : null; };
 async function loadFamily(withOrders) {
   try { S.family = await api('api/family'); } catch (e) { S.family = null; }
-  if (myFamily() && withOrders !== false) { try { S.famOrders = (await api('api/family/orders')).orders || []; } catch (e) {} } else if (!myFamily()) S.famOrders = [];
+  if (famOn() && withOrders !== false) { try { S.famOrders = (await api('api/family/orders')).orders || []; } catch (e) {} } else if (!famOn()) S.famOrders = [];
 }
-async function famAct(body) { try { S.family = await api('api/family', { method: 'POST', body: JSON.stringify(body) }); if (!myFamily()) S.famOrders = []; else await loadFamily(); render(); } catch (err) { toast(err.message); } }
+async function famAct(body) { try { S.family = await api('api/family', { method: 'POST', body: JSON.stringify(body) }); if (!famOn()) { S.famOrders = []; scope = 'me'; } else await loadFamily(); render(); } catch (err) { toast(err.message); } }
 async function loadMenus() { S.restaurants = (await api('api/menus')).menus || []; }
 (async () => {
   try { me = (await api('api/account/me')).user; } catch (e) {}
@@ -221,15 +222,22 @@ function render() {
 
 function familyCardHTML() {
   const f = myFamily(), inv = (S.family && S.family.invites) || [];
+  const tierWord = t => t === 'extended' ? 'extended family' : 'immediate family';
   let out = `<div class="card"><div class="sub-h" style="margin-top:0">Family</div>`;
   out += inv.map(i => `<div class="card" style="background:var(--accent2)"><b>${esc(i.ownerName || 'Someone')}</b> invited you to the <b>${esc(i.name)}</b> family.<div class="row" style="gap:8px;margin-top:8px"><button class="btn" data-a="fam-yes" data-id="${i.id}">Join</button><button class="btn ghost" data-a="fam-no" data-id="${i.id}">Decline</button></div></div>`).join('');
   if (!S.family) return out + `<p class="mute">Couldn't load families right now.</p></div>`;
-  if (!f) return out + `<p class="mute">Link up with other JoolzApp users so a joint order can be filed as a family expense. Personal orders stay private.</p>
+  if (!f) return out + `<p class="mute">Link up with your family on JoolzApp. The link works in every JoolzApp app. Immediate family can share joint expenses; extended family (cousins, grandparents…) are linked for future apps.</p>
     <form class="row" id="famnew" style="gap:6px"><input type="text" name="name" placeholder="Family name (e.g. The Joolays)" maxlength="60" required><button class="btn">Create</button></form></div>`;
-  out += `<div class="h" style="margin:0 0 4px">${esc(f.name)}</div><p class="mute" style="margin-top:0">Orders you file as a family expense are visible to everyone below.</p>`
-    + f.members.map(m => `<div class="row" style="justify-content:space-between;padding:6px 0;border-top:1px solid var(--line)"><div>${esc(m.name)}${m.id === f.owner ? ' <span class="pill">creator</span>' : ''}${me && m.id === me.id ? ' <span class="mute">(you)</span>' : ''}</div>${f.isOwner && me && m.id !== me.id ? `<button class="link" data-a="fam-rm" data-id="${m.id}">Remove</button>` : ''}</div>`).join('')
-    + f.invited.map(m => `<div class="row" style="justify-content:space-between;padding:6px 0;border-top:1px solid var(--line)"><div class="mute">${esc(m.name)} · invited</div><button class="link" data-a="fam-rm" data-id="${m.id}">Cancel</button></div>`).join('');
-  if (f.isOwner) out += `<form class="row" id="faminv" style="gap:6px;margin-top:10px"><input type="email" name="email" placeholder="Their JoolzApp email" required><button class="btn">Invite</button></form>`;
+  const row = (m, pending) => `<div class="row" style="justify-content:space-between;gap:8px;padding:6px 0;border-top:1px solid var(--line)"><div class="${pending ? 'mute' : ''}">${esc(m.name)}${m.relation ? ' · ' + esc(m.relation) : ''}${m.id === f.owner ? ' <span class="pill">creator</span>' : ''}${me && m.id === me.id ? ' <span class="mute">(you)</span>' : ''}${pending ? ' · invited' : ''}</div>
+      <div class="row" style="gap:10px">${f.isOwner && me && m.id !== me.id && !pending ? `<button class="link" data-a="fam-tier" data-id="${m.id}" data-v="${m.tier === 'extended' ? 'family' : 'extended'}">${m.tier === 'extended' ? 'Make immediate' : 'Make extended'}</button>` : ''}${f.isOwner && me && m.id !== me.id ? `<button class="link" data-a="fam-rm" data-id="${m.id}">${pending ? 'Cancel' : 'Remove'}</button>` : ''}</div></div>`;
+  const group = (t, title, note) => {
+    const ms = f.members.filter(m => m.tier === t), ps = f.invited.filter(m => m.tier === t);
+    return `<div class="sub-h">${title}</div>${note ? `<p class="mute" style="margin:0 0 4px">${note}</p>` : ''}${ms.map(m => row(m, false)).join('')}${ps.map(m => row(m, true)).join('')}${ms.length || ps.length ? '' : '<div class="mute">Nobody yet.</div>'}`;
+  };
+  out += `<div class="h" style="margin:0 0 2px">${esc(f.name)}</div>` + (f.myTier === 'extended' ? `<p class="mute" style="margin-top:0">You're linked as ${esc(tierWord(f.myTier))}. Family expenses are only shared with immediate family.</p>` : '')
+    + group('family', 'Immediate family', 'Shares joint expenses, such as family orders.') + group('extended', 'Extended family', 'Cousins, grandparents, aunts and uncles… linked for future apps.');
+  if (f.isOwner) out += `<form class="row" id="faminv" style="gap:6px;margin-top:12px;flex-wrap:wrap"><input type="email" name="email" placeholder="Their JoolzApp email" required style="flex:1 1 100%">
+      <select name="tier" style="flex:1 1 40%"><option value="family">Immediate family</option><option value="extended">Extended family</option></select><input type="text" name="relation" placeholder="Relationship (optional)" maxlength="40" style="flex:1 1 40%"><button class="btn">Invite</button></form>`;
   return out + `<div style="margin-top:10px"><button class="link" data-a="fam-leave">Leave this family</button></div></div>`;
 }
 function settingsHTML() {
@@ -404,8 +412,8 @@ const dayFmt = o => dOf(o).toLocaleDateString(undefined, { weekday: 'short', day
 const monthKey = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
 const monthLbl = k => { const [y, m] = k.split('-'); return new Date(+y, +m - 1, 1).toLocaleDateString(undefined, { month: 'short' }) + ' ' + String(y).slice(2); };
 const restOfOrder = o => S.restaurants.find(x => x.id === o.restId) || S.restaurants.find(x => normName(x.name) === normName(o.restName));
-const scopeOrders = () => scope === 'family' && myFamily() ? (S.famOrders || []) : (S.history || []);
-const scopeChips = () => myFamily() ? `<div class="chips" style="margin-bottom:10px"><button class="chip ${scope === 'me' ? 'on' : ''}" data-a="scope" data-v="me">Personal</button><button class="chip ${scope === 'family' ? 'on' : ''}" data-a="scope" data-v="family">👨‍👩‍👧 ${esc(myFamily().name)}</button></div>` : '';
+const scopeOrders = () => scope === 'family' && famOn() ? (S.famOrders || []) : (S.history || []);
+const scopeChips = () => famOn() ? `<div class="chips" style="margin-bottom:10px"><button class="chip ${scope === 'me' ? 'on' : ''}" data-a="scope" data-v="me">Personal</button><button class="chip ${scope === 'family' ? 'on' : ''}" data-a="scope" data-v="family">👨‍👩‍👧 ${esc(famOn().name)}</button></div>` : '';
 const histTabs = on => `<div class="tabs"><button class="${on === 'history' ? 'on' : ''}" data-a="history">Orders</button><button class="${on === 'spend' ? 'on' : ''}" data-a="spend">Spending</button></div>`;
 
 function snapshotOf(r) {
@@ -427,7 +435,7 @@ async function markOrdered(r, as) {
 }
 function askPlaced(r) {
   if (!cartCount(r)) return;
-  const f = myFamily(), m = document.createElement('div'); m.className = 'modal';
+  const f = famOn(), m = document.createElement('div'); m.className = 'modal';
   m.innerHTML = `<div class="sheet"><h2 style="margin:0 0 8px">Who is this order for?</h2>
     <button class="btn" data-x="me">👤 Personal order<br><small>Only you can see it</small></button><div style="height:8px"></div>
     ${f ? `<button class="btn sec" data-x="family">👨‍👩‍👧 Family expense · ${esc(f.name)}<br><small>Everyone in the family can see it and it counts in the family spending</small></button>`
@@ -451,7 +459,7 @@ function repeatOrder(o) {
   if (missing.length) toast('Not on the menu any more: ' + missing.join(', '));
 }
 function historyHTML() {
-  const fam = scope === 'family' && myFamily(), hs = scopeOrders().slice().sort((a, b) => b.at.localeCompare(a.at)), sq = query.trim().toLowerCase();
+  const fam = scope === 'family' && famOn(), hs = scopeOrders().slice().sort((a, b) => b.at.localeCompare(a.at)), sq = query.trim().toLowerCase();
   const list = hs.filter(o => !sq || o.restName.toLowerCase().includes(sq) || o.lines.some(l => l.name.toLowerCase().includes(sq)));
   let out = histTabs('history') + scopeChips() + `<input class="search" id="q" type="text" placeholder="Search restaurants or dishes…" value="${esc(query)}">`;
   if (!hs.length) return out + `<div class="card" style="text-align:center">${fam ? 'No family orders yet. Choose <b>Family expense</b> when you mark an order as ordered.<br><br>' : ''}No previous orders yet. When you've phoned an order in, tap <b>Mark as ordered</b> on its summary and it is saved here with the date.</div>`;
@@ -463,12 +471,12 @@ function historyHTML() {
     out += `<div class="card"><div class="row" style="justify-content:space-between;gap:8px"><div class="h" style="margin:0">${esc(o.restName)}${o.branch ? ' <span class="mute">(' + esc(o.branch) + ')</span>' : ''}</div><div class="price">${o.total ? cm(o.currency, o.total) : ''}</div></div>
       <div class="mute" style="margin-bottom:6px">${esc(dayFmt(o))}${fam ? ' · by ' + esc(o.byName || 'someone') : ''}</div>
       ${o.lines.map(l => `<div class="sum-line"><div class="q">${l.qty}×</div><div class="grow">${esc(l.name)}${l.note ? `<div class="note">${esc(l.note)}</div>` : ''}</div></div>`).join('')}
-      <div class="row" style="gap:8px;margin-top:10px"><button class="btn sec" data-a="repeat" data-id="${o.id}">🔁 Repeat this order</button>${!fam || (me && (o.byId === me.id || myFamily().isOwner)) ? `<button class="icon-btn" data-a="del-order" data-id="${o.id}" title="Delete from history">🗑</button>` : ''}</div></div>`;
+      <div class="row" style="gap:8px;margin-top:10px"><button class="btn sec" data-a="repeat" data-id="${o.id}">🔁 Repeat this order</button>${!fam || (me && (o.byId === me.id || famOn().isOwner)) ? `<button class="icon-btn" data-a="del-order" data-id="${o.id}" title="Delete from history">🗑</button>` : ''}</div></div>`;
   });
   return out;
 }
 function spendHTML() {
-  const all = scopeOrders().filter(o => o.total > 0), famView = scope === 'family' && myFamily();
+  const all = scopeOrders().filter(o => o.total > 0), famView = scope === 'family' && famOn();
   let out = histTabs('spend') + scopeChips();
   if (!all.length) return out + `<div class="card" style="text-align:center">Spending appears here once you've marked priced orders as ordered${scope === 'family' ? ' as a family expense' : ''}.</div>`;
   const curs = [...new Set(all.map(o => o.currency))];
@@ -548,7 +556,7 @@ function orderText(r) {
 
 document.addEventListener('submit', async e => {
   if (e.target.id === 'famnew') { e.preventDefault(); return famAct({ action: 'create', name: e.target.elements.name.value }); }
-  if (e.target.id === 'faminv') { e.preventDefault(); const em = e.target.elements.email.value; await famAct({ action: 'invite', email: em }); return; }
+  if (e.target.id === 'faminv') { e.preventDefault(); const f = e.target.elements; await famAct({ action: 'invite', email: f.email.value, tier: f.tier.value, relation: f.relation.value }); return; }
   if (e.target.id !== 'newbranch') return;
   e.preventDefault(); const r = rest(), f = e.target.elements;
   try { const res = await api('api/menus/' + r.id + '/branch', { method: 'POST', body: JSON.stringify({ name: f.name.value, phone: f.phone.value }) }); const ix = S.restaurants.findIndex(x => x.id === r.id); S.restaurants[ix] = res.menu; render(); toast('Branch added for everyone'); }
@@ -595,19 +603,20 @@ document.addEventListener('click', async e => {
   const el = e.target.closest('[data-a]'); if (!el) return;
   const a = el.dataset.a, id = el.dataset.id, v = el.dataset.v, i = +el.dataset.i;
   if (a === 'home') return go('home');
-  if (a === 'history' || a === 'spend') { go(a); if (myFamily()) loadFamily().then(() => { if (view === a) render(); }); return; }
+  if (a === 'history' || a === 'spend') { go(a); if (famOn()) loadFamily().then(() => { if (view === a) render(); }); return; }
   if (a === 'period') { spendPeriod = +v; return render(); }
   if (a === 'cur') { spendCur = v; return render(); }
   if (a === 'placed') return askPlaced(S.restaurants.find(r => r.id === id));
   if (a === 'scope') { scope = v; return render(); }
   if (a === 'fam-yes' || a === 'fam-no') return famAct({ action: 'respond', familyId: id, accept: a === 'fam-yes' });
+  if (a === 'fam-tier') return famAct({ action: 'tier', memberId: id, tier: v });
   if (a === 'fam-rm') return famAct({ action: 'remove', memberId: id });
   if (a === 'fam-leave') { if (confirm('Leave this family? Orders already filed stay with the family.')) famAct({ action: 'leave' }); return; }
   if (a === 'repeat') return repeatOrder([...(S.history || []), ...(S.famOrders || [])].find(o => o.id === id));
   if (a === 'del-order') {
     if (!confirm('Delete this order from your history? It will no longer count in your spending.')) return;
     try {
-      if (scope === 'family' && myFamily()) { await api('api/family/orders/' + id, { method: 'DELETE' }); S.famOrders = S.famOrders.filter(o => o.id !== id); }
+      if (scope === 'family' && famOn()) { await api('api/family/orders/' + id, { method: 'DELETE' }); S.famOrders = S.famOrders.filter(o => o.id !== id); }
       else { await api('api/history/' + id, { method: 'DELETE' }); S.history = S.history.filter(o => o.id !== id); }
       render();
     } catch (err) { toast(err.message); } return;

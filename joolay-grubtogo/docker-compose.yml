@@ -25,7 +25,7 @@ services:
       # Refuse to show anything until PocketBase accounts are working (Umbrel's login is off, so this is the lock).
       - REQUIRE_ACCOUNTS=1
 
-# What GrubToGo needs in PocketBase. Portal Admin reads this and creates the collection when the app is installed.
+# What GrubToGo needs in PocketBase. (joolz_families is shared by every JoolzApp app: it holds the family links.) Portal Admin reads this and creates the collection when the app is installed.
 x-pocketbase: {
   "collections": [
     {
@@ -52,7 +52,7 @@ x-pocketbase: {
       ]
     },
     {
-      "name": "grubtogo_families",
+      "name": "joolz_families",
       "fields": [
         {"name": "name", "type": "text", "required": true},
         {"name": "owner", "type": "text", "required": true},

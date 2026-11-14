@@ -1,14 +1,18 @@
-// Families: a small group of JoolzApp users who can file an order as a joint family expense. Personal orders stay private;
-// family orders are visible to everyone in the family. Collections are only reachable by this server (as superuser), which enforces the rules.
+// Families, shared by every JoolzApp app (the `joolz_families` collection lives in the shared PocketBase, so a link made in one app shows in all of them).
+// A family has two tiers: "family" (immediate: shares joint expenses such as family orders) and "extended" (cousins, grandparents, aunts and so on, with a
+// relationship label; linked for future apps, and they never see family expenses). Another app only needs mine(user): members[].tier / .relation.
+// Collections are only reachable by the server (as superuser), which enforces the rules.
 "use strict";
 const pb = require("./pocketbase");
 
-const FAM = process.env.GRUBTOGO_FAMILIES_COLLECTION || "grubtogo_families";
+const FAM = process.env.JOOLZ_FAMILIES_COLLECTION || "joolz_families";
 const ORD = process.env.GRUBTOGO_FAMILY_ORDERS_COLLECTION || "grubtogo_family_orders";
 const famBase = "/api/collections/" + encodeURIComponent(FAM), ordBase = "/api/collections/" + encodeURIComponent(ORD);
 const FAM_FIELDS = [["name", "text", true], ["owner", "text", true], ["ownerName", "text"], ["memberIds", "text"], ["invitedIds", "text"], ["members", "json", false, { maxSize: 100000 }], ["invited", "json", false, { maxSize: 100000 }]];
 const ORD_FIELDS = [["familyId", "text", true], ["byId", "text", true], ["byName", "text"], ["data", "json", false, { maxSize: 1000000 }]];
-const MAX_MEMBERS = 12;
+const MAX_MEMBERS = 60;
+const TIERS = ["family", "extended"];
+const tierOf = m => m && m.tier === "extended" ? "extended" : "family";
 
 async function addMissing(path, wanted) {
   const col = await pb.asSuper("GET", path), key = col.fields ? "fields" : "schema", have = col[key] || [];
@@ -49,8 +53,17 @@ async function save(rec, members, invited, owner) {
   if (owner) { patch.owner = owner.id; patch.ownerName = owner.name; }
   return pb.asSuper("PATCH", `${famBase}/records/${encodeURIComponent(rec.id)}`, patch);
 }
-const shapeFam = (rec, user) => rec && { id: rec.id, name: rec.name, owner: rec.owner, ownerName: rec.ownerName || "", isOwner: rec.owner === user.id,
-  members: rec.members || [], invited: rec.owner === user.id ? (rec.invited || []) : [] };
+const norm = m => ({ id: m.id, name: m.name || "", tier: tierOf(m), relation: str(m.relation, 40) });
+const shapeFam = (rec, user) => { if (!rec) return null; const members = (rec.members || []).map(norm), me = members.find(m => m.id === user.id);
+  return { id: rec.id, name: rec.name, owner: rec.owner, ownerName: rec.ownerName || "", isOwner: rec.owner === user.id, myTier: me ? me.tier : "family",
+    members, invited: rec.owner === user.id ? (rec.invited || []).map(norm) : [] }; };
+// Only immediate family share family expenses.
+async function immediate(user) {
+  const fam = await familyOf(user.id); if (!fam) return { error: fail(400, "Join or create a family first.") };
+  const me = (fam.members || []).find(m => m.id === user.id);
+  if (me && tierOf(me) === "extended") return { error: fail(403, "Family expenses are for immediate family. You're linked as extended family.") };
+  return { fam };
+}
 
 // The person's family (if any) and invitations waiting for them.
 async function mine(user) {
@@ -69,7 +82,7 @@ async function create(user, name) {
   await pb.asSuper("POST", famBase + "/records", { name, owner: me.id, ownerName: me.name, members: [me], invited: [], memberIds: tag([me.id]), invitedIds: tag([]) });
   return mine(user);
 }
-async function invite(user, email) {
+async function invite(user, email, tier, relation) {
   await ensure();
   const fam = await familyOf(user.id); if (!fam) return fail(400, "Create a family first.");
   if (fam.owner !== user.id) return fail(403, "Only the person who created the family can invite.");
@@ -80,7 +93,8 @@ async function invite(user, email) {
   if (members.some(m => m.id === t.id)) return fail(400, "They're already in your family.");
   if (invited.some(m => m.id === t.id)) return fail(400, "They've already been invited.");
   if (members.length + invited.length >= MAX_MEMBERS) return fail(400, "That family is full.");
-  await save(fam, members, [...invited, { id: t.id, name: nameOf(t) }]);
+  tier = TIERS.includes(tier) ? tier : "family";
+  await save(fam, members, [...invited, { id: t.id, name: nameOf(t), tier, relation: str(relation, 40) }]);
   return mine(user);
 }
 async function respond(user, familyId, accept) {
@@ -92,7 +106,7 @@ async function respond(user, familyId, accept) {
   const rest = invited.filter(m => m.id !== user.id);
   if (!accept) { await save(fam, fam.members || [], rest); return mine(user); }
   if (await familyOf(user.id)) return fail(400, "You are already in a family. Leave it first to join another.");
-  await save(fam, [...(fam.members || []), { id: user.id, name: nameOf(user) }], rest);
+  await save(fam, [...(fam.members || []), { id: user.id, name: nameOf(user), tier: tierOf(mine_), relation: mine_.relation || "" }], rest);
   return mine(user);
 }
 // Leaving (or the owner removing someone). The owner role passes on if the owner leaves; an empty family is deleted.
@@ -109,7 +123,7 @@ async function drop(user, memberId) {
 
 async function addOrder(user, order) {
   await ensure();
-  const fam = await familyOf(user.id); if (!fam) return fail(400, "Join or create a family first.");
+  const { fam, error } = await immediate(user); if (error) return error;
   const rec = await pb.asSuper("POST", ordBase + "/records", { familyId: fam.id, byId: user.id, byName: nameOf(user), data: order });
   return { order: shapeOrder(rec) };
 }
@@ -117,6 +131,7 @@ const shapeOrder = rec => ({ ...(rec.data || {}), id: rec.id, byId: rec.byId, by
 async function listOrders(user) {
   await ensure();
   const fam = await familyOf(user.id); if (!fam) return { orders: [] };
+  if (tierOf((fam.members || []).find(m => m.id === user.id)) === "extended") return { orders: [] };
   const out = [];
   for (let page = 1; page <= 10; page++) {
     const j = await pb.asSuper("GET", `${ordBase}/records?page=${page}&perPage=500&sort=-created&filter=${q(`familyId = '${clean(fam.id)}'`)}`);
@@ -124,9 +139,19 @@ async function listOrders(user) {
   }
   return { orders: out };
 }
-async function removeOrder(user, id) {
+// The owner moves someone between immediate and extended family, or changes their relationship label.
+async function setTier(user, memberId, tier, relation) {
   await ensure();
   const fam = await familyOf(user.id); if (!fam) return fail(400, "You are not in a family.");
+  if (fam.owner !== user.id) return fail(403, "Only the person who created the family can do that.");
+  memberId = clean(memberId); if (memberId === user.id) return fail(400, "You are always immediate family.");
+  const members = (fam.members || []).map(m => m.id === memberId ? { ...m, tier: TIERS.includes(tier) ? tier : tierOf(m), relation: str(relation !== undefined ? relation : m.relation, 40) } : m);
+  await save(fam, members, fam.invited || []);
+  return mine(user);
+}
+async function removeOrder(user, id) {
+  await ensure();
+  const { fam, error } = await immediate(user); if (error) return error;
   let rec;
   try { rec = await pb.asSuper("GET", `${ordBase}/records/${encodeURIComponent(clean(id))}`); } catch (e) { if (e.status === 404) return { ok: true }; throw e; }
   if (rec.familyId !== fam.id) return fail(403, "That order belongs to another family.");
@@ -134,4 +159,4 @@ async function removeOrder(user, id) {
   await pb.asSuper("DELETE", `${ordBase}/records/${encodeURIComponent(rec.id)}`);
   return { ok: true };
 }
-module.exports = { mine, create, invite, respond, drop, addOrder, listOrders, removeOrder };
+module.exports = { mine, create, invite, respond, drop, setTier, addOrder, listOrders, removeOrder };
