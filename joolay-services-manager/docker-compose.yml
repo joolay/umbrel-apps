@@ -1,0 +1,25 @@
+# Services Manager: dashboard to enable/disable Umbrel apps and Docker containers and set restart policies.
+# Source: src/services-manager in this repo (built by .github/workflows/build-images.yml).
+# Keep the image tag equal to `version` in umbrel-app.yml.
+services:
+  app_proxy:
+    environment:
+      APP_HOST: joolay-services-manager_web_1
+      APP_PORT: 3000
+      # Umbrel's login stays ON: this app can control every container on the server.
+      PROXY_AUTH_ADD: "true"
+
+  web:
+    image: ghcr.io/joolay/services-manager:1.0.0
+    restart: on-failure
+    user: "0:0"
+    stop_grace_period: 10s
+    # Lets the container reach umbrelOS on the host to start/stop Umbrel apps.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ${APP_DATA_DIR}/data:/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      # If Connect can't reach umbrelOS, set this to your Umbrel's LAN address, e.g. http://192.168.1.50
+      - UMBREL_URL=${UMBREL_URL:-}

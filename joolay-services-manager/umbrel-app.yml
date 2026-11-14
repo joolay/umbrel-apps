@@ -1,0 +1,27 @@
+manifestVersion: 1
+id: joolay-services-manager
+category: developer
+name: Services Manager
+version: "1.0.0"
+tagline: Enable, disable and set restart policy for every service on your Umbrel
+description: >-
+  Lists every Umbrel app and every custom Docker container or stack on this server in one dashboard.
+  Switch services on or off so the choice survives reboots, and set the Docker restart policy
+  (always, unless-stopped, on-failure, no).
+  Umbrel apps are started and stopped through umbrelOS itself, so a stopped app stays stopped after a reboot. Custom Docker services are controlled through the Docker API.
+  Click Connect once and enter your umbrelOS password so it can control Umbrel apps; the password is not stored.
+  This app mounts the Docker socket, which gives it full control of the containers on this machine.
+developer: joolay
+website: https://github.com/joolay/umbrel-apps/tree/main/src/services-manager
+dependencies: []
+repo: https://github.com/joolay/umbrel-apps
+support: https://github.com/joolay/umbrel-apps/issues
+port: 3891
+gallery: []
+path: ""
+defaultUsername: ""
+defaultPassword: ""
+releaseNotes: "First release."
+submitter: joolay
+submission: https://github.com/joolay/umbrel-apps
+icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-services-manager/icon.svg
