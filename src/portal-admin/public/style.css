@@ -63,3 +63,7 @@ pre{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:
   main{padding:16px}
   table{display:block;overflow-x:auto}
 }
+
+.login-opts{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}.login-opts label{margin-bottom:0}
+.ok-msg{color:var(--ok);font-size:13px;margin-bottom:6px}.ok-msg:empty{display:none}
+.stat.click{cursor:pointer}.req-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.req-row input{flex:1;min-width:140px}

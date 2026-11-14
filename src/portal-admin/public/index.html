@@ -3,34 +3,79 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Portal Admin</title>
+<title>Joolzapp Portal</title>
 <link rel="icon" href="icon.svg">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 <div id="login" class="login hidden">
   <form id="login-form" class="card login-card" autocomplete="on">
-    <div class="brand big"><img src="icon.svg" alt="" width="40" height="40"><span>Portal Admin</span></div>
-    <p class="muted">Sign in with your PocketBase <strong>superuser</strong> account.</p>
-    <label>Superuser email
+    <div class="brand big"><img src="icon.svg" alt="" width="40" height="40"><span>Joolzapp Portal</span></div>
+    <p class="muted">Sign in with your <strong>JoolzApp</strong> account (or PocketBase superuser).</p>
+    <label>Email
       <input id="login-email" type="email" autocomplete="username" required>
     </label>
     <label>Password
       <input id="login-pass" type="password" autocomplete="current-password" required>
     </label>
+    <div class="login-opts">
+      <label class="inline"><input id="login-remember" type="checkbox"> Remember me</label>
+      <a href="#" id="login-forgot" class="small">Forgot password?</a>
+    </div>
     <div id="login-err" class="error"></div>
+    <div id="login-ok" class="ok-msg"></div>
     <button class="btn primary" type="submit">Sign in</button>
+    <p class="small">New here? <a href="#" id="login-signup">Create an account</a></p>
+  </form>
+</div>
+
+<div id="signup" class="login hidden">
+  <form id="signup-form" class="card login-card" autocomplete="on">
+    <div class="brand big"><img src="icon.svg" alt="" width="40" height="40"><span>Joolzapp Portal</span></div>
+    <p class="muted">Create your <strong>JoolzApp</strong> account. One account works across all Joolzapp apps.</p>
+    <label>Name (optional)
+      <input id="signup-name" autocomplete="name">
+    </label>
+    <label>Email
+      <input id="signup-email" type="email" autocomplete="username" required>
+    </label>
+    <label>Password (min 8)
+      <input id="signup-pass" type="password" autocomplete="new-password" minlength="8" required>
+    </label>
+    <label>Confirm password
+      <input id="signup-pass2" type="password" autocomplete="new-password" minlength="8" required>
+    </label>
+    <div id="signup-err" class="error"></div>
+    <button class="btn primary" type="submit">Create account</button>
+    <p class="small"><a href="#" id="signup-cancel">Back to sign in</a></p>
+  </form>
+</div>
+
+<div id="reset" class="login hidden">
+  <form id="reset-form" class="card login-card" autocomplete="on">
+    <div class="brand big"><img src="icon.svg" alt="" width="40" height="40"><span>Joolzapp Portal</span></div>
+    <p class="muted">Choose a new password.</p>
+    <label>New password
+      <input id="reset-pass" type="password" autocomplete="new-password" minlength="8" required>
+    </label>
+    <label>Confirm new password
+      <input id="reset-pass2" type="password" autocomplete="new-password" minlength="8" required>
+    </label>
+    <div id="reset-err" class="error"></div>
+    <button class="btn primary" type="submit">Set new password</button>
+    <p class="small"><a href="#" id="reset-cancel">Back to sign in</a></p>
   </form>
 </div>
 
 <div id="shell" class="shell hidden">
   <aside class="side">
-    <div class="brand"><img src="icon.svg" alt="" width="28" height="28"><span>Portal Admin</span></div>
+    <div class="brand"><img src="icon.svg" alt="" width="28" height="28"><span>Joolzapp Portal</span></div>
     <nav id="nav">
       <a href="#/overview" data-route="overview">Overview</a>
       <a href="#/global" data-route="global">Global settings</a>
       <a href="#/apps" data-route="apps">Apps</a>
       <a href="#/users" data-route="users">Users</a>
+      <a href="#/requests" data-route="requests">Access requests</a>
       <a href="#/audit" data-route="audit">Audit log</a>
       <a href="#/setup" data-route="setup">Setup &amp; integration</a>
     </nav>

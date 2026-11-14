@@ -1,15 +1,16 @@
 manifestVersion: 1
 id: joolay-portal-admin
 category: developer
-name: Portal Admin
-version: "0.1.1"
-tagline: One admin panel for all your custom PocketBase apps
+name: Joolzapp Portal
+version: "0.4.0"
+tagline: One portal for all your Joolzapp apps: admin panel and user settings
 description: >-
   A central admin panel for your custom apps that use PocketBase. Register each app, then manage
   global settings, per-app settings and per-user overrides in one place, switch apps on or off or into
   maintenance mode, block individual users, and review an audit log of every change.
+  Your users can sign in too: they set shared preferences (language, currency, time zone, date format, theme), request access to individual apps, and ask for their account to be deleted, and you approve each from one place. New sign-ups can be switched on or off, and new accounts can require your approval per app.
   Connects to the PocketBase app on your Umbrel automatically; sign in with your PocketBase superuser account. Portal Admin keeps its data in your PocketBase
-  (collections portal_apps, portal_settings, portal_audit) and stores nothing else.
+  (collections portal_apps, portal_settings, portal_requests, portal_audit) and stores nothing else.
 developer: joolay
 website: https://github.com/joolay/umbrel-apps/tree/main/src/portal-admin
 dependencies: []
@@ -20,7 +21,7 @@ gallery: []
 path: ""
 defaultUsername: ""
 defaultPassword: ""
-releaseNotes: "Portal Admin now connects to your Umbrel PocketBase automatically. The PocketBase URL box is gone from the sign-in screen."
+releaseNotes: "Renamed Joolzapp Portal. Users can sign up and sign in to manage shared preferences and request access to apps; per-app approval for new accounts; access requests and account deletion requests for you to approve; remember me and forgot password."
 submitter: joolay
 submission: https://github.com/joolay/umbrel-apps
 icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-portal-admin/icon.svg
