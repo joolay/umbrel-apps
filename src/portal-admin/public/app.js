@@ -801,6 +801,13 @@ const PREFS = [
   ['units', 'Units', [['metric', 'Metric (km, kg, °C)'], ['imperial', 'Imperial (mi, lb, °F)']]],
   ['theme', 'Theme', [['auto', 'Match my device'], ['light', 'Light'], ['dark', 'Dark']]],
 ];
+const AI_PROVIDERS = [
+  ['openrouter', 'OpenRouter', 'e.g. anthropic/claude-sonnet-4.5 (pick from the list)', 'One OpenRouter key works with hundreds of models. Get a key at openrouter.ai/keys.'],
+  ['anthropic', 'Anthropic (Claude)', 'Claude model name', 'Use a key from console.anthropic.com.'],
+  ['openai', 'OpenAI', 'e.g. gpt-4o', 'Use a key from platform.openai.com.'],
+  ['gemini', 'Google Gemini', 'Gemini model name', 'Use a key from aistudio.google.com.'],
+  ['custom', 'Custom (OpenAI-compatible)', 'Model name', 'Any service that speaks the OpenAI chat API, such as a local Ollama or LM Studio.'],
+];
 async function viewMe() {
   const uid = state.uid;
   const [rows, apps, reqs, acc] = await Promise.all([
@@ -830,6 +837,13 @@ async function viewMe() {
     ${banner ? `<div class="card"><span class="chip warn">${esc(banner)}</span></div>` : ''}
     <form id="prefs" class="card"><h2>Preferences</h2><div class="kv">${PREFS.map(field).join('')}</div>
       ${detected ? `<p class="muted small">Your device time zone: ${esc(detected)}</p>` : ''}<button class="btn primary">Save preferences</button></form>
+    <form id="ai" class="card"><h2>AI (for apps that use it)</h2><p class="muted small">Pick your own AI provider, model and API key. Apps that read menus, photos or text with AI will use these instead of the shared key. Only you and the admin can see them.</p>
+      <div class="kv"><label>Provider<select name="provider">${AI_PROVIDERS.map(([v, l]) => opt(v, l, (cur['ai.provider'] ? cur['ai.provider'].value : 'openrouter') === v)).join('')}</select></label>
+      <label>Model<input name="model" list="ai-models" value="${esc(cur['ai.model'] ? cur['ai.model'].value : '')}" placeholder="" autocomplete="off"><datalist id="ai-models"></datalist></label>
+      <label>API key<input name="apiKey" type="password" autocomplete="off" placeholder="${cur['ai.apiKey'] && cur['ai.apiKey'].value ? 'Saved (ends …' + esc(String(cur['ai.apiKey'].value).slice(-4)) + '). Leave blank to keep it.' : 'Paste your API key'}"></label>
+      <label id="ai-base-row">Base URL<input name="baseUrl" value="${esc(cur['ai.baseUrl'] ? cur['ai.baseUrl'].value : '')}" placeholder="https://your-host/v1" autocomplete="off"></label></div>
+      <p class="muted small" id="ai-hint"></p>
+      <div class="row" style="gap:8px"><button class="btn primary">Save AI settings</button>${cur['ai.apiKey'] ? ' <button type="button" class="btn danger" id="ai-clear">Remove my key</button>' : ''}</div></form>
     <div class="card"><h2>Joolzapp services</h2>${reqs === null ? '<p class="muted">Access requests are not set up yet. Ask the admin.</p>' : `<table><tbody>${apps.map((a) => {
       const pend = reqs.find((r) => r.app === a.slug && r.status === 'pending'), denied = reqs.find((r) => r.app === a.slug && r.status === 'denied');
       let right;
@@ -846,6 +860,41 @@ async function viewMe() {
       <label>Reason (optional)<input name="reason" maxlength="300"></label>
       <button class="btn danger">Request account deletion</button></form>`}${delDenied && !delPend ? '<p class="muted small">Your last deletion request was declined.</p>' : ''}</div>`;
 
+  // AI settings are stored as the person's own "pref.ai.*" rows, so every app can read them through the shared account.
+  const setPref = async (key, val) => {
+    const ex = cur[key];
+    if ((val === '' || val == null) && ex) { await api('DELETE', `/api/collections/portal_settings/records/${ex.id}`); delete cur[key]; }
+    else if (val !== '' && ex) { if (ex.value !== val) { await api('PATCH', `/api/collections/portal_settings/records/${ex.id}`, { value: val }); ex.value = val; } }
+    else if (val !== '') cur[key] = await api('POST', '/api/collections/portal_settings/records', { scope: 'user', user: uid, app: '', key: 'pref.' + key, value: val, secret: false });
+  };
+  const aiForm = $('#ai'), aiShow = () => {
+    const p = AI_PROVIDERS.find(([v]) => v === aiForm.provider.value) || AI_PROVIDERS[0];
+    $('#ai-base-row').style.display = aiForm.provider.value === 'custom' ? '' : 'none';
+    aiForm.model.placeholder = p[2]; $('#ai-hint').textContent = p[3];
+    if (aiForm.provider.value === 'openrouter') loadOpenRouterModels();
+  };
+  let orModels = null;
+  const loadOpenRouterModels = async () => {
+    if (!orModels) { try { const r = await fetch('https://openrouter.ai/api/v1/models'); orModels = ((await r.json()).data || []).map((m) => m.id).filter(Boolean).sort(); } catch { orModels = []; } }
+    $('#ai-models').innerHTML = orModels.map((m) => `<option value="${esc(m)}">`).join('');
+  };
+  aiForm.provider.onchange = aiShow; aiShow();
+  aiForm.onsubmit = guard(async (e) => {
+    e.preventDefault();
+    const f = e.target.elements, model = f.model.value.trim(), key = f.apiKey.value.trim(), base = f.baseUrl.value.trim();
+    if (f.provider.value === 'custom' && !/^https?:\/\//i.test(base)) return toast('Enter the base URL for your custom provider', true);
+    if (!model) return toast('Enter the model you want to use', true);
+    if (!key && !cur['ai.apiKey']) return toast('Paste your API key', true);
+    await setPref('ai.provider', f.provider.value); await setPref('ai.model', model);
+    if (key) await setPref('ai.apiKey', key);
+    await setPref('ai.baseUrl', f.provider.value === 'custom' ? base : '');
+    toast('AI settings saved'); route();
+  });
+  if ($('#ai-clear')) $('#ai-clear').onclick = guard(async () => {
+    if (!confirm('Remove your AI key and model? Apps will go back to the shared key, if there is one.')) return;
+    for (const k of ['ai.apiKey', 'ai.model', 'ai.provider', 'ai.baseUrl']) await setPref(k, '');
+    toast('AI settings removed'); route();
+  });
   $('#prefs').onsubmit = guard(async (e) => {
     e.preventDefault();
     for (const [key] of PREFS) {

@@ -23,6 +23,8 @@ const PRESETS = {
   anthropic: { baseUrl: "https://api.anthropic.com", model: "claude-sonnet-5-5" },
   gemini: { baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai/", model: "gemini-3.8-flash" },
   openai: { baseUrl: "https://api.openai.com/v1", model: "" },
+  openrouter: { baseUrl: "https://openrouter.ai/api/v1", model: "" },
+  custom: { baseUrl: "", model: "" },
 };
 function loadAI() {
   let c = {}; try { c = JSON.parse(fs.readFileSync(AI_FILE, "utf8")); } catch {}
@@ -30,12 +32,22 @@ function loadAI() {
   const pre = PRESETS[provider] || PRESETS.openai;
   return { provider, apiKey: c.apiKey ?? process.env.AI_API_KEY ?? "", baseUrl: c.baseUrl || process.env.AI_BASE_URL || pre.baseUrl, model: c.model || process.env.AI_MODEL || pre.model };
 }
+// A person can save their own provider, model and key in Portal Admin ("My settings"); those win over the shared key.
+function userAI(user) {
+  const pr = (user && user.portal && user.portal.prefs) || {};
+  const key = typeof pr["ai.apiKey"] === "string" ? pr["ai.apiKey"].trim() : "", model = typeof pr["ai.model"] === "string" ? pr["ai.model"].trim() : "";
+  if (!key || !model) return null;
+  const provider = PRESETS[pr["ai.provider"]] ? pr["ai.provider"] : "openrouter", pre = PRESETS[provider];
+  const baseUrl = provider === "custom" ? String(pr["ai.baseUrl"] || "").trim() : pre.baseUrl;
+  return baseUrl ? { provider, apiKey: key, baseUrl, model, own: true } : null;
+}
+const aiFor = user => userAI(user) || loadAI();
 const aiReady = c => !!(c.model && (c.apiKey || c.provider === "openai"));
 class AIError extends Error { constructor(code, msg) { super(msg || code); this.code = code; } }
 
-async function callAI(prompt, images = []) {
-  const c = loadAI();
-  if (!aiReady(c)) throw new AIError("not_configured", "Menu reading isn't set up yet. An admin needs to add an AI key.");
+async function callAI(prompt, images = [], user = null) {
+  const c = aiFor(user);
+  if (!aiReady(c)) throw new AIError("not_configured", "Menu reading isn't set up yet. Add your own AI key in Portal Admin (My settings), or ask an admin to add a shared one.");
   let r, text;
   if (c.provider === "anthropic") {
     const content = images.map(im => ({ type: "image", source: { type: "base64", media_type: im.type || "image/jpeg", data: im.data } }));
@@ -49,6 +61,7 @@ async function callAI(prompt, images = []) {
   } else {
     const content = [{ type: "text", text: prompt }, ...images.map(im => ({ type: "image_url", image_url: { url: `data:${im.type || "image/jpeg"};base64,${im.data}` } }))];
     const headers = { "content-type": "application/json" }; if (c.apiKey) headers.authorization = "Bearer " + c.apiKey;
+    if (c.provider === "openrouter") { headers["x-title"] = "GrubToGo"; }
     r = await fetch(c.baseUrl.replace(/\/+$/, "") + "/chat/completions", { method: "POST", headers, signal: AbortSignal.timeout(120000), body: JSON.stringify({ model: c.model, max_tokens: 8000, messages: [{ role: "user", content }] }) });
     const j = await readAI(r); text = j.choices?.[0]?.message?.content || "";
     if (Array.isArray(text)) text = text.map(p => p.text || "").join("");
@@ -60,7 +73,7 @@ async function callAI(prompt, images = []) {
 async function readAI(r) {
   const body = await r.text(); let j = {}; try { j = JSON.parse(body); } catch {}
   if (r.status === 429 || r.status === 529) throw new AIError("rate_limited", "The AI service is busy. Try again in a moment.");
-  if (r.status === 401 || r.status === 403) throw new AIError("bad_key", "The AI service rejected the API key.");
+  if (r.status === 401 || r.status === 403) throw new AIError("bad_key", "The AI service rejected the API key. Check it in Portal Admin (My settings) or ask the admin.");
   if (!r.ok) throw new AIError("ai_error", (j.error?.message || body || "HTTP " + r.status).slice(0, 300));
   return j;
 }
@@ -98,7 +111,7 @@ function gateOf(u) {
   if (!u.portal.access) return { ok: false, reason: "no_access", message: "You need approval to use GrubToGo. Open Portal Admin, request access to GrubToGo, then check again here." };
   return { ok: true };
 }
-const publicUser = u => ({ id: u.id, email: u.email || "", name: u.name || "", isAdmin: !!u.isAdmin, canOpen: gateOf(u).ok, gate: gateOf(u), prefs: (u.portal && u.portal.prefs) || {} });
+const publicUser = u => ({ id: u.id, email: u.email || "", name: u.name || "", isAdmin: !!u.isAdmin, canOpen: gateOf(u).ok, gate: gateOf(u), prefs: Object.fromEntries(Object.entries((u.portal && u.portal.prefs) || {}).filter(([k]) => k !== "ai.apiKey")) });
 
 const tokenCache = new Map();
 function tokenOf(req) {
@@ -243,7 +256,7 @@ const server = http.createServer(async (req, res) => {
       writeState(user, s); return send(res, 200, { ok: true, at: s.at });
     }
 
-    if (p === "/api/ai/status") { const c = loadAI(); return send(res, 200, { configured: aiReady(c), isAdmin: !pb.enabled || !!(user && user.isAdmin), provider: c.provider, model: c.model, keyHint: c.apiKey ? "…" + c.apiKey.slice(-4) : "" }); }
+    if (p === "/api/ai/status") { const c = aiFor(user); return send(res, 200, { configured: aiReady(c), own: !!c.own, isAdmin: !pb.enabled || !!(user && user.isAdmin), provider: c.provider, model: c.model, keyHint: c.apiKey ? "…" + c.apiKey.slice(-4) : "" }); }
     if (p === "/api/ai/config" && req.method === "POST") {
       if (pb.enabled && !(user && user.isAdmin)) return send(res, 403, { code: "forbidden", message: "Admins only." });
       const b = JSON.parse((await readBody(req)).toString() || "{}"), cur = loadAI();
@@ -261,7 +274,7 @@ const server = http.createServer(async (req, res) => {
         else if (Array.isArray(b.images) && b.images.length) { images = b.images.slice(0, 6).filter(i => i && typeof i.data === "string"); prompt = PROMPT + "\n\nThe menu is in the attached image(s)."; }
         else if (typeof b.text === "string" && b.text.trim()) prompt = PROMPT + "\n\nMENU TEXT:\n" + b.text.slice(0, 40000);
         else return send(res, 400, { code: "empty", message: "Nothing to read." });
-        return send(res, 200, { menu: await callAI(prompt, images) });
+        return send(res, 200, { menu: await callAI(prompt, images, user) });
       } catch (e) {
         if (e instanceof AIError) return send(res, e.code === "rate_limited" ? 429 : e.code === "bad_url" || e.code === "not_configured" ? 400 : 502, { code: e.code, message: e.message });
         throw e;
