@@ -37,7 +37,18 @@ x-pocketbase: {
         {"name": "phone", "type": "text"},
         {"name": "currency", "type": "text"},
         {"name": "categories", "type": "json", "maxSize": 5000000},
-        {"name": "branches", "type": "json", "maxSize": 200000}
+        {"name": "branches", "type": "json", "maxSize": 200000},
+        {"name": "version", "type": "text"},
+        {"name": "versionByName", "type": "text"}
+      ]
+    },
+    {
+      "name": "grubtogo_menu_archive",
+      "fields": [
+        {"name": "menuId", "type": "text", "required": true},
+        {"name": "version", "type": "text"},
+        {"name": "byName", "type": "text"},
+        {"name": "data", "type": "json", "maxSize": 5000000}
       ]
     }
   ]

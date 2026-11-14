@@ -57,6 +57,11 @@ label.drop b{display:block;color:var(--ink);font-size:17px;margin-bottom:4px}
 .kv.big{font-size:19px;font-weight:800;border-top:1px solid var(--line);margin-top:6px;padding-top:10px}
 .link{background:none;border:0;color:var(--accent);font:600 14px system-ui;padding:4px 0}
 .search{margin-bottom:6px;position:sticky;top:var(--hh,60px);z-index:4;box-shadow:0 6px 0 var(--bg)}
+.item[data-item]{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+.pill.ed{background:transparent;border:1px solid var(--accent);color:var(--accent);padding:0 7px;font-size:11px;margin-left:4px;vertical-align:middle}
+.modal{position:fixed;inset:0;background:#0007;z-index:20;display:flex;align-items:flex-end;justify-content:center}
+.modal .sheet{background:var(--bg);width:100%;max-width:640px;border-radius:18px 18px 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom));max-height:90vh;overflow:auto}
+.modal label{display:block;margin-top:8px}
 .pill.new{background:var(--accent);color:#fff;margin-left:4px;vertical-align:middle}
 .pill{display:inline-block;background:var(--accent2);color:var(--accent);border-radius:99px;padding:2px 10px;font-size:12px;font-weight:700}
 .chips{display:flex;flex-wrap:wrap;gap:6px}
@@ -258,22 +263,27 @@ function menuHTML(r) {
   const branchRows = r.canEdit
     ? bs.map((b, i) => `<div class="row" style="gap:6px;margin-top:6px"><input type="text" data-bi="${i}" data-bf="name" value="${esc(b.name)}" placeholder="Branch (e.g. Sandton)"><input type="tel" data-bi="${i}" data-bf="phone" value="${esc(b.phone)}" placeholder="Phone"><button class="icon-btn" data-a="del-branch" data-i="${i}" title="Remove branch">✕</button></div>`).join('')
       + `<button class="link" data-a="add-branch">＋ Add a branch (franchise)</button>`
-    : bs.map(b => `<div class="kv"><span>${esc(b.name || 'Branch')}</span><a href="${telHref(b.phone)}">${esc(b.phone)}</a></div>`).join('');
+    : bs.map(b => `<div class="kv"><span>${esc(b.name || 'Branch')}</span><a href="${telHref(b.phone)}">${esc(b.phone)}</a></div>`).join('')
+      + `<form class="row" id="newbranch" style="gap:6px;margin-top:8px"><input type="text" name="name" placeholder="New branch (e.g. Sandton)"><input type="tel" name="phone" placeholder="Phone" required><button class="btn">Add</button></form>`;
   let out = `<div class="card"><div class="mute" style="margin-bottom:6px">Restaurant phone${r.ownerName ? ' · added by ' + esc(r.ownerName) : ''}${r.canEdit ? '' : ' · view only'}</div>
     <input id="phone" type="tel" value="${esc(r.phone || '')}" placeholder="${r.canEdit ? 'Main phone number' : 'No phone number'}"${r.canEdit ? '' : ' readonly'}>
-    ${bs.length || r.canEdit ? `<div class="mute" style="margin:10px 0 2px">Branches</div>${branchRows}` : ''}</div>
+    <div class="mute" style="margin:10px 0 2px">Branches${r.canEdit ? '' : ' · anyone can add one'}</div>${branchRows}</div>
     <input class="search" id="q" type="text" placeholder="Search menu…" value="${esc(query)}">`;
   for (const cat of r.categories) {
     const items = cat.items.filter(i => !q || (i.name + ' ' + (i.description || '')).toLowerCase().includes(q));
     if (!items.length) continue;
     out += `<div class="cat">${esc(cat.name)}</div><div class="card" style="padding:2px 14px">` + items.map(i => {
       const qty = c.items[i.id]?.qty || 0;
-      return `<div class="item"><div class="grow"><h3>${esc(i.name)}</h3>${i.description ? `<p>${esc(i.description)}</p>` : ''}${i.price != null ? `<div class="price" style="margin-top:4px">${money(r, i.price)}</div>` : ''}</div>
+      return `<div class="item" data-item="${esc(i.id)}"><div class="grow"><h3>${esc(i.name)}${i.edit ? ' <span class="pill ed" title="Edited by ' + esc(i.edit.byName) + '">✎ edited</span>' : ''}</h3>${i.description ? `<p>${esc(i.description)}</p>` : ''}${i.price != null ? `<div class="price" style="margin-top:4px">${money(r, i.price)}</div>` : ''}</div>
         ${qty ? `<div class="step"><button data-a="dec" data-id="${i.id}">−</button><span>${qty}</span><button data-a="inc" data-id="${i.id}">+</button></div>` : `<button class="add" data-a="inc" data-id="${i.id}">Add</button>`}</div>`;
     }).join('') + `</div>`;
   }
+  out += `<p class="mute" style="text-align:center;margin:14px 0 4px">Hold an item to edit it. Anyone can fix a price or a name; your name is shown on the item.</p>
+    <div class="card"><div class="mute">Version ${esc(fmtDate(r.version))}${r.versionByName ? ' · uploaded by ' + esc(r.versionByName) : ''}</div>
+      <button class="link" data-a="versions" data-id="${r.id}">Previous versions</button><div id="vers"></div></div>`;
   return out;
 }
+const fmtDate = v => { const d = new Date(String(v || '').replace(' ', 'T')); return isNaN(d) ? '' : d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) + ' ' + d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }); };
 
 /* ----- per-restaurant summary + bill ----- */
 // Franchises: which branch's number to call. Each person picks their own branch for an order (or types another number).
@@ -394,6 +404,48 @@ function orderText(r) {
   return t;
 }
 
+document.addEventListener('submit', async e => {
+  if (e.target.id !== 'newbranch') return;
+  e.preventDefault(); const r = rest(), f = e.target.elements;
+  try { const res = await api('api/menus/' + r.id + '/branch', { method: 'POST', body: JSON.stringify({ name: f.name.value, phone: f.phone.value }) }); const ix = S.restaurants.findIndex(x => x.id === r.id); S.restaurants[ix] = res.menu; render(); toast('Branch added for everyone'); }
+  catch (err) { toast(err.message); }
+});
+
+/* ---------- edit an item (hold it) ---------- */
+let lpT = null, lpXY = [0, 0];
+const lpStop = () => { clearTimeout(lpT); lpT = null; };
+document.addEventListener('pointerdown', e => {
+  const it = e.target.closest('.item[data-item]'); if (!it || e.target.closest('button') || view !== 'menu') return;
+  lpStop(); lpXY = [e.clientX, e.clientY];
+  lpT = setTimeout(() => { lpT = null; if (navigator.vibrate) navigator.vibrate(15); openItemEditor(it.dataset.item); }, 550);
+});
+document.addEventListener('pointermove', e => { if (lpT && Math.hypot(e.clientX - lpXY[0], e.clientY - lpXY[1]) > 10) lpStop(); });   // moving = scrolling, not holding
+['pointerup', 'pointercancel', 'scroll', 'dragstart'].forEach(ev => document.addEventListener(ev, lpStop, true));
+document.addEventListener('contextmenu', e => { if (e.target.closest('.item[data-item]')) e.preventDefault(); });
+function openItemEditor(itemId) {
+  const r = rest(); if (!r) return;
+  const it = r.categories.flatMap(c => c.items).find(i => i.id === itemId); if (!it) return;
+  const ed = it.edit, was = ed && ed.was;
+  const tag = ed ? `✎ Last edited by <b>${esc(ed.byName || 'someone')}</b> · ${esc(fmtDate(ed.at))}${was ? `<div>Before: ${esc(was.name)}${was.price != null ? ' · ' + money(r, was.price) : ''}</div>` : ''}` : 'Not edited yet. Anyone can fix this item; your name will be shown here.';
+  const m = document.createElement('div'); m.className = 'modal';
+  m.innerHTML = `<form class="sheet"><h2 style="margin:0 0 8px">Edit item</h2>
+    <label class="mute">Name<input name="name" type="text" required maxlength="160" value="${esc(it.name)}"></label>
+    <label class="mute">Description<textarea name="description" maxlength="600" style="min-height:64px">${esc(it.description || '')}</textarea></label>
+    <label class="mute">Price (${esc(r.currency)})<input name="price" type="number" inputmode="decimal" step="0.01" min="0" value="${it.price != null ? it.price : ''}"></label>
+    <p class="mute" style="margin:10px 0">${tag}</p>
+    <div class="row" style="gap:8px"><button type="button" class="btn ghost" data-x="cancel">Cancel</button><button class="btn">Save</button></div></form>`;
+  document.body.appendChild(m);
+  const close = () => m.remove();
+  m.addEventListener('click', ev => { if (ev.target === m || ev.target.dataset.x === 'cancel') close(); });
+  m.querySelector('form').onsubmit = async ev => {
+    ev.preventDefault(); const f = ev.target.elements, btn = ev.target.querySelector('.btn:not(.ghost)'); btn.disabled = true;
+    try {
+      const res = await api('api/menus/' + r.id + '/item', { method: 'POST', body: JSON.stringify({ itemId, name: f.name.value, description: f.description.value, price: f.price.value }) });
+      const ix = S.restaurants.findIndex(x => x.id === r.id); S.restaurants[ix] = res.menu; close(); render(); toast('Saved. Your edit is tagged on the item.');
+    } catch (err) { toast(err.message); btn.disabled = false; }
+  };
+}
+
 /* ---------- events ---------- */
 document.addEventListener('click', async e => {
   const el = e.target.closest('[data-a]'); if (!el) return;
@@ -435,6 +487,20 @@ document.addEventListener('click', async e => {
   }
   if (a === 'clear') { S.carts[curId] = {}; save(); return go('menu'); }
   if (a === 'copy-phone') return copy(contactOf(S.restaurants.find(r => r.id === id)).phone, el);
+  if (a === 'versions') {
+    const r = S.restaurants.find(x => x.id === id), box = $('#vers'); box.innerHTML = '<span class="mute">Loading…</span>';
+    try {
+      const { versions } = await api('api/menus/' + id + '/versions');
+      box.innerHTML = versions.length ? versions.map(v => `<div class="row" style="gap:8px;padding:6px 0;border-top:1px solid var(--line)"><div class="grow mute">${esc(fmtDate(v.version))}${v.byName ? ' · ' + esc(v.byName) : ''}</div>${r.canEdit ? `<button class="link" data-a="restore" data-id="${id}" data-v="${v.id}">Restore</button>` : ''}</div>`).join('') : '<span class="mute">No earlier versions yet.</span>';
+    } catch (err) { box.textContent = err.message; }
+    return;
+  }
+  if (a === 'restore') {
+    if (!confirm('Put this older version back? The current one is kept in the archive.')) return;
+    try { const res = await api('api/menus/' + id + '/restore', { method: 'POST', body: JSON.stringify({ versionId: v }) }); const ix = S.restaurants.findIndex(x => x.id === id); S.restaurants[ix] = res.menu; S.carts[id] = {}; save(); render(); toast('Version restored'); }
+    catch (err) { toast(err.message); }
+    return;
+  }
   if (a === 'add-branch') { const r = rest(); r.branches = [...(r.branches || []), { name: '', phone: '' }]; render(); const ins = document.querySelectorAll('[data-bf=name]'); if (ins.length) ins[ins.length - 1].focus(); return; }
   if (a === 'del-branch') { const r = rest(); r.branches.splice(i, 1); saveBranches(r); return render(); }
   if (a === 'branch-custom') { cartOf(id).branch = 'custom'; save(); return render(); }
@@ -514,14 +580,16 @@ async function ingest(src) {
     try { ai = await api('api/ai/status'); } catch (e) {}
     if (!j) throw new Error('Could not read a menu from that.');
     if (j.error) throw new Error(src.url ? 'Could not open that link (' + j.error + '). Try a screenshot, PDF, or the Paste tab.' : 'No readable menu found (' + j.error + ').');
-    let n = 0;
-    const cats = (j.categories || []).map((c, ci) => ({ name: c.name || 'Menu', items: (c.items || []).filter(i => i && i.name).map((i, ii) => ({ id: `c${ci}i${ii}`, name: String(i.name), description: i.description || '', price: typeof i.price === 'number' ? i.price : (parseFloat(i.price) || null) })) })).filter(c => c.items.length);
+    let n = 0; const stamp = Date.now().toString(36);   // new item ids per upload, so older baskets never point at the wrong dish
+    const cats = (j.categories || []).map((c, ci) => ({ name: c.name || 'Menu', items: (c.items || []).filter(i => i && i.name).map((i, ii) => ({ id: `u${stamp}c${ci}i${ii}`, name: String(i.name), description: i.description || '', price: typeof i.price === 'number' ? i.price : (parseFloat(i.price) || null) })) })).filter(c => c.items.length);
     cats.forEach(c => n += c.items.length);
     if (!n) throw new Error('No menu items were found.');
     busy = 'Saving to the shared archive…'; render();
-    const r = (await api('api/menus', { method: 'POST', body: JSON.stringify({ name: j.name || 'Restaurant', phone: j.phone || '', currency: j.currency || 'R', categories: cats }) })).menu;
-    S.restaurants.unshift(r); markSeen(r.id); busy = null; go('menu', r.id);
-    toast('Menu added to the shared archive');
+    const res = await api('api/menus', { method: 'POST', body: JSON.stringify({ name: j.name || 'Restaurant', phone: j.phone || '', currency: j.currency || 'R', categories: cats }) });
+    const r = res.menu, ix = S.restaurants.findIndex(x => x.id === r.id);
+    if (ix >= 0) { S.restaurants[ix] = r; S.carts[r.id] = {}; S.hidden = (S.hidden || []).filter(x => x !== r.id); } else S.restaurants.unshift(r);
+    markSeen(r.id); busy = null; go('menu', r.id);
+    toast(res.merged ? `${r.name} is already in the archive, so this is now its latest version` : 'Menu added to the shared archive');
   } catch (e) {
     busy = null; error = (e && e.message) || (e && e.code === 'not_granted' ? 'Permission to read menus was not granted.' : 'Something went wrong.'); render();
   }

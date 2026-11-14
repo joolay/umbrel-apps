@@ -235,7 +235,7 @@ const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, "http://x");
     const p = decodeURIComponent(url.pathname);
     const isPage = p === "/" || p === "/index.html";
-    const isMenus = p === "/api/menus" || /^\/api\/menus\/[A-Za-z0-9]{1,40}$/.test(p);
+    const isMenus = /^\/api\/menus(\/[A-Za-z0-9]{1,40}(\/(item|branch|versions|restore))?)?$/.test(p);
     const isData = isMenus || p === "/api/state" || p === "/api/extract" || p === "/api/ai/status" || p === "/api/ai/config";
 
     // The app and its data are only for signed-in people the admin has let in (admins always can).
@@ -264,12 +264,18 @@ const server = http.createServer(async (req, res) => {
 
     if (isMenus) {
       if (!user) return send(res, 503, { code: "accounts_unavailable", message: "The shared menu archive needs accounts. Connect PocketBase first." });
-      const id = (p.match(/^\/api\/menus\/([A-Za-z0-9]+)$/) || [])[1];
+      const mm = p.match(/^\/api\/menus\/([A-Za-z0-9]+)(?:\/(item|branch|versions|restore))?$/), id = mm && mm[1], sub = mm && mm[2];
+      const out = r => r.status ? send(res, r.status, { code: "menu_denied", message: r.message }) : send(res, 200, r);
+      if (id && sub === "item" && req.method === "POST") return out(await menus.editItem(user, id, JSON.parse((await readBody(req)).toString() || "{}")));
+      if (id && sub === "branch" && req.method === "POST") return out(await menus.addBranch(user, id, JSON.parse((await readBody(req)).toString() || "{}")));
+      if (id && sub === "versions" && req.method === "GET") return out(await menus.versions(user, id));
+      if (id && sub === "restore" && req.method === "POST") return out(await menus.restore(user, id, JSON.parse((await readBody(req)).toString() || "{}").versionId));
+      if (sub) return send(res, 405, { message: "Method not allowed" });
       if (!id && req.method === "GET") return send(res, 200, { menus: await menus.list(user) });
       if (!id && req.method === "POST") {
         const m = menus.cleanMenu(JSON.parse((await readBody(req)).toString() || "{}"));
         if (!m) return send(res, 400, { code: "bad_menu", message: "That menu has no items." });
-        return send(res, 200, { menu: await menus.create(user, m) });
+        return send(res, 200, await menus.create(user, m));
       }
       if (id && req.method === "PUT") { const r = await menus.update(user, id, JSON.parse((await readBody(req)).toString() || "{}")); return r.status ? send(res, r.status, { code: "menu_denied", message: r.message }) : send(res, 200, r); }
       if (id && req.method === "DELETE") { const r = await menus.remove(user, id); return r.status ? send(res, r.status, { code: "menu_denied", message: r.message }) : send(res, 200, r); }
