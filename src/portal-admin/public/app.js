@@ -376,7 +376,7 @@ async function detectApps() {
     }
     if (added.length) toast('Added from your Umbrel: ' + added.map((a) => a.pbName || a.name).join(', '));
     const schemaApplied = await syncSchemas(d.apps);
-    return { available: true, added, pending, schemaApplied };
+    return { available: true, added, pending, schemaApplied, apps: d.apps };
   } catch { return null; }
 }
 /* ---------- PocketBase changes an app asks for ---------- */
@@ -462,6 +462,25 @@ async function appList() {
     main().insertAdjacentHTML('beforeend', `<div class="card"><h2>PocketBase changes</h2><p class="muted small">Needed by apps on your Umbrel. Changes only add collections and fields; nothing is removed.</p>
       <table><tbody>${schemaPending.map((pl, i) => `<tr><td><b>${esc(pl.app.name)}</b><div class="muted small">${esc(describeSteps(pl) || 'nothing to change')}</div>${pl.problems.map((x) => `<div class="small" style="color:#b3261e">${esc(x)}</div>`).join('')}</td>
         <td style="text-align:right">${pl.steps.length ? `<button class="btn primary" data-apply="${i}">Apply</button>` : ''}</td></tr>`).join('')}</tbody></table></div>`);
+  }
+  const needConnect = found && found.available ? found.apps.filter((a) => /^joolay-/.test(a.id) && a.slug && a.env !== 'present') : [];
+  if (needConnect.length) {
+    main().insertAdjacentHTML('beforeend', `<div class="card"><h2>Connect to PocketBase</h2><p class="muted small">These apps of yours have no PocketBase login yet, so they can't sign people in. Enter your PocketBase superuser login once; it is checked, then saved in the app's own data folder.</p>
+      ${needConnect.map((a) => `<form class="row" data-connect="${esc(a.id)}" style="gap:8px;margin-top:8px;flex-wrap:wrap;align-items:center"><b style="min-width:110px">${esc(a.name)}</b>
+        <input name="email" type="email" required value="${esc(state.actor || '')}" placeholder="Superuser email" autocomplete="username" style="flex:1;min-width:160px">
+        <input name="password" type="password" required placeholder="Password" autocomplete="current-password" style="flex:1;min-width:120px">
+        <button class="btn primary" ${a.env === 'no-data-dir' ? 'disabled title="Open the app once first"' : ''}>Connect</button></form>`).join('')}</div>`);
+    main().querySelectorAll('form[data-connect]').forEach((f) => f.onsubmit = guard(async (e) => {
+      e.preventDefault();
+      const a = needConnect.find((x) => x.id === f.dataset.connect), btn = f.querySelector('button'); btn.disabled = true;
+      try {
+        const r = await fetch('/connect-app', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: a.id, email: f.email.value.trim(), password: f.password.value }) });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.message || 'Could not connect');
+        await audit('app.connect', a.id, { email: f.email.value.trim() });
+        toast(a.name + ' connected. Restart the app once so it picks this up.'); route();
+      } finally { btn.disabled = false; f.password.value = ''; }
+    }));
   }
   if (found && !found.available) main().insertAdjacentHTML('beforeend', '<p class="muted small">Portal Admin can\'t see which apps are installed on this Umbrel (the app list isn\'t mounted), so new apps aren\'t detected automatically.</p>');
   main().onclick = guard(async (e) => {

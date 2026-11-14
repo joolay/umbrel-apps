@@ -151,12 +151,58 @@ function installedApps() {
       const id = yamlKey(yml, 'id') || dir;
       const slug = ((compose.match(/POCKETBASE_APP_ID["']?\s*[=:]\s*["']?([A-Za-z0-9_-]{1,48})/) || [])[1] || '').toLowerCase();
       const pbName = ((compose.match(/POCKETBASE_APP_NAME["']?\s*[=:]\s*["']?([^"'\r\n]{1,80})/) || [])[1] || '').trim();
-      apps.push({ id, name: yamlKey(yml, 'name') || id, version: yamlKey(yml, 'version'), tagline: yamlKey(yml, 'tagline'), category: yamlKey(yml, 'category'), port: Number(yamlKey(yml, 'port')) || 0, slug, pbName, pocketbase: xPocketbase(compose) });
+      const dataDir = path.join(APPS_DIR, dir, 'data');
+      let env = 'no-data-dir';
+      try { if (fs.statSync(dataDir).isDirectory()) env = fs.existsSync(path.join(dataDir, 'pocketbase.env')) ? 'present' : 'missing'; } catch {}
+      apps.push({ dir, env, id, name: yamlKey(yml, 'name') || id, version: yamlKey(yml, 'version'), tagline: yamlKey(yml, 'tagline'), category: yamlKey(yml, 'category'), port: Number(yamlKey(yml, 'port')) || 0, slug, pbName, pocketbase: xPocketbase(compose) });
     }
     out = { available: true, apps: apps.sort((a, b) => a.name.localeCompare(b.name)) };
   } catch { out = { available: false, apps: [] }; }
   appsCache = { at: Date.now(), v: out };
   return out;
+}
+
+
+// ---- Connect an app to PocketBase ------------------------------------------------------------------------------
+// Apps built on the JoolzApp account read a PocketBase superuser login from <their data folder>/pocketbase.env. This writes
+// that one file for an app of your own store (joolay-*), after checking the login really is a PocketBase superuser. It only
+// ever touches <app-data>/<app>/data/pocketbase.env, never creates folders, and refuses public traffic.
+let connectFails = [];
+const connectLocked = () => { const t = Date.now() - 10 * 60 * 1000; connectFails = connectFails.filter((x) => x > t); return connectFails.length >= 6; };
+async function verifySuperuser(email, password) {
+  const pb = currentPbUrl(), body = JSON.stringify({ identity: email, password });
+  for (const p of ['/api/collections/_superusers/auth-with-password', '/api/admins/auth-with-password']) {
+    const r = await fetch(pb + p, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, signal: AbortSignal.timeout(15000) });
+    if (r.status === 404) continue;
+    return r.ok;
+  }
+  return false;
+}
+function writeAppEnv(dir, email, password) {
+  const root = fs.realpathSync(APPS_DIR), data = fs.realpathSync(path.join(APPS_DIR, dir, 'data'));
+  if (!data.startsWith(root + path.sep) || !fs.statSync(data).isDirectory()) throw new Error('That app has no data folder.');
+  const file = path.join(data, 'pocketbase.env');
+  let keep = [];
+  try { keep = fs.readFileSync(file, 'utf8').split(/\r?\n/).filter((l) => l.trim() && !/^\s*POCKETBASE_SUPERUSER_(EMAIL|PASSWORD)\s*=/.test(l)); } catch {}
+  const tmp = path.join(data, '.pocketbase.env.' + process.pid + '.tmp');
+  fs.writeFileSync(tmp, [...keep, 'POCKETBASE_SUPERUSER_EMAIL=' + email, 'POCKETBASE_SUPERUSER_PASSWORD=' + password, ''].join('\n'), { mode: 0o600 });
+  fs.renameSync(tmp, file);
+  appsCache = { at: 0, v: null };
+}
+async function connectApp(req, res) {
+  if (isPublicRequest(req)) return send(res, 403, { message: 'Only available from your home network or tailnet.' });
+  if (connectLocked()) return send(res, 429, { message: 'Too many wrong attempts. Try again in a few minutes.' });
+  let b; try { b = JSON.parse(await readBody(req)); } catch { return send(res, 400, { message: 'Invalid request.' }); }
+  const { id, email, password } = b || {};
+  if (![id, email, password].every((x) => typeof x === 'string' && x.length > 0 && x.length < 300)) return send(res, 400, { message: 'App, email and password are required.' });
+  if (/[\r\n]/.test(email + password) || /^(["']).*\1$/.test(password) || password !== password.trim()) return send(res, 400, { message: "That password can't be stored in the file (line breaks, surrounding quotes or spaces)." });
+  const app = installedApps().apps.find((a) => a.id === id);
+  if (!app || !/^joolay-[a-z0-9-]{1,60}$/.test(app.dir) || !app.slug) return send(res, 400, { message: "Only your own JoolzApp apps can be connected." });
+  if (app.env === 'no-data-dir') return send(res, 409, { message: "That app has no data folder yet. Open the app once, then try again." });
+  let ok; try { ok = await verifySuperuser(email, password); } catch { return send(res, 502, { message: "Couldn't reach PocketBase." }); }
+  if (!ok) { connectFails.push(Date.now()); return send(res, 401, { message: "PocketBase didn't accept that login. It has to be a superuser." }); }
+  try { writeAppEnv(app.dir, email, password); } catch (e) { return send(res, 500, { message: String(e.message || e) }); }
+  return send(res, 200, { ok: true, restart: true });
 }
 
 function serveStatic(req, res, pathname) {
@@ -183,6 +229,11 @@ const server = http.createServer(async (req, res) => {
       if (req.method !== 'GET') return send(res, 405, { message: 'Method not allowed' });
       if (isPublicRequest(req)) return send(res, 403, { message: 'Only available from your home network or tailnet.' });
       return send(res, 200, installedApps());
+    }
+
+    if (pathname === '/connect-app') {
+      if (req.method !== 'POST') return send(res, 405, { message: 'Method not allowed' });
+      return connectApp(req, res);
     }
 
     if (pathname === '/pb' || pathname.startsWith('/pb/')) {
