@@ -1,4 +1,4 @@
-// ListSnap: checklists that follow your JoolzApp account.
+// Listify: checklists that follow your JoolzApp account.
 // Zero-dependency Node server. Sign-in is the shared JoolzApp (PocketBase) account; each person's lists are one JSON file in the data folder.
 "use strict";
 const http = require("http");
@@ -19,11 +19,11 @@ fs.mkdirSync(USERS_DIR, { recursive: true });
 function gateOf(u) {
   if (u.isAdmin) return { ok: true };
   if (u.guard && u.guard.minor && !u.guard.approved) return { ok: false, reason: "guardian_pending", message: "Waiting for approval of your account. Ask a parent or guardian to approve you on the JoolzApp dashboard (Portal Admin), or wait for an admin. Then check again here." };
-  if (!u.portal) return u.access ? { ok: true } : { ok: false, reason: "no_access", message: "The admin hasn't opened ListSnap to you yet. Ask them to give you access, then check again." };
+  if (!u.portal) return u.access ? { ok: true } : { ok: false, reason: "no_access", message: "The admin hasn't opened Listify to you yet. Ask them to give you access, then check again." };
   const a = u.portal.app;
-  if (a && a.enabled === false) return { ok: false, reason: "disabled", message: "ListSnap is switched off right now." };
-  if (a && a.maintenance) return { ok: false, reason: "maintenance", message: a.message || "ListSnap is under maintenance. Try again soon." };
-  if (!u.portal.access) return { ok: false, reason: "no_access", message: "You need approval to use ListSnap. Open Portal Admin, request access to ListSnap, then check again here." };
+  if (a && a.enabled === false) return { ok: false, reason: "disabled", message: "Listify is switched off right now." };
+  if (a && a.maintenance) return { ok: false, reason: "maintenance", message: a.message || "Listify is under maintenance. Try again soon." };
+  if (!u.portal.access) return { ok: false, reason: "no_access", message: "You need approval to use Listify. Open Portal Admin, request access to Listify, then check again here." };
   return { ok: true };
 }
 const publicUser = u => ({ id: u.id, email: u.email || "", name: u.name || "", isAdmin: !!u.isAdmin, dob: u.dob || "", age: guardians.ageOf(u.dob), minor: !!(u.guard ? u.guard.minor : guardians.isMinor(u)), canOpen: gateOf(u).ok, gate: gateOf(u), prefs: Object.fromEntries(Object.entries((u.portal && u.portal.prefs) || {}).filter(([k]) => k !== "ai.apiKey")) });
@@ -123,7 +123,7 @@ function cleanState(d) {
 }
 
 const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css", ".svg": "image/svg+xml", ".png": "image/png", ".json": "application/json" };
-const SETUP = "<!doctype html><meta name=viewport content='width=device-width'><body style='font:16px system-ui;padding:2rem;max-width:34rem;margin:auto'><h1>ListSnap isn't set up yet</h1><p>Accounts are required but PocketBase isn't connected. Add <code>pocketbase.env</code> to the app's data folder (POCKETBASE_SUPERUSER_EMAIL and POCKETBASE_SUPERUSER_PASSWORD), or open Portal Admin and connect PocketBase.</p></body>";
+const SETUP = "<!doctype html><meta name=viewport content='width=device-width'><body style='font:16px system-ui;padding:2rem;max-width:34rem;margin:auto'><h1>Listify isn't set up yet</h1><p>Accounts are required but PocketBase isn't connected. Add <code>pocketbase.env</code> to the app's data folder (POCKETBASE_SUPERUSER_EMAIL and POCKETBASE_SUPERUSER_PASSWORD), or open Portal Admin and connect PocketBase.</p></body>";
 
 const server = http.createServer(async (req, res) => {
   try {
@@ -158,7 +158,7 @@ const server = http.createServer(async (req, res) => {
     if (p === "/api/state" && req.method === "GET") return send(res, 200, { state: readState(user), user: user ? { name: user.name || "", email: user.email || "" } : null });
     if (p === "/api/state" && req.method === "PUT") {
       const s = cleanState(JSON.parse((await readBody(req)).toString() || "{}"));
-      if (!s) return send(res, 400, { code: "bad_state", message: "That isn't a ListSnap save." });
+      if (!s) return send(res, 400, { code: "bad_state", message: "That isn't a Listify save." });
       writeState(user, s); return send(res, 200, { ok: true, at: s.at });
     }
 
@@ -174,4 +174,4 @@ const server = http.createServer(async (req, res) => {
     if (!res.headersSent) send(res, 500, { code: "server_error", message: e.message }); else res.end();
   }
 });
-server.listen(PORT, () => console.log(`ListSnap running on http://0.0.0.0:${PORT}`));
+server.listen(PORT, () => console.log(`Listify running on http://0.0.0.0:${PORT}`));

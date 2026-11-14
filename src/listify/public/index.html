@@ -1,8 +1,8 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="ListSnap">
+<meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Listify">
 <link rel="icon" href="icon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="icon.svg">
-<title>ListSnap</title>
+<title>Listify</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@500;600;700&family=Instrument+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>
 :root {
@@ -171,7 +171,7 @@ div.row-main { cursor: default; padding: 7px 0; align-items: center; }
         <path class="fold" d="M19 1h2a8 8 0 0 1 8 8v2z"></path>
         <path class="tick" d="M8.5 15.5l4.5 4.5 8.5-9.5" fill="none" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"></path>
       </svg>
-      <span>List<b>Snap</b></span>
+      <span>List<b>ify</b></span>
     </h1>
     <div class="acct">
       <p class="totals mono" id="totals"></p>
@@ -239,7 +239,7 @@ div.row-main { cursor: default; padding: 7px 0; align-items: center; }
 (function () {
   'use strict';
 
-  const KEY = 'listsnap.v1';
+  const KEY = 'listify.v1';
   const NS = 'http://www.w3.org/2000/svg';
   const $ = (id) => document.getElementById(id);
   const uid = () => Math.random().toString(36).slice(2, 8) + Date.now().toString(36).slice(-4);
