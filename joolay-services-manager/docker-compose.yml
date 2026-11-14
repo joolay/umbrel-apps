@@ -10,7 +10,7 @@ services:
       PROXY_AUTH_ADD: "true"
 
   web:
-    image: ghcr.io/joolay/services-manager:1.0.0
+    image: ghcr.io/joolay/services-manager:1.0.1
     restart: on-failure
     user: "0:0"
     stop_grace_period: 10s

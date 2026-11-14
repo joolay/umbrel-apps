@@ -11,7 +11,7 @@ services:
       PROXY_AUTH_ADD: "false"
 
   web:
-    image: ghcr.io/joolay/shutterworth:1.6.0
+    image: ghcr.io/joolay/shutterworth:1.6.1
     restart: on-failure
     stop_grace_period: 1m
     volumes:

@@ -1,6 +1,6 @@
 {
   "name": "shutterworth",
-  "version": "1.6.0",
+  "version": "1.6.1",
   "description": "Photo-based household inventory with replacement and depreciated values, self-hosted",
   "private": true,
   "main": "server.js",
