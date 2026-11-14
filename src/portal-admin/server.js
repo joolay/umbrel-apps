@@ -244,6 +244,56 @@ async function guardiansRoute(req, res) {
     return send(res, 200, { ok: true, ...(await guardians.inbox(user)) });
   } catch (e) { return send(res, 500, { message: String(e.message || e) }); }
 }
+
+// ---- Family and account details. These are managed here once for every JoolzApp app (the apps only link to this page). ----
+async function accountRoutes(req, res, pathname) {
+  const tok = String(req.headers.authorization || '');
+  const user = tok ? await pbx.userFromToken(tok).catch(() => null) : null;
+  if (!user) return send(res, 401, { message: 'Sign in to continue.' });
+  const out = (r) => (r.status ? send(res, r.status, { message: r.message }) : send(res, 200, r));
+  try {
+    let b = {}; if (req.method === 'POST') { try { b = JSON.parse(await readBody(req)); } catch { return send(res, 400, { message: 'Invalid request.' }); } }
+    if (pathname === '/family') {
+      if (req.method === 'GET') return out(await family.mine(user));
+      if (req.method !== 'POST') return send(res, 405, { message: 'Method not allowed' });
+      const minor = guardians.isMinor(user);
+      if (b.action === 'create') return minor ? out({ status: 403, message: 'A parent or guardian creates the family. They can invite you.' }) : out(await family.create(user, b.name));
+      if (b.action === 'invite') return out(await family.invite(user, b.email, b.tier, b.relation));
+      if (b.action === 'respond') {
+        if (b.accept && minor) {   // a kid joining a family needs a parent's approval first
+          const inv = (await family.mine(user)).invites.find((i) => i.id === String(b.familyId || ''));
+          if (!inv) return out({ status: 404, message: 'That invitation is no longer there.' });
+          await guardians.requestFamily(user, inv.id, inv.name);
+          return send(res, 200, { ...(await family.mine(user)), notice: "Sent to your parent. You'll join once they approve." });
+        }
+        return out(await family.respond(user, b.familyId, !!b.accept));
+      }
+      if (b.action === 'tier') return out(await family.setTier(user, b.memberId, b.tier, b.relation));
+      if (b.action === 'manager') { const t = await pbx.getUser(String(b.memberId || '').replace(/[^A-Za-z0-9]/g, '')).catch(() => null); if (t && guardians.isMinor(t)) return out({ status: 403, message: "Under-18s can't manage a family." }); return out(await family.setManager(user, b.memberId, !!b.on)); }
+      if (b.action === 'leave') return out(await family.drop(user, ''));
+      if (b.action === 'remove') return out(await family.drop(user, b.memberId));
+      return send(res, 400, { message: 'Unknown action' });
+    }
+    if (pathname === '/account/dob' && req.method === 'POST') {
+      const fresh = await pbx.getUser(user.id);
+      if (fresh.dob) return send(res, 400, { message: 'Your date of birth is already saved. Ask an admin if it is wrong.' });
+      const dob = String(b.dob || '').trim(); if (!guardians.validDob(dob)) return send(res, 400, { message: 'Enter your date of birth.' });
+      let parents = [];
+      if (guardians.ageOf(dob) < 18) { const chk = await guardians.checkParents(b.parentEmails, fresh.email); if (chk.error) return send(res, 400, { message: chk.error }); parents = chk.parents; }
+      await pbx.setDob(user.id, dob);
+      if (parents.length) await guardians.requestApproval({ ...fresh, dob }, parents);
+      return send(res, 200, { ok: true, dob, minor: parents.length > 0 });
+    }
+    if (pathname === '/account/guardian' && req.method === 'POST') {
+      const fresh = await pbx.getUser(user.id);
+      if (!guardians.isMinor(fresh)) return send(res, 400, { message: 'Only under-18 accounts need a parent.' });
+      const chk = await guardians.checkParents(b.parentEmails, fresh.email); if (chk.error) return send(res, 400, { message: chk.error });
+      await guardians.requestApproval(fresh, chk.parents);
+      return send(res, 200, { ok: true, message: 'Sent to ' + chk.parents.map((x) => x.name).join(' and ') + '.' });
+    }
+    return send(res, 404, { message: 'Not found' });
+  } catch (e) { return send(res, 500, { message: String(e.message || e) }); }
+}
 async function signupConfig(req, res) {
   try { const open = await pbx.usersSchema(); return send(res, 200, { ready: true, open }); }
   catch (e) { return send(res, 200, { ready: false, open: false, message: String(e.message || e) }); }
@@ -281,6 +331,7 @@ const handle = async (req, res) => {
 
     if (pathname === '/signup-config') { if (req.method !== 'GET') return send(res, 405, { message: 'Method not allowed' }); return signupConfig(req, res); }
     if (pathname === '/guardians') return guardiansRoute(req, res);
+    if (pathname === '/family' || pathname === '/account/dob' || pathname === '/account/guardian') return accountRoutes(req, res, pathname);
     if (pathname === '/signup') { if (req.method !== 'POST') return send(res, 405, { message: 'Method not allowed' }); return signup(req, res); }
 
     if (pathname === '/config') {

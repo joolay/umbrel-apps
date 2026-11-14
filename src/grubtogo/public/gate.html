@@ -105,9 +105,10 @@ input:focus{border-color:#fff;box-shadow:0 0 0 3px rgba(255,255,255,.3)}
     var row = el("div", "row"), again = el("button", "", "Check again"), out = el("button", "", "Sign out");
     again.onclick = function () { start(); }; out.onclick = signOut; row.append(again, out); view.appendChild(row);
     if (u.gate && u.gate.reason === "guardian_pending") {
-      var pf = el("form"), pe = field("Add another parent or guardian's email", "email", "off"), pm = el("p", "note"), pb = el("button", "", "Send request"); pb.type = "submit"; pe.i.required = true; pf.append(pe.l, pb, pm); pf.style.marginTop = "14px";
-      pf.onsubmit = function (ev) { ev.preventDefault(); pm.textContent = ""; api("api/account/guardian", { method: "POST", body: JSON.stringify({ parentEmails: [pe.i.value] }) }).then(function (j) { pm.textContent = j.message; pe.i.value = ""; }).catch(function (e) { pm.textContent = e.message; }); };
-      view.appendChild(pf);
+      // Parents are approved, added or changed in Portal Admin (the one place for account settings).
+      var dash = el("button", "alt", "Open the JoolzApp dashboard (add a parent, see who has been asked)"); dash.type = "button"; dash.style.marginTop = "14px";
+      dash.onclick = function () { var t = ""; try { t = sessionStorage.getItem(TOKEN) || localStorage.getItem(TOKEN) || ""; } catch (e) {} if (cfg.portalUrl) location.href = cfg.portalUrl.replace(/\/+$/, "") + "/" + (t ? "#sso=" + encodeURIComponent(t) : ""); };
+      view.appendChild(dash);
     }
   }
   function signOut() { setTok("", false); try { localStorage.removeItem("gd_prefs"); } catch (e) {} fetch("api/account/logout", { method: "POST" }).catch(function () {}).then(function () { location.reload(); }); }

@@ -86,4 +86,6 @@ async function userFromToken(token) {
   try { const j = await raw("POST", "/api/collections/" + encodeURIComponent(COLL) + "/auth-refresh", { token }); return j.record; }
   catch (e) { if ([400, 401, 403, 404].includes(e.status)) return null; throw e; }
 }
-module.exports = { userFromToken, ready, asSuper, findByEmail, createUser, usersSchema, PBError, collection: COLL };
+async function getUser(id) { return asSuper("GET", rec("/" + encodeURIComponent(id))); }
+async function setDob(id, dob) { await asSuper("PATCH", rec("/" + encodeURIComponent(id)), { dob }); }
+module.exports = { getUser, setDob, userFromToken, ready, asSuper, findByEmail, createUser, usersSchema, PBError, collection: COLL };

@@ -916,7 +916,9 @@ async function viewMe() {
     return `<label>${esc(label)}<select name="${key}">${opt('', '— not set —', v === '')}${list.map(([val, l]) => opt(val, l, v === val)).join('')}</select></label>`;
   };
   main().innerHTML = `<h1>My settings</h1><p class="sub">Signed in as ${esc(state.actor)}. These settings apply to every JoolzApp app you use.</p>
-    <div class="tabs"><button class="active" data-t="prefs">Preferences</button><button data-t="ai">AI</button><button data-t="account">Account</button></div>
+    <div class="tabs"><button class="active" data-t="prefs">Preferences</button><button data-t="profile">Profile</button><button data-t="family">Family</button><button data-t="ai">AI</button><button data-t="account">Account</button></div>
+    <div data-pane="profile" hidden><div class="card" id="pane-profile"><p class="muted">Loading…</p></div></div>
+    <div data-pane="family" hidden><div id="pane-family"><div class="card"><p class="muted">Loading…</p></div></div></div>
     <div data-pane="prefs"><form id="prefs" class="card"><h2>Preferences</h2><div class="kv">${PREFS.map(field).join('')}</div>
       ${detected ? `<p class="muted small">Your device time zone: ${esc(detected)}</p>` : ''}<button class="btn primary">Save preferences</button></form></div>
     <div data-pane="ai" hidden><form id="ai" class="card"><h2>AI (for apps that use it)</h2><p class="muted small">Pick your own AI provider, model and API key. Apps that read menus, photos or text with AI will use these instead of the shared key. Only you and the admin can see them.</p>
@@ -971,6 +973,7 @@ async function viewMe() {
     for (const k of ['ai.apiKey', 'ai.model', 'ai.provider', 'ai.baseUrl']) await setPref(k, '');
     toast('AI settings removed'); route();
   });
+  profilePane(uid); familyPane(uid);
   $('#prefs').onsubmit = guard(async (e) => {
     e.preventDefault();
     for (const [key] of PREFS) {
@@ -994,6 +997,74 @@ async function viewMe() {
   });
 }
 
+
+// ---- Account details and family: the one place they are managed. The apps only link here. ----
+const acctFetch = async (path, body) => {
+  const r = await fetch(path, { method: body === undefined ? 'GET' : 'POST', headers: { authorization: state.token, 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body), cache: 'no-store' });
+  const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.message || 'That did not work.'); return j;
+};
+const fmtDob = (d) => { const x = new Date(d + 'T00:00:00'); return isNaN(x) ? d : x.toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' }); };
+const ageFrom = (d) => { const b = new Date(d + 'T00:00:00'), n = new Date(); let a = n.getFullYear() - b.getFullYear(); if (n.getMonth() < b.getMonth() || (n.getMonth() === b.getMonth() && n.getDate() < b.getDate())) a--; return a; };
+
+async function profilePane(uid) {
+  const box = $('#pane-profile'); if (!box) return;
+  const [me, g] = await Promise.all([api('GET', `/api/collections/${state.usersColl}/records/${uid}`).catch(() => ({})), acctFetch('/guardians').catch(() => ({ minor: false, parents: [] }))]);
+  box.innerHTML = `<h2>Profile</h2>
+    <form id="pf-name" class="kv"><label>Name<input name="name" value="${esc(me.name || '')}" maxlength="80" autocomplete="name"></label><div><button class="btn primary small">Save name</button></div></form>
+    <p class="muted small">Email: <b>${esc(state.actor)}</b></p>
+    <h3>Change password</h3>
+    <form id="pf-pass" class="kv"><label>Current password<input name="old" type="password" autocomplete="current-password" required></label><label>New password (min 8)<input name="pw" type="password" autocomplete="new-password" minlength="8" required></label><label>Confirm new password<input name="pw2" type="password" autocomplete="new-password" minlength="8" required></label><div><button class="btn primary small">Change password</button></div></form>
+    <h3>Date of birth</h3>
+    ${me.dob ? `<p>${esc(fmtDob(me.dob))}</p><p class="muted small">It can't be changed here. Ask an admin if it is wrong.</p>`
+      : `<form id="pf-dob" class="kv"><p class="muted small">Every JoolzApp account has one. You can only enter it once. Under 18s need a parent or guardian's approval.</p><label>Date of birth<input name="dob" type="date" min="1900-01-01" max="${new Date().toISOString().slice(0, 10)}" required></label>
+        <label id="pf-dob-parent" hidden>Parent or guardian's JoolzApp email<input name="parent" type="email" autocomplete="off"></label><div><button class="btn primary small">Save date of birth</button></div></form>`}
+    ${g.minor ? `<h3>Your parents</h3><p class="muted small">A parent approves your account and settings such as joining a family.</p>${g.parents.map((p) => `<div class="row spread"><span>${esc(p.name)}</span><span>${p.status === 'approved' ? 'approved' : p.status === 'pending' ? 'waiting' : 'declined'}</span></div>`).join('')}
+      <form id="pf-parent" class="row" style="gap:6px;margin-top:8px"><input name="email" type="email" placeholder="Add another parent's email" required><button class="btn small">Add</button></form>` : ''}`;
+  $('#pf-name').onsubmit = guard(async (e) => { e.preventDefault(); await api('PATCH', `/api/collections/${state.usersColl}/records/${uid}`, { name: e.target.name.value.trim() }); toast('Name saved'); });
+  $('#pf-pass').onsubmit = guard(async (e) => {
+    e.preventDefault(); const f = e.target.elements;
+    if (f.pw.value !== f.pw2.value) throw new Error('The new passwords do not match.');
+    await api('PATCH', `/api/collections/${state.usersColl}/records/${uid}`, { oldPassword: f.old.value, password: f.pw.value, passwordConfirm: f.pw2.value });
+    toast('Password changed. Sign in again.'); setTimeout(() => $('#logout') && $('#logout').click(), 800);
+  });
+  if ($('#pf-dob')) {
+    const f = $('#pf-dob');
+    f.elements.dob.onchange = () => { const v = f.elements.dob.value; const kid = v && ageFrom(v) < 18; $('#pf-dob-parent').hidden = !kid; f.elements.parent.required = !!kid; };
+    f.onsubmit = guard(async (e) => { e.preventDefault(); await acctFetch('/account/dob', { dob: f.elements.dob.value, parentEmails: f.elements.parent.value ? [f.elements.parent.value] : [] }); toast('Saved'); route(); });
+  }
+  if ($('#pf-parent')) $('#pf-parent').onsubmit = guard(async (e) => { e.preventDefault(); const j = await acctFetch('/account/guardian', { parentEmails: [e.target.email.value] }); toast(j.message); profilePane(uid); });
+}
+
+async function familyPane(uid) {
+  const box = $('#pane-family'); if (!box) return;
+  let data; try { data = await acctFetch('/family'); } catch (e) { box.innerHTML = `<div class="card"><p class="muted">Families couldn't load: ${esc(e.message)}</p></div>`; return; }
+  const f = data.family, inv = data.invites || [];
+  const act = async (body) => { try { const j = await acctFetch('/family', body); if (j.notice) toast(j.notice); familyPane(uid); } catch (e) { toast(e.message, true); } };
+  let h = inv.map((i) => `<div class="card"><b>${esc(i.ownerName || 'Someone')}</b> invited you to the <b>${esc(i.name)}</b> family.<div class="row" style="gap:8px;margin-top:8px"><button class="btn primary small" data-fa="yes" data-id="${esc(i.id)}">Join</button><button class="btn small" data-fa="no" data-id="${esc(i.id)}">Decline</button></div></div>`).join('');
+  if (!f) h += `<div class="card"><h2>Family</h2><p class="muted small">Link up with your family on JoolzApp. The link works in every JoolzApp app. Immediate family can share joint expenses; extended family (cousins, grandparents…) are linked for future apps.</p>
+    <form id="fam-new" class="row" style="gap:6px"><input name="name" placeholder="Family name (e.g. The Joolays)" maxlength="60" required><button class="btn primary">Create</button></form></div>`;
+  else {
+    const row = (m, pending) => `<div class="row spread" style="padding:6px 0;border-top:1px solid var(--line,#0002)"><span class="${pending ? 'muted' : ''}">${esc(m.name)}${m.relation ? ' · ' + esc(m.relation) : ''}${m.id === f.owner ? ' <span class="chip">creator</span>' : m.manager ? ' <span class="chip">manager</span>' : ''}${m.id === uid ? ' <span class="muted">(you)</span>' : ''}${pending ? ' · invited' : ''}</span>
+      <span>${f.isOwner && m.id !== uid && !pending ? `<button class="btn small" data-fa="mgr" data-id="${esc(m.id)}" data-v="${m.manager ? '' : '1'}">${m.manager ? 'Remove manager' : 'Make manager'}</button> ` : ''}${f.canManage && m.id !== uid && m.id !== f.owner && !pending ? `<button class="btn small" data-fa="tier" data-id="${esc(m.id)}" data-v="${m.tier === 'extended' ? 'family' : 'extended'}">${m.tier === 'extended' ? 'Make immediate' : 'Make extended'}</button> ` : ''}${f.canManage && m.id !== uid && m.id !== f.owner && (f.isOwner || !m.manager) ? `<button class="btn small" data-fa="rm" data-id="${esc(m.id)}">${pending ? 'Cancel' : 'Remove'}</button>` : ''}</span></div>`;
+    const grp = (t, title, note) => { const ms = f.members.filter((m) => m.tier === t), ps = f.invited.filter((m) => m.tier === t); return `<h3>${title}</h3><p class="muted small">${note}</p>${ms.map((m) => row(m, false)).join('')}${ps.map((m) => row(m, true)).join('')}${ms.length || ps.length ? '' : '<p class="muted small">Nobody yet.</p>'}`; };
+    h += `<div class="card"><h2>${esc(f.name)}</h2>${f.myTier === 'extended' ? '<p class="muted small">You are linked as extended family. Family expenses are only shared with immediate family.</p>' : ''}
+      ${grp('family', 'Immediate family', 'Shares joint expenses, such as family orders.')}${grp('extended', 'Extended family', 'Cousins, grandparents, aunts and uncles… linked for future apps.')}
+      ${f.canManage ? `<form id="fam-inv" class="kv" style="margin-top:12px"><label>Invite by email (they don't need an account yet)<input name="email" type="email" required></label><label>Link as<select name="tier"><option value="family">Immediate family</option><option value="extended">Extended family</option></select></label><label>Relationship (optional)<input name="relation" maxlength="40" placeholder="cousin, grandmother…"></label><div><button class="btn primary small">Invite</button></div></form>` : ''}
+      ${f.isOwner ? '<p class="muted small">Tip: make someone a manager and they can invite, remove and move members too.</p>' : ''}
+      <p><button class="btn small" data-fa="leave">Leave this family</button></p></div>`;
+  }
+  box.innerHTML = h;
+  if ($('#fam-new')) $('#fam-new').onsubmit = (e) => { e.preventDefault(); act({ action: 'create', name: e.target.name.value }); };
+  if ($('#fam-inv')) $('#fam-inv').onsubmit = (e) => { e.preventDefault(); const f2 = e.target.elements; act({ action: 'invite', email: f2.email.value, tier: f2.tier.value, relation: f2.relation.value }); };
+  box.onclick = (e) => {
+    const b = e.target.closest('button[data-fa]'); if (!b) return; const a = b.dataset.fa, id = b.dataset.id, v = b.dataset.v;
+    if (a === 'yes' || a === 'no') return act({ action: 'respond', familyId: id, accept: a === 'yes' });
+    if (a === 'mgr') return act({ action: 'manager', memberId: id, on: !!v });
+    if (a === 'tier') return act({ action: 'tier', memberId: id, tier: v });
+    if (a === 'rm') return act({ action: 'remove', memberId: id });
+    if (a === 'leave' && confirm('Leave this family? Orders already filed stay with the family.')) return act({ action: 'leave' });
+  };
+}
 
 // The landing page: every JoolzApp app as a tile. Open goes to the app (signed in already where the app supports it);
 // apps the person isn't approved for show a request form instead.
@@ -1028,11 +1099,13 @@ async function viewHome() {
   };
   // Parents: approve kids' accounts and settings here. Kids: see who has been asked.
   const g = isAdmin ? null : await fetch('/guardians', { headers: { authorization: state.token }, cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
-  const guardCard = !g ? '' : [
+  const fam = isAdmin ? null : await acctFetch('/family').catch(() => null);
+  const famInv = fam && fam.invites && fam.invites.length ? `<div class="card"><b>You've been invited to a family.</b> <a href="#/me">Open My settings → Family</a> to join or decline.</div>` : '';
+  const guardCard = (!g ? '' : [
     g.minor && g.parents.length ? `<div class="card"><b>Your account needs a parent's approval.</b> ${g.parents.map((p) => `${esc(p.name)}: ${p.status === 'approved' ? 'approved' : p.status === 'pending' ? 'waiting' : 'declined'}`).join(' · ')}</div>` : '',
     g.pending.length ? `<div class="card"><h2>Needs your approval</h2>${g.pending.map((x) => `<div class="row spread" style="padding:6px 0"><span>${esc(x.label)}</span><span><button class="btn primary small" data-gact="yes" data-id="${esc(x.id)}">Approve</button> <button class="btn small" data-gact="no" data-id="${esc(x.id)}">Decline</button></span></div>`).join('')}</div>` : '',
     g.kids.length ? `<div class="card"><h2>Kids you look after</h2>${g.kids.map((k) => `<div class="row spread" style="padding:6px 0"><span>${esc(k.childName)}</span><button class="btn small" data-gact="revoke" data-id="${esc(k.childId)}">Withdraw approval</button></div>`).join('')}</div>` : '',
-  ].join('');
+  ].join('')) + famInv;
   main().innerHTML = `<h1>Dashboard</h1><p class="sub">${isAdmin ? 'This is the page your users see.' : 'All your JoolzApp apps in one place. One account works in every one.'}</p>
     ${banner ? `<div class="card"><span class="chip warn">${esc(banner)}</span></div>` : ''}${guardCard}
     <div class="tiles">${apps.map(tile).join('') || '<p class="muted">No apps have been added yet.</p>'}</div>`;

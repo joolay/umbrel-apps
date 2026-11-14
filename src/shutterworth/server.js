@@ -139,7 +139,7 @@ function trialInfo(u) {
 // admins always get in. Without the portal, the app's own `access` flag applies as before.
 function gateOf(u) {
   if (u.isAdmin) return { ok: true };
-  if (u.guard && u.guard.minor && !u.guard.approved) return { ok: false, reason: "guardian_pending", message: "Waiting for a parent or guardian to approve your account. They approve it in GrubToGo or on the JoolzApp dashboard. Then check again here." };
+  if (u.guard && u.guard.minor && !u.guard.approved) return { ok: false, reason: "guardian_pending", message: "Waiting for a parent or guardian to approve your account. Ask them to approve you on the JoolzApp dashboard (Portal Admin). Then check again here." };
   if (!u.portal) return u.access ? { ok: true } : { ok: false, reason: "no_access", message: "The admin hasn't opened this inventory to you yet. Ask them to give you access, then check again." };
   const a = u.portal.app;
   if (a && a.enabled === false) return { ok: false, reason: "disabled", message: "ShutterWorth is switched off right now." };
