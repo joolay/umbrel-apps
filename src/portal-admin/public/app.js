@@ -396,6 +396,7 @@ async function detectApps() {
       } else if (!have.has(slugOf(a.id)) && !hiddenApps().includes(a.id)) pending.push(a);
     }
     if (added.length) toast('Added from your Umbrel: ' + added.map((a) => a.pbName || a.name).join(', '));
+    await markSsoApps(d.apps);
     const schemaApplied = await syncSchemas(d.apps);
     return { available: true, added, pending, schemaApplied, apps: d.apps };
   } catch { return null; }
@@ -470,10 +471,11 @@ async function appList() {
   const apps = await listAll('portal_apps', { sort: 'name' });
   main().innerHTML = `<div class="row spread"><div><h1>Apps</h1><p class="sub">Apps installed on your Umbrel appear here automatically, or register one by hand.</p></div><button id="new" class="btn primary">+ Register app</button></div>
     <div class="card"><table><thead><tr><th>App</th><th>Status</th><th>URL</th></tr></thead><tbody>${apps.map((a) => `
-      <tr class="click" data-slug="${esc(a.slug)}"><td><b>${esc(a.name)}</b><div class="muted small">${esc(a.slug)}</div></td>
+      <tr class="click" data-slug="${esc(a.slug)}"><td><b>${esc(a.name)}</b>${/^https?:\/\//i.test(a.url || '') ? ` <a class="btn small" href="${esc(a.url)}" data-open="${esc(a.slug)}" target="_blank" rel="noopener">Open</a>` : ''}<div class="muted small">${esc(a.slug)}</div></td>
       <td>${a.enabled ? '<span class="chip ok">enabled</span>' : '<span class="chip bad">disabled</span>'} ${a.maintenance ? '<span class="chip warn">maintenance</span>' : ''}</td>
       <td class="muted small">${esc(a.url)}</td></tr>`).join('') || '<tr><td colspan="3" class="muted">No apps yet.</td></tr>'}</tbody></table></div>`;
   $('#new').onclick = () => { location.hash = '#/apps/__new'; };
+  { const ss = new Set((await listAll('portal_settings', { filter: 'scope = "app" && key = "app.sso"' }).catch(() => [])).filter((r) => r.value === true).map((r) => r.app)); bindOpen(main(), ss); }
   if (found && found.available && found.pending.length) {
     main().insertAdjacentHTML('beforeend', `<div class="card"><h2>Detected on your Umbrel</h2><p class="muted small">Installed apps that don't use the JoolzApp account. Add the ones you want to control here.</p>
       <table><tbody>${found.pending.map((a) => `<tr><td><b>${esc(a.name)}</b><div class="muted small">${esc(a.id)}${a.version ? ' · v' + esc(a.version) : ''}</div></td>
@@ -515,6 +517,7 @@ async function appList() {
       await api('POST', '/api/collections/portal_apps/records', body); await audit('app.create', body.slug, { ...body, umbrelId: a.id });
       toast('Added ' + a.name); return route();
     }
+    if (e.target.closest('a[data-open]')) return;
     const tr = e.target.closest('tr[data-slug]'); if (tr) location.hash = '#/apps/' + encodeURIComponent(tr.dataset.slug);
   });
 }
@@ -701,6 +704,35 @@ async function setAccess(user, app, value) {
   else await api('POST', '/api/collections/portal_settings/records', { scope: 'user', user, app, key: 'portal.access', value });
 }
 
+/* ---------- One sign-in for every JoolzApp app ---------- */
+// Apps of your own store that use the shared account have a /sso.html page. From the dashboard, "Open" passes the person's
+// sign-in to it (in the address fragment, which is never sent to a server) so they skip the app's own login page.
+// An "app.sso" setting marks which apps support this, so a sign-in is never handed to an app that doesn't.
+async function markSsoApps(apps) {
+  const want = apps.filter((a) => /^joolay-/.test(a.id) && a.slug).map((a) => a.slug);
+  if (!want.length) return;
+  const have = new Set((await listAll('portal_settings', { filter: 'scope = "app" && key = "app.sso"' })).map((r) => r.app));
+  for (const slug of want) if (!have.has(slug)) { try { await api('POST', '/api/collections/portal_settings/records', { scope: 'app', app: slug, user: '', key: 'app.sso', value: true, secret: false }); } catch (e) { if (e.status !== 400) throw e; } }
+}
+async function ssoToken() {
+  if (state.role === 'user') return (await api('POST', `/api/collections/${state.usersColl}/auth-refresh`)).token;
+  // Admins sign in here as a PocketBase superuser; apps use the matching JoolzApp user (same email), if there is one.
+  const u = (await api('GET', `/api/collections/${state.usersColl}/records?perPage=1&filter=${q('email = ' + fq(state.actor))}`)).items[0];
+  return u ? (await api('POST', `/api/collections/${state.usersColl}/impersonate/${u.id}`, { duration: 7 * 86400 })).token : '';
+}
+let ssoSlugs = new Set();
+const bindOpen = (root, slugs) => { ssoSlugs = slugs; };
+document.addEventListener('click', (e) => {
+  const a = e.target.closest('a[data-open]'); if (!a || e.ctrlKey || e.metaKey || e.shiftKey || !ssoSlugs.has(a.dataset.open)) return;   // not a JoolzApp app: plain link
+  e.preventDefault();
+  const w = window.open('about:blank', '_blank');       // opened now so the browser doesn't block it
+  (async () => {
+    let url = a.href;
+    try { const t = await ssoToken(); if (t) url = new URL('sso.html', a.href).href + '#t=' + encodeURIComponent(t); } catch {}
+    if (w) w.location.href = url; else location.href = url;
+  })();
+});
+
 /* ---------- Cleanup review ---------- */
 // Portal Admin never deletes anything on its own. This page only LISTS leftovers that look safe to remove (rows that belong to
 // deleted users or uninstalled apps); you tick what you want gone and confirm. Anything it can't judge with confidence is left out.
@@ -830,6 +862,7 @@ async function viewMe() {
     listAll('portal_requests', { filter: `user = ${fq(uid)}`, sort: '-created' }).catch(() => null),
     listAll('portal_settings', { filter: 'key = "portal.access"' }),
   ]);
+  const ssoSlugs = new Set((await listAll('portal_settings', { filter: 'scope = "app" && key = "app.sso"' }).catch(() => [])).filter((r) => r.value === true).map((r) => r.app));
   const cur = Object.fromEntries(rows.map((r) => [r.key.slice(5), r]));
   let zones; try { zones = Intl.supportedValuesOf('timeZone'); } catch { zones = ['Africa/Johannesburg', 'UTC']; }
   const detected = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return ''; } })();
@@ -862,7 +895,7 @@ async function viewMe() {
       const pend = reqs.find((r) => r.app === a.slug && r.status === 'pending'), denied = reqs.find((r) => r.app === a.slug && r.status === 'denied');
       let right;
       if (!a.enabled) right = '<span class="chip bad">unavailable</span>';
-      else if (allowed(a.slug)) right = `<span class="chip ok">access granted</span>${/^https?:\/\//i.test(a.url || '') ? ` <a class="btn primary small" href="${esc(a.url)}" target="_blank" rel="noopener">Open</a>` : ''}`;
+      else if (allowed(a.slug)) right = `<span class="chip ok">access granted</span>${/^https?:\/\//i.test(a.url || '') ? ` <a class="btn primary small" href="${esc(a.url)}" data-open="${esc(a.slug)}" target="_blank" rel="noopener">Open</a>` : ''}`;
       else if (pend) right = '<span class="chip warn">request pending</span>';
       else right = `<div class="req-row"><input data-msg="${esc(a.slug)}" placeholder="Why do you need it? (optional)" maxlength="300"><button class="btn small" data-req="${esc(a.slug)}">Request access</button></div>${denied ? '<div class="muted small">Your last request was denied.</div>' : ''}`;
       return `<tr><td><b>${esc(a.name)}</b>${a.description ? `<div class="muted small">${esc(a.description)}</div>` : ''}</td><td>${right}</td></tr>`;
@@ -910,6 +943,7 @@ async function viewMe() {
     for (const k of ['ai.apiKey', 'ai.model', 'ai.provider', 'ai.baseUrl']) await setPref(k, '');
     toast('AI settings removed'); route();
   });
+  bindOpen(main(), ssoSlugs);
   $('#prefs').onsubmit = guard(async (e) => {
     e.preventDefault();
     for (const [key] of PREFS) {
