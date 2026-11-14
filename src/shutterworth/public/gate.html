@@ -83,7 +83,8 @@ input:focus{border-color:#fff;box-shadow:0 0 0 3px rgba(255,255,255,.3)}
     view.appendChild(f);
     if (reg || cfg.signups !== false) {
       var alt = el("button", "alt", reg ? "I already have a JoolzApp account" : "Create a JoolzApp account"); alt.type = "button";
-      alt.onclick = function () { mode = reg ? "in" : "up"; form(); }; view.appendChild(alt);
+      // There is one JoolzApp sign-up page, in Portal Admin. It sends you back here when the account is made.
+      alt.onclick = function () { if (cfg.portalUrl) location.href = cfg.portalUrl.replace(/\/+$/, "") + "/?signup=1&app=shutterworth"; else err.textContent = "Sign-up lives in Portal Admin, but its address isn't set yet. Ask the admin."; }; view.appendChild(alt);
     }
   }
   function waiting(u) {

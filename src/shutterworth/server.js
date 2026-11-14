@@ -7,6 +7,7 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const pb = require("./pocketbase");
+const guardians = require("./guardians");
 const { createStore, StoreError } = require("./inventory-store");
 
 const PORT = +process.env.PORT || 3880;
@@ -138,6 +139,7 @@ function trialInfo(u) {
 // admins always get in. Without the portal, the app's own `access` flag applies as before.
 function gateOf(u) {
   if (u.isAdmin) return { ok: true };
+  if (u.guard && u.guard.minor && !u.guard.approved) return { ok: false, reason: "guardian_pending", message: "Waiting for a parent or guardian to approve your account. They approve it in GrubToGo or on the JoolzApp dashboard. Then check again here." };
   if (!u.portal) return u.access ? { ok: true } : { ok: false, reason: "no_access", message: "The admin hasn't opened this inventory to you yet. Ask them to give you access, then check again." };
   const a = u.portal.app;
   if (a && a.enabled === false) return { ok: false, reason: "disabled", message: "ShutterWorth is switched off right now." };
@@ -163,6 +165,8 @@ function setSessionCookie(req, res, token, remember) {
   res.setHeader("set-cookie", [`sw_token=${token}; Path=/; HttpOnly; SameSite=Lax${age}${secure}`, remember ? `sw_rem=1; Path=/; HttpOnly; SameSite=Lax${age}${secure}` : "sw_rem=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0"]);
 }
 const clearSessionCookie = res => res.setHeader("set-cookie", ["sw_token=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0", "sw_rem=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0"]);
+// Adds whether a parent has approved (for under-18s) to the user record.
+async function withGuard(u) { if (u) u.guard = await guardians.statusOf(u).catch(() => ({ minor: guardians.isMinor(u), approved: !guardians.isMinor(u) })); return u; }
 async function currentUser(req) {
   const t = tokenOf(req);
   if (!t) return null;
@@ -170,6 +174,7 @@ async function currentUser(req) {
   if (c && Date.now() - c.at < 15000) return c.user;
   try {
     const j = await pb.verifyToken(t);
+    await withGuard(j.record);
     tokenCache.set(t, { user: j.record, at: Date.now() });
     if (tokenCache.size > 200) tokenCache.delete(tokenCache.keys().next().value);
     return j.record;
@@ -197,30 +202,11 @@ async function accountRoutes(req, res, p, url) {
   try {
     const body = req.method === "GET" || req.method === "DELETE" ? {} : JSON.parse((await readBody(req)).toString() || "{}");
 
-    if (p === "/api/account/register" && req.method === "POST") {
-      if (throttled(req, "reg", 10, 3600e3)) return send(res, 429, { code: "slow_down", message: "Too many attempts. Try again later." }), true;
-      if (!loadSettings().signups || !(await pb.signupsOpen())) return send(res, 403, { code: "signups_closed", message: "New sign-ups are closed right now." }), true;
-      const email = String(body.email || "").trim().toLowerCase(), password = String(body.password || ""), name = String(body.name || "").trim().slice(0, 80);
-      if (!validEmail(email)) return send(res, 400, { code: "bad_email", message: "Enter a valid email address." }), true;
-      if (password.length < 8 || password.length > 200) return send(res, 400, { code: "bad_password", message: "Use a password of at least 8 characters." }), true;
-      let created; try { created = await pb.createUser({ email, password, name }); }
-      catch (e) {
-        if (e instanceof pb.PBError && e.status === 400) return send(res, 400, { code: "cannot_register", message: e.data?.email?.code === "validation_not_unique" ? "That email is already registered. Sign in instead." : (e.data?.password?.message || e.data?.email?.message || "Couldn't create the account.") }), true;
-        throw e;
-      }
-      // Optional: the AI provider, model and key chosen while creating the account are saved as the person's own settings.
-      const ai = body.ai && typeof body.ai === "object" ? body.ai : null;
-      if (ai && typeof ai.apiKey === "string" && ai.apiKey.trim() && created && created.id) {
-        const provider = PRESETS[ai.provider] ? ai.provider : "gemini", clip = (v, n) => String(v || "").trim().slice(0, n), baseUrl = clip(ai.baseUrl, 300);
-        if (provider !== "custom" || /^https?:\/\//i.test(baseUrl)) { try { await pb.setUserPrefs(created.id, { "ai.provider": provider, "ai.model": clip(ai.model, 120), "ai.apiKey": clip(ai.apiKey, 300), "ai.baseUrl": provider === "custom" ? baseUrl : "" }); } catch {} }
-      }
-      const j = await pb.login(email, password);
-      setSessionCookie(req, res, j.token, false);
-      send(res, 200, { token: j.token, user: publicUser(j.record) }); return true;
-    }
+    // There is one JoolzApp sign-up page (in Portal Admin) so every app shares the same form and rules. Nothing is created here.
+    if (p === "/api/account/register") return send(res, 410, { code: "signup_moved", message: "Create your JoolzApp account on the JoolzApp sign-up page (Portal Admin).", portalUrl: await pb.portalUrl().catch(() => "") }), true;
     if (p === "/api/account/login" && req.method === "POST") {
       if (throttled(req, "login", 10, 600e3)) return send(res, 429, { code: "slow_down", message: "Too many attempts. Try again in a few minutes." }), true;
-      try { const j = await pb.login(String(body.email || "").trim().toLowerCase(), String(body.password || "")); setSessionCookie(req, res, j.token, !!body.remember); send(res, 200, { token: j.token, user: publicUser(j.record) }); }
+      try { const j = await pb.login(String(body.email || "").trim().toLowerCase(), String(body.password || "")); setSessionCookie(req, res, j.token, !!body.remember); send(res, 200, { token: j.token, user: publicUser(await withGuard(j.record)) }); }
       catch (e) { if (e instanceof pb.PBError && e.status === 400) return send(res, 400, { code: "bad_login", message: "That email and password don't match." }), true; throw e; }
       return true;
     }
@@ -234,7 +220,7 @@ async function accountRoutes(req, res, p, url) {
       const u = await currentUser(req);
       if (!u) return send(res, 401, { code: "signin_required", message: "Sign in to continue." }), true;
       setSessionCookie(req, res, tokenOf(req));
-      send(res, 200, { user: { ...publicUser(await pb.getUser(u.id)), portalUrl: await pb.portalUrl().catch(() => "") } }); return true;
+      send(res, 200, { user: { ...publicUser(await withGuard(await pb.getUser(u.id))), portalUrl: await pb.portalUrl().catch(() => "") } }); return true;
     }
     if (p === "/api/account/logout" && req.method === "POST") { clearSessionCookie(res); send(res, 200, { ok: true }); return true; }
 
@@ -372,7 +358,7 @@ const server = http.createServer(async (req, res) => {
       return;
     }
     if (p === "/api/docs" && req.method === "GET") return send(res, 200, { docs: await store.docs(user) });
-    if (p === "/api/app-config") return send(res, 200, { googleClientId: process.env.GOOGLE_CLIENT_ID || "", accounts: pb.enabled, ...(pb.enabled ? { trialLimit: loadSettings().trialLimit, signups: loadSettings().signups && await pb.signupsOpen() } : {}) });
+    if (p === "/api/app-config") return send(res, 200, { googleClientId: process.env.GOOGLE_CLIENT_ID || "", accounts: pb.enabled, ...(pb.enabled ? { trialLimit: loadSettings().trialLimit, signups: loadSettings().signups && await pb.signupsOpen(), portalUrl: await pb.portalUrl().catch(() => "") } : {}) });
     if (await accountRoutes(req, res, p, url)) return;
 
     if (p === "/api/write" && req.method === "POST") {

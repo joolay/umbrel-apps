@@ -9,6 +9,9 @@ const https = require('https');
 const fs = require('fs');
 const path = require('path');
 const { URL } = require('url');
+const pbx = require('./pocketbase');
+const guardians = require('./guardians');
+const family = require('./family');
 
 const PORT = Number(process.env.PORT || 3000);
 const PUBLIC_DIR = path.join(__dirname, 'public');
@@ -216,10 +219,69 @@ function serveStatic(req, res, pathname) {
   });
 }
 
+
+// ---- The one JoolzApp sign-up. Every app sends people here, so a change to this page or these rules applies to all of them. ----
+const signupHits = new Map();
+function signupThrottled(req) {
+  const ip = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim(), now = Date.now();
+  const a = (signupHits.get(ip) || []).filter((t) => now - t < 3600e3); a.push(now); signupHits.set(ip, a);
+  if (signupHits.size > 2000) signupHits.clear();
+  return a.length > 10;
+}
+const validEmail = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(e) && e.length <= 200;
+// Parents approve their kids' accounts here (and the kids' settings, such as joining a family).
+async function guardiansRoute(req, res) {
+  const tok = String(req.headers.authorization || '');
+  const user = tok ? await pbx.userFromToken(tok).catch(() => null) : null;
+  if (!user) return send(res, 401, { message: 'Sign in to continue.' });
+  try {
+    if (req.method === 'GET') { const st = await guardians.statusOf(user), ib = await guardians.inbox(user); return send(res, 200, { minor: st.minor, parents: st.parents || [], ...ib }); }
+    if (req.method !== 'POST') return send(res, 405, { message: 'Method not allowed' });
+    let b; try { b = JSON.parse(await readBody(req)); } catch { return send(res, 400, { message: 'Invalid request.' }); }
+    const join = async (childId, familyId) => { const c = await pbx.asSuper('GET', '/api/collections/' + encodeURIComponent(pbx.collection) + '/records/' + encodeURIComponent(childId)); await family.respond({ id: c.id, name: c.name, email: c.email }, familyId, true); };
+    const r = b.action === 'decide' ? await guardians.decide(user, b.id, !!b.approve, join) : b.action === 'revoke' ? await guardians.revoke(user, b.childId) : { status: 400, message: 'Unknown action' };
+    if (r.status) return send(res, r.status, { message: r.message });
+    return send(res, 200, { ok: true, ...(await guardians.inbox(user)) });
+  } catch (e) { return send(res, 500, { message: String(e.message || e) }); }
+}
+async function signupConfig(req, res) {
+  try { const open = await pbx.usersSchema(); return send(res, 200, { ready: true, open }); }
+  catch (e) { return send(res, 200, { ready: false, open: false, message: String(e.message || e) }); }
+}
+async function signup(req, res) {
+  if (signupThrottled(req)) return send(res, 429, { message: 'Too many attempts. Try again later.' });
+  let b; try { b = JSON.parse(await readBody(req)); } catch { return send(res, 400, { message: 'Invalid request.' }); }
+  try {
+    if (!(await pbx.usersSchema())) return send(res, 403, { message: 'Sign-ups are currently closed. Ask the admin for an account.' });
+    const email = String(b.email || '').trim().toLowerCase(), password = String(b.password || ''), name = String(b.name || '').trim().slice(0, 80), dob = String(b.dob || '').trim();
+    if (!validEmail(email)) return send(res, 400, { message: 'Enter a valid email address.' });
+    if (password.length < 8 || password.length > 200) return send(res, 400, { message: 'Use a password of at least 8 characters.' });
+    if (!guardians.validDob(dob)) return send(res, 400, { message: 'Enter your date of birth.' });
+    let parents = [];
+    if (guardians.ageOf(dob) < 18) {
+      const chk = await guardians.checkParents(b.parentEmails, email);
+      if (chk.error) return send(res, 400, { message: chk.error });
+      parents = chk.parents;
+    }
+    let created;
+    try { created = await pbx.createUser({ email, password, name, dob }); }
+    catch (e) {
+      if (e instanceof pbx.PBError && e.status === 400) return send(res, 400, { message: e.data && e.data.email && e.data.email.code === 'validation_not_unique' ? 'That email is already registered. Sign in instead.' : ((e.data && e.data.password && e.data.password.message) || 'Could not create that account.') });
+      throw e;
+    }
+    if (parents.length) await guardians.requestApproval(created, parents);
+    return send(res, 200, { ok: true, minor: parents.length > 0 });
+  } catch (e) { return send(res, e instanceof pbx.PBError && e.status === 503 ? 503 : 500, { message: String(e.message || e) }); }
+}
+
 const handle = async (req, res) => {
   try {
     const { pathname, search } = new URL(req.url, 'http://x');
     if (pathname === '/healthz') return send(res, 200, { ok: true });
+
+    if (pathname === '/signup-config') { if (req.method !== 'GET') return send(res, 405, { message: 'Method not allowed' }); return signupConfig(req, res); }
+    if (pathname === '/guardians') return guardiansRoute(req, res);
+    if (pathname === '/signup') { if (req.method !== 'POST') return send(res, 405, { message: 'Method not allowed' }); return signup(req, res); }
 
     if (pathname === '/config') {
       if (req.method !== 'GET') return send(res, 405, { message: 'Method not allowed' });

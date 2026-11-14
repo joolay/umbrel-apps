@@ -165,37 +165,8 @@ async function accountRoutes(req, res, p) {
   if (!pb.enabled) { send(res, 404, { code: "accounts_off", message: "Accounts aren't switched on for this server." }); return true; }
   try {
     const body = req.method === "GET" ? {} : JSON.parse((await readBody(req)).toString() || "{}");
-    if (p === "/api/account/register" && req.method === "POST") {
-      if (throttled(req, "reg", 10, 3600e3)) return send(res, 429, { code: "slow_down", message: "Too many attempts. Try again later." }), true;
-      if (!(await pb.signupsOpen())) return send(res, 403, { code: "signups_closed", message: "New sign-ups are closed right now." }), true;
-      const email = String(body.email || "").trim().toLowerCase(), password = String(body.password || ""), name = String(body.name || "").trim().slice(0, 80);
-      if (!validEmail(email)) return send(res, 400, { code: "bad_email", message: "Enter a valid email address." }), true;
-      if (password.length < 8 || password.length > 200) return send(res, 400, { code: "bad_password", message: "Use a password of at least 8 characters." }), true;
-      // Everyone gives a date of birth. Under 18s must name a parent or guardian who already has an account and approves theirs.
-      const dob = String(body.dob || "").trim();
-      if (!guardians.validDob(dob)) return send(res, 400, { code: "bad_dob", message: "Enter your date of birth." }), true;
-      let parents = [];
-      if (guardians.ageOf(dob) < 18) {
-        const chk = await guardians.checkParents(body.parentEmails, email);
-        if (chk.error) return send(res, 400, { code: "parent_needed", message: chk.error }), true;
-        parents = chk.parents;
-      }
-      let created; try { created = await pb.createUser({ email, password, name, dob }); }
-      catch (e) {
-        if (e instanceof pb.PBError && e.status === 400) return send(res, 400, { code: "cannot_register", message: e.data?.email?.code === "validation_not_unique" ? "That email is already registered. Sign in instead." : (e.data?.password?.message || e.data?.email?.message || "Couldn't create the account.") }), true;
-        throw e;
-      }
-      // Optional: the AI provider, model and key chosen while creating the account are saved as the person's own settings.
-      const ai = body.ai && typeof body.ai === "object" ? body.ai : null;
-      if (ai && typeof ai.apiKey === "string" && ai.apiKey.trim() && created && created.id) {
-        const provider = PRESETS[ai.provider] ? ai.provider : "gemini", clip = (v, n) => String(v || "").trim().slice(0, n);
-        const baseUrl = clip(ai.baseUrl, 300);
-        if (provider !== "custom" || /^https?:\/\//i.test(baseUrl)) { try { await pb.setUserPrefs(created.id, { "ai.provider": provider, "ai.model": clip(ai.model, 120), "ai.apiKey": clip(ai.apiKey, 300), "ai.baseUrl": provider === "custom" ? baseUrl : "" }); } catch {} }
-      }
-      if (parents.length) await guardians.requestApproval(created, parents);
-      const j = await pb.login(email, password); setSessionCookie(req, res, j.token, false);
-      send(res, 200, { token: j.token, user: publicUser(await withGuard(j.record)) }); return true;
-    }
+    // There is one JoolzApp sign-up page (in Portal Admin) so every app shares the same form and rules. Nothing is created here.
+    if (p === "/api/account/register") return send(res, 410, { code: "signup_moved", message: "Create your JoolzApp account on the JoolzApp sign-up page (Portal Admin).", portalUrl: await pb.portalUrl().catch(() => "") }), true;
     if (p === "/api/account/login" && req.method === "POST") {
       if (throttled(req, "login", 10, 600e3)) return send(res, 429, { code: "slow_down", message: "Too many attempts. Try again in a few minutes." }), true;
       try { const j = await pb.login(String(body.email || "").trim().toLowerCase(), String(body.password || "")); setSessionCookie(req, res, j.token, !!body.remember); send(res, 200, { token: j.token, user: publicUser(await withGuard(j.record)) }); }
@@ -318,7 +289,7 @@ const server = http.createServer(async (req, res) => {
       }
     }
 
-    if (p === "/api/app-config") return send(res, 200, { accounts: pb.enabled, ...(pb.enabled ? { signups: await pb.signupsOpen().catch(() => true) } : {}) });
+    if (p === "/api/app-config") return send(res, 200, { accounts: pb.enabled, ...(pb.enabled ? { signups: await pb.signupsOpen().catch(() => true), portalUrl: await pb.portalUrl().catch(() => "") } : {}) });
     if (await accountRoutes(req, res, p)) return;
 
     if (isMenus) {

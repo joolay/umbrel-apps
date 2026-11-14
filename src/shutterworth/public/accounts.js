@@ -129,7 +129,8 @@
     const err = el("p", "err"); err.setAttribute("role", "alert");
     const go = el("button", "pbtn accent", reg ? "Create account" : "Sign in"); go.type = "submit"; go.style.height = "42px";
     const sw = el("button", "link", reg ? "I already have a JoolzApp account" : "Create a JoolzApp account"); sw.type = "button";
-    sw.onclick = () => { mode = reg ? "in" : "up"; renderAccount(); };
+    // One JoolzApp sign-up page, in Portal Admin; it sends you back here when the account is made.
+    sw.onclick = () => { if (cfg.portalUrl) location.href = cfg.portalUrl.replace(/\/+$/, "") + "/?signup=1&app=shutterworth"; else err.textContent = "Sign-up lives in Portal Admin, but its address isn't set yet. Ask the admin."; };
     f.append(err, ok, go, sw);
     f.onsubmit = async ev => {
       ev.preventDefault(); err.textContent = ""; go.disabled = true;
