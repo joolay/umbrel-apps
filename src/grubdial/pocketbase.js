@@ -21,7 +21,8 @@ try {
   }
 } catch {}
 
-const URL_BASE = (process.env.POCKETBASE_URL || "").replace(/\/+$/, "");
+// The PocketBase app on this Umbrel publishes port 5400; host.docker.internal reaches it from this container.
+const URL_BASE = (process.env.POCKETBASE_URL || "http://host.docker.internal:5400").replace(/\/+$/, "");
 const SU_EMAIL = process.env.POCKETBASE_SUPERUSER_EMAIL || "";
 const SU_PASS = process.env.POCKETBASE_SUPERUSER_PASSWORD || "";
 const COLL = process.env.POCKETBASE_USERS_COLLECTION || "users";

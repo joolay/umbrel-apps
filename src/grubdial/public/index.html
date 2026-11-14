@@ -94,23 +94,27 @@ async function api(path, opts) {
 }
 function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} clearTimeout(pushT); pushT = setTimeout(push, 800); }
 async function push() {
-  try { await api('api/state', { method: 'PUT', body: JSON.stringify({ restaurants: S.restaurants, carts: S.carts }) }); }
+  try { await api('api/state', { method: 'PUT', body: JSON.stringify({ carts: S.carts }) }); }
   catch (e) { if (e.status === 401 || e.status === 403) location.reload(); }
 }
+async function loadMenus() { S.restaurants = (await api('api/menus')).menus || []; }
 (async () => {
   try { me = (await api('api/account/me')).user; } catch (e) {}
   try { ai = await api('api/ai/status'); } catch (e) {}
-  try {
-    const { state } = await api('api/state');
-    if (state && Array.isArray(state.restaurants)) {
-      S = { restaurants: state.restaurants, carts: state.carts || {} };
-      try { localStorage.setItem(KEY, JSON.stringify(S)); localStorage.setItem('grubdial.migrated', '1'); } catch (e) {}
-    } else {
-      let done = false; try { done = !!localStorage.getItem('grubdial.migrated'); } catch (e) {}
-      if (!done && S.restaurants.length) { await push(); try { localStorage.setItem('grubdial.migrated', '1'); } catch (e) {} }
-      else S = { restaurants: [], carts: {} };
-    }
-  } catch (e) {}
+  // Menus now live in the shared archive on the server. Anything saved the old way (on this device, or in your account) is copied up once.
+  let legacy = [], carts = Object.assign({}, S.carts || {});
+  try { const { state } = await api('api/state'); if (state) { Object.assign(carts, state.carts || {}); if (Array.isArray(state.restaurants)) legacy = state.restaurants; } } catch (e) {}
+  let done = false; try { done = !!localStorage.getItem('grubdial.migrated'); } catch (e) {}
+  if (!done && !legacy.length) legacy = (S.restaurants || []).slice();
+  S = { restaurants: [], carts };
+  let failed = 0;
+  for (const r of legacy) {
+    try { const m = (await api('api/menus', { method: 'POST', body: JSON.stringify(r) })).menu; if (S.carts[r.id]) { S.carts[m.id] = S.carts[r.id]; delete S.carts[r.id]; } }
+    catch (e) { failed++; }
+  }
+  if (!failed) { try { localStorage.setItem('grubdial.migrated', '1'); } catch (e) {} }
+  if (legacy.length) push();
+  try { await loadMenus(); } catch (e) { error = e.message; }
   render();
 })();
 
@@ -168,7 +172,7 @@ function render() {
     h.innerHTML = back('home') + `<h1>Add a menu</h1>`; a.innerHTML = addHTML();
   } else if (view === 'menu') {
     const r = rest();
-    h.innerHTML = back('home') + `<h1>${esc(r.name)}</h1><button class="icon-btn" data-a="save-one" title="Save menu to file">💾</button><button class="icon-btn" data-a="del" title="Remove">🗑</button>`;
+    h.innerHTML = back('home') + `<h1>${esc(r.name)}</h1><button class="icon-btn" data-a="save-one" title="Save menu to file">💾</button>${r.canEdit ? `<button class="icon-btn" data-a="del" title="Remove">🗑</button>` : ''}`;
     a.innerHTML = menuHTML(r);
     const n = cartCount(r);
     if (n) { bar.hidden = false; bar.innerHTML = `<div class="inner"><button class="btn" data-a="summary"><span class="badge">${n}</span>View order${hasPrices(r) ? ' · ' + money(r, bill(r).sub) : ''}</button></div>`; }
@@ -193,13 +197,13 @@ function homeHTML() {
   const list = S.restaurants.map(r => `
     <div class="card row" data-a="open" data-id="${r.id}" style="cursor:pointer">
       <div class="grow"><div style="font-weight:700;font-size:17px">${esc(r.name)}</div>
-      <div class="mute">${itemsOf(r).length} items${r.phone ? ' · ' + esc(r.phone) : ' · no phone yet'}</div></div>
+      <div class="mute">${itemsOf(r).length} items${r.phone ? ' · ' + esc(r.phone) : ' · no phone yet'}${r.ownerName ? ' · by ' + esc(r.ownerName) : ''}</div></div>
       ${cartCount(r) ? `<span class="pill">${cartCount(r)} in order</span>` : ''}<span class="mute">›</span>
     </div>`).join('');
-  return `${aiNote()}${list || `<div class="card" style="text-align:center;padding:30px 16px"><div style="font-size:42px">📋</div><h2 style="margin:6px 0">No menus yet</h2><p class="mute">Upload a photo, PDF or link of a restaurant menu, or import a saved menu file.</p></div>`}
+  return `${aiNote()}${list || `<div class="card" style="text-align:center;padding:30px 16px"><div style="font-size:42px">📋</div><h2 style="margin:6px 0">No menus yet</h2><p class="mute">Upload a photo, PDF or link of a restaurant menu. It joins the shared archive for everyone.</p></div>`}
     <button class="btn" data-a="add">＋ Add a menu</button><div style="height:8px"></div>
     <label class="btn sec" style="cursor:pointer">📂 Import saved menu file(s)<input id="f-import" type="file" accept=".json,application/json" multiple hidden></label>
-    <p class="mute" style="text-align:center">Use 💾 to save menus to files you can keep and re-import any time.</p>`;
+    <p class="mute" style="text-align:center">Menus are shared with everyone who uses GrubDial. Only the person who added a menu, or an admin, can change it.</p>`;
 }
 
 function addHTML() {
@@ -216,8 +220,8 @@ function addHTML() {
 
 function menuHTML(r) {
   const q = query.trim().toLowerCase(), c = cart();
-  let out = `<div class="card"><div class="mute" style="margin-bottom:6px">Restaurant phone</div>
-    <input id="phone" type="tel" value="${esc(r.phone || '')}" placeholder="Add phone number"></div>
+  let out = `<div class="card"><div class="mute" style="margin-bottom:6px">Restaurant phone${r.ownerName ? ' · added by ' + esc(r.ownerName) : ''}${r.canEdit ? '' : ' · view only'}</div>
+    <input id="phone" type="tel" value="${esc(r.phone || '')}" placeholder="${r.canEdit ? 'Add phone number' : 'No phone number'}"${r.canEdit ? '' : ' readonly'}></div>
     <input class="search" id="q" type="text" placeholder="Search menu…" value="${esc(query)}">`;
   for (const cat of r.categories) {
     const items = cat.items.filter(i => !q || (i.name + ' ' + (i.description || '')).toLowerCase().includes(q));
@@ -339,9 +343,8 @@ async function importFiles(files) {
         if (!x || !Array.isArray(x.categories)) { bad++; continue; }
         const cats = x.categories.map((c, ci) => ({ name: String(c.name || 'Menu'), items: (c.items || []).filter(i => i && i.name).map((i, ii) => ({ id: String(i.id || `c${ci}i${ii}`), name: String(i.name), description: String(i.description || ''), price: typeof i.price === 'number' ? i.price : null })) })).filter(c => c.items.length);
         if (!cats.length) { bad++; continue; }
-        const r = { id: String(x.id || 'r' + Date.now().toString(36) + added), name: String(x.name || 'Restaurant'), phone: String(x.phone || ''), currency: String(x.currency || 'R'), categories: cats };
-        const k = S.restaurants.findIndex(y => y.id === r.id);
-        if (k >= 0) S.restaurants[k] = r; else S.restaurants.unshift(r);
+        const m = (await api('api/menus', { method: 'POST', body: JSON.stringify({ name: x.name, phone: x.phone, currency: x.currency, categories: cats }) })).menu;
+        S.restaurants.unshift(m);
         added++;
       }
     } catch (e) { bad++; }
@@ -372,7 +375,10 @@ document.addEventListener('click', async e => {
   if (a === 'inc') { const l = (cart().items[id] ||= { qty: 0, note: '' }); l.qty++; save(); return keepScroll(); }
   if (a === 'dec') { const c = cart(), l = c.items[id]; if (l) { l.qty = Math.max(0, l.qty - 1); if (!l.qty) delete c.items[id]; } save(); return keepScroll(); }
   if (a === 'del') {
-    if (el.dataset.arm) { S.restaurants = S.restaurants.filter(r => r.id !== curId); delete S.carts[curId]; save(); return go('home'); }
+    if (el.dataset.arm) {
+      try { await api('api/menus/' + curId, { method: 'DELETE' }); } catch (e) { return toast(e.message); }
+      S.restaurants = S.restaurants.filter(r => r.id !== curId); delete S.carts[curId]; save(); return go('home');
+    }
     el.dataset.arm = 1; el.textContent = '✔?'; toast('Tap again to delete this restaurant and its order');
     setTimeout(() => { delete el.dataset.arm; el.textContent = '🗑'; }, 3000); return;
   }
@@ -402,11 +408,12 @@ async function copy(text, el) {
   try { await navigator.clipboard.writeText(text); el.textContent = 'Copied ✓'; } catch (e) { el.textContent = 'Copy not available'; }
   setTimeout(() => el.textContent = old, 1800);
 }
+let phT; function savePhone(r) { clearTimeout(phT); phT = setTimeout(() => api('api/menus/' + r.id, { method: 'PUT', body: JSON.stringify({ phone: r.phone }) }).catch(e => toast(e.message)), 700); }
 function refreshBill() { const r = rest(), n = $('#bn'), s = $('#sp'); if (n) n.innerHTML = billNumsHTML(r); if (s) s.innerHTML = splitHTML(r); }
 document.addEventListener('input', e => {
   const t = e.target;
   if (t.id === 'q') { query = t.value; const pos = t.selectionStart; render(); const q = $('#q'); q.focus(); q.setSelectionRange(pos, pos); }
-  else if (t.id === 'phone') { rest().phone = t.value.trim(); save(); }
+  else if (t.id === 'phone') { const r = rest(); r.phone = t.value.trim(); savePhone(r); }
   else if (t.id === 'gen') { cart().instructions = t.value; save(); }
   else if (t.id === 'tipc') { cart().tip = Math.max(0, Math.min(100, parseFloat(t.value) || 0)); save(); refreshBill(); }
   else if (t.dataset.note) { const l = cart().items[t.dataset.note]; if (l) { l.note = t.value; save(); } }
@@ -446,9 +453,10 @@ async function ingest(src) {
     const cats = (j.categories || []).map((c, ci) => ({ name: c.name || 'Menu', items: (c.items || []).filter(i => i && i.name).map((i, ii) => ({ id: `c${ci}i${ii}`, name: String(i.name), description: i.description || '', price: typeof i.price === 'number' ? i.price : (parseFloat(i.price) || null) })) })).filter(c => c.items.length);
     cats.forEach(c => n += c.items.length);
     if (!n) throw new Error('No menu items were found.');
-    const r = { id: 'r' + Date.now().toString(36), name: j.name || 'Restaurant', phone: j.phone || '', currency: j.currency || 'R', categories: cats };
-    S.restaurants.unshift(r); save(); busy = null; go('menu', r.id);
-    toast('Menu added — tap 💾 to save it to a file');
+    busy = 'Saving to the shared archive…'; render();
+    const r = (await api('api/menus', { method: 'POST', body: JSON.stringify({ name: j.name || 'Restaurant', phone: j.phone || '', currency: j.currency || 'R', categories: cats }) })).menu;
+    S.restaurants.unshift(r); busy = null; go('menu', r.id);
+    toast('Menu added to the shared archive');
   } catch (e) {
     busy = null; error = (e && e.message) || (e && e.code === 'not_granted' ? 'Permission to read menus was not granted.' : 'Something went wrong.'); render();
   }
