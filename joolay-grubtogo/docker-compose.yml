@@ -11,12 +11,20 @@ services:
       PROXY_AUTH_ADD: "false"
 
   web:
-    image: ghcr.io/joolay/grubtogo:1.1.1
+    image: ghcr.io/joolay/grubtogo:1.1.2
     restart: on-failure
     stop_grace_period: 1m
     # Lets the container reach the PocketBase app (port 5400) published on this Umbrel.
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    # Public address https://grubtogo.<tailnet>.ts.net via TSDProxy + Funnel (see deploy/tsdproxy). The app locks itself
+    # behind the JoolzApp account, so publishing it directly is safe.
+    ports:
+      - "3894:3893"
+    labels:
+      tsdproxy.enable: "true"
+      tsdproxy.name: "grubtogo"
+      tsdproxy.port.1: "443/https:3894/http, no_autodetect, tailscale_funnel"
     volumes:
       - ${APP_DATA_DIR}/data:/data
     environment:

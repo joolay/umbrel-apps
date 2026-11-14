@@ -11,9 +11,17 @@ services:
       PROXY_AUTH_ADD: "false"
 
   web:
-    image: ghcr.io/joolay/shutterworth:1.6.1
+    image: ghcr.io/joolay/shutterworth:1.6.2
     restart: on-failure
     stop_grace_period: 1m
+    # Public address https://shutterworth.<tailnet>.ts.net via TSDProxy + Funnel (see deploy/tsdproxy). The app locks itself
+    # behind the JoolzApp account, so publishing it directly is safe.
+    ports:
+      - "3882:3880"
+    labels:
+      tsdproxy.enable: "true"
+      tsdproxy.name: "shutterworth"
+      tsdproxy.port.1: "443/https:3882/http, no_autodetect, tailscale_funnel"
     volumes:
       - ${APP_DATA_DIR}/data:/data
     environment:
