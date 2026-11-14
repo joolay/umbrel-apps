@@ -79,7 +79,7 @@ const KEY = 'takeout.v1';   // old local save: copied up to your account once, s
 let S = { restaurants: [], carts: {} };
 try { const raw = localStorage.getItem(KEY); if (raw) S = Object.assign(S, JSON.parse(raw)); } catch (e) {}
 
-let view = 'home';         // home | add | menu | summary | orders
+let view = 'home';         // home | add | menu | summary | orders | settings
 let curId = null, addTab = 'photo', busy = null, error = '', query = '';
 let sample = true, canImages = true;
 let me = null, ai = { configured: true, isAdmin: false }, pushT = null;
@@ -121,7 +121,13 @@ async function loadMenus() { S.restaurants = (await api('api/menus')).menus || [
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const rest = () => S.restaurants.find(r => r.id === curId);
-const D = c => { c.items ||= {}; c.instructions ||= ''; if (c.tip == null) c.tip = 15; c.mode ||= 'none'; c.n ||= 2; c.people ||= ['Me', 'Person 2']; c.assign ||= {}; return c; };
+// Default tip is a setting kept on this device only.
+const SETKEY = 'grubtogo.settings';
+const settings = () => { try { return JSON.parse(localStorage.getItem(SETKEY)) || {}; } catch (e) { return {}; } };
+const defTip = () => { const t = settings().tip; return typeof t === 'number' && t >= 0 && t <= 100 ? t : 15; };
+const setDefTip = t => { try { localStorage.setItem(SETKEY, JSON.stringify({ ...settings(), tip: t })); } catch (e) {} };
+const tipOf = c => c.tip ?? defTip();
+const D = c => { c.items ||= {}; c.instructions ||= ''; c.mode ||= 'none'; c.n ||= 2; c.people ||= ['Me', 'Person 2']; c.assign ||= {}; return c; };
 const cartOf = id => D(S.carts[id] ||= {});
 const cart = () => cartOf(curId);
 const money = (r, n) => (r.currency || 'R') + (Math.round(n * 100) / 100).toFixed(2);
@@ -138,7 +144,7 @@ const telHref = p => 'tel:' + String(p || '').replace(/[^\d+]/g, '');
 const activeRests = () => S.restaurants.filter(r => cartCount(r) > 0);
 
 function bill(r) {
-  const c = cartOf(r.id), lines = cartLines(r), pct = c.tip || 0;
+  const c = cartOf(r.id), lines = cartLines(r), pct = tipOf(c) || 0;
   const sub = lines.reduce((a, l) => a + lineCost(l), 0), tip = sub * pct / 100, total = sub + tip;
   let people = null, unassigned = 0;
   if (c.mode === 'equal') people = Array.from({ length: c.n }, (_, i) => ({ name: 'Person ' + (i + 1), sub: sub / c.n, tip: tip / c.n, amt: total / c.n }));
@@ -164,7 +170,7 @@ function render() {
   bar.hidden = true;
   const back = t => `<button class="icon-btn" data-a="${t}">‹</button>`;
   if (view === 'home') {
-    h.innerHTML = `<h1>🍽️ GrubToGo</h1>${S.restaurants.length ? `<button class="icon-btn" data-a="save-all" title="Save all menus to file">💾</button>` : ''}${me ? `<button class="icon-btn" data-a="dashboard" title="Back to Dashboard" aria-label="Back to Dashboard">🏠</button>` : ''}${me ? `<button class="icon-btn" data-a="signout" title="Sign out ${esc(me.email)}">⎋</button>` : ''}`;
+    h.innerHTML = `<h1>🍽️ GrubToGo</h1><button class="icon-btn" data-a="settings" title="Settings" aria-label="Settings">⚙️</button>${me ? `<button class="icon-btn" data-a="dashboard" title="Back to Dashboard" aria-label="Back to Dashboard">🏠</button>` : ''}${me ? `<button class="icon-btn" data-a="signout" title="Sign out ${esc(me.email)}">⎋</button>` : ''}`;
     a.innerHTML = homeHTML();
     const n = activeRests().length;
     if (n) { bar.hidden = false; bar.innerHTML = `<div class="inner"><button class="btn" data-a="orders">View all orders · ${n} restaurant${n > 1 ? 's' : ''}</button></div>`; }
@@ -172,16 +178,26 @@ function render() {
     h.innerHTML = back('home') + `<h1>Add a menu</h1>`; a.innerHTML = addHTML();
   } else if (view === 'menu') {
     const r = rest();
-    h.innerHTML = back('home') + `<h1>${esc(r.name)}</h1><button class="icon-btn" data-a="save-one" title="Save menu to file">💾</button>${r.canEdit ? `<button class="icon-btn" data-a="del" title="Remove">🗑</button>` : ''}`;
+    h.innerHTML = back('home') + `<h1>${esc(r.name)}</h1>${r.canEdit ? `<button class="icon-btn" data-a="del" title="Remove">🗑</button>` : ''}`;
     a.innerHTML = menuHTML(r);
     const n = cartCount(r);
     if (n) { bar.hidden = false; bar.innerHTML = `<div class="inner"><button class="btn" data-a="summary"><span class="badge">${n}</span>View order${hasPrices(r) ? ' · ' + money(r, bill(r).sub) : ''}</button></div>`; }
   } else if (view === 'summary') {
     const r = rest();
     h.innerHTML = back('menu') + `<h1>${esc(r.name)} order</h1>`; a.innerHTML = summaryHTML(r);
+  } else if (view === 'settings') {
+    h.innerHTML = back('home') + `<h1>Settings</h1>`; a.innerHTML = settingsHTML();
   } else if (view === 'orders') {
     h.innerHTML = back('home') + `<h1>All orders</h1>`; a.innerHTML = ordersHTML();
   }
+}
+
+function settingsHTML() {
+  const t = defTip(), chips = [0, 10, 12.5, 15, 18, 20].map(p => `<button class="chip ${t === p ? 'on' : ''}" data-a="dtip" data-v="${p}">${p}%</button>`).join('');
+  return `<div class="card"><div class="sub-h" style="margin-top:0">Default tip</div>
+    <p class="mute">Used for new orders on this device. You can still change the tip on any order.</p>
+    <div class="chips">${chips}</div>
+    <div class="row" style="margin-top:8px"><span class="mute">Custom %</span><input id="dtipc" type="number" inputmode="decimal" min="0" max="100" step="0.5" value="${t}" style="width:90px"></div></div>`;
 }
 
 function aiNote() {
@@ -203,7 +219,6 @@ function homeHTML() {
     </div>`).join('');
   return `${aiNote()}${list || `<div class="card" style="text-align:center;padding:30px 16px"><div style="font-size:42px">📋</div><h2 style="margin:6px 0">No menus yet</h2><p class="mute">Upload a photo, PDF or link of a restaurant menu. It joins the shared archive for everyone.</p></div>`}
     <button class="btn" data-a="add">＋ Add a menu</button><div style="height:8px"></div>
-    <label class="btn sec" style="cursor:pointer">📂 Import saved menu file(s)<input id="f-import" type="file" accept=".json,application/json" multiple hidden></label>
     <p class="mute" style="text-align:center">Menus are shared with everyone who uses GrubToGo. Only the person who added a menu, or an admin, can change it.</p>`;
 }
 
@@ -254,13 +269,13 @@ function summaryHTML(r) {
     ${callHTML(r)}
     <div style="height:14px"></div>
     ${hasPrices(r) ? billCardHTML(r) : ''}
-    <button class="btn sec" data-a="copy-order" data-id="${r.id}">Copy order text</button>
+    <button class="btn sec" data-a="copy-order" data-id="${r.id}">📋 Copy this order</button>
     <div style="height:8px"></div><button class="btn ghost" data-a="clear">Clear this order</button>`;
 }
 
 function billCardHTML(r) {
   const c = cart();
-  const tipChips = [0, 10, 12.5, 15, 18, 20].map(p => `<button class="chip ${c.tip === p ? 'on' : ''}" data-a="tip" data-v="${p}">${p}%</button>`).join('');
+  const tipChips = [0, 10, 12.5, 15, 18, 20].map(p => `<button class="chip ${tipOf(c) === p ? 'on' : ''}" data-a="tip" data-v="${p}">${p}%</button>`).join('');
   const modes = [['none', 'No split'], ['equal', 'Equally'], ['items', 'By items']].map(([k, l]) => `<button class="${c.mode === k ? 'on' : ''}" data-a="mode" data-v="${k}">${l}</button>`).join('');
   let splitCfg = '';
   if (c.mode === 'equal') splitCfg = `<div class="row" style="justify-content:space-between"><div>Number of people</div><div class="step"><button data-a="n-" >−</button><span>${c.n}</span><button data-a="n+">+</button></div></div>`;
@@ -278,7 +293,7 @@ function billCardHTML(r) {
   return `<div class="card"><div class="h">Bill</div>
     <div class="sub-h" style="margin-top:0">Tip</div>
     <div class="chips">${tipChips}</div>
-    <div class="row" style="margin-top:8px"><span class="mute">Custom %</span><input id="tipc" type="number" inputmode="decimal" min="0" max="100" step="0.5" value="${c.tip}" style="width:100px"></div>
+    <div class="row" style="margin-top:8px"><span class="mute">Custom %</span><input id="tipc" type="number" inputmode="decimal" min="0" max="100" step="0.5" value="${tipOf(c)}" style="width:100px"></div>
     <div id="bn">${billNumsHTML(r)}</div></div>
     <div class="card"><div class="h">Split the bill</div><div class="tabs">${modes}</div>${splitCfg}<div id="sp">${splitHTML(r)}</div></div>`;
 }
@@ -309,11 +324,18 @@ function ordersHTML() {
       ${c.instructions ? `<div class="note" style="margin-top:6px">Notes: ${esc(c.instructions)}</div>` : ''}
       ${hasPrices(r) ? `<div class="kv"><span>Subtotal</span><span>${money(r, b.sub)}</span></div><div class="kv"><span>Tip (${b.pct}%)</span><span>${money(r, b.tip)}</span></div><div class="kv big"><span>Total</span><span>${money(r, b.total)}</span></div>` : ''}
       <div style="height:10px"></div>${callHTML(r, true)}
-      <div style="height:8px"></div><button class="btn sec" data-a="open-sum" data-id="${r.id}">Tip & split bill</button></div>`;
+      <div style="height:8px"></div><div class="row" style="gap:8px"><button class="btn sec" data-a="open-sum" data-id="${r.id}">Tip & split bill</button><button class="btn sec" data-a="copy-order" data-id="${r.id}">📋 Copy order</button></div></div>`;
   }).join('');
-  return blocks + (cur.size === 1 ? `<div class="card"><div class="kv big" style="border:0;margin:0;padding:0"><span>Grand total (${rs.length} restaurants)</span><span>${money(rs[0], grand)}</span></div></div>` : '');
+  return blocks + (cur.size === 1 ? `<div class="card"><div class="kv big" style="border:0;margin:0;padding:0"><span>Grand total (${rs.length} restaurants)</span><span>${money(rs[0], grand)}</span></div></div>` : '')
+    + `<button class="btn" data-a="copy-all">📋 Copy whole basket</button>`;
 }
 
+// Every restaurant's order in one text, with a grand total when they all use the same currency.
+function allOrdersText() {
+  const rs = activeRests(); let t = rs.map(orderText).join('\n\n──────────\n\n');
+  if (rs.length > 1 && new Set(rs.map(r => r.currency)).size === 1 && rs.every(hasPrices)) t += `\n\n══════════\nGrand total (${rs.length} restaurants): ${money(rs[0], rs.reduce((a, r) => a + bill(r).total, 0))}`;
+  return t;
+}
 function orderText(r) {
   const c = cartOf(r.id), b = bill(r);
   let t = `Order for ${r.name}\n\n` + cartLines(r).map(l => `${l.qty}× ${l.item.name}` + (l.note ? `\n   – ${l.note}` : '')).join('\n');
@@ -326,39 +348,13 @@ function orderText(r) {
   return t;
 }
 
-/* ---------- files: save / import ---------- */
-const slug = s => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'menu';
-function saveFile(list, filename) {
-  const blob = new Blob([JSON.stringify({ app: 'grubtogo', version: 1, restaurants: list }, null, 2)], { type: 'application/json' });
-  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = filename;
-  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
-  toast('Menu file saved ✓');
-}
-async function importFiles(files) {
-  let added = 0, bad = 0;
-  for (const f of files) {
-    try {
-      const j = JSON.parse(await f.text());
-      const list = Array.isArray(j.restaurants) ? j.restaurants : (j.categories ? [j] : []);
-      for (const x of list) {
-        if (!x || !Array.isArray(x.categories)) { bad++; continue; }
-        const cats = x.categories.map((c, ci) => ({ name: String(c.name || 'Menu'), items: (c.items || []).filter(i => i && i.name).map((i, ii) => ({ id: String(i.id || `c${ci}i${ii}`), name: String(i.name), description: String(i.description || ''), price: typeof i.price === 'number' ? i.price : null })) })).filter(c => c.items.length);
-        if (!cats.length) { bad++; continue; }
-        const m = (await api('api/menus', { method: 'POST', body: JSON.stringify({ name: x.name, phone: x.phone, currency: x.currency, categories: cats }) })).menu;
-        S.restaurants.unshift(m);
-        added++;
-      }
-    } catch (e) { bad++; }
-  }
-  save(); render();
-  toast(added ? `Imported ${added} restaurant${added > 1 ? 's' : ''}` + (bad ? ` (${bad} skipped)` : '') : 'That file isn\'t a GrubToGo menu file.');
-}
-
 /* ---------- events ---------- */
 document.addEventListener('click', async e => {
   const el = e.target.closest('[data-a]'); if (!el) return;
   const a = el.dataset.a, id = el.dataset.id, v = el.dataset.v, i = +el.dataset.i;
   if (a === 'home') return go('home');
+  if (a === 'settings') return go('settings');
+  if (a === 'dtip') { setDefTip(parseFloat(v)); return render(); }
   if (a === 'dashboard') {
     // Back to the JoolzApp dashboard (Portal Admin); it signs you in with the same account, so there is no second login.
     let t = ''; try { t = sessionStorage.getItem('gd.token') || localStorage.getItem('gd.token') || ''; } catch (e) {}
@@ -391,9 +387,8 @@ document.addEventListener('click', async e => {
   }
   if (a === 'clear') { S.carts[curId] = {}; save(); return go('menu'); }
   if (a === 'copy-phone') return copy(S.restaurants.find(r => r.id === id).phone, el);
+  if (a === 'copy-all') return copy(allOrdersText(), el);
   if (a === 'copy-order') return copy(orderText(S.restaurants.find(r => r.id === id)), el);
-  if (a === 'save-one') { const r = rest(); return saveFile([r], slug(r.name) + '.grubtogo.json'); }
-  if (a === 'save-all') return saveFile(S.restaurants, 'grubtogo-menus.json');
   if (a === 'go-url') { const u = $('#f-url').value.trim(); if (u) ingest({ url: u }); return; }
   if (a === 'go-text') { const t = $('#f-text').value.trim(); if (t.length >= 20) ingest({ text: t }); return; }
   // bill controls
@@ -422,6 +417,7 @@ document.addEventListener('input', e => {
   if (t.id === 'q') { query = t.value; const pos = t.selectionStart; render(); const q = $('#q'); q.focus(); q.setSelectionRange(pos, pos); }
   else if (t.id === 'phone') { const r = rest(); r.phone = t.value.trim(); savePhone(r); }
   else if (t.id === 'gen') { cart().instructions = t.value; save(); }
+  else if (t.id === 'dtipc') { setDefTip(Math.max(0, Math.min(100, parseFloat(t.value) || 0))); }
   else if (t.id === 'tipc') { cart().tip = Math.max(0, Math.min(100, parseFloat(t.value) || 0)); save(); refreshBill(); }
   else if (t.dataset.note) { const l = cart().items[t.dataset.note]; if (l) { l.note = t.value; save(); } }
   else if (t.dataset.pname != null) { cart().people[+t.dataset.pname] = t.value; save(); refreshBill(); }
@@ -430,7 +426,6 @@ document.addEventListener('change', e => {
   const t = e.target;
   if (t.id === 'f-photo' && t.files.length) ingest({ images: [...t.files].slice(0, 6) });
   if (t.id === 'f-pdf' && t.files.length) ingest({ pdf: t.files[0] });
-  if (t.id === 'f-import' && t.files.length) importFiles([...t.files]);
   if (t.dataset && t.dataset.pname != null) render();   // refresh chip labels after editing a name
 });
 
