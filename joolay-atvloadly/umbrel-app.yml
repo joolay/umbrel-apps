@@ -1,0 +1,32 @@
+manifestVersion: 1
+id: joolay-atvloadly
+category: developer
+name: atvloadly
+version: "0.3.7"
+tagline: Sideload IPA apps onto your Apple TV from a web page
+description: >-
+  atvloadly is an open source web service that installs (sideloads) IPA apps onto an Apple TV over your home network.
+  Pair your Apple TV, sign in with an Apple ID, upload an IPA and install it, with automatic refresh before the signing certificate expires.
+
+
+  Before you start: on the Apple TV open Settings > Remote and Devices > Remote App and Devices so it can be paired, and keep it on the same network as this Umbrel.
+  atvloadly signs in to Apple on your behalf (it appears as a trusted MacBook), so you will need a phone for two-factor verification.
+  Use a spare Apple ID rather than your main one if you can.
+
+
+  Apple limits free accounts to a small number of sideloaded apps that expire after 7 days.
+  This app runs the upstream bitxeno/atvloadly image unmodified. It needs access to the host's Avahi and D-Bus services to discover your Apple TV.
+developer: bitxeno
+website: https://github.com/bitxeno/atvloadly
+dependencies: []
+repo: https://github.com/joolay/umbrel-apps
+support: https://github.com/bitxeno/atvloadly/issues
+port: 5533
+gallery: []
+path: ""
+defaultUsername: ""
+defaultPassword: ""
+releaseNotes: ""
+submitter: joolay
+submission: https://github.com/joolay/umbrel-apps
+icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-atvloadly/icon.svg
