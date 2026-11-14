@@ -18,7 +18,7 @@ gallery: []
 path: ""
 defaultUsername: ""
 defaultPassword: ""
-releaseNotes: "The sign-in page now has Remember me, Forgot password (email reset link) and Create account. Earlier: ShutterWorth follows Portal Admin: per-app approval, app on/off and maintenance, closed sign-ups, and your shared currency, time zone, date format and theme."
+releaseNotes: "Show/Hide button on password fields. The sign-in page now has Remember me, Forgot password (email reset link) and Create account. Earlier: ShutterWorth follows Portal Admin: per-app approval, app on/off and maintenance, closed sign-ups, and your shared currency, time zone, date format and theme."
 submitter: joolay
 submission: https://github.com/joolay/umbrel-apps
 icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-shutterworth/icon.svg

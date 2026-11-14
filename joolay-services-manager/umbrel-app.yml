@@ -2,7 +2,7 @@ manifestVersion: 1
 id: joolay-services-manager
 category: developer
 name: Services Manager
-version: "1.0.0"
+version: "1.0.1"
 tagline: Enable, disable and set restart policy for every service on your Umbrel
 description: >-
   Lists every Umbrel app and every custom Docker container or stack on this server in one dashboard.
@@ -21,7 +21,7 @@ gallery: []
 path: ""
 defaultUsername: ""
 defaultPassword: ""
-releaseNotes: "First release."
+releaseNotes: "The password field now has a Show/Hide button."
 submitter: joolay
 submission: https://github.com/joolay/umbrel-apps
 icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-services-manager/icon.svg
