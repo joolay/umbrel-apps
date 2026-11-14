@@ -24,3 +24,20 @@ services:
       - POCKETBASE_APP_NAME=GrubDial
       # Refuse to show anything until PocketBase accounts are working (Umbrel's login is off, so this is the lock).
       - REQUIRE_ACCOUNTS=1
+
+# What GrubDial needs in PocketBase. Portal Admin reads this and creates the collection when the app is installed.
+x-pocketbase: {
+  "collections": [
+    {
+      "name": "grubdial_menus",
+      "fields": [
+        {"name": "owner", "type": "text", "required": true},
+        {"name": "ownerName", "type": "text"},
+        {"name": "name", "type": "text", "required": true},
+        {"name": "phone", "type": "text"},
+        {"name": "currency", "type": "text"},
+        {"name": "categories", "type": "json", "maxSize": 5000000}
+      ]
+    }
+  ]
+}

@@ -122,6 +122,23 @@ const APPS_DIR = process.env.UMBREL_APPS_DIR || '/umbrel-app-data';
 const SELF_ID = 'joolay-portal-admin';
 let appsCache = { at: 0, v: null };
 const yamlKey = (txt, k) => { const m = txt.match(new RegExp('^' + k + ':[ \\t]*(.*)$', 'm')); return m ? m[1].trim().replace(/^(["'])(.*)\1$/, '$2') : ''; };
+// An app can declare the PocketBase collections it needs in its docker-compose.yml under a top-level `x-pocketbase:` key
+// (Docker Compose ignores `x-` keys). Written as JSON: x-pocketbase: {"collections":[{"name":"...","fields":[{"name":"...","type":"text"}]}]}
+function xPocketbase(compose) {
+  const i = compose.search(/^x-pocketbase:/m);
+  if (i < 0) return null;
+  const start = compose.indexOf('{', i);
+  if (start < 0 || start - i > 400) return { error: 'x-pocketbase must be a JSON object' };
+  let depth = 0, inStr = false, esc = false;
+  for (let k = start; k < compose.length && k - start < 200000; k++) {
+    const c = compose[k];
+    if (inStr) { if (esc) esc = false; else if (c === '\\') esc = true; else if (c === '"') inStr = false; continue; }
+    if (c === '"') inStr = true;
+    else if (c === '{') depth++;
+    else if (c === '}' && --depth === 0) { try { return JSON.parse(compose.slice(start, k + 1)); } catch { return { error: "x-pocketbase isn't valid JSON" }; } }
+  }
+  return { error: 'x-pocketbase is not closed' };
+}
 function installedApps() {
   if (appsCache.v && Date.now() - appsCache.at < 15000) return appsCache.v;
   let out;
@@ -134,7 +151,7 @@ function installedApps() {
       const id = yamlKey(yml, 'id') || dir;
       const slug = ((compose.match(/POCKETBASE_APP_ID["']?\s*[=:]\s*["']?([A-Za-z0-9_-]{1,48})/) || [])[1] || '').toLowerCase();
       const pbName = ((compose.match(/POCKETBASE_APP_NAME["']?\s*[=:]\s*["']?([^"'\r\n]{1,80})/) || [])[1] || '').trim();
-      apps.push({ id, name: yamlKey(yml, 'name') || id, version: yamlKey(yml, 'version'), tagline: yamlKey(yml, 'tagline'), category: yamlKey(yml, 'category'), port: Number(yamlKey(yml, 'port')) || 0, slug, pbName });
+      apps.push({ id, name: yamlKey(yml, 'name') || id, version: yamlKey(yml, 'version'), tagline: yamlKey(yml, 'tagline'), category: yamlKey(yml, 'category'), port: Number(yamlKey(yml, 'port')) || 0, slug, pbName, pocketbase: xPocketbase(compose) });
     }
     out = { available: true, apps: apps.sort((a, b) => a.name.localeCompare(b.name)) };
   } catch { out = { available: false, apps: [] }; }

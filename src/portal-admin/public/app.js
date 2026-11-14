@@ -375,17 +375,68 @@ async function detectApps() {
       } else if (!have.has(slugOf(a.id)) && !hiddenApps().includes(a.id)) pending.push(a);
     }
     if (added.length) toast('Added from your Umbrel: ' + added.map((a) => a.pbName || a.name).join(', '));
-    return { available: true, added, pending };
+    const schemaApplied = await syncSchemas(d.apps);
+    return { available: true, added, pending, schemaApplied };
   } catch { return null; }
 }
+/* ---------- PocketBase changes an app asks for ---------- */
+// An app lists the collections it needs in its docker-compose.yml (`x-pocketbase`). Missing collections and missing fields are
+// worked out and created here, so a new app finds its database ready. Nothing is ever removed or retyped. Apps from your own
+// store (joolay-*) are applied automatically; any other app's changes wait for you to approve them.
+const SCHEMA_PROTECTED = /^(_|users$|portal_|app_access$)/;
+const NAME_OK = /^[A-Za-z][A-Za-z0-9_]{0,48}$/;
+const AUTO_STORE = /^joolay-/;
+let schemaPending = [];
+async function planSchema(a) {
+  const decl = a.pocketbase; if (!decl) return null;
+  if (decl.error) return { app: a, steps: [], problems: [decl.error] };
+  const steps = [], problems = [];
+  for (const c of Array.isArray(decl.collections) ? decl.collections.slice(0, 30) : []) {
+    if (!c || !/^[a-z][a-z0-9_]{0,48}$/.test(c.name || '') || SCHEMA_PROTECTED.test(c.name)) { problems.push(`"${c && c.name}" isn't an allowed collection name`); continue; }
+    const fields = (Array.isArray(c.fields) ? c.fields : []).filter((f) => f && NAME_OK.test(f.name || '') && typeof f.type === 'string');
+    let have = null;
+    try { have = await api('GET', '/api/collections/' + c.name); } catch (e) { if (e.status !== 404) throw e; }
+    if (!have) { steps.push({ kind: 'create', coll: c, fields }); continue; }
+    const byName = new Map((have.fields || []).map((f) => [f.name, f]));
+    for (const f of fields) { const h = byName.get(f.name); if (h && h.type !== f.type) problems.push(`${c.name}.${f.name} is ${h.type} in PocketBase but the app wants ${f.type} (left as it is)`); }
+    const missing = fields.filter((f) => !byName.has(f.name));
+    if (missing.length) steps.push({ kind: 'addFields', coll: c, have, fields: missing });
+  }
+  return { app: a, steps, problems };
+}
+const describeSteps = (plan) => plan.steps.map((s) => s.kind === 'create' ? `create ${s.coll.name}` : `add ${s.fields.map((f) => f.name).join(', ')} to ${s.coll.name}`).join('; ');
+async function applyPlan(plan) {
+  for (const s of plan.steps) {
+    if (s.kind === 'create') {
+      const c = s.coll;
+      await api('POST', '/api/collections', { name: c.name, type: 'base', indexes: Array.isArray(c.indexes) ? c.indexes : [],
+        fields: [...s.fields, { name: 'created', type: 'autodate', onCreate: true, onUpdate: false }, { name: 'updated', type: 'autodate', onCreate: true, onUpdate: true }],
+        listRule: c.listRule ?? null, viewRule: c.viewRule ?? null, createRule: c.createRule ?? null, updateRule: c.updateRule ?? null, deleteRule: c.deleteRule ?? null });
+    } else await api('PATCH', '/api/collections/' + s.coll.name, { fields: [...s.have.fields, ...s.fields] });
+    await audit('schema.apply', s.coll.name, { app: plan.app.id, kind: s.kind, fields: s.fields.map((f) => f.name) });
+  }
+}
+async function syncSchemas(apps) {
+  const applied = []; schemaPending = [];
+  for (const a of apps) {
+    try {
+      const plan = await planSchema(a); if (!plan) continue;
+      if (plan.steps.length && AUTO_STORE.test(a.id)) { await applyPlan(plan); applied.push({ app: a, text: describeSteps(plan) }); plan.steps = []; }
+      if (plan.steps.length || plan.problems.length) schemaPending.push(plan);
+    } catch (e) { schemaPending.push({ app: a, steps: [], problems: ['Could not update PocketBase: ' + e.message] }); }
+  }
+  if (applied.length) toast('PocketBase updated for ' + applied.map((x) => x.app.name).join(', '));
+  return applied;
+}
+
 let detectTimer;
 function startDetecting() {
   clearInterval(detectTimer);
   if (state.role === 'user') return;
-  detectApps().then((r) => { if (r && r.added.length && location.hash.startsWith('#/apps')) route(); });
+  detectApps().then((r) => { if (r && (r.added.length || r.schemaApplied.length) && location.hash.startsWith('#/apps')) route(); });
   detectTimer = setInterval(() => {
     if (!state.token || state.role === 'user' || document.hidden) return;
-    detectApps().then((r) => { if (r && r.added.length && location.hash.startsWith('#/apps')) route(); });
+    detectApps().then((r) => { if (r && (r.added.length || r.schemaApplied.length) && location.hash.startsWith('#/apps')) route(); });
   }, 5 * 60 * 1000);
 }
 
@@ -407,8 +458,15 @@ async function appList() {
       <table><tbody>${found.pending.map((a) => `<tr><td><b>${esc(a.name)}</b><div class="muted small">${esc(a.id)}${a.version ? ' · v' + esc(a.version) : ''}</div></td>
         <td style="text-align:right"><button class="btn" data-add="${esc(a.id)}">Add</button> <button class="btn" data-hide="${esc(a.id)}">Hide</button></td></tr>`).join('')}</tbody></table></div>`);
   }
+  if (schemaPending.length) {
+    main().insertAdjacentHTML('beforeend', `<div class="card"><h2>PocketBase changes</h2><p class="muted small">Needed by apps on your Umbrel. Changes only add collections and fields; nothing is removed.</p>
+      <table><tbody>${schemaPending.map((pl, i) => `<tr><td><b>${esc(pl.app.name)}</b><div class="muted small">${esc(describeSteps(pl) || 'nothing to change')}</div>${pl.problems.map((x) => `<div class="small" style="color:#b3261e">${esc(x)}</div>`).join('')}</td>
+        <td style="text-align:right">${pl.steps.length ? `<button class="btn primary" data-apply="${i}">Apply</button>` : ''}</td></tr>`).join('')}</tbody></table></div>`);
+  }
   if (found && !found.available) main().insertAdjacentHTML('beforeend', '<p class="muted small">Portal Admin can\'t see which apps are installed on this Umbrel (the app list isn\'t mounted), so new apps aren\'t detected automatically.</p>');
   main().onclick = guard(async (e) => {
+    const ap = e.target.closest('[data-apply]');
+    if (ap) { const pl = schemaPending[+ap.dataset.apply]; if (!pl) return; await applyPlan(pl); toast('PocketBase updated for ' + pl.app.name); return route(); }
     const add = e.target.closest('[data-add]'), hide = e.target.closest('[data-hide]');
     if (add || hide) {
       const a = found.pending.find((x) => x.id === (add || hide).dataset[add ? 'add' : 'hide']); if (!a) return;
