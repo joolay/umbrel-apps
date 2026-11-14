@@ -76,11 +76,11 @@ input:focus{outline:none;border-color:#d9ab55}
   }
   function waiting(u) {
     view.textContent = ""; sub.textContent = "Almost there";
-    view.appendChild(el("p", "note", "You're signed in as " + (u.name || u.email) + ". The admin hasn't opened this inventory to you yet. Ask them to give you access, then check again."));
+    view.appendChild(el("p", "note", "You're signed in as " + (u.name || u.email) + ". " + ((u.gate && u.gate.message) || "The admin hasn't opened this inventory to you yet. Ask them to give you access, then check again.")));
     var row = el("div", "row"), again = el("button", "", "Check again"), out = el("button", "", "Sign out");
     again.onclick = function () { start(); }; out.onclick = signOut; row.append(again, out); view.appendChild(row);
   }
-  function signOut() { setTok(""); fetch("api/account/logout", { method: "POST" }).catch(function () {}).then(function () { location.reload(); }); }
+  function signOut() { setTok(""); try { localStorage.removeItem("sw_prefs"); } catch (e) {} fetch("api/account/logout", { method: "POST" }).catch(function () {}).then(function () { location.reload(); }); }
   function problem(msg) {
     view.textContent = ""; sub.textContent = "Can't reach the account server";
     view.appendChild(el("p", "note", msg));

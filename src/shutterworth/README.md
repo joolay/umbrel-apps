@@ -72,6 +72,17 @@ How it is stored:
 - A second collection, `app_access`, holds the per-app part: trial used, trial limit and unlimited. There is one row per person per app, so a trial in one app doesn't use up another's. Only the app servers can read it.
 - Deleting a user in the panel deletes the JoolzApp account itself, so it disappears from every app.
 
+### With Joolzapp Portal
+
+If Joolzapp Portal is installed (its `portal_settings`, `portal_apps` and `portal_requests` collections exist), ShutterWorth follows it automatically:
+
+- **Access**: the portal decides who may open the app. `portal.access` is resolved global, then app, then user, then user x app. With per-app approval switched on in the portal, new accounts are closed out until you approve ShutterWorth for them (they request it in the portal). The Users panel's Allow access button now sets that same portal setting and closes the person's pending request. Admins always get in. Without the portal, the old `access` flag still applies.
+- **App on/off and maintenance**: switching ShutterWorth off, or putting it in maintenance, in the portal shows non-admins the portal's message.
+- **Sign-ups**: closing sign-ups in the portal also closes them here (the local switch still works too).
+- **Preferences**: each person's shared currency, language, time zone, date and time format and theme apply to amounts, dates, PDFs and the theme. Units and language text are not used here yet (the interface is English; language only sets number and date style).
+- **Listing**: the first run registers ShutterWorth in the portal's app list (set `POCKETBASE_APP_NAME` to change the name shown).
+- Deleting a user here also clears their portal settings and requests.
+
 A trial counts photo identifications only (text-only requests are free), and a request that fails doesn't use one up. The first time it runs, ShutterWorth adds the `isAdmin` field to `users`, creates `app_access`, and stops people editing `isAdmin` through PocketBase's own API.
 
 **For your next app:** copy `pocketbase.js` and `make-admin.js` into it, set the same three PocketBase variables, and set `POCKETBASE_APP_ID` to the app's name (this app uses `shutterworth`). Everyone's existing accounts and your admin status work straight away. To use a different collection name, set `POCKETBASE_USERS_COLLECTION`. Leave the three variables blank to run without accounts.
