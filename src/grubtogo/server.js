@@ -314,6 +314,7 @@ const server = http.createServer(async (req, res) => {
         if (b.action === "invite") return out(await family.invite(user, b.email, b.tier, b.relation));
         if (b.action === "respond") return out(await family.respond(user, b.familyId, !!b.accept));
         if (b.action === "tier") return out(await family.setTier(user, b.memberId, b.tier, b.relation));
+        if (b.action === "manager") return out(await family.setManager(user, b.memberId, !!b.on));
         if (b.action === "leave") return out(await family.drop(user, ""));
         if (b.action === "remove") return out(await family.drop(user, b.memberId));
         return send(res, 400, { message: "Unknown action" });

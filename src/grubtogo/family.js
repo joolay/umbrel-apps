@@ -8,7 +8,7 @@ const pb = require("./pocketbase");
 const FAM = process.env.JOOLZ_FAMILIES_COLLECTION || "joolz_families";
 const ORD = process.env.GRUBTOGO_FAMILY_ORDERS_COLLECTION || "grubtogo_family_orders";
 const famBase = "/api/collections/" + encodeURIComponent(FAM), ordBase = "/api/collections/" + encodeURIComponent(ORD);
-const FAM_FIELDS = [["name", "text", true], ["owner", "text", true], ["ownerName", "text"], ["memberIds", "text"], ["invitedIds", "text"], ["members", "json", false, { maxSize: 100000 }], ["invited", "json", false, { maxSize: 100000 }]];
+const FAM_FIELDS = [["name", "text", true], ["owner", "text", true], ["ownerName", "text"], ["memberIds", "text"], ["invitedIds", "text"], ["invitedEmails", "text"], ["members", "json", false, { maxSize: 100000 }], ["invited", "json", false, { maxSize: 100000 }]];
 const ORD_FIELDS = [["familyId", "text", true], ["byId", "text", true], ["byName", "text"], ["data", "json", false, { maxSize: 1000000 }]];
 const MAX_MEMBERS = 60;
 const TIERS = ["family", "extended"];
@@ -49,14 +49,15 @@ async function familyOf(userId) {
 }
 const ids = rec => (rec.members || []).map(m => m.id);
 async function save(rec, members, invited, owner) {
-  const patch = { members, invited, memberIds: tag(members.map(m => m.id)), invitedIds: tag(invited.map(m => m.id)) };
+  const patch = { members, invited, memberIds: tag(members.map(m => m.id)), invitedIds: tag(invited.filter(m => !m.email).map(m => m.id)), invitedEmails: tag(invited.filter(m => m.email).map(m => m.email)) };
   if (owner) { patch.owner = owner.id; patch.ownerName = owner.name; }
   return pb.asSuper("PATCH", `${famBase}/records/${encodeURIComponent(rec.id)}`, patch);
 }
-const norm = m => ({ id: m.id, name: m.name || "", tier: tierOf(m), relation: str(m.relation, 40) });
+const norm = m => ({ id: m.id, name: m.name || "", tier: tierOf(m), relation: str(m.relation, 40), manager: !!m.manager, ...(m.email ? { email: m.email } : {}) });
+const canManage = (rec, userId) => rec.owner === userId || !!(rec.members || []).find(m => m.id === userId && m.manager);
 const shapeFam = (rec, user) => { if (!rec) return null; const members = (rec.members || []).map(norm), me = members.find(m => m.id === user.id);
-  return { id: rec.id, name: rec.name, owner: rec.owner, ownerName: rec.ownerName || "", isOwner: rec.owner === user.id, myTier: me ? me.tier : "family",
-    members, invited: rec.owner === user.id ? (rec.invited || []).map(norm) : [] }; };
+  return { id: rec.id, name: rec.name, owner: rec.owner, ownerName: rec.ownerName || "", isOwner: rec.owner === user.id, canManage: canManage(rec, user.id), myTier: me ? me.tier : "family",
+    members, invited: canManage(rec, user.id) ? (rec.invited || []).map(norm) : [] }; };
 // Only immediate family share family expenses.
 async function immediate(user) {
   const fam = await familyOf(user.id); if (!fam) return { error: fail(400, "Join or create a family first.") };
@@ -69,7 +70,8 @@ async function immediate(user) {
 async function mine(user) {
   await ensure();
   const fam = await familyOf(user.id);
-  const j = await pb.asSuper("GET", `${famBase}/records?page=1&perPage=20&filter=${q(`invitedIds ~ ',${clean(user.id)},'`)}`);
+  const em = String(user.email || "").toLowerCase().replace(/'/g, "");
+  const j = await pb.asSuper("GET", `${famBase}/records?page=1&perPage=20&filter=${q(`invitedIds ~ ',${clean(user.id)},'` + (em ? ` || invitedEmails ~ ',${em},'` : ""))}`);
   return { family: shapeFam(fam, user), invites: (j.items || []).map(r => ({ id: r.id, name: r.name, ownerName: r.ownerName || "" })) };
 }
 const fail = (status, message) => ({ status, message });
@@ -85,11 +87,17 @@ async function create(user, name) {
 async function invite(user, email, tier, relation) {
   await ensure();
   const fam = await familyOf(user.id); if (!fam) return fail(400, "Create a family first.");
-  if (fam.owner !== user.id) return fail(403, "Only the person who created the family can invite.");
+  if (!canManage(fam, user.id)) return fail(403, "Only the creator or a manager can invite.");
   email = str(email, 200).toLowerCase(); if (!/^\S+@\S+\.\S+$/.test(email)) return fail(400, "Enter their JoolzApp email address.");
   const t = await pb.findByEmail(email);
-  if (!t) return fail(404, "There's no JoolzApp account with that email. They need to sign up first.");
   const members = fam.members || [], invited = fam.invited || [];
+  if (!t) {   // no account yet: the invitation waits for them and appears when they sign up with this email
+    if (invited.some(m => m.email === email)) return fail(400, "They've already been invited.");
+    if (members.length + invited.length >= MAX_MEMBERS) return fail(400, "That family is full.");
+    tier = TIERS.includes(tier) ? tier : "family";
+    await save(fam, members, [...invited, { id: "em" + require("crypto").createHash("sha1").update(email).digest("hex").slice(0, 12), email, name: email, tier, relation: str(relation, 40) }]);
+    return { ...(await mine(user)), notice: "They don't have a JoolzApp account yet. The invitation will be waiting when they sign up with " + email + "." };
+  }
   if (members.some(m => m.id === t.id)) return fail(400, "They're already in your family.");
   if (invited.some(m => m.id === t.id)) return fail(400, "They've already been invited.");
   if (members.length + invited.length >= MAX_MEMBERS) return fail(400, "That family is full.");
@@ -101,9 +109,9 @@ async function respond(user, familyId, accept) {
   await ensure();
   let fam;
   try { fam = await pb.asSuper("GET", `${famBase}/records/${encodeURIComponent(clean(familyId))}`); } catch (e) { if (e.status === 404) return fail(404, "That invitation is no longer there."); throw e; }
-  const invited = fam.invited || [], mine_ = invited.find(m => m.id === user.id);
+  const em = String(user.email || "").toLowerCase(), invited = fam.invited || [], mine_ = invited.find(m => m.id === user.id || (m.email && m.email === em));
   if (!mine_) return fail(404, "That invitation is no longer there.");
-  const rest = invited.filter(m => m.id !== user.id);
+  const rest = invited.filter(m => m !== mine_);
   if (!accept) { await save(fam, fam.members || [], rest); return mine(user); }
   if (await familyOf(user.id)) return fail(400, "You are already in a family. Leave it first to join another.");
   await save(fam, [...(fam.members || []), { id: user.id, name: nameOf(user), tier: tierOf(mine_), relation: mine_.relation || "" }], rest);
@@ -114,7 +122,12 @@ async function drop(user, memberId) {
   await ensure();
   const fam = await familyOf(user.id); if (!fam) return fail(400, "You are not in a family.");
   memberId = memberId ? clean(memberId) : user.id;
-  if (memberId !== user.id && fam.owner !== user.id) return fail(403, "Only the person who created the family can remove members.");
+  const target = (fam.members || []).find(m => m.id === memberId);
+  if (memberId !== user.id) {
+    if (!canManage(fam, user.id)) return fail(403, "Only the creator or a manager can remove members.");
+    if (memberId === fam.owner) return fail(403, "The creator can't be removed.");
+    if (target && target.manager && fam.owner !== user.id) return fail(403, "Only the creator can remove a manager.");
+  }
   const members = (fam.members || []).filter(m => m.id !== memberId), invited = (fam.invited || []).filter(m => m.id !== memberId);
   if (!members.length) { await pb.asSuper("DELETE", `${famBase}/records/${encodeURIComponent(fam.id)}`); return mine(user); }
   await save(fam, members, invited, fam.owner === memberId ? members[0] : null);
@@ -143,10 +156,20 @@ async function listOrders(user) {
 async function setTier(user, memberId, tier, relation) {
   await ensure();
   const fam = await familyOf(user.id); if (!fam) return fail(400, "You are not in a family.");
-  if (fam.owner !== user.id) return fail(403, "Only the person who created the family can do that.");
-  memberId = clean(memberId); if (memberId === user.id) return fail(400, "You are always immediate family.");
+  if (!canManage(fam, user.id)) return fail(403, "Only the creator or a manager can do that.");
+  memberId = clean(memberId); if (memberId === fam.owner) return fail(400, "The creator is always immediate family.");
   const members = (fam.members || []).map(m => m.id === memberId ? { ...m, tier: TIERS.includes(tier) ? tier : tierOf(m), relation: str(relation !== undefined ? relation : m.relation, 40) } : m);
   await save(fam, members, fam.invited || []);
+  return mine(user);
+}
+// Only the creator decides who else may manage the family.
+async function setManager(user, memberId, on) {
+  await ensure();
+  const fam = await familyOf(user.id); if (!fam) return fail(400, "You are not in a family.");
+  if (fam.owner !== user.id) return fail(403, "Only the person who created the family can do that.");
+  memberId = clean(memberId); if (memberId === user.id) return fail(400, "You already manage this family.");
+  if (!(fam.members || []).some(m => m.id === memberId)) return fail(404, "They aren't in the family.");
+  await save(fam, (fam.members || []).map(m => m.id === memberId ? { ...m, manager: !!on, ...(on ? { tier: "family" } : {}) } : m), fam.invited || []);
   return mine(user);
 }
 async function removeOrder(user, id) {
@@ -165,4 +188,4 @@ async function linkedIds(user) {
   const fam = await familyOf(user.id);
   return new Set(fam ? (fam.members || []).map(m => m.id).filter(id => id !== user.id) : []);
 }
-module.exports = { linkedIds, mine, create, invite, respond, drop, setTier, addOrder, listOrders, removeOrder };
+module.exports = { setManager, linkedIds, mine, create, invite, respond, drop, setTier, addOrder, listOrders, removeOrder };

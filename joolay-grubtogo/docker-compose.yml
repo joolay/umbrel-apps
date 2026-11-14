@@ -59,6 +59,7 @@ x-pocketbase: {
         {"name": "ownerName", "type": "text"},
         {"name": "memberIds", "type": "text"},
         {"name": "invitedIds", "type": "text"},
+        {"name": "invitedEmails", "type": "text"},
         {"name": "members", "type": "json", "maxSize": 100000},
         {"name": "invited", "type": "json", "maxSize": 100000}
       ]
