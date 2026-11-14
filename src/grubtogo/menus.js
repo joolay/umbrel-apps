@@ -1,9 +1,9 @@
-// The shared menu archive: every menu anyone uploads lands here (PocketBase collection `grubdial_menus`) and every signed-in
+// The shared menu archive: every menu anyone uploads lands here (PocketBase collection `grubtogo_menus`) and every signed-in
 // person can order from it. Only the person who uploaded a menu, or an admin, can change or remove it.
 "use strict";
 const pb = require("./pocketbase");
 
-const COLL = process.env.GRUBDIAL_MENUS_COLLECTION || "grubdial_menus";
+const COLL = process.env.GRUBTOGO_MENUS_COLLECTION || "grubtogo_menus";
 const base = "/api/collections/" + encodeURIComponent(COLL);
 
 let ready = null;

@@ -26,10 +26,10 @@ const URL_BASE = (process.env.POCKETBASE_URL || "http://host.docker.internal:540
 const SU_EMAIL = process.env.POCKETBASE_SUPERUSER_EMAIL || "";
 const SU_PASS = process.env.POCKETBASE_SUPERUSER_PASSWORD || "";
 const COLL = process.env.POCKETBASE_USERS_COLLECTION || "users";
-const APP = (process.env.POCKETBASE_APP_ID || "grubdial").trim().toLowerCase();
+const APP = (process.env.POCKETBASE_APP_ID || "grubtogo").trim().toLowerCase();
 const ACCESS = process.env.POCKETBASE_ACCESS_COLLECTION || "app_access";
 
-const APP_NAME = (process.env.POCKETBASE_APP_NAME || (APP === "grubdial" ? "GrubDial" : APP)).trim();
+const APP_NAME = (process.env.POCKETBASE_APP_NAME || (APP === "grubtogo" ? "GrubToGo" : APP)).trim();
 
 const enabled = !!(URL_BASE && SU_EMAIL && SU_PASS);
 
@@ -206,7 +206,7 @@ async function setPortalAccess(userId, allowed) {
   if (allowed) {
     try {
       const r = await asSuper("GET", `/api/collections/portal_requests/records?page=1&perPage=50&filter=${q(`user = '${esc(userId)}' && app = '${esc(APP)}' && status = 'pending'`)}`);
-      for (const x of r.items || []) await asSuper("PATCH", `/api/collections/portal_requests/records/${x.id}`, { status: "approved", decided_by: "GrubDial admin" });
+      for (const x of r.items || []) await asSuper("PATCH", `/api/collections/portal_requests/records/${x.id}`, { status: "approved", decided_by: "GrubToGo admin" });
     } catch (e) { if (e.status !== 404) throw e; }
   }
   portalClear();

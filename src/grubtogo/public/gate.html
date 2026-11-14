@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>GrubDial</title>
+<title>GrubToGo</title>
 <meta name="theme-color" content="#b4531a">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -32,7 +32,7 @@ input:focus{outline:none;border-color:#d9ab55}
 <body>
 <main>
   <img class="logo" src="icon.svg" alt="">
-  <h1>GrubDial</h1>
+  <h1>GrubToGo</h1>
   <p class="sub" id="sub">Sign in with your JoolzApp account</p>
   <div id="view"></div>
 </main>
@@ -74,7 +74,7 @@ input:focus{outline:none;border-color:#d9ab55}
   }
   function waiting(u) {
     view.textContent = ""; sub.textContent = "Almost there";
-    view.appendChild(el("p", "note", "You're signed in as " + (u.name || u.email) + ". " + ((u.gate && u.gate.message) || "The admin hasn't opened GrubDial to you yet. Ask them to give you access, then check again.")));
+    view.appendChild(el("p", "note", "You're signed in as " + (u.name || u.email) + ". " + ((u.gate && u.gate.message) || "The admin hasn't opened GrubToGo to you yet. Ask them to give you access, then check again.")));
     var row = el("div", "row"), again = el("button", "", "Check again"), out = el("button", "", "Sign out");
     again.onclick = function () { start(); }; out.onclick = signOut; row.append(again, out); view.appendChild(row);
   }
