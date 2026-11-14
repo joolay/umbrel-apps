@@ -156,11 +156,13 @@ function tokenOf(req) {
   return m ? m[1] : "";
 }
 // The browser keeps the sign-in in a cookie too, so photos and live updates (which can't send headers) are covered.
-function setSessionCookie(req, res, token) {
-  const secure = String(req.headers["x-forwarded-proto"] || "").includes("https") ? "; Secure" : "";
-  res.setHeader("set-cookie", `sw_token=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${14 * 86400}${secure}`);
+// "Remember me" keeps the sign-in for 14 days; otherwise the cookie lasts until the browser closes. sw_rem remembers the choice.
+function setSessionCookie(req, res, token, remember) {
+  if (remember === undefined) remember = /(?:^|;\s*)sw_rem=1/.test(String(req.headers.cookie || ""));
+  const secure = String(req.headers["x-forwarded-proto"] || "").includes("https") ? "; Secure" : "", age = remember ? `; Max-Age=${14 * 86400}` : "";
+  res.setHeader("set-cookie", [`sw_token=${token}; Path=/; HttpOnly; SameSite=Lax${age}${secure}`, remember ? `sw_rem=1; Path=/; HttpOnly; SameSite=Lax${age}${secure}` : "sw_rem=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0"]);
 }
-const clearSessionCookie = res => res.setHeader("set-cookie", "sw_token=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0");
+const clearSessionCookie = res => res.setHeader("set-cookie", ["sw_token=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0", "sw_rem=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0"]);
 async function currentUser(req) {
   const t = tokenOf(req);
   if (!t) return null;
@@ -213,14 +215,20 @@ async function accountRoutes(req, res, p, url) {
         if (provider !== "custom" || /^https?:\/\//i.test(baseUrl)) { try { await pb.setUserPrefs(created.id, { "ai.provider": provider, "ai.model": clip(ai.model, 120), "ai.apiKey": clip(ai.apiKey, 300), "ai.baseUrl": provider === "custom" ? baseUrl : "" }); } catch {} }
       }
       const j = await pb.login(email, password);
-      setSessionCookie(req, res, j.token);
+      setSessionCookie(req, res, j.token, false);
       send(res, 200, { token: j.token, user: publicUser(j.record) }); return true;
     }
     if (p === "/api/account/login" && req.method === "POST") {
       if (throttled(req, "login", 10, 600e3)) return send(res, 429, { code: "slow_down", message: "Too many attempts. Try again in a few minutes." }), true;
-      try { const j = await pb.login(String(body.email || "").trim().toLowerCase(), String(body.password || "")); setSessionCookie(req, res, j.token); send(res, 200, { token: j.token, user: publicUser(j.record) }); }
+      try { const j = await pb.login(String(body.email || "").trim().toLowerCase(), String(body.password || "")); setSessionCookie(req, res, j.token, !!body.remember); send(res, 200, { token: j.token, user: publicUser(j.record) }); }
       catch (e) { if (e instanceof pb.PBError && e.status === 400) return send(res, 400, { code: "bad_login", message: "That email and password don't match." }), true; throw e; }
       return true;
+    }
+    if (p === "/api/account/forgot" && req.method === "POST") {
+      if (throttled(req, "forgot", 5, 3600e3)) return send(res, 429, { code: "slow_down", message: "Too many attempts. Try again later." }), true;
+      const email = String(body.email || "").trim().toLowerCase();
+      if (validEmail(email)) { try { await pb.requestPasswordReset(email); } catch {} }
+      send(res, 200, { ok: true, message: "If that account exists, a password reset email has been sent." }); return true;
     }
     if (p === "/api/account/me" && req.method === "GET") {
       const u = await currentUser(req);

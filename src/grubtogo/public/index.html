@@ -86,7 +86,7 @@ let me = null, ai = { configured: true, isAdmin: false }, pushT = null;
 
 async function api(path, opts) {
   opts = opts || {}; const h = { 'content-type': 'application/json' };
-  try { const t = localStorage.getItem('gd.token'); if (t) h['x-gd-token'] = t; } catch (e) {}
+  try { const t = sessionStorage.getItem('gd.token') || localStorage.getItem('gd.token'); if (t) h['x-gd-token'] = t; } catch (e) {}
   const r = await fetch(path, { method: opts.method || 'GET', headers: h, body: opts.body, cache: 'no-store' });
   const j = await r.json().catch(() => ({}));
   if (!r.ok) { const e = new Error(j.message || 'Something went wrong (' + r.status + ')'); e.status = r.status; throw e; }
@@ -359,7 +359,7 @@ document.addEventListener('click', async e => {
   const el = e.target.closest('[data-a]'); if (!el) return;
   const a = el.dataset.a, id = el.dataset.id, v = el.dataset.v, i = +el.dataset.i;
   if (a === 'home') return go('home');
-  if (a === 'signout') { try { localStorage.removeItem('gd.token'); } catch (e) {} await fetch('api/account/logout', { method: 'POST' }).catch(() => {}); return location.reload(); }
+  if (a === 'signout') { try { localStorage.removeItem('gd.token'); sessionStorage.removeItem('gd.token'); } catch (e) {} await fetch('api/account/logout', { method: 'POST' }).catch(() => {}); return location.reload(); }
   if (a === 'ai-save') {
     const key = $('#ai-key').value.trim(); if (!key) return toast('Paste your API key first.');
     try { const j = await api('api/ai/config', { method: 'POST', body: JSON.stringify({ provider: $('#ai-prov').value, apiKey: key, model: $('#ai-model').value.trim() }) }); ai = { ...ai, ...j }; toast(ai.configured ? 'Menu reading is ready ✓' : 'Saved — this provider also needs a model name.'); render(); }

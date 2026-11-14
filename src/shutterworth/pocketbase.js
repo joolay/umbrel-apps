@@ -237,6 +237,8 @@ async function portalForget(userId) {
 }
 
 /* ---------- users ---------- */
+// Sends PocketBase's own reset email (the same one Portal Admin's "Forgot password?" sends).
+async function requestPasswordReset(email) { await raw("POST", colPath + "/request-password-reset", { body: { email } }); }
 async function login(email, password) {
   await ensureSchema();
   const j = await raw("POST", colPath + "/auth-with-password", { body: { identity: email, password } });
@@ -336,4 +338,4 @@ async function setUserPrefs(userId, prefs) {
   }
   portalCache.delete("u:" + userId);
 }
-module.exports = { setUserPrefs, portalAvailable, setPortalAccess, signupsOpen, enabled, PBError, login, verifyToken, createUser, listUsers, getUser, updateUser, updateAccess, deleteUser, countAdmins, findByEmail, firstAdmin, asSuper, superFetch, ensureSchema, collection: COLL, app: APP };
+module.exports = { requestPasswordReset, setUserPrefs, portalAvailable, setPortalAccess, signupsOpen, enabled, PBError, login, verifyToken, createUser, listUsers, getUser, updateUser, updateAccess, deleteUser, countAdmins, findByEmail, firstAdmin, asSuper, superFetch, ensureSchema, collection: COLL, app: APP };

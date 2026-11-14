@@ -28,6 +28,7 @@ input:focus{outline:none;border-color:#d9ab55}
 .row{display:flex;gap:10px;justify-content:center}
 .row button{font:inherit;font-weight:600;border:2px solid rgba(248,244,234,.5);background:none;color:#f8f4ea;border-radius:12px;padding:9px 16px;cursor:pointer}
 details.ai{margin:10px 0;font-size:14px}details.ai summary{cursor:pointer;color:#b4531a}details.ai label{margin-top:8px;display:block}details.ai select,details.ai input{width:100%;box-sizing:border-box;margin-top:4px}
+.opts{display:flex;justify-content:space-between;align-items:center;margin:8px 0;font-size:.9rem}.opts a{color:inherit;opacity:.85}.opts label.inline{display:flex;gap:6px;align-items:center;margin:0}.opts input{width:auto;margin:0}.ok{min-height:1.3em;margin:2px 0 0;color:#c8f0c8;font-size:.9rem}
 </style>
 </head>
 <body>
@@ -41,8 +42,8 @@ details.ai{margin:10px 0;font-size:14px}details.ai summary{cursor:pointer;color:
 (function () {
   "use strict";
   var TOKEN = "gd.token", mode = "in", cfg = {}, view = document.getElementById("view"), sub = document.getElementById("sub");
-  function tok() { try { return localStorage.getItem(TOKEN) || ""; } catch (e) { return ""; } }
-  function setTok(t) { try { t ? localStorage.setItem(TOKEN, t) : localStorage.removeItem(TOKEN); } catch (e) {} }
+  function tok() { try { return sessionStorage.getItem(TOKEN) || localStorage.getItem(TOKEN) || ""; } catch (e) { return ""; } }
+  function setTok(t, remember) { try { localStorage.removeItem(TOKEN); sessionStorage.removeItem(TOKEN); if (t) (remember ? localStorage : sessionStorage).setItem(TOKEN, t); } catch (e) {} }
   function api(path, opts) {
     opts = opts || {}; var h = { "content-type": "application/json" }; if (tok()) h["x-gd-token"] = tok();
     return fetch(path, { method: opts.method || "GET", headers: h, body: opts.body, cache: "no-store" }).then(function (r) {
@@ -58,6 +59,18 @@ details.ai{margin:10px 0;font-size:14px}details.ai summary{cursor:pointer;color:
     var f = el("form"), name = field("Name", "text", "name"), email = field("Email", "email", "email"), pass = field("Password", "password", reg ? "new-password" : "current-password");
     email.i.required = true; pass.i.required = true; if (reg) pass.i.minLength = 8;
     if (reg) f.appendChild(name.l); f.append(email.l, pass.l);
+    var remember, forgot, ok = el("p", "ok");
+    if (!reg) {
+      var opts = el("div", "opts"), rl = el("label", "inline"); remember = el("input"); remember.type = "checkbox";
+      try { remember.checked = localStorage.getItem("gd.remember") === "1"; if (remember.checked) email.i.value = localStorage.getItem("gd.email") || ""; } catch (e) {}
+      rl.append(remember, document.createTextNode(" Remember me")); forgot = el("a", "", "Forgot password?"); forgot.href = "#";
+      forgot.onclick = function (ev) {
+        ev.preventDefault(); err.textContent = ""; ok.textContent = "";
+        if (!email.i.value.trim()) { err.textContent = "Enter your email above first."; email.i.focus(); return; }
+        api("api/account/forgot", { method: "POST", body: JSON.stringify({ email: email.i.value.trim() }) }).then(function (j) { ok.textContent = j.message; }).catch(function (e) { err.textContent = e.message; });
+      };
+      opts.append(rl, forgot); f.appendChild(opts);
+    }
     var aiProv, aiModel, aiKey;
     if (reg) {
       var d = el("details", "ai"), sm = el("summary", "", "Set up AI now (optional, 10 free menu reads without it)");
@@ -68,11 +81,11 @@ details.ai{margin:10px 0;font-size:14px}details.ai summary{cursor:pointer;color:
     }
     var err = el("p", "e"); err.setAttribute("role", "alert");
     var go = el("button", "go", reg ? "Create account" : "Sign in"); go.type = "submit";
-    f.append(err, go);
+    f.append(err, ok, go);
     f.onsubmit = function (ev) {
       ev.preventDefault(); err.textContent = ""; go.disabled = true;
-      api(reg ? "api/account/register" : "api/account/login", { method: "POST", body: JSON.stringify({ email: email.i.value, password: pass.i.value, name: name.i.value, ai: reg && aiKey.value.trim() ? { provider: aiProv.value, model: aiModel.value.trim(), apiKey: aiKey.value.trim() } : undefined }) })
-        .then(function (j) { setTok(j.token); j.user.canOpen ? location.reload() : waiting(j.user); })
+      api(reg ? "api/account/register" : "api/account/login", { method: "POST", body: JSON.stringify({ email: email.i.value, password: pass.i.value, name: name.i.value, remember: !reg && remember.checked, ai: reg && aiKey.value.trim() ? { provider: aiProv.value, model: aiModel.value.trim(), apiKey: aiKey.value.trim() } : undefined }) })
+        .then(function (j) { var rem = !reg && remember.checked; setTok(j.token, rem); try { if (rem) { localStorage.setItem("gd.remember", "1"); localStorage.setItem("gd.email", email.i.value); } else if (!reg) { localStorage.removeItem("gd.remember"); localStorage.removeItem("gd.email"); } } catch (e) {} j.user.canOpen ? location.reload() : waiting(j.user); })
         .catch(function (e) { err.textContent = e.message; go.disabled = false; });
     };
     view.appendChild(f);
@@ -87,7 +100,7 @@ details.ai{margin:10px 0;font-size:14px}details.ai summary{cursor:pointer;color:
     var row = el("div", "row"), again = el("button", "", "Check again"), out = el("button", "", "Sign out");
     again.onclick = function () { start(); }; out.onclick = signOut; row.append(again, out); view.appendChild(row);
   }
-  function signOut() { setTok(""); try { localStorage.removeItem("gd_prefs"); } catch (e) {} fetch("api/account/logout", { method: "POST" }).catch(function () {}).then(function () { location.reload(); }); }
+  function signOut() { setTok("", false); try { localStorage.removeItem("gd_prefs"); } catch (e) {} fetch("api/account/logout", { method: "POST" }).catch(function () {}).then(function () { location.reload(); }); }
   function problem(msg) {
     view.textContent = ""; sub.textContent = "Can't reach the account server";
     view.appendChild(el("p", "note", msg));
