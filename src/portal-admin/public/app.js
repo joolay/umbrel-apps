@@ -1128,7 +1128,7 @@ async function viewHome() {
       body = reqs === null ? '<span class="muted small">Ask the admin for access</span>' : pend ? '<span class="chip warn">request pending</span>'
         : `<div class="req-row"><input data-msg="${esc(a.slug)}" placeholder="Why do you need it? (optional)" maxlength="300"><button class="btn small" data-req="${esc(a.slug)}">Request access</button></div>${denied ? '<div class="muted small">Your last request was denied.</div>' : ''}`;
     }
-    return `<div class="tile${a.enabled ? '' : ' off'}"><div class="tile-head"><span class="tile-ic">${esc((a.name || '?').trim().charAt(0).toUpperCase())}</span><div><b>${esc(a.name)}</b>${a.description ? `<div class="muted small">${esc(a.description)}</div>` : ''}</div></div><div class="tile-body">${body}</div></div>`;
+    return `<div class="tile${a.enabled ? '' : ' off'}"><div class="tile-head"><span class="tile-ic">${esc((a.name || '?').trim().charAt(0).toUpperCase())}</span><div style="min-width:0"><b>${esc(a.name)}</b><div class="muted small" data-desc="${esc(a.slug)}">${esc(a.description || '')}${isAdmin ? ` <button class="link" data-dedit="${esc(a.slug)}" title="Edit description">${a.description ? '✎ Edit' : '✎ Add a description'}</button>` : ''}</div></div></div><div class="tile-body">${body}</div></div>`;
   };
   // Parents: approve kids' accounts and settings here. Kids: see who has been asked.
   const g = isAdmin ? null : await fetch('/guardians', { headers: { authorization: state.token }, cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
@@ -1145,6 +1145,21 @@ async function viewHome() {
     <div class="tiles">${apps.map(tile).join('') || '<p class="muted">No apps have been added yet.</p>'}</div>`;
   bindOpen(main(), ssoSlugs);
   main().onclick = guard(async (e) => {
+    // Admins edit an app's description right on the Dashboard tile.
+    const de = e.target.closest('button[data-dedit]');
+    if (de) {
+      const slug = de.dataset.dedit, app = apps.find((x) => x.slug === slug), box = de.closest('[data-desc]'); if (!app || !box) return;
+      box.innerHTML = `<textarea rows="3" maxlength="300" style="width:100%" aria-label="Description for ${esc(app.name)}">${esc(app.description || '')}</textarea><div class="row" style="gap:6px;margin-top:6px"><button class="btn primary small" data-dsave="${esc(slug)}">Save</button><button class="btn small" data-dcancel="1">Cancel</button></div>`;
+      box.querySelector('textarea').focus(); return;
+    }
+    if (e.target.closest('button[data-dcancel]')) return route();
+    const ds = e.target.closest('button[data-dsave]');
+    if (ds) {
+      const app = apps.find((x) => x.slug === ds.dataset.dsave); if (!app) return;
+      const val = ds.closest('[data-desc]').querySelector('textarea').value.trim().slice(0, 300);
+      await api('PATCH', `/api/collections/portal_apps/records/${app.id}`, { description: val });
+      await audit('app.update', app.slug, { description: val }); toast('Description saved'); return route();
+    }
     const gb = e.target.closest('button[data-gact]');
     if (gb) {
       e.preventDefault();
