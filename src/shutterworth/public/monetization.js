@@ -166,7 +166,7 @@ body.has-ad main .wrap{padding-bottom:110px}
         <div class="prow"><button class="pbtn" id="swReset" type="button">Undo this device's purchase</button><button class="pbtn" id="swLock" type="button">Hide admin</button></div>
       </div>`;
     const setView = $("setView");
-    setView.insertBefore(panel, setView.querySelector(".panel:not(#aiPanel)") || null);
+    setView.insertBefore(panel, setView.querySelector(".panel") || null);
     $("swBuy").onclick = buy;
     $("swRestore").onclick = restore;
     $("swEnabled").onchange = e => saveServer({ enabled: e.target.checked });

@@ -86,6 +86,15 @@ async function userFromToken(token) {
   try { const j = await raw("POST", "/api/collections/" + encodeURIComponent(COLL) + "/auth-refresh", { token }); return j.record; }
   catch (e) { if ([400, 401, 403, 404].includes(e.status)) return null; throw e; }
 }
+// Registered people, for picking family members. Only name and email leave here, and only to signed-in users.
+async function listUsers() {
+  const out = []; for (let page = 1; page <= 10; page++) {
+    const j = await asSuper("GET", rec(`?page=${page}&perPage=200&sort=name&fields=id,name,email`));
+    out.push(...(j.items || []).map((u) => ({ id: u.id, name: u.name || u.email.split("@")[0], email: u.email })));
+    if (page >= (j.totalPages || 1)) break;
+  }
+  return out;
+}
 async function getUser(id) { return asSuper("GET", rec("/" + encodeURIComponent(id))); }
 async function setDob(id, dob) { await asSuper("PATCH", rec("/" + encodeURIComponent(id)), { dob }); }
-module.exports = { getUser, setDob, userFromToken, ready, asSuper, findByEmail, createUser, usersSchema, PBError, collection: COLL };
+module.exports = { listUsers, getUser, setDob, userFromToken, ready, asSuper, findByEmail, createUser, usersSchema, PBError, collection: COLL };

@@ -383,18 +383,6 @@ body.in-list .tot b{font-size:.9rem}
       <div class="list" id="binList"></div>
     </section>
     <section id="setView" hidden>
-      <div class="panel" id="aiPanel">
-        <h2>AI photo identification</h2>
-        <p>Photos are identified and valued by an AI service of your choice. Your key is stored on this server only.</p>
-        <div class="aiform">
-          <label>Service<select id="aiProvider"><option value="gemini">Google Gemini</option><option value="openrouter">OpenRouter</option><option value="anthropic">Anthropic (Claude)</option><option value="openai">OpenAI-compatible</option></select></label>
-          <label>API key<input id="aiKey" type="password" autocomplete="off" placeholder="Paste your API key"></label>
-          <label id="aiUrlRow">Server URL<input id="aiUrl" autocomplete="off" placeholder="https://api.openai.com/v1"></label>
-          <label>Model<input id="aiModel" autocomplete="off"></label>
-          <label>Quick model<input id="aiQuick" autocomplete="off" placeholder="Used for categorising; blank = same as Model"></label>
-        </div>
-        <div class="prow"><button class="pbtn accent" id="aiSave" type="button">Save</button><button class="pbtn" id="aiTest" type="button">Test connection</button><span class="count" id="aiNote"></span></div>
-      </div>
       <div class="panel">
         <h2>Depreciation rates</h2>
         <p>Yearly rate per category, applied on a reducing balance. Items follow their category's rate unless you set their own rate in the item's details.</p>
@@ -1570,7 +1558,6 @@ $("addForm").addEventListener("submit", async e => {
 })();
 })();
 </script>
-<script src="ai-settings.js"></script>
 <script src="monetization.js"></script>
 <script src="storage-settings.js"></script>
 <script src="pwtoggle.js"></script>

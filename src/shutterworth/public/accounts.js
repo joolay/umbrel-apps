@@ -274,7 +274,6 @@
     }
     renderAccount();
     // only admins see the AI key settings
-    const ai = $("aiPanel"); if (ai) ai.hidden = !(user && user.isAdmin);
     if (user && user.isAdmin) buildAdmin();
     // the trial count changes as photos are identified, so refresh it whenever Settings opens
     new MutationObserver(() => { if (!$("setView").hidden) { refreshMe(); if (user && user.isAdmin) loadUsers(); } }).observe($("setView"), { attributes: true, attributeFilter: ["hidden"] });
