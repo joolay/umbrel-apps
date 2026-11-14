@@ -28,6 +28,8 @@ const COLL = process.env.POCKETBASE_USERS_COLLECTION || "users";
 const APP = (process.env.POCKETBASE_APP_ID || "shutterworth").trim().toLowerCase();
 const ACCESS = process.env.POCKETBASE_ACCESS_COLLECTION || "app_access";
 
+const APP_NAME = (process.env.POCKETBASE_APP_NAME || (APP === "shutterworth" ? "ShutterWorth" : APP)).trim();
+
 const enabled = !!(URL_BASE && SU_EMAIL && SU_PASS);
 
 class PBError extends Error {
@@ -112,6 +114,7 @@ function ensureSchema() {
       const akey = acol.fields ? "fields" : "schema";
       if (!(acol[akey] || []).some(f => f.name === "access")) await asSuper("PATCH", "/api/collections/" + encodeURIComponent(ACCESS), { [akey]: [...(acol[akey] || []), mk("access", "bool")] });
     }
+    await ensurePortalApp();
   })().catch(e => { ready = null; throw e; });
   return ready;
 }
@@ -138,16 +141,111 @@ async function getAccess(userId, create) {
   return a;
 }
 
+
+/* ---------- Joolzapp Portal (optional): per-app approval, app on/off, and shared user preferences ---------- */
+// Joolzapp Portal keeps its settings in `portal_settings` (and apps in `portal_apps`, requests in `portal_requests`).
+// Precedence: global < app < user (all apps) < user x app. `portal.access = false` blocks; `pref.*` are the person's
+// shared preferences (language, currency, timezone, dateFormat, timeFormat, units, theme). If those collections don't
+// exist (the portal isn't installed) every function here quietly returns null and the app falls back to its own rules.
+const portalCache = new Map();
+async function cached(key, ttl, fn) {
+  const c = portalCache.get(key);
+  if (c && Date.now() - c.at < ttl) return c.v;
+  let v; try { v = await fn(); } catch (e) { if (e.status === 404) v = null; else throw e; }
+  portalCache.set(key, { v, at: Date.now() });
+  return v;
+}
+const portalClear = () => portalCache.clear();
+const rank = r => r.scope === "global" ? 0 : r.scope === "app" ? 1 : (r.app ? 3 : 2);
+function resolvePortal(rows, userId) {
+  const mine = rows.filter(r => r.scope === "global" || (r.scope === "app" && r.app === APP) || (r.scope === "user" && r.user === userId && (r.app === "" || r.app === APP))).sort((a, b) => rank(a) - rank(b));
+  const eff = {}; for (const r of mine) eff[r.key] = r.value;
+  const prefs = {}; for (const [k, v] of Object.entries(eff)) if (k.startsWith("pref.")) prefs[k.slice(5)] = v;
+  return { access: eff["portal.access"] !== false, prefs };
+}
+async function portalRowsFor(userId) {
+  const f = `(key = 'portal.access' || key ~ 'pref.') && (scope = 'global' || (scope = 'app' && app = '${esc(APP)}') || (scope = 'user' && user = '${esc(userId)}'))`;
+  const j = await asSuper("GET", `/api/collections/portal_settings/records?page=1&perPage=200&filter=${q(f)}`);
+  return j.items || [];
+}
+async function portalApp() {
+  return cached("app", 10000, async () => {
+    const j = await asSuper("GET", `/api/collections/portal_apps/records?page=1&perPage=1&filter=${q(`slug = '${esc(APP)}'`)}`);
+    const a = (j.items || [])[0]; return a ? { enabled: a.enabled !== false, maintenance: !!a.maintenance, message: a.message || "" } : { enabled: true, maintenance: false, message: "" };
+  });
+}
+// { access, prefs, app } for one person, or null when the portal isn't set up.
+async function portalFor(userId) {
+  const rows = await cached("u:" + userId, 10000, () => portalRowsFor(userId));
+  if (rows === null) return null;
+  return { ...resolvePortal(rows, userId), app: await portalApp() };
+}
+// userId -> allowed, for the admin Users list (one pass instead of one query per person).
+async function portalAccessMap() {
+  const rows = await cached("all", 10000, async () => {
+    const out = []; let page = 1;
+    for (;;) {
+      const j = await asSuper("GET", `/api/collections/portal_settings/records?page=${page}&perPage=200&filter=${q(`key = 'portal.access' && (scope = 'global' || (scope = 'app' && app = '${esc(APP)}') || scope = 'user')`)}`);
+      out.push(...(j.items || []));
+      if (page >= (j.totalPages || 1) || page >= 50) break;
+      page++;
+    }
+    return out;
+  });
+  return rows === null ? null : (userId => resolvePortal(rows, userId).access);
+}
+const withPortal = async rec => ({ ...rec, portal: await portalFor(rec.id) });
+async function portalAvailable() { return (await cached("avail", 30000, async () => { await asSuper("GET", "/api/collections/portal_settings"); return true; })) === true; }
+// Allow or block one person for this app. Allowing also closes any pending request they made for it.
+async function setPortalAccess(userId, allowed) {
+  const f = `scope = 'user' && user = '${esc(userId)}' && app = '${esc(APP)}' && key = 'portal.access'`;
+  const ex = ((await asSuper("GET", `/api/collections/portal_settings/records?page=1&perPage=1&filter=${q(f)}`)).items || [])[0];
+  if (ex) await asSuper("PATCH", `/api/collections/portal_settings/records/${ex.id}`, { value: !!allowed });
+  else await asSuper("POST", "/api/collections/portal_settings/records", { scope: "user", user: userId, app: APP, key: "portal.access", value: !!allowed });
+  if (allowed) {
+    try {
+      const r = await asSuper("GET", `/api/collections/portal_requests/records?page=1&perPage=50&filter=${q(`user = '${esc(userId)}' && app = '${esc(APP)}' && status = 'pending'`)}`);
+      for (const x of r.items || []) await asSuper("PATCH", `/api/collections/portal_requests/records/${x.id}`, { status: "approved", decided_by: "ShutterWorth admin" });
+    } catch (e) { if (e.status !== 404) throw e; }
+  }
+  portalClear();
+}
+// Make sure this app is listed in the portal so people can find it and ask for access.
+async function ensurePortalApp() {
+  try {
+    const j = await asSuper("GET", `/api/collections/portal_apps/records?page=1&perPage=1&filter=${q(`slug = '${esc(APP)}'`)}`);
+    if (!(j.items || []).length) await asSuper("POST", "/api/collections/portal_apps/records", { slug: APP, name: APP_NAME, enabled: true });
+  } catch (e) { if (e.status !== 404 && e.status !== 400) console.error("Portal app registration:", e.message); }
+}
+// Sign-ups follow the users collection's own create rule, which the portal switches (null = closed).
+async function signupsOpen() {
+  const col = await cached("signups", 15000, () => asSuper("GET", "/api/collections/" + encodeURIComponent(COLL)));
+  return !col || col.createRule !== null;
+}
+// Clear the portal's rows for a person who is being deleted.
+async function portalForget(userId) {
+  for (const [coll, f] of [["portal_settings", `scope = 'user' && user = '${esc(userId)}'`], ["portal_requests", `user = '${esc(userId)}'`]]) {
+    try {
+      for (let i = 0; i < 20; i++) {
+        const j = await asSuper("GET", `/api/collections/${coll}/records?page=1&perPage=200&filter=${q(f)}`);
+        if (!(j.items || []).length) break;
+        for (const x of j.items) await asSuper("DELETE", `/api/collections/${coll}/records/${x.id}`);
+      }
+    } catch (e) { if (e.status !== 404) throw e; }
+  }
+  portalClear();
+}
+
 /* ---------- users ---------- */
 async function login(email, password) {
   await ensureSchema();
   const j = await raw("POST", colPath + "/auth-with-password", { body: { identity: email, password } });
-  return { ...j, record: merge(j.record, await getAccess(j.record.id, true)) };
+  return { ...j, record: await withPortal(merge(j.record, await getAccess(j.record.id, true))) };
 }
 async function verifyToken(token) {
   // PocketBase checks the signature and expiry; the record comes back fresh from the database.
   const j = await raw("POST", colPath + "/auth-refresh", { token });
-  return { ...j, record: merge(j.record, await getAccess(j.record.id, true)) };
+  return { ...j, record: await withPortal(merge(j.record, await getAccess(j.record.id, true))) };
 }
 async function createUser({ email, password, name }) {
   await ensureSchema();
@@ -171,12 +269,13 @@ async function listUsers(search) {
     if (page >= (j.totalPages || 1) || page >= 25) break;
     page++;
   }
-  return users.map(u => merge(u, byUser.get(u.id)));
+  const allowed = await portalAccessMap();
+  return users.map(u => { const m = merge(u, byUser.get(u.id)); return allowed ? { ...m, portal: { access: allowed(u.id), prefs: {}, app: null } } : m; });
 }
 async function getUser(id) {
   await ensureSchema();
   const u = await asSuper("GET", rec("/" + encodeURIComponent(id)));
-  return merge(u, await getAccess(id, true));
+  return withPortal(merge(u, await getAccess(id, true)));
 }
 // Changes the per-app part only (trial counters, unlimited). Used on every AI request, so it stays lean.
 async function updateAccess(id, data) {
@@ -200,6 +299,7 @@ async function deleteUser(id) {
     if (!(j.items || []).length) break;
     for (const a of j.items) await asSuper("DELETE", accPath("/" + encodeURIComponent(a.id)));
   }
+  await portalForget(id);
   return asSuper("DELETE", rec("/" + encodeURIComponent(id)));
 }
 // The oldest admin account: the person who set the app up. The inventory that existed before accounts moves to them.
@@ -227,4 +327,4 @@ async function findByEmail(email) {
   return (j.items || [])[0] || null;
 }
 
-module.exports = { enabled, PBError, login, verifyToken, createUser, listUsers, getUser, updateUser, updateAccess, deleteUser, countAdmins, findByEmail, firstAdmin, asSuper, superFetch, ensureSchema, collection: COLL, app: APP };
+module.exports = { portalAvailable, setPortalAccess, signupsOpen, enabled, PBError, login, verifyToken, createUser, listUsers, getUser, updateUser, updateAccess, deleteUser, countAdmins, findByEmail, firstAdmin, asSuper, superFetch, ensureSchema, collection: COLL, app: APP };

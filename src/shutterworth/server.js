@@ -121,7 +121,18 @@ function trialInfo(u) {
   const unlimited = !!(u.unlimited || u.isAdmin);
   return { unlimited, limit, used, remaining: unlimited ? null : Math.max(0, limit - used) };
 }
-const publicUser = u => ({ id: u.id, email: u.email || "", name: u.name || "", isAdmin: !!u.isAdmin, unlimited: !!u.unlimited, access: !!u.access, canOpen: !!(u.isAdmin || u.access),
+// Who may open the app. With Joolzapp Portal set up, the portal decides (per-app approval, app on/off, maintenance);
+// admins always get in. Without the portal, the app's own `access` flag applies as before.
+function gateOf(u) {
+  if (u.isAdmin) return { ok: true };
+  if (!u.portal) return u.access ? { ok: true } : { ok: false, reason: "no_access", message: "The admin hasn't opened this inventory to you yet. Ask them to give you access, then check again." };
+  const a = u.portal.app;
+  if (a && a.enabled === false) return { ok: false, reason: "disabled", message: "ShutterWorth is switched off right now." };
+  if (a && a.maintenance) return { ok: false, reason: "maintenance", message: a.message || "ShutterWorth is under maintenance. Try again soon." };
+  if (!u.portal.access) return { ok: false, reason: "no_access", message: "You need approval to use ShutterWorth. Open Joolzapp Portal, request access to ShutterWorth, then check again here." };
+  return { ok: true };
+}
+const publicUser = u => ({ id: u.id, email: u.email || "", name: u.name || "", isAdmin: !!u.isAdmin, unlimited: !!u.unlimited, access: u.portal ? u.portal.access : !!u.access, canOpen: gateOf(u).ok, gate: gateOf(u), prefs: (u.portal && u.portal.prefs) || {},
   trialUsed: Math.max(0, Math.floor(+u.trialUsed) || 0), trialLimit: Math.max(0, Math.floor(+u.trialLimit) || 0), created: u.created || "", trial: trialInfo(u) });
 
 const tokenCache = new Map();
@@ -173,7 +184,7 @@ async function accountRoutes(req, res, p, url) {
 
     if (p === "/api/account/register" && req.method === "POST") {
       if (throttled(req, "reg", 10, 3600e3)) return send(res, 429, { code: "slow_down", message: "Too many attempts. Try again later." }), true;
-      if (!loadSettings().signups) return send(res, 403, { code: "signups_closed", message: "New sign-ups are closed right now." }), true;
+      if (!loadSettings().signups || !(await pb.signupsOpen())) return send(res, 403, { code: "signups_closed", message: "New sign-ups are closed right now." }), true;
       const email = String(body.email || "").trim().toLowerCase(), password = String(body.password || ""), name = String(body.name || "").trim().slice(0, 80);
       if (!validEmail(email)) return send(res, 400, { code: "bad_email", message: "Enter a valid email address." }), true;
       if (password.length < 8 || password.length > 200) return send(res, 400, { code: "bad_password", message: "Use a password of at least 8 characters." }), true;
@@ -222,7 +233,8 @@ async function accountRoutes(req, res, p, url) {
       if (typeof body.name === "string") data.name = body.name.trim().slice(0, 80);
       if (body.email !== undefined) { const e = String(body.email).trim().toLowerCase(); if (!validEmail(e)) return send(res, 400, { code: "bad_email", message: "Enter a valid email address." }), true; data.email = e; }
       if (typeof body.unlimited === "boolean") data.unlimited = body.unlimited;
-      if (typeof body.access === "boolean") data.access = body.access;
+      let portalChanged = false;
+      if (typeof body.access === "boolean") { if (await pb.portalAvailable()) { await pb.setPortalAccess(id, body.access); portalChanged = true; } else data.access = body.access; }
       if (typeof body.isAdmin === "boolean") {
         if (id === me.id && !body.isAdmin) return send(res, 400, { code: "self_demote", message: "You can't remove your own admin access." }), true;
         data.isAdmin = body.isAdmin;
@@ -234,7 +246,7 @@ async function accountRoutes(req, res, p, url) {
         if (body.password.length < 8 || body.password.length > 200) return send(res, 400, { code: "bad_password", message: "Use a password of at least 8 characters." }), true;
         data.password = body.password; data.passwordConfirm = body.password;
       }
-      if (!Object.keys(data).length) return send(res, 400, { code: "nothing", message: "Nothing to change." }), true;
+      if (!Object.keys(data).length) { if (portalChanged) { tokenCache.clear(); send(res, 200, { user: publicUser(await pb.getUser(id)) }); return true; } return send(res, 400, { code: "nothing", message: "Nothing to change." }), true; }
       try { const u = await pb.updateUser(id, data); tokenCache.clear(); send(res, 200, { user: publicUser(u) }); }
       catch (e) {
         if (e instanceof pb.PBError && e.status === 404) return send(res, 404, { code: "not_found", message: "That user no longer exists." }), true;
@@ -261,6 +273,7 @@ async function aiGate(req, body) {
   const u = await currentUser(req);
   if (!u) return { deny: { status: 401, body: { code: "signin_required", message: "Sign in under Settings > Account to use photo identification." } } };
   const fresh = await pb.getUser(u.id);
+  if (fresh.portal) { const g = gateOf(fresh); if (!g.ok) return { deny: { status: 403, body: { code: g.reason, message: g.message } } }; }
   const info = trialInfo(fresh);
   const counted = Array.isArray(body.images) && body.images.length > 0;
   if (info.unlimited || !counted) return { id: u.id, reserved: false };
@@ -314,10 +327,10 @@ const server = http.createServer(async (req, res) => {
       } else {
         let u = null, err = null;
         try { u = await currentUser(req); } catch (e) { err = e; }
-        if (!(u && (u.isAdmin || u.access))) {
+        if (!(u && gateOf(u).ok)) {
           if (isPage) { res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" }); return fs.createReadStream(path.join(PUBLIC_DIR, "gate.html")).pipe(res); }
           if (err) return send(res, 503, { code: "accounts_unavailable", message: err.message });
-          return u ? send(res, 403, { code: "no_access", message: "The admin hasn't opened this inventory to you yet." }) : send(res, 401, { code: "signin_required", message: "Sign in to continue." });
+          return u ? send(res, 403, { code: gateOf(u).reason || "no_access", message: gateOf(u).message }) : send(res, 401, { code: "signin_required", message: "Sign in to continue." });
         }
         user = u;
       }
@@ -330,7 +343,7 @@ const server = http.createServer(async (req, res) => {
       return;
     }
     if (p === "/api/docs" && req.method === "GET") return send(res, 200, { docs: await store.docs(user) });
-    if (p === "/api/app-config") return send(res, 200, { googleClientId: process.env.GOOGLE_CLIENT_ID || "", accounts: pb.enabled, ...(pb.enabled ? { trialLimit: loadSettings().trialLimit, signups: loadSettings().signups } : {}) });
+    if (p === "/api/app-config") return send(res, 200, { googleClientId: process.env.GOOGLE_CLIENT_ID || "", accounts: pb.enabled, ...(pb.enabled ? { trialLimit: loadSettings().trialLimit, signups: loadSettings().signups && await pb.signupsOpen() } : {}) });
     if (await accountRoutes(req, res, p, url)) return;
 
     if (p === "/api/write" && req.method === "POST") {

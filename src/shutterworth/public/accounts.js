@@ -229,9 +229,15 @@
   }
 
   /* ---------- start ---------- */
+  // Shared Joolzapp Portal preferences (currency, theme, time zone...). Kept locally too so the next page load starts with them.
+  function applyPrefs(p) {
+    p = p || {};
+    try { const was = localStorage.getItem("sw_prefs") || "{}", now = JSON.stringify(p); if (was === now) return; localStorage.setItem("sw_prefs", now); } catch (e) {}
+    if (window.swApplyPrefs) window.swApplyPrefs(p);
+  }
   async function refreshMe() {
     if (!getToken()) return;
-    try { const j = await api("api/account/me"); user = j.user; renderAccount(); }
+    try { const j = await api("api/account/me"); user = j.user; applyPrefs(user.prefs); renderAccount(); }
     catch (e) { if (e.status === 401) { setToken(""); location.reload(); } }
   }
 
@@ -242,7 +248,7 @@
     accountPanel = el("div", "panel acct"); accountPanel.id = "swAccountPanel";
     mount(accountPanel, true);
     if (getToken()) {
-      try { user = (await api("api/account/me")).user; }
+      try { user = (await api("api/account/me")).user; applyPrefs(user.prefs); }
       catch (e) { if (e.status === 401) setToken(""); }
     }
     renderAccount();
@@ -253,7 +259,7 @@
     new MutationObserver(() => { if (!$("setView").hidden) { refreshMe(); if (user && user.isAdmin) loadUsers(); } }).observe($("setView"), { attributes: true, attributeFilter: ["hidden"] });
   }
   // Sign out sits in the top bar (shown only when accounts are on).
-  const signOut = () => { setToken(""); fetch("api/account/logout", { method: "POST" }).catch(() => {}).then(() => location.reload()); };
+  const signOut = () => { setToken(""); try { localStorage.removeItem("sw_prefs"); } catch (e) {} fetch("api/account/logout", { method: "POST" }).catch(() => {}).then(() => location.reload()); };
   const showOut = () => nativeFetch("api/app-config", { cache: "no-store" }).then(r => r.json()).then(c => {
     const b = document.getElementById("outBtn"); if (c.accounts && b) { b.hidden = false; b.onclick = signOut; }
   }).catch(() => {});
