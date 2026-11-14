@@ -36,7 +36,8 @@ x-pocketbase: {
         {"name": "name", "type": "text", "required": true},
         {"name": "phone", "type": "text"},
         {"name": "currency", "type": "text"},
-        {"name": "categories", "type": "json", "maxSize": 5000000}
+        {"name": "categories", "type": "json", "maxSize": 5000000},
+        {"name": "branches", "type": "json", "maxSize": 200000}
       ]
     }
   ]

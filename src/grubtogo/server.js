@@ -213,9 +213,9 @@ function readState(u) { try { return JSON.parse(fs.readFileSync(stateFile(u), "u
 function writeState(u, s) { const f = stateFile(u), t = f + ".tmp"; fs.writeFileSync(t, JSON.stringify(s)); fs.renameSync(t, f); }
 function cleanState(s) {
   if (!s || typeof s !== "object") return null;
-  // shown: the restaurant ids this person chose to see (null = they haven't chosen, so everything shows)
-  const shown = Array.isArray(s.shown) ? s.shown.filter(x => typeof x === "string" && /^[A-Za-z0-9]{1,40}$/.test(x)).slice(0, 3000) : null;
-  return { restaurants: [], carts: s.carts && typeof s.carts === "object" && !Array.isArray(s.carts) ? s.carts : {}, shown, at: Date.now() };
+  // hidden: menus this person switched off in Settings. seen: menus they have opened (the rest show a NEW tag). null = not known yet.
+  const ids = a => Array.isArray(a) ? [...new Set(a.filter(x => typeof x === "string" && /^[A-Za-z0-9]{1,40}$/.test(x)))].slice(0, 3000) : null;
+  return { restaurants: [], carts: s.carts && typeof s.carts === "object" && !Array.isArray(s.carts) ? s.carts : {}, hidden: ids(s.hidden) || [], seen: ids(s.seen), at: Date.now() };
 }
 
 /* ---------- HTTP ---------- */

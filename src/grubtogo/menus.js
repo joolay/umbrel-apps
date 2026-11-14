@@ -9,14 +9,22 @@ const base = "/api/collections/" + encodeURIComponent(COLL);
 let ready = null;
 function ensure() {
   if (!ready) ready = (async () => {
-    try { await pb.asSuper("GET", base); return; } catch (e) { if (e.status !== 404) throw e; }
+    try {
+      // Already there: make sure it has every field this version needs (older versions lacked "branches").
+      const col = await pb.asSuper("GET", base), key = col.fields ? "fields" : "schema", have = col[key] || [];
+      if (!have.some(f => f.name === "branches")) {
+        const f = key === "fields" ? { name: "branches", type: "json", maxSize: 200000 } : { name: "branches", type: "json", required: false, options: { maxSize: 200000 } };
+        await pb.asSuper("PATCH", base, { [key]: [...have, f] });
+      }
+      return;
+    } catch (e) { if (e.status !== 404) throw e; }
     const users = await pb.asSuper("GET", "/api/collections/" + encodeURIComponent(pb.collection));
     const key = users.fields ? "fields" : "schema"; // PocketBase 0.23+ / 0.22
     const mk = (name, type, required, opts) => key === "fields" ? { name, type, required: !!required, ...(opts || {}) } : { name, type, required: !!required, options: { ...(opts || {}) } };
     try {
       await pb.asSuper("POST", "/api/collections", {
         name: COLL, type: "base",
-        [key]: [mk("owner", "text", true), mk("ownerName", "text"), mk("name", "text", true), mk("phone", "text"), mk("currency", "text"), mk("categories", "json", false, { maxSize: 5000000 })],
+        [key]: [mk("owner", "text", true), mk("ownerName", "text"), mk("name", "text", true), mk("phone", "text"), mk("currency", "text"), mk("categories", "json", false, { maxSize: 5000000 }), mk("branches", "json", false, { maxSize: 200000 })],
         // No API rules: only this server (as superuser) reads or writes the archive, and it enforces who may edit.
         listRule: null, viewRule: null, createRule: null, updateRule: null, deleteRule: null,
       });
@@ -37,6 +45,11 @@ function cleanCategories(cats) {
   })).filter(c => c.items.length);
   return out.length ? out : null;
 }
+// Franchises: a menu can list several branches, each with its own phone number.
+function cleanBranches(b) {
+  if (!Array.isArray(b)) return null;
+  return b.slice(0, 40).map(x => ({ name: str(x && x.name, 80), phone: str(x && x.phone, 40) })).filter(x => x.name || x.phone);
+}
 // A whole new menu. Returns null when there's nothing usable in it.
 function cleanMenu(x) {
   if (!x || typeof x !== "object") return null;
@@ -46,7 +59,7 @@ function cleanMenu(x) {
 }
 
 const canEdit = (user, rec) => !!(user && (user.isAdmin || user.id === rec.owner));
-const shape = (rec, user) => ({ id: rec.id, name: rec.name || "", phone: rec.phone || "", currency: rec.currency || "R", categories: Array.isArray(rec.categories) ? rec.categories : [],
+const shape = (rec, user) => ({ id: rec.id, name: rec.name || "", phone: rec.phone || "", branches: Array.isArray(rec.branches) ? rec.branches : [], currency: rec.currency || "R", categories: Array.isArray(rec.categories) ? rec.categories : [],
   owner: rec.owner, ownerName: rec.ownerName || "", canEdit: canEdit(user, rec), updated: rec.updated || "" });
 
 async function list(user) {
@@ -79,6 +92,7 @@ async function update(user, id, body) {
   const patch = {};
   if (body.name !== undefined) { const n = str(body.name, 120); if (n) patch.name = n; }
   if (body.phone !== undefined) patch.phone = str(body.phone, 40);
+  if (body.branches !== undefined) { const b = cleanBranches(body.branches); if (b) patch.branches = b; }
   if (body.currency !== undefined) patch.currency = str(body.currency, 8) || "R";
   if (body.categories !== undefined) { const c = cleanCategories(body.categories); if (!c) return { status: 400, message: "A menu needs at least one item." }; patch.categories = c; }
   const rec = Object.keys(patch).length ? await pb.asSuper("PATCH", `${base}/records/${encodeURIComponent(id)}`, patch) : g.rec;

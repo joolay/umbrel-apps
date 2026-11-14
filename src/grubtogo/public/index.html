@@ -56,7 +56,8 @@ label.drop b{display:block;color:var(--ink);font-size:17px;margin-bottom:4px}
 .kv{display:flex;justify-content:space-between;padding:4px 0}
 .kv.big{font-size:19px;font-weight:800;border-top:1px solid var(--line);margin-top:6px;padding-top:10px}
 .link{background:none;border:0;color:var(--accent);font:600 14px system-ui;padding:4px 0}
-.search{margin-bottom:6px}
+.search{margin-bottom:6px;position:sticky;top:var(--hh,60px);z-index:4;box-shadow:0 6px 0 var(--bg)}
+.pill.new{background:var(--accent);color:#fff;margin-left:4px;vertical-align:middle}
 .pill{display:inline-block;background:var(--accent2);color:var(--accent);border-radius:99px;padding:2px 10px;font-size:12px;font-weight:700}
 .chips{display:flex;flex-wrap:wrap;gap:6px}
 .chip{border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:99px;padding:7px 13px;font:600 14px system-ui}
@@ -76,7 +77,7 @@ label.drop b{display:block;color:var(--ink);font-size:17px;margin-bottom:4px}
 <script>
 /* ---------- state & storage ---------- */
 const KEY = 'takeout.v1';   // old local save: copied up to your account once, so menus from before sign-in carry over
-let S = { restaurants: [], carts: {}, shown: null };
+let S = { restaurants: [], carts: {}, hidden: [], seen: null };
 try { const raw = localStorage.getItem(KEY); if (raw) S = Object.assign(S, JSON.parse(raw)); } catch (e) {}
 
 let view = 'home';         // home | add | menu | summary | orders | settings
@@ -94,7 +95,7 @@ async function api(path, opts) {
 }
 function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} clearTimeout(pushT); pushT = setTimeout(push, 800); }
 async function push() {
-  try { await api('api/state', { method: 'PUT', body: JSON.stringify({ carts: S.carts, shown: S.shown }) }); }
+  try { await api('api/state', { method: 'PUT', body: JSON.stringify({ carts: S.carts, hidden: S.hidden, seen: S.seen }) }); }
   catch (e) { if (e.status === 401 || e.status === 403) location.reload(); }
 }
 async function loadMenus() { S.restaurants = (await api('api/menus')).menus || []; }
@@ -102,11 +103,11 @@ async function loadMenus() { S.restaurants = (await api('api/menus')).menus || [
   try { me = (await api('api/account/me')).user; } catch (e) {}
   try { ai = await api('api/ai/status'); } catch (e) {}
   // Menus now live in the shared archive on the server. Anything saved the old way (on this device, or in your account) is copied up once.
-  let legacy = [], carts = Object.assign({}, S.carts || {}), shown = Array.isArray(S.shown) ? S.shown : null;
-  try { const { state } = await api('api/state'); if (state) { Object.assign(carts, state.carts || {}); if (Array.isArray(state.shown)) shown = state.shown; if (Array.isArray(state.restaurants)) legacy = state.restaurants; } } catch (e) {}
+  let legacy = [], carts = Object.assign({}, S.carts || {}), hidden = Array.isArray(S.hidden) ? S.hidden : [], seen = Array.isArray(S.seen) ? S.seen : null;
+  try { const { state } = await api('api/state'); if (state) { Object.assign(carts, state.carts || {}); if (Array.isArray(state.hidden)) hidden = state.hidden; if (Array.isArray(state.seen)) seen = state.seen; if (Array.isArray(state.restaurants)) legacy = state.restaurants; } } catch (e) {}
   let done = false; try { done = !!localStorage.getItem('grubtogo.migrated'); } catch (e) {}
   if (!done && !legacy.length) legacy = (S.restaurants || []).slice();
-  S = { restaurants: [], carts, shown };
+  S = { restaurants: [], carts, hidden, seen };
   let failed = 0;
   for (const r of legacy) {
     try { const m = (await api('api/menus', { method: 'POST', body: JSON.stringify(r) })).menu; if (S.carts[r.id]) { S.carts[m.id] = S.carts[r.id]; delete S.carts[r.id]; } }
@@ -115,6 +116,8 @@ async function loadMenus() { S.restaurants = (await api('api/menus')).menus || [
   if (!failed) { try { localStorage.setItem('grubtogo.migrated', '1'); } catch (e) {} }
   if (legacy.length) push();
   try { await loadMenus(); } catch (e) { error = e.message; }
+  // The first time on this account, everything already in the archive counts as seen; only menus added after that are NEW.
+  if (!Array.isArray(S.seen) && !error) { S.seen = S.restaurants.map(r => r.id); push(); }
   render();
 })();
 
@@ -141,9 +144,11 @@ const cartCount = r => cartLines(r).reduce((a, l) => a + l.qty, 0);
 const lineCost = l => (l.item.price || 0) * l.qty;
 const hasPrices = r => cartLines(r).some(l => l.item.price != null);
 const telHref = p => 'tel:' + String(p || '').replace(/[^\d+]/g, '');
-// Which archive restaurants this person has chosen to see (Settings). Until they choose, everything shows.
-const isShown = r => !Array.isArray(S.shown) || S.shown.includes(r.id);
-const visibleRests = () => S.restaurants.filter(isShown);
+// Every menu in the shared archive shows up for everyone (new ones with a NEW tag until opened), except those switched off in Settings.
+const isShown = r => !(S.hidden || []).includes(r.id);
+const isNew = r => Array.isArray(S.seen) && !S.seen.includes(r.id);
+const markSeen = id => { if (Array.isArray(S.seen) && !S.seen.includes(id)) { S.seen.push(id); save(); } };
+const visibleRests = () => S.restaurants.filter(isShown).sort((a, b) => (isNew(b) - isNew(a)) || a.name.localeCompare(b.name));
 const activeRests = () => visibleRests().filter(r => cartCount(r) > 0);
 
 function bill(r) {
@@ -170,6 +175,7 @@ let tt; function toast(m) { const t = $('#toast'); t.textContent = m; t.hidden =
 /* ---------- render ---------- */
 function render() {
   const h = $('#hdr'), a = $('#app'), bar = $('#bar');
+  setTimeout(() => document.documentElement.style.setProperty('--hh', h.offsetHeight + 'px'), 0);
   bar.hidden = true;
   const back = t => `<button class="icon-btn" data-a="${t}">‹</button>`;
   if (view === 'home') {
@@ -202,9 +208,10 @@ function settingsHTML() {
     <div class="chips">${chips}</div>
     <div class="row" style="margin-top:8px"><span class="mute">Custom %</span><input id="dtipc" type="number" inputmode="decimal" min="0" max="100" step="0.5" value="${t}" style="width:90px"></div></div>
     <div class="card"><div class="sub-h" style="margin-top:0">Restaurants in my app</div>
-      <p class="mute">Everyone's uploaded menus are in the shared archive. Tick the ones you want to see on your home screen.</p>
+      <p class="mute">Every menu anyone adds appears for you automatically, marked NEW until you open it. Untick the ones you don't want to see.</p>
       <div class="row" style="gap:8px;margin-bottom:8px"><button class="btn sec" data-a="rest-all">Select all</button><button class="btn sec" data-a="rest-none">Select none</button></div>
-      ${S.restaurants.map(r => `<label class="row" style="gap:10px;padding:8px 0;border-top:1px solid #0001;cursor:pointer"><input type="checkbox" data-rest="${r.id}" ${isShown(r) ? 'checked' : ''} style="width:auto"><span class="grow"><b>${esc(r.name)}</b><span class="mute" style="display:block;font-size:13px">${itemsOf(r).length} items${r.ownerName ? ' · by ' + esc(r.ownerName) : ''}</span></span></label>`).join('') || '<p class="mute">No menus in the archive yet.</p>'}
+      <input class="search" id="q" type="text" placeholder="Search restaurants…" value="${esc(query)}">
+      ${S.restaurants.filter(r => !query.trim() || r.name.toLowerCase().includes(query.trim().toLowerCase())).map(r => `<label class="row" style="gap:10px;padding:8px 0;border-top:1px solid #0001;cursor:pointer"><input type="checkbox" data-rest="${r.id}" ${isShown(r) ? 'checked' : ''} style="width:auto"><span class="grow"><b>${esc(r.name)}</b> ${isNew(r) ? '<span class="pill new">NEW</span>' : ''}<span class="mute" style="display:block;font-size:13px">${itemsOf(r).length} items${r.ownerName ? ' · by ' + esc(r.ownerName) : ''}</span></span></label>`).join('') || '<p class="mute">No menus in the archive yet.</p>'}
     </div>`;
 }
 
@@ -218,15 +225,18 @@ function aiNote() {
     <input id="ai-model" type="text" placeholder="Model (optional)" autocomplete="off"><div style="height:8px"></div>
     <button class="btn" data-a="ai-save">Save key</button></div>`;
 }
+const phoneLine = r => (r.branches || []).length ? `${r.branches.length} branch${r.branches.length > 1 ? 'es' : ''}` : (r.phone ? esc(r.phone) : 'no phone yet');
 function homeHTML() {
-  const list = visibleRests().map(r => `
+  const sq = query.trim().toLowerCase(), shown = visibleRests().filter(r => !sq || r.name.toLowerCase().includes(sq));
+  const list = shown.map(r => `
     <div class="card row" data-a="open" data-id="${r.id}" style="cursor:pointer">
-      <div class="grow"><div style="font-weight:700;font-size:17px">${esc(r.name)}</div>
-      <div class="mute">${itemsOf(r).length} items${r.phone ? ' · ' + esc(r.phone) : ' · no phone yet'}${r.ownerName ? ' · by ' + esc(r.ownerName) : ''}</div></div>
+      <div class="grow"><div style="font-weight:700;font-size:17px">${esc(r.name)} ${isNew(r) ? '<span class="pill new">NEW</span>' : ''}</div>
+      <div class="mute">${itemsOf(r).length} items · ${phoneLine(r)}${r.ownerName ? ' · by ' + esc(r.ownerName) : ''}</div></div>
       ${cartCount(r) ? `<span class="pill">${cartCount(r)} in order</span>` : ''}<span class="mute">›</span>
     </div>`).join('');
-  return `${aiNote()}${list || `<div class="card" style="text-align:center;padding:30px 16px"><div style="font-size:42px">📋</div><h2 style="margin:6px 0">${S.restaurants.length ? 'No restaurants chosen' : 'No menus yet'}</h2><p class="mute">${S.restaurants.length ? 'Pick the restaurants you want to see in Settings, or add a new menu.' : 'Upload a photo, PDF or link of a restaurant menu. It joins the shared archive for everyone.'}</p></div>`}
-    <button class="btn" data-a="add">＋ Add a menu</button><div style="height:8px"></div><button class="btn sec" data-a="settings">☰ Choose restaurants${S.restaurants.length > visibleRests().length ? ` · ${S.restaurants.length - visibleRests().length} hidden` : ''}</button><div style="height:8px"></div>
+  const empty = sq && !shown.length ? `<div class="card" style="text-align:center">No restaurant matches “${esc(query)}”.</div>` : '';
+  return `${aiNote()}<input class="search" id="q" type="text" placeholder="Search restaurants…" value="${esc(query)}">${empty || list || `<div class="card" style="text-align:center;padding:30px 16px"><div style="font-size:42px">📋</div><h2 style="margin:6px 0">${S.restaurants.length ? 'No restaurants showing' : 'No menus yet'}</h2><p class="mute">${S.restaurants.length ? 'Every restaurant is switched off. Turn some back on in Settings, or add a new menu.' : 'Upload a photo, PDF or link of a restaurant menu. It joins the shared archive for everyone.'}</p></div>`}
+    <button class="btn" data-a="add">＋ Add a menu</button><div style="height:8px"></div><button class="btn sec" data-a="settings">☰ Choose which restaurants show${S.restaurants.length > visibleRests().length ? ` · ${S.restaurants.length - visibleRests().length} hidden` : ''}</button><div style="height:8px"></div>
     <p class="mute" style="text-align:center">Menus are shared with everyone who uses GrubToGo. Only the person who added a menu, or an admin, can change it.</p>`;
 }
 
@@ -244,8 +254,14 @@ function addHTML() {
 
 function menuHTML(r) {
   const q = query.trim().toLowerCase(), c = cart();
+  const bs = r.branches || [];
+  const branchRows = r.canEdit
+    ? bs.map((b, i) => `<div class="row" style="gap:6px;margin-top:6px"><input type="text" data-bi="${i}" data-bf="name" value="${esc(b.name)}" placeholder="Branch (e.g. Sandton)"><input type="tel" data-bi="${i}" data-bf="phone" value="${esc(b.phone)}" placeholder="Phone"><button class="icon-btn" data-a="del-branch" data-i="${i}" title="Remove branch">✕</button></div>`).join('')
+      + `<button class="link" data-a="add-branch">＋ Add a branch (franchise)</button>`
+    : bs.map(b => `<div class="kv"><span>${esc(b.name || 'Branch')}</span><a href="${telHref(b.phone)}">${esc(b.phone)}</a></div>`).join('');
   let out = `<div class="card"><div class="mute" style="margin-bottom:6px">Restaurant phone${r.ownerName ? ' · added by ' + esc(r.ownerName) : ''}${r.canEdit ? '' : ' · view only'}</div>
-    <input id="phone" type="tel" value="${esc(r.phone || '')}" placeholder="${r.canEdit ? 'Add phone number' : 'No phone number'}"${r.canEdit ? '' : ' readonly'}></div>
+    <input id="phone" type="tel" value="${esc(r.phone || '')}" placeholder="${r.canEdit ? 'Main phone number' : 'No phone number'}"${r.canEdit ? '' : ' readonly'}>
+    ${bs.length || r.canEdit ? `<div class="mute" style="margin:10px 0 2px">Branches</div>${branchRows}` : ''}</div>
     <input class="search" id="q" type="text" placeholder="Search menu…" value="${esc(query)}">`;
   for (const cat of r.categories) {
     const items = cat.items.filter(i => !q || (i.name + ' ' + (i.description || '')).toLowerCase().includes(q));
@@ -260,8 +276,28 @@ function menuHTML(r) {
 }
 
 /* ----- per-restaurant summary + bill ----- */
+// Franchises: which branch's number to call. Each person picks their own branch for an order (or types another number).
+function contactOf(r) {
+  const c = cartOf(r.id), bs = (r.branches || []).filter(b => b.phone);
+  if (c.branch === 'custom') return { branch: c.customName || 'My branch', phone: c.customPhone || '' };
+  const b = bs.find(x => x.name === c.branch);
+  if (b) return { branch: b.name, phone: b.phone };
+  if (r.phone) return { branch: '', phone: r.phone };
+  return bs.length ? { branch: bs[0].name, phone: bs[0].phone } : { branch: '', phone: '' };
+}
+function branchPickerHTML(r) {
+  const c = cartOf(r.id), bs = (r.branches || []).filter(b => b.phone), cur = contactOf(r);
+  if (!bs.length && c.branch !== 'custom') return `<div style="text-align:center"><button class="link" data-a="branch-custom" data-id="${r.id}">Different branch? Use another number</button></div>`;
+  const sel = c.branch === 'custom' ? 'custom' : cur.branch;
+  const opts = (r.phone ? `<option value="" ${sel === '' ? 'selected' : ''}>Main number · ${esc(r.phone)}</option>` : '')
+    + bs.map(b => `<option value="${esc(b.name)}" ${sel === b.name ? 'selected' : ''}>${esc(b.name || 'Branch')} · ${esc(b.phone)}</option>`).join('')
+    + `<option value="custom" ${sel === 'custom' ? 'selected' : ''}>Another number…</option>`;
+  return `<div class="card"><div class="mute" style="margin-bottom:6px">Which branch are you ordering from?</div><select id="branch">${opts}</select>
+    ${c.branch === 'custom' ? `<div class="row" style="gap:8px;margin-top:8px"><input id="cname" type="text" placeholder="Branch name" value="${esc(c.customName || '')}"><input id="cphone" type="tel" placeholder="Phone number" value="${esc(c.customPhone || '')}"></div>` : ''}</div>`;
+}
 function callHTML(r, small) {
-  return r.phone ? `<a class="call ${small ? 'sm' : ''}" href="${telHref(r.phone)}">📞 Call ${esc(r.name)} · ${esc(r.phone)}</a>${small ? '' : `<div class="row" style="justify-content:center;margin-top:6px"><button class="link" data-a="copy-phone" data-id="${r.id}">Copy number</button></div>`}`
+  const ct = contactOf(r);
+  return ct.phone ? `<a class="call ${small ? 'sm' : ''}" href="${telHref(ct.phone)}">📞 Call ${esc(r.name)}${ct.branch ? ' (' + esc(ct.branch) + ')' : ''} · ${esc(ct.phone)}</a>${small ? '' : `<div class="row" style="justify-content:center;margin-top:6px"><button class="link" data-a="copy-phone" data-id="${r.id}">Copy number</button></div>`}`
     : `<div class="mute">No phone number saved – add one on the menu page.</div>`;
 }
 
@@ -274,6 +310,7 @@ function summaryHTML(r) {
   return `<div class="card"><div class="h">${esc(r.name)}</div>${rows}</div>
     <div class="card"><div class="mute" style="margin-bottom:6px">Notes for the whole order</div>
       <textarea id="gen" placeholder="Allergies, collection time, name for the order…">${esc(c.instructions)}</textarea></div>
+    ${branchPickerHTML(r)}
     ${callHTML(r)}
     <div style="height:14px"></div>
     ${hasPrices(r) ? billCardHTML(r) : ''}
@@ -346,7 +383,8 @@ function allOrdersText() {
 }
 function orderText(r) {
   const c = cartOf(r.id), b = bill(r);
-  let t = `Order for ${r.name}\n\n` + cartLines(r).map(l => `${l.qty}× ${l.item.name}` + (l.note ? `\n   – ${l.note}` : '')).join('\n');
+  const ct = contactOf(r);
+  let t = `Order for ${r.name}${ct.branch ? ' (' + ct.branch + ')' : ''}${ct.phone ? ' · ' + ct.phone : ''}\n\n` + cartLines(r).map(l => `${l.qty}× ${l.item.name}` + (l.note ? `\n   – ${l.note}` : '')).join('\n');
   if (c.instructions) t += `\n\nNotes: ${c.instructions}`;
   if (hasPrices(r)) {
     t += `\n\nSubtotal: ${money(r, b.sub)}\nTip (${b.pct}%): ${money(r, b.tip)}\nTotal: ${money(r, b.total)}`;
@@ -362,8 +400,8 @@ document.addEventListener('click', async e => {
   const a = el.dataset.a, id = el.dataset.id, v = el.dataset.v, i = +el.dataset.i;
   if (a === 'home') return go('home');
   if (a === 'settings') return go('settings');
-  if (a === 'rest-all') { S.shown = S.restaurants.map(r => r.id); save(); return render(); }
-  if (a === 'rest-none') { S.shown = []; save(); return render(); }
+  if (a === 'rest-all') { S.hidden = []; save(); return render(); }
+  if (a === 'rest-none') { S.hidden = S.restaurants.map(r => r.id); save(); return render(); }
   if (a === 'dtip') { setDefTip(parseFloat(v)); return render(); }
   if (a === 'dashboard') {
     // Back to the JoolzApp dashboard (Portal Admin); it signs you in with the same account, so there is no second login.
@@ -380,7 +418,7 @@ document.addEventListener('click', async e => {
   }
   if (a === 'add') { addTab = 'photo'; busy = null; return go('add'); }
   if (a === 'tab') { addTab = el.dataset.k; error = ''; return render(); }
-  if (a === 'open') return go('menu', id);
+  if (a === 'open') { markSeen(id); return go('menu', id); }
   if (a === 'menu') return go('menu');
   if (a === 'summary') return go('summary');
   if (a === 'orders') return go('orders');
@@ -396,7 +434,10 @@ document.addEventListener('click', async e => {
     setTimeout(() => { delete el.dataset.arm; el.textContent = '🗑'; }, 3000); return;
   }
   if (a === 'clear') { S.carts[curId] = {}; save(); return go('menu'); }
-  if (a === 'copy-phone') return copy(S.restaurants.find(r => r.id === id).phone, el);
+  if (a === 'copy-phone') return copy(contactOf(S.restaurants.find(r => r.id === id)).phone, el);
+  if (a === 'add-branch') { const r = rest(); r.branches = [...(r.branches || []), { name: '', phone: '' }]; render(); const ins = document.querySelectorAll('[data-bf=name]'); if (ins.length) ins[ins.length - 1].focus(); return; }
+  if (a === 'del-branch') { const r = rest(); r.branches.splice(i, 1); saveBranches(r); return render(); }
+  if (a === 'branch-custom') { cartOf(id).branch = 'custom'; save(); return render(); }
   if (a === 'copy-all') return copy(allOrdersText(), el);
   if (a === 'copy-order') return copy(orderText(S.restaurants.find(r => r.id === id)), el);
   if (a === 'go-url') { const u = $('#f-url').value.trim(); if (u) ingest({ url: u }); return; }
@@ -420,17 +461,22 @@ async function copy(text, el) {
   try { await navigator.clipboard.writeText(text); el.textContent = 'Copied ✓'; } catch (e) { el.textContent = 'Copy not available'; }
   setTimeout(() => el.textContent = old, 1800);
 }
+let brT; function saveBranches(r) { clearTimeout(brT); brT = setTimeout(() => api('api/menus/' + r.id, { method: 'PUT', body: JSON.stringify({ branches: r.branches }) }).catch(e => toast(e.message)), 700); }
 let phT; function savePhone(r) { clearTimeout(phT); phT = setTimeout(() => api('api/menus/' + r.id, { method: 'PUT', body: JSON.stringify({ phone: r.phone }) }).catch(e => toast(e.message)), 700); }
 function refreshBill() { const r = rest(), n = $('#bn'), s = $('#sp'); if (n) n.innerHTML = billNumsHTML(r); if (s) s.innerHTML = splitHTML(r); }
 document.addEventListener('change', e => {
-  const t = e.target; if (!t.dataset || !t.dataset.rest) return;
-  const cur = new Set(Array.isArray(S.shown) ? S.shown : S.restaurants.map(r => r.id));
-  t.checked ? cur.add(t.dataset.rest) : cur.delete(t.dataset.rest);
-  S.shown = [...cur]; save();
+  const t = e.target;
+  if (t.id === 'branch') { const c = cart(); c.branch = t.value === '' ? '' : t.value; save(); return render(); } if (!t.dataset || !t.dataset.rest) return;
+  const cur = new Set(S.hidden || []);
+  t.checked ? cur.delete(t.dataset.rest) : cur.add(t.dataset.rest);   // ticked = shown; unticked = hidden
+  S.hidden = [...cur]; save();
 });
 document.addEventListener('input', e => {
   const t = e.target;
   if (t.id === 'q') { query = t.value; const pos = t.selectionStart; render(); const q = $('#q'); q.focus(); q.setSelectionRange(pos, pos); }
+  else if (t.dataset.bi != null) { const r = rest(); r.branches[+t.dataset.bi][t.dataset.bf] = t.value; saveBranches(r); }
+  else if (t.id === 'cname') { cart().customName = t.value; save(); }
+  else if (t.id === 'cphone') { cart().customPhone = t.value.trim(); save(); }
   else if (t.id === 'phone') { const r = rest(); r.phone = t.value.trim(); savePhone(r); }
   else if (t.id === 'gen') { cart().instructions = t.value; save(); }
   else if (t.id === 'dtipc') { setDefTip(Math.max(0, Math.min(100, parseFloat(t.value) || 0))); }
@@ -474,7 +520,7 @@ async function ingest(src) {
     if (!n) throw new Error('No menu items were found.');
     busy = 'Saving to the shared archive…'; render();
     const r = (await api('api/menus', { method: 'POST', body: JSON.stringify({ name: j.name || 'Restaurant', phone: j.phone || '', currency: j.currency || 'R', categories: cats }) })).menu;
-    S.restaurants.unshift(r); if (Array.isArray(S.shown)) S.shown.push(r.id); busy = null; go('menu', r.id);
+    S.restaurants.unshift(r); markSeen(r.id); busy = null; go('menu', r.id);
     toast('Menu added to the shared archive');
   } catch (e) {
     busy = null; error = (e && e.message) || (e && e.code === 'not_granted' ? 'Permission to read menus was not granted.' : 'Something went wrong.'); render();
