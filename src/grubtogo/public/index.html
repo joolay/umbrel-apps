@@ -30,6 +30,11 @@ input[type=text],input[type=password],select,input[type=url],input[type=tel],inp
 textarea{min-height:90px;resize:vertical}
 label.drop{display:block;border:2px dashed var(--line);border-radius:var(--r);padding:28px 12px;text-align:center;color:var(--mute)}
 label.drop b{display:block;color:var(--ink);font-size:17px;margin-bottom:4px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin:14px 0 4px}
+.tile{position:relative;display:flex;flex-direction:column;justify-content:flex-end;align-items:flex-start;gap:4px;min-height:92px;padding:12px 14px;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:var(--r);text-align:left;font:700 16px system-ui;line-height:1.2;box-shadow:0 1px 3px #0001}
+.tile:active{transform:scale(.98)}
+.tile small{font:500 12.5px system-ui;color:var(--mute)}
+.tile .bdg{position:absolute;top:8px;right:8px;background:var(--accent);color:#fff;border-radius:999px;font:700 12px system-ui;padding:2px 8px}
 .cat{font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);margin:20px 0 8px;font-weight:700}
 .item{display:flex;gap:12px;align-items:flex-start;padding:12px 0;border-bottom:1px solid var(--line)}
 .item:last-child{border-bottom:0}
@@ -88,7 +93,7 @@ try { const raw = localStorage.getItem(KEY); if (raw) S = Object.assign(S, JSON.
 
 let view = 'home';         // home | add | menu | summary | orders | history | spend | settings
 let spendPeriod = 6, spendCur = '', scope = 'me';   // scope: me (personal orders) | family
-let curId = null, addTab = 'photo', busy = null, error = '', query = '';
+let curId = null, addTab = 'photo', busy = null, error = '', query = '', openCat = null;
 let sample = true, canImages = true;
 let me = null, ai = { configured: true, isAdmin: false }, pushT = null;
 
@@ -185,7 +190,8 @@ function bill(r) {
 }
 
 /* ---------- navigation ---------- */
-function go(v, id) { view = v; if (id !== undefined) curId = id; error = ''; query = ''; render(); window.scrollTo(0, 0); }
+function go(v, id) { view = v; if (id !== undefined) curId = id; error = ''; query = ''; openCat = null; render(); window.scrollTo(0, 0); }
+function keepTop() { render(); window.scrollTo(0, 0); }
 function keepScroll() { const y = scrollY; render(); scrollTo(0, y); }
 let tt; function toast(m) { const t = $('#toast'); t.textContent = m; t.hidden = false; clearTimeout(tt); tt = setTimeout(() => t.hidden = true, 2800); }
 
@@ -297,14 +303,24 @@ function menuHTML(r) {
     <input id="phone" type="tel" value="${esc(r.phone || '')}" placeholder="${r.canEdit ? 'Main phone number' : 'No phone number'}"${r.canEdit ? '' : ' readonly'}>
     <div class="mute" style="margin:10px 0 2px">Branches${r.canEdit ? '' : ' · anyone can add one'}</div>${branchRows}</div>
     <input class="search" id="q" type="text" placeholder="Search menu…" value="${esc(query)}">`;
-  for (const cat of r.categories) {
-    const items = cat.items.filter(i => !q || (i.name + ' ' + (i.description || '')).toLowerCase().includes(q));
-    if (!items.length) continue;
-    out += `<div class="cat">${esc(cat.name)}</div><div class="card" style="padding:2px 14px">` + items.map(i => {
-      const qty = c.items[i.id]?.qty || 0;
+  // Categories are tiles. Pick one to see its items; searching shows matching items from every category.
+  const cur = !q && openCat != null ? r.categories.find(x => x.name === openCat) : null;
+  if (!q && !cur) {
+    out += `<div class="tiles">` + r.categories.map(cat => {
+      const n = cat.items.reduce((a, i) => a + (c.items[i.id]?.qty || 0), 0);
+      return `<button class="tile" data-a="cat" data-cat="${esc(cat.name)}">${n ? `<span class="bdg">${n}</span>` : ''}${esc(cat.name)}<small>${cat.items.length} item${cat.items.length === 1 ? '' : 's'}</small></button>`;
+    }).join('') + `</div>`;
+  } else {
+    if (cur) out += `<div style="margin:14px 0 0"><button class="link" data-a="cat-back">← All categories</button></div>`;
+    for (const cat of (cur ? [cur] : r.categories)) {
+      const items = cat.items.filter(i => !q || (i.name + ' ' + (i.description || '')).toLowerCase().includes(q));
+      if (!items.length) continue;
+      out += `<div class="cat">${esc(cat.name)}</div><div class="card" style="padding:2px 14px">` + items.map(i => {
+        const qty = c.items[i.id]?.qty || 0;
       return `<div class="item" data-item="${esc(i.id)}"><div class="grow"><h3>${esc(i.name)}${i.edit ? ' <span class="pill ed" title="Edited by ' + esc(i.edit.byName) + '">✎ edited</span>' : ''}</h3>${i.description ? `<p>${esc(i.description)}</p>` : ''}${i.price != null ? `<div class="price" style="margin-top:4px">${money(r, i.price)}</div>` : ''}</div>
         ${qty ? `<div class="step"><button data-a="dec" data-id="${i.id}">−</button><span>${qty}</span><button data-a="inc" data-id="${i.id}">+</button></div>` : `<button class="add" data-a="inc" data-id="${i.id}">Add</button>`}</div>`;
-    }).join('') + `</div>`;
+      }).join('') + `</div>`;
+    }
   }
   out += `<p class="mute" style="text-align:center;margin:14px 0 4px">Hold an item to edit it. Anyone can fix a price or a name; your name is shown on the item.</p>
     <div class="card"><div class="mute">Version ${esc(fmtDate(r.version))}${r.versionByName ? ' · uploaded by ' + esc(r.versionByName) : ''}</div>
@@ -649,6 +665,8 @@ document.addEventListener('click', async e => {
   if (a === 'add') { addTab = 'photo'; busy = null; return go('add'); }
   if (a === 'tab') { addTab = el.dataset.k; error = ''; return render(); }
   if (a === 'open') { markSeen(id); return go('menu', id); }
+  if (a === 'cat') { openCat = el.dataset.cat; return keepTop(); }
+  if (a === 'cat-back') { openCat = null; return keepTop(); }
   if (a === 'menu') return go('menu');
   if (a === 'summary') return go('summary');
   if (a === 'orders') return go('orders');
