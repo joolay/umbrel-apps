@@ -76,7 +76,7 @@ label.drop b{display:block;color:var(--ink);font-size:17px;margin-bottom:4px}
 <script>
 /* ---------- state & storage ---------- */
 const KEY = 'takeout.v1';   // old local save: copied up to your account once, so menus from before sign-in carry over
-let S = { restaurants: [], carts: {} };
+let S = { restaurants: [], carts: {}, shown: null };
 try { const raw = localStorage.getItem(KEY); if (raw) S = Object.assign(S, JSON.parse(raw)); } catch (e) {}
 
 let view = 'home';         // home | add | menu | summary | orders | settings
@@ -94,7 +94,7 @@ async function api(path, opts) {
 }
 function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} clearTimeout(pushT); pushT = setTimeout(push, 800); }
 async function push() {
-  try { await api('api/state', { method: 'PUT', body: JSON.stringify({ carts: S.carts }) }); }
+  try { await api('api/state', { method: 'PUT', body: JSON.stringify({ carts: S.carts, shown: S.shown }) }); }
   catch (e) { if (e.status === 401 || e.status === 403) location.reload(); }
 }
 async function loadMenus() { S.restaurants = (await api('api/menus')).menus || []; }
@@ -102,11 +102,11 @@ async function loadMenus() { S.restaurants = (await api('api/menus')).menus || [
   try { me = (await api('api/account/me')).user; } catch (e) {}
   try { ai = await api('api/ai/status'); } catch (e) {}
   // Menus now live in the shared archive on the server. Anything saved the old way (on this device, or in your account) is copied up once.
-  let legacy = [], carts = Object.assign({}, S.carts || {});
-  try { const { state } = await api('api/state'); if (state) { Object.assign(carts, state.carts || {}); if (Array.isArray(state.restaurants)) legacy = state.restaurants; } } catch (e) {}
+  let legacy = [], carts = Object.assign({}, S.carts || {}), shown = Array.isArray(S.shown) ? S.shown : null;
+  try { const { state } = await api('api/state'); if (state) { Object.assign(carts, state.carts || {}); if (Array.isArray(state.shown)) shown = state.shown; if (Array.isArray(state.restaurants)) legacy = state.restaurants; } } catch (e) {}
   let done = false; try { done = !!localStorage.getItem('grubtogo.migrated'); } catch (e) {}
   if (!done && !legacy.length) legacy = (S.restaurants || []).slice();
-  S = { restaurants: [], carts };
+  S = { restaurants: [], carts, shown };
   let failed = 0;
   for (const r of legacy) {
     try { const m = (await api('api/menus', { method: 'POST', body: JSON.stringify(r) })).menu; if (S.carts[r.id]) { S.carts[m.id] = S.carts[r.id]; delete S.carts[r.id]; } }
@@ -141,7 +141,10 @@ const cartCount = r => cartLines(r).reduce((a, l) => a + l.qty, 0);
 const lineCost = l => (l.item.price || 0) * l.qty;
 const hasPrices = r => cartLines(r).some(l => l.item.price != null);
 const telHref = p => 'tel:' + String(p || '').replace(/[^\d+]/g, '');
-const activeRests = () => S.restaurants.filter(r => cartCount(r) > 0);
+// Which archive restaurants this person has chosen to see (Settings). Until they choose, everything shows.
+const isShown = r => !Array.isArray(S.shown) || S.shown.includes(r.id);
+const visibleRests = () => S.restaurants.filter(isShown);
+const activeRests = () => visibleRests().filter(r => cartCount(r) > 0);
 
 function bill(r) {
   const c = cartOf(r.id), lines = cartLines(r), pct = tipOf(c) || 0;
@@ -197,7 +200,12 @@ function settingsHTML() {
   return `<div class="card"><div class="sub-h" style="margin-top:0">Default tip</div>
     <p class="mute">Used for new orders on this device. You can still change the tip on any order.</p>
     <div class="chips">${chips}</div>
-    <div class="row" style="margin-top:8px"><span class="mute">Custom %</span><input id="dtipc" type="number" inputmode="decimal" min="0" max="100" step="0.5" value="${t}" style="width:90px"></div></div>`;
+    <div class="row" style="margin-top:8px"><span class="mute">Custom %</span><input id="dtipc" type="number" inputmode="decimal" min="0" max="100" step="0.5" value="${t}" style="width:90px"></div></div>
+    <div class="card"><div class="sub-h" style="margin-top:0">Restaurants in my app</div>
+      <p class="mute">Everyone's uploaded menus are in the shared archive. Tick the ones you want to see on your home screen.</p>
+      <div class="row" style="gap:8px;margin-bottom:8px"><button class="btn sec" data-a="rest-all">Select all</button><button class="btn sec" data-a="rest-none">Select none</button></div>
+      ${S.restaurants.map(r => `<label class="row" style="gap:10px;padding:8px 0;border-top:1px solid #0001;cursor:pointer"><input type="checkbox" data-rest="${r.id}" ${isShown(r) ? 'checked' : ''} style="width:auto"><span class="grow"><b>${esc(r.name)}</b><span class="mute" style="display:block;font-size:13px">${itemsOf(r).length} items${r.ownerName ? ' · by ' + esc(r.ownerName) : ''}</span></span></label>`).join('') || '<p class="mute">No menus in the archive yet.</p>'}
+    </div>`;
 }
 
 function aiNote() {
@@ -211,14 +219,14 @@ function aiNote() {
     <button class="btn" data-a="ai-save">Save key</button></div>`;
 }
 function homeHTML() {
-  const list = S.restaurants.map(r => `
+  const list = visibleRests().map(r => `
     <div class="card row" data-a="open" data-id="${r.id}" style="cursor:pointer">
       <div class="grow"><div style="font-weight:700;font-size:17px">${esc(r.name)}</div>
       <div class="mute">${itemsOf(r).length} items${r.phone ? ' · ' + esc(r.phone) : ' · no phone yet'}${r.ownerName ? ' · by ' + esc(r.ownerName) : ''}</div></div>
       ${cartCount(r) ? `<span class="pill">${cartCount(r)} in order</span>` : ''}<span class="mute">›</span>
     </div>`).join('');
-  return `${aiNote()}${list || `<div class="card" style="text-align:center;padding:30px 16px"><div style="font-size:42px">📋</div><h2 style="margin:6px 0">No menus yet</h2><p class="mute">Upload a photo, PDF or link of a restaurant menu. It joins the shared archive for everyone.</p></div>`}
-    <button class="btn" data-a="add">＋ Add a menu</button><div style="height:8px"></div>
+  return `${aiNote()}${list || `<div class="card" style="text-align:center;padding:30px 16px"><div style="font-size:42px">📋</div><h2 style="margin:6px 0">${S.restaurants.length ? 'No restaurants chosen' : 'No menus yet'}</h2><p class="mute">${S.restaurants.length ? 'Pick the restaurants you want to see in Settings, or add a new menu.' : 'Upload a photo, PDF or link of a restaurant menu. It joins the shared archive for everyone.'}</p></div>`}
+    <button class="btn" data-a="add">＋ Add a menu</button><div style="height:8px"></div><button class="btn sec" data-a="settings">☰ Choose restaurants${S.restaurants.length > visibleRests().length ? ` · ${S.restaurants.length - visibleRests().length} hidden` : ''}</button><div style="height:8px"></div>
     <p class="mute" style="text-align:center">Menus are shared with everyone who uses GrubToGo. Only the person who added a menu, or an admin, can change it.</p>`;
 }
 
@@ -354,6 +362,8 @@ document.addEventListener('click', async e => {
   const a = el.dataset.a, id = el.dataset.id, v = el.dataset.v, i = +el.dataset.i;
   if (a === 'home') return go('home');
   if (a === 'settings') return go('settings');
+  if (a === 'rest-all') { S.shown = S.restaurants.map(r => r.id); save(); return render(); }
+  if (a === 'rest-none') { S.shown = []; save(); return render(); }
   if (a === 'dtip') { setDefTip(parseFloat(v)); return render(); }
   if (a === 'dashboard') {
     // Back to the JoolzApp dashboard (Portal Admin); it signs you in with the same account, so there is no second login.
@@ -412,6 +422,12 @@ async function copy(text, el) {
 }
 let phT; function savePhone(r) { clearTimeout(phT); phT = setTimeout(() => api('api/menus/' + r.id, { method: 'PUT', body: JSON.stringify({ phone: r.phone }) }).catch(e => toast(e.message)), 700); }
 function refreshBill() { const r = rest(), n = $('#bn'), s = $('#sp'); if (n) n.innerHTML = billNumsHTML(r); if (s) s.innerHTML = splitHTML(r); }
+document.addEventListener('change', e => {
+  const t = e.target; if (!t.dataset || !t.dataset.rest) return;
+  const cur = new Set(Array.isArray(S.shown) ? S.shown : S.restaurants.map(r => r.id));
+  t.checked ? cur.add(t.dataset.rest) : cur.delete(t.dataset.rest);
+  S.shown = [...cur]; save();
+});
 document.addEventListener('input', e => {
   const t = e.target;
   if (t.id === 'q') { query = t.value; const pos = t.selectionStart; render(); const q = $('#q'); q.focus(); q.setSelectionRange(pos, pos); }
@@ -458,7 +474,7 @@ async function ingest(src) {
     if (!n) throw new Error('No menu items were found.');
     busy = 'Saving to the shared archive…'; render();
     const r = (await api('api/menus', { method: 'POST', body: JSON.stringify({ name: j.name || 'Restaurant', phone: j.phone || '', currency: j.currency || 'R', categories: cats }) })).menu;
-    S.restaurants.unshift(r); busy = null; go('menu', r.id);
+    S.restaurants.unshift(r); if (Array.isArray(S.shown)) S.shown.push(r.id); busy = null; go('menu', r.id);
     toast('Menu added to the shared archive');
   } catch (e) {
     busy = null; error = (e && e.message) || (e && e.code === 'not_granted' ? 'Permission to read menus was not granted.' : 'Something went wrong.'); render();

@@ -212,8 +212,10 @@ const stateFile = u => path.join(USERS_DIR, ownerKey(u) + ".json");
 function readState(u) { try { return JSON.parse(fs.readFileSync(stateFile(u), "utf8")); } catch { return null; } }
 function writeState(u, s) { const f = stateFile(u), t = f + ".tmp"; fs.writeFileSync(t, JSON.stringify(s)); fs.renameSync(t, f); }
 function cleanState(s) {
-  if (!s || typeof s !== "object" || !Array.isArray(s.restaurants)) return null;
-  return { restaurants: [], carts: s.carts && typeof s.carts === "object" && !Array.isArray(s.carts) ? s.carts : {}, at: Date.now() };
+  if (!s || typeof s !== "object") return null;
+  // shown: the restaurant ids this person chose to see (null = they haven't chosen, so everything shows)
+  const shown = Array.isArray(s.shown) ? s.shown.filter(x => typeof x === "string" && /^[A-Za-z0-9]{1,40}$/.test(x)).slice(0, 3000) : null;
+  return { restaurants: [], carts: s.carts && typeof s.carts === "object" && !Array.isArray(s.carts) ? s.carts : {}, shown, at: Date.now() };
 }
 
 /* ---------- HTTP ---------- */
