@@ -1,0 +1,9 @@
+{
+  "name": "listify",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Listify: checklists that follow your JoolzApp account.",
+  "main": "server.js",
+  "scripts": { "start": "node server.js" },
+  "license": "MIT"
+}
