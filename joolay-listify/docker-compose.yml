@@ -12,11 +12,19 @@ services:
       PROXY_AUTH_ADD: "false"
 
   web:
-    image: ghcr.io/joolay/listify:1.0.0
+    image: ghcr.io/joolay/listify:1.0.1
     restart: on-failure
     stop_grace_period: 1m
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    # Public address https://listify.<tailnet>.ts.net via TSDProxy + Funnel (see deploy/tsdproxy). The app locks itself
+    # behind the JoolzApp account, so publishing it directly is safe.
+    ports:
+      - "3896:3895"
+    labels:
+      tsdproxy.enable: "true"
+      tsdproxy.name: "listify"
+      tsdproxy.port.1: "443/https:3896/http, no_autodetect, tailscale_funnel"
     volumes:
       - ${APP_DATA_DIR}/data:/data
     environment:
