@@ -165,7 +165,7 @@ function render() {
   bar.hidden = true;
   const back = t => `<button class="icon-btn" data-a="${t}">‹</button>`;
   if (view === 'home') {
-    h.innerHTML = `<h1>🍽️ GrubToGo</h1>${S.restaurants.length ? `<button class="icon-btn" data-a="save-all" title="Save all menus to file">💾</button>` : ''}${me ? `<button class="icon-btn" data-a="dashboard" title="Back to Dashboard" aria-label="Back to Dashboard">🏠</button>` : ''}${me ? `<button class="icon-btn" data-a="signout" title="Sign out ${esc(me.email)}">⎋</button>` : ''}`;
+    h.innerHTML = `<h1>🍽️ GrubToGo</h1>${me ? `<button class="icon-btn" data-a="dashboard" title="Back to Dashboard" aria-label="Back to Dashboard">🏠</button>` : ''}${me ? `<button class="icon-btn" data-a="signout" title="Sign out ${esc(me.email)}">⎋</button>` : ''}`;
     a.innerHTML = homeHTML();
     const n = activeRests().length;
     if (n) { bar.hidden = false; bar.innerHTML = `<div class="inner"><button class="btn" data-a="orders">View all orders · ${n} restaurant${n > 1 ? 's' : ''}</button></div>`; }
@@ -173,7 +173,7 @@ function render() {
     h.innerHTML = back('home') + `<h1>Add a menu</h1>`; a.innerHTML = addHTML();
   } else if (view === 'menu') {
     const r = rest();
-    h.innerHTML = back('home') + `<h1>${esc(r.name)}</h1><button class="icon-btn" data-a="save-one" title="Save menu to file">💾</button>${r.canEdit ? `<button class="icon-btn" data-a="del" title="Remove">🗑</button>` : ''}`;
+    h.innerHTML = back('home') + `<h1>${esc(r.name)}</h1>${r.canEdit ? `<button class="icon-btn" data-a="del" title="Remove">🗑</button>` : ''}`;
     a.innerHTML = menuHTML(r);
     const n = cartCount(r);
     if (n) { bar.hidden = false; bar.innerHTML = `<div class="inner"><button class="btn" data-a="summary"><span class="badge">${n}</span>View order${hasPrices(r) ? ' · ' + money(r, bill(r).sub) : ''}</button></div>`; }
@@ -204,7 +204,6 @@ function homeHTML() {
     </div>`).join('');
   return `${aiNote()}${list || `<div class="card" style="text-align:center;padding:30px 16px"><div style="font-size:42px">📋</div><h2 style="margin:6px 0">No menus yet</h2><p class="mute">Upload a photo, PDF or link of a restaurant menu. It joins the shared archive for everyone.</p></div>`}
     <button class="btn" data-a="add">＋ Add a menu</button><div style="height:8px"></div>
-    <label class="btn sec" style="cursor:pointer">📂 Import saved menu file(s)<input id="f-import" type="file" accept=".json,application/json" multiple hidden></label>
     <p class="mute" style="text-align:center">Menus are shared with everyone who uses GrubToGo. Only the person who added a menu, or an admin, can change it.</p>`;
 }
 
@@ -327,34 +326,6 @@ function orderText(r) {
   return t;
 }
 
-/* ---------- files: save / import ---------- */
-const slug = s => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'menu';
-function saveFile(list, filename) {
-  const blob = new Blob([JSON.stringify({ app: 'grubtogo', version: 1, restaurants: list }, null, 2)], { type: 'application/json' });
-  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = filename;
-  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
-  toast('Menu file saved ✓');
-}
-async function importFiles(files) {
-  let added = 0, bad = 0;
-  for (const f of files) {
-    try {
-      const j = JSON.parse(await f.text());
-      const list = Array.isArray(j.restaurants) ? j.restaurants : (j.categories ? [j] : []);
-      for (const x of list) {
-        if (!x || !Array.isArray(x.categories)) { bad++; continue; }
-        const cats = x.categories.map((c, ci) => ({ name: String(c.name || 'Menu'), items: (c.items || []).filter(i => i && i.name).map((i, ii) => ({ id: String(i.id || `c${ci}i${ii}`), name: String(i.name), description: String(i.description || ''), price: typeof i.price === 'number' ? i.price : null })) })).filter(c => c.items.length);
-        if (!cats.length) { bad++; continue; }
-        const m = (await api('api/menus', { method: 'POST', body: JSON.stringify({ name: x.name, phone: x.phone, currency: x.currency, categories: cats }) })).menu;
-        S.restaurants.unshift(m);
-        added++;
-      }
-    } catch (e) { bad++; }
-  }
-  save(); render();
-  toast(added ? `Imported ${added} restaurant${added > 1 ? 's' : ''}` + (bad ? ` (${bad} skipped)` : '') : 'That file isn\'t a GrubToGo menu file.');
-}
-
 /* ---------- events ---------- */
 document.addEventListener('click', async e => {
   const el = e.target.closest('[data-a]'); if (!el) return;
@@ -393,8 +364,6 @@ document.addEventListener('click', async e => {
   if (a === 'clear') { S.carts[curId] = {}; save(); return go('menu'); }
   if (a === 'copy-phone') return copy(S.restaurants.find(r => r.id === id).phone, el);
   if (a === 'copy-order') return copy(orderText(S.restaurants.find(r => r.id === id)), el);
-  if (a === 'save-one') { const r = rest(); return saveFile([r], slug(r.name) + '.grubtogo.json'); }
-  if (a === 'save-all') return saveFile(S.restaurants, 'grubtogo-menus.json');
   if (a === 'go-url') { const u = $('#f-url').value.trim(); if (u) ingest({ url: u }); return; }
   if (a === 'go-text') { const t = $('#f-text').value.trim(); if (t.length >= 20) ingest({ text: t }); return; }
   // bill controls
@@ -431,7 +400,6 @@ document.addEventListener('change', e => {
   const t = e.target;
   if (t.id === 'f-photo' && t.files.length) ingest({ images: [...t.files].slice(0, 6) });
   if (t.id === 'f-pdf' && t.files.length) ingest({ pdf: t.files[0] });
-  if (t.id === 'f-import' && t.files.length) importFiles([...t.files]);
   if (t.dataset && t.dataset.pname != null) render();   // refresh chip labels after editing a name
 });
 
