@@ -223,7 +223,7 @@ window.addEventListener('hashchange', () => { if (resetToken()) return showReset
 function route() {
   let [, view = 'overview', arg] = location.hash.split('/');
   if (state.role === 'user') view = 'me';
-  const v = { overview: viewOverview, global: viewGlobal, apps: viewApps, users: viewUsers, requests: viewRequests, audit: viewAudit, setup: viewSetup, me: viewMe }[view] || viewOverview;
+  const v = { overview: viewOverview, global: viewGlobal, apps: viewApps, users: viewUsers, requests: viewRequests, cleanup: viewCleanup, audit: viewAudit, setup: viewSetup, me: viewMe }[view] || viewOverview;
   document.querySelectorAll('#nav a').forEach((a) => a.classList.toggle('active', a.dataset.route === view));
   main().innerHTML = '<p class="muted">Loading…</p>';
   guard(v)(arg ? decodeURIComponent(arg) : undefined);
@@ -659,6 +659,83 @@ async function setAccess(user, app, value) {
   const ex = (await listAll('portal_settings', { filter: `scope = "user" && user = ${fq(user)} && app = ${fq(app)} && key = "portal.access"` }))[0];
   if (ex) await api('PATCH', `/api/collections/portal_settings/records/${ex.id}`, { value });
   else await api('POST', '/api/collections/portal_settings/records', { scope: 'user', user, app, key: 'portal.access', value });
+}
+
+/* ---------- Cleanup review ---------- */
+// Portal Admin never deletes anything on its own. This page only LISTS leftovers that look safe to remove (rows that belong to
+// deleted users or uninstalled apps); you tick what you want gone and confirm. Anything it can't judge with confidence is left out.
+const CAP = 20000;
+const keptCleanup = () => { try { return JSON.parse(localStorage.getItem('pa.keptCleanup') || '[]'); } catch { return []; } };
+async function findCleanup() {
+  const notes = [], groups = [];
+  const [users, apps, settings, reqs] = await Promise.all([
+    listAll(state.usersColl, { max: CAP }), listAll('portal_apps'), listAll('portal_settings', { max: CAP }), listAll('portal_requests', { max: CAP }).catch(() => []),
+  ]);
+  const usersKnown = users.length < CAP, userIds = new Set(users.map((u) => u.id)), slugs = new Set(apps.map((a) => a.slug));
+  let installed = null;
+  try { const r = await fetch('/umbrel-apps', { cache: 'no-store' }); const d = r.ok ? await r.json() : null; if (d && d.available) installed = { slugs: new Set(d.apps.map((a) => a.slug || slugOf(a.id))), ids: new Set(d.apps.map((a) => a.id)), apps: d.apps }; } catch {}
+  if (!installed) notes.push("Portal Admin can't see which apps are installed on this Umbrel, so uninstalled apps and their leftover collections aren't checked.");
+  if (!usersKnown) notes.push('There are too many users to check for deleted ones.');
+  const add = (id, title, help, items, extra = {}) => { items = items.filter((i) => !keptCleanup().includes(i.key)); if (items.length) groups.push({ id, title, help, items, ...extra }); };
+  const used = new Set();
+  const rec = (coll, r, label, sub) => { used.add(coll + ':' + r.id); return { key: coll + ':' + r.id, kind: 'record', coll, id: r.id, label, sub }; };
+  if (usersKnown) add('users', 'Settings of deleted users', "These belong to accounts that no longer exist, so nothing can use them.",
+    settings.filter((r) => r.scope === 'user' && r.user && !userIds.has(r.user)).map((r) => rec('portal_settings', r, r.key + (r.app ? ' · ' + r.app : ''), 'user ' + r.user)));
+  add('apps', 'Settings of apps that are no longer registered', 'The app they belong to is not in your Apps list.',
+    settings.filter((r) => r.app && !slugs.has(r.app) && !used.has('portal_settings:' + r.id)).map((r) => rec('portal_settings', r, r.key, r.app + (r.scope === 'user' ? ' · user ' + r.user : ''))));
+  add('reqs', 'Access requests that can no longer be answered', 'The person was deleted or the app is no longer registered.',
+    reqs.filter((r) => (usersKnown && !userIds.has(r.user)) || (r.app !== DEL_REQ && !slugs.has(r.app))).map((r) => rec('portal_requests', r, (r.email || r.user) + ' → ' + (r.app === DEL_REQ ? 'account deletion' : r.app), r.status || '')));
+  if (installed) {
+    const gone = apps.filter((a) => !installed.slugs.has(a.slug));
+    add('uninstalled', 'Apps no longer installed on this Umbrel', 'Removing one also removes its settings and per-user overrides.',
+      gone.map((a) => ({ key: 'app:' + a.id, kind: 'app', coll: 'portal_apps', id: a.id, slug: a.slug, label: a.name, sub: a.slug })));
+    // Collections left behind: created by Portal Admin for an app that is gone, or named after an app that is gone.
+    const goneSlugs = gone.map((a) => a.slug);
+    const fromAudit = new Map();
+    for (const r of await listAll('portal_audit', { filter: 'action = "schema.apply"', max: 2000 }).catch(() => [])) if (r.detail && r.detail.app && !installed.ids.has(r.detail.app)) fromAudit.set(r.target, r.detail.app);
+    const protectedName = /^(_|portal_)/;
+    const cols = ((await api('GET', '/api/collections?perPage=200&sort=name').catch(() => ({ items: [] }))).items || [])
+      .filter((c) => c.type === 'base' && !c.system && c.name !== state.usersColl && c.name !== 'users' && !protectedName.test(c.name) && c.name !== 'app_access');
+    const items = [];
+    for (const c of cols) {
+      const why = fromAudit.has(c.name) ? 'created for ' + fromAudit.get(c.name) : goneSlugs.find((g) => c.name.startsWith(g + '_')) ? 'named after the uninstalled app ' + goneSlugs.find((g) => c.name.startsWith(g + '_')) : '';
+      if (why) items.push({ key: 'collection:' + c.name, kind: 'collection', coll: c.name, id: c.id, label: c.name, sub: why + ' · ' + (await count(c.name).catch(() => '?')) + ' records' });
+    }
+    add('collections', 'PocketBase collections left behind', 'These hold data. Deleting one is permanent, so each is confirmed by typing its name.', items, { single: true });
+  }
+  return { groups, notes };
+}
+async function deleteCleanupItem(it) {
+  if (it.kind === 'collection') await api('DELETE', '/api/collections/' + it.coll);
+  else {
+    if (it.kind === 'app') for (const r of await listAll('portal_settings', { filter: `app = ${fq(it.slug)}` })) await api('DELETE', `/api/collections/portal_settings/records/${r.id}`);
+    await api('DELETE', `/api/collections/${it.coll}/records/${it.id}`);
+  }
+  await audit('cleanup.delete', it.key, { label: it.label });
+}
+async function viewCleanup() {
+  if (await needSetup()) return;
+  const { groups, notes } = await findCleanup();
+  const row = (it) => `<tr><td style="width:28px"><input type="checkbox" data-k="${esc(it.key)}"></td><td><b>${esc(it.label)}</b><div class="muted small">${esc(it.sub)}</div></td></tr>`;
+  main().innerHTML = `<h1>Cleanup</h1><p class="sub">Leftovers that look safe to remove. Nothing here is deleted automatically: tick what you want gone and confirm.</p>
+    ${notes.map((n) => `<p class="muted small">${esc(n)}</p>`).join('')}
+    ${groups.map((g) => `<div class="card" data-g="${esc(g.id)}"><h2>${esc(g.title)} <span class="chip">${g.items.length}</span></h2><p class="muted small">${esc(g.help)}</p>
+      <table><tbody>${g.items.map(row).join('')}</tbody></table>
+      <div class="row" style="margin-top:10px;gap:8px"><button class="btn danger" data-do="delete">Delete selected</button> <button class="btn" data-do="keep">Keep (hide)</button></div></div>`).join('') || '<div class="card"><p class="muted">Nothing to clean up. 🎉</p></div>'}`;
+  main().onclick = guard(async (e) => {
+    const b = e.target.closest('[data-do]'); if (!b) return;
+    const card = b.closest('[data-g]'), g = groups.find((x) => x.id === card.dataset.g);
+    const keys = [...card.querySelectorAll('input[data-k]:checked')].map((i) => i.dataset.k);
+    if (!keys.length) return toast('Tick at least one item first', true);
+    if (b.dataset.do === 'keep') { localStorage.setItem('pa.keptCleanup', JSON.stringify([...keptCleanup(), ...keys])); return route(); }
+    if (g.single && keys.length > 1) return toast('Collections are deleted one at a time', true);
+    if (g.single) { const name = keys[0].replace(/^collection:/, ''); if (prompt(`Type "${name}" to permanently delete this collection and its data.`) !== name) return; }
+    else if (!confirm(`Delete ${keys.length} item${keys.length > 1 ? 's' : ''}? This cannot be undone.`)) return;
+    // Re-check against fresh data so only things that are still leftovers get removed.
+    const fresh = new Map((await findCleanup()).groups.flatMap((x) => x.items).map((i) => [i.key, i]));
+    let done = 0; for (const k of keys) { const it = fresh.get(k); if (it) { await deleteCleanupItem(it); done++; } }
+    toast(done + ' deleted'); route();
+  });
 }
 
 /* ---------- Access requests (admin) ---------- */
