@@ -10,7 +10,7 @@ services:
       PROXY_AUTH_ADD: "true"
 
   web:
-    image: ghcr.io/joolay/portal-admin:0.1.1
+    image: ghcr.io/joolay/portal-admin:0.4.0
     restart: on-failure
     stop_grace_period: 10s
     # Lets the container reach the PocketBase app (port 5400) published on this Umbrel.
