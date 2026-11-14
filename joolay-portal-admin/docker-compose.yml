@@ -10,12 +10,17 @@ services:
       PROXY_AUTH_ADD: "true"
 
   web:
-    image: ghcr.io/joolay/portal-admin:0.4.1
+    image: ghcr.io/joolay/portal-admin:0.5.0
     restart: on-failure
     stop_grace_period: 10s
     # Lets the container reach the PocketBase app (port 5400) published on this Umbrel.
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    # Direct port for the public hub (Tailscale Funnel, see deploy/joolzapp-tunnel). Umbrel's login stays on the normal
+    # app address (port 3890); this port skips it, which is safe because the server itself refuses admin sign-in and
+    # admin API calls for requests that arrive through Funnel.
+    ports:
+      - "3892:3000"
     volumes:
       - ${APP_DATA_DIR}/data:/data
     environment:

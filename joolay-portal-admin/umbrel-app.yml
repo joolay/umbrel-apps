@@ -2,7 +2,7 @@ manifestVersion: 1
 id: joolay-portal-admin
 category: developer
 name: Portal Admin
-version: "0.4.1"
+version: "0.5.0"
 tagline: One admin panel for all your custom PocketBase apps
 description: >-
   A central admin panel for your custom apps that use PocketBase. Register each app, then manage
@@ -21,7 +21,7 @@ gallery: []
 path: ""
 defaultUsername: ""
 defaultPassword: ""
-releaseNotes: "Fixes the app listing in the App Store. Users can sign up and sign in to manage shared preferences and request access to apps; per-app approval for new accounts; access requests and account deletion requests for you to approve; remember me and forgot password."
+releaseNotes: "Admins can set a user's password directly. Public-access guard: when published through Tailscale Funnel, admin sign-in and admin API calls are refused (home network and tailnet only). Open buttons on each approved app. Earlier: Users can sign up and sign in to manage shared preferences and request access to apps; per-app approval for new accounts; access requests and account deletion requests for you to approve; remember me and forgot password."
 submitter: joolay
 submission: https://github.com/joolay/umbrel-apps
 icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-portal-admin/icon.svg

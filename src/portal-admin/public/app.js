@@ -179,12 +179,18 @@ const SESSION_KEYS = ['token', 'actor', 'role', 'uid'];
 function saveSession(remember) { SESSION_KEYS.forEach((k) => { store.set('pa.' + k, state[k]); store.lset('pa.' + k, remember ? state[k] : null); }); }
 function logout() { SESSION_KEYS.forEach((k) => { state[k] = ''; store.set('pa.' + k, null); store.lset('pa.' + k, null); }); state.role = 'admin'; showLogin(); }
 async function signIn(identity, password) {
+  let adminBlocked = false;
   try {
     const r = await api('POST', '/api/collections/_superusers/auth-with-password', { identity, password });
     return { token: r.token, actor: r.record.email, role: 'admin', uid: r.record.id };
-  } catch (err) { if (![400, 401, 403].includes(err.status)) throw err; }
-  const r = await api('POST', `/api/collections/${state.usersColl}/auth-with-password`, { identity, password });
-  return { token: r.token, actor: r.record.email, role: 'user', uid: r.record.id };
+  } catch (err) { if (![400, 401, 403].includes(err.status)) throw err; adminBlocked = err.status === 403; }
+  try {
+    const r = await api('POST', `/api/collections/${state.usersColl}/auth-with-password`, { identity, password });
+    return { token: r.token, actor: r.record.email, role: 'user', uid: r.record.id };
+  } catch (err) {
+    if (adminBlocked && err.status === 400) throw new Error('Sign-in failed. If you are the admin: admin sign-in only works from your home network or tailnet.');
+    throw err;
+  }
 }
 $('#logout').onclick = logout;
 $('#login-form').onsubmit = async (e) => {
@@ -375,7 +381,7 @@ async function appDetail(slug) {
     $('#tab').innerHTML = `<form id="f" class="card"><div class="kv">
       <label>Name<input name="name" value="${esc(rec.name)}" required></label>
       <label>Slug (id used by the app)<input name="slug" value="${esc(rec.slug)}" ${isNew ? '' : 'readonly'} required pattern="[a-z0-9][a-z0-9_\\-]{0,47}" placeholder="shutterworth"></label>
-      <label>URL<input name="url" type="url" value="${esc(rec.url)}"></label>
+      <label>URL (where users open the app)<input name="url" type="url" value="${esc(rec.url)}" placeholder="https://shutterworth.your-tailnet.ts.net"></label>
       <label>Description<input name="description" value="${esc(rec.description)}"></label></div>
       <div class="row" style="margin-bottom:10px"><label class="inline"><input type="checkbox" name="enabled"${rec.enabled ? ' checked' : ''}> Enabled</label>
       <label class="inline"><input type="checkbox" name="maintenance"${rec.maintenance ? ' checked' : ''}> Maintenance mode</label></div>
@@ -457,11 +463,27 @@ async function userDetail(id) {
   function tabProfile() {
     $('#tab').innerHTML = `<form id="f" class="card"><div class="kv"><label>Name<input name="name" value="${esc(u.name || '')}"></label><label>Email<input name="email" type="email" value="${esc(u.email)}" required></label></div>
       <label class="inline"><input type="checkbox" name="verified"${u.verified ? ' checked' : ''}> Verified</label>
-      <div class="row"><button class="btn primary">Save</button><button type="button" id="rs" class="btn">Send password reset email</button><button type="button" id="del" class="btn danger">Delete user</button></div></form>`;
+      <div class="row"><button class="btn primary">Save</button><button type="button" id="rs" class="btn">Send password reset email</button><button type="button" id="del" class="btn danger">Delete user</button></div></form>
+      <form id="pwf" class="card"><h2>Set password</h2><p class="muted small">Sets a new password right now, without email. The user is signed out everywhere and must use the new password. Share it with them securely.</p>
+        <div class="kv"><label>New password<input name="pw" type="password" autocomplete="new-password" minlength="8" maxlength="72" required></label><label>Repeat password<input name="pw2" type="password" autocomplete="new-password" minlength="8" maxlength="72" required></label></div>
+        <div class="row"><button class="btn primary">Set password</button><button type="button" id="pwgen" class="btn">Generate</button></div></form>`;
     $('#f').onsubmit = guard(async (e) => {
       e.preventDefault(); const f = new FormData(e.target);
       const body = { email: f.get('email'), verified: e.target.verified.checked }; if ('name' in u || f.get('name')) body.name = f.get('name');
       await api('PATCH', `/api/collections/${state.usersColl}/records/${id}`, body); await audit('user.update', id, body); toast('Saved');
+    });
+    $('#pwgen').onclick = () => {
+      const chars = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789', b = crypto.getRandomValues(new Uint32Array(16));
+      const pw = Array.from(b, (n) => chars[n % chars.length]).join('');
+      const f = $('#pwf'); f.pw.type = f.pw2.type = 'text'; f.pw.value = f.pw2.value = pw; toast('Generated. Copy it before setting.');
+    };
+    $('#pwf').onsubmit = guard(async (e) => {
+      e.preventDefault(); const pw = e.target.pw.value;
+      if (pw !== e.target.pw2.value) throw new Error('Passwords do not match');
+      if (!confirm(`Set a new password for ${u.email}? They will be signed out everywhere.`)) return;
+      await api('PATCH', `/api/collections/${state.usersColl}/records/${id}`, { password: pw, passwordConfirm: pw });
+      await audit('user.password-set', id, { email: u.email });
+      e.target.reset(); e.target.pw.type = e.target.pw2.type = 'password'; toast('Password changed');
     });
     $('#rs').onclick = guard(async () => { await api('POST', `/api/collections/${state.usersColl}/request-password-reset`, { email: u.email }); await audit('user.password-reset', id); toast('Reset email requested'); });
     $('#del').onclick = guard(async () => {
@@ -603,7 +625,7 @@ async function viewMe() {
       const pend = reqs.find((r) => r.app === a.slug && r.status === 'pending'), denied = reqs.find((r) => r.app === a.slug && r.status === 'denied');
       let right;
       if (!a.enabled) right = '<span class="chip bad">unavailable</span>';
-      else if (allowed(a.slug)) right = '<span class="chip ok">access granted</span>';
+      else if (allowed(a.slug)) right = `<span class="chip ok">access granted</span>${/^https?:\/\//i.test(a.url || '') ? ` <a class="btn primary small" href="${esc(a.url)}" target="_blank" rel="noopener">Open</a>` : ''}`;
       else if (pend) right = '<span class="chip warn">request pending</span>';
       else right = `<div class="req-row"><input data-msg="${esc(a.slug)}" placeholder="Why do you need it? (optional)" maxlength="300"><button class="btn small" data-req="${esc(a.slug)}">Request access</button></div>${denied ? '<div class="muted small">Your last request was denied.</div>' : ''}`;
       return `<tr><td><b>${esc(a.name)}</b>${a.description ? `<div class="muted small">${esc(a.description)}</div>` : ''}</td><td>${right}</td></tr>`;

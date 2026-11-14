@@ -1,0 +1,45 @@
+# Public front door for JoolzApp via Tailscale Funnel.
+# Each service is its own Tailscale node (own *.ts.net name, own Funnel route) running in userspace networking mode,
+# so it never touches the host network, the Umbrel dashboard, or any other Tailscale node (e.g. OpenClaw's).
+#
+#   https://joolzapp.<tailnet>.ts.net      -> Portal Admin hub   (Umbrel port 3892)
+#   https://shutterworth.<tailnet>.ts.net  -> ShutterWorth       (Umbrel port 3881)
+#
+# Setup: see README.md in this folder. Run from this folder with:  docker compose up -d
+x-ts: &ts
+  image: tailscale/tailscale:stable
+  restart: unless-stopped
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+  entrypoint:
+    - /bin/sh
+    - -c
+    # Writes the Serve/Funnel config from $SERVE_JSON, then starts Tailscale as usual.
+    - 'mkdir -p /config && printf "%s" "$$SERVE_JSON" > /config/serve.json && exec /usr/local/bin/containerboot'
+
+services:
+  joolzapp:
+    <<: *ts
+    hostname: joolzapp
+    environment:
+      TS_AUTHKEY: ${TS_AUTHKEY}
+      TS_HOSTNAME: joolzapp
+      TS_USERSPACE: "true"
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_SERVE_CONFIG: /config/serve.json
+      SERVE_JSON: '{"TCP":{"443":{"HTTPS":true}},"Web":{"$${TS_CERT_DOMAIN}:443":{"Handlers":{"/":{"Proxy":"http://host.docker.internal:3892"}}}},"AllowFunnel":{"$${TS_CERT_DOMAIN}:443":true}}'
+    volumes:
+      - ./state/joolzapp:/var/lib/tailscale
+
+  shutterworth:
+    <<: *ts
+    hostname: shutterworth
+    environment:
+      TS_AUTHKEY: ${TS_AUTHKEY}
+      TS_HOSTNAME: shutterworth
+      TS_USERSPACE: "true"
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_SERVE_CONFIG: /config/serve.json
+      SERVE_JSON: '{"TCP":{"443":{"HTTPS":true}},"Web":{"$${TS_CERT_DOMAIN}:443":{"Handlers":{"/":{"Proxy":"http://host.docker.internal:3881"}}}},"AllowFunnel":{"$${TS_CERT_DOMAIN}:443":true}}'
+    volumes:
+      - ./state/shutterworth:/var/lib/tailscale
