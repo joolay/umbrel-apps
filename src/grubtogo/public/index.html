@@ -86,7 +86,7 @@ let S = { restaurants: [], carts: {}, hidden: [], seen: null };
 try { const raw = localStorage.getItem(KEY); if (raw) S = Object.assign(S, JSON.parse(raw)); } catch (e) {}
 
 let view = 'home';         // home | add | menu | summary | orders | history | spend | settings
-let spendPeriod = 6, spendCur = '';
+let spendPeriod = 6, spendCur = '', scope = 'me';   // scope: me (personal orders) | family
 let curId = null, addTab = 'photo', busy = null, error = '', query = '';
 let sample = true, canImages = true;
 let me = null, ai = { configured: true, isAdmin: false }, pushT = null;
@@ -104,6 +104,12 @@ async function push() {
   try { await api('api/state', { method: 'PUT', body: JSON.stringify({ carts: S.carts, hidden: S.hidden, seen: S.seen }) }); }
   catch (e) { if (e.status === 401 || e.status === 403) location.reload(); }
 }
+const myFamily = () => S.family && S.family.family;
+async function loadFamily(withOrders) {
+  try { S.family = await api('api/family'); } catch (e) { S.family = null; }
+  if (myFamily() && withOrders !== false) { try { S.famOrders = (await api('api/family/orders')).orders || []; } catch (e) {} } else if (!myFamily()) S.famOrders = [];
+}
+async function famAct(body) { try { S.family = await api('api/family', { method: 'POST', body: JSON.stringify(body) }); if (!myFamily()) S.famOrders = []; else await loadFamily(); render(); } catch (err) { toast(err.message); } }
 async function loadMenus() { S.restaurants = (await api('api/menus')).menus || []; }
 (async () => {
   try { me = (await api('api/account/me')).user; } catch (e) {}
@@ -115,6 +121,7 @@ async function loadMenus() { S.restaurants = (await api('api/menus')).menus || [
   if (!done && !legacy.length) legacy = (S.restaurants || []).slice();
   S = { restaurants: [], carts, hidden, seen, history: [] };
   try { S.history = (await api('api/history')).orders || []; } catch (e) {}
+  await loadFamily();
   let failed = 0;
   for (const r of legacy) {
     try { const m = (await api('api/menus', { method: 'POST', body: JSON.stringify(r) })).menu; if (S.carts[r.id]) { S.carts[m.id] = S.carts[r.id]; delete S.carts[r.id]; } }
@@ -212,12 +219,26 @@ function render() {
   }
 }
 
+function familyCardHTML() {
+  const f = myFamily(), inv = (S.family && S.family.invites) || [];
+  let out = `<div class="card"><div class="sub-h" style="margin-top:0">Family</div>`;
+  out += inv.map(i => `<div class="card" style="background:var(--accent2)"><b>${esc(i.ownerName || 'Someone')}</b> invited you to the <b>${esc(i.name)}</b> family.<div class="row" style="gap:8px;margin-top:8px"><button class="btn" data-a="fam-yes" data-id="${i.id}">Join</button><button class="btn ghost" data-a="fam-no" data-id="${i.id}">Decline</button></div></div>`).join('');
+  if (!S.family) return out + `<p class="mute">Couldn't load families right now.</p></div>`;
+  if (!f) return out + `<p class="mute">Link up with other JoolzApp users so a joint order can be filed as a family expense. Personal orders stay private.</p>
+    <form class="row" id="famnew" style="gap:6px"><input type="text" name="name" placeholder="Family name (e.g. The Joolays)" maxlength="60" required><button class="btn">Create</button></form></div>`;
+  out += `<div class="h" style="margin:0 0 4px">${esc(f.name)}</div><p class="mute" style="margin-top:0">Orders you file as a family expense are visible to everyone below.</p>`
+    + f.members.map(m => `<div class="row" style="justify-content:space-between;padding:6px 0;border-top:1px solid var(--line)"><div>${esc(m.name)}${m.id === f.owner ? ' <span class="pill">creator</span>' : ''}${me && m.id === me.id ? ' <span class="mute">(you)</span>' : ''}</div>${f.isOwner && me && m.id !== me.id ? `<button class="link" data-a="fam-rm" data-id="${m.id}">Remove</button>` : ''}</div>`).join('')
+    + f.invited.map(m => `<div class="row" style="justify-content:space-between;padding:6px 0;border-top:1px solid var(--line)"><div class="mute">${esc(m.name)} · invited</div><button class="link" data-a="fam-rm" data-id="${m.id}">Cancel</button></div>`).join('');
+  if (f.isOwner) out += `<form class="row" id="faminv" style="gap:6px;margin-top:10px"><input type="email" name="email" placeholder="Their JoolzApp email" required><button class="btn">Invite</button></form>`;
+  return out + `<div style="margin-top:10px"><button class="link" data-a="fam-leave">Leave this family</button></div></div>`;
+}
 function settingsHTML() {
   const t = defTip(), chips = [0, 10, 12.5, 15, 18, 20].map(p => `<button class="chip ${t === p ? 'on' : ''}" data-a="dtip" data-v="${p}">${p}%</button>`).join('');
   return `<div class="card"><div class="sub-h" style="margin-top:0">Default tip</div>
     <p class="mute">Used for new orders on this device. You can still change the tip on any order.</p>
     <div class="chips">${chips}</div>
     <div class="row" style="margin-top:8px"><span class="mute">Custom %</span><input id="dtipc" type="number" inputmode="decimal" min="0" max="100" step="0.5" value="${t}" style="width:90px"></div></div>
+    ${familyCardHTML()}
     <div class="card"><div class="sub-h" style="margin-top:0">Restaurants in my app</div>
       <p class="mute">Every menu anyone adds appears for you automatically, marked NEW until you open it. Untick the ones you don't want to see.</p>
       <div class="row" style="gap:8px;margin-bottom:8px"><button class="btn sec" data-a="rest-all">Select all</button><button class="btn sec" data-a="rest-none">Select none</button></div>
@@ -271,7 +292,7 @@ function menuHTML(r) {
       + `<button class="link" data-a="add-branch">＋ Add a branch (franchise)</button>`
     : bs.map(b => `<div class="kv"><span>${esc(b.name || 'Branch')}</span><a href="${telHref(b.phone)}">${esc(b.phone)}</a></div>`).join('')
       + `<form class="row" id="newbranch" style="gap:6px;margin-top:8px"><input type="text" name="name" placeholder="New branch (e.g. Sandton)"><input type="tel" name="phone" placeholder="Phone" required><button class="btn">Add</button></form>`;
-  const lastO = (S.history || []).filter(o => o.restId === r.id || normName(o.restName) === normName(r.name)).sort((a, b) => b.at.localeCompare(a.at))[0];
+  const lastO = [...(S.history || []), ...(S.famOrders || [])].filter(o => o.restId === r.id || normName(o.restName) === normName(r.name)).sort((a, b) => b.at.localeCompare(a.at))[0];
   let out = (lastO && !cartCount(r) ? `<button class="btn sec" data-a="repeat" data-id="${lastO.id}">🔁 Repeat last order · ${esc(dOf(lastO).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }))}${lastO.total ? ' · ' + cm(lastO.currency, lastO.total) : ''}</button><div style="height:10px"></div>` : '') + `<div class="card"><div class="mute" style="margin-bottom:6px">Restaurant phone${r.ownerName ? ' · added by ' + esc(r.ownerName) : ''}${r.canEdit ? '' : ' · view only'}</div>
     <input id="phone" type="tel" value="${esc(r.phone || '')}" placeholder="${r.canEdit ? 'Main phone number' : 'No phone number'}"${r.canEdit ? '' : ' readonly'}>
     <div class="mute" style="margin:10px 0 2px">Branches${r.canEdit ? '' : ' · anyone can add one'}</div>${branchRows}</div>
@@ -383,6 +404,8 @@ const dayFmt = o => dOf(o).toLocaleDateString(undefined, { weekday: 'short', day
 const monthKey = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
 const monthLbl = k => { const [y, m] = k.split('-'); return new Date(+y, +m - 1, 1).toLocaleDateString(undefined, { month: 'short' }) + ' ' + String(y).slice(2); };
 const restOfOrder = o => S.restaurants.find(x => x.id === o.restId) || S.restaurants.find(x => normName(x.name) === normName(o.restName));
+const scopeOrders = () => scope === 'family' && myFamily() ? (S.famOrders || []) : (S.history || []);
+const scopeChips = () => myFamily() ? `<div class="chips" style="margin-bottom:10px"><button class="chip ${scope === 'me' ? 'on' : ''}" data-a="scope" data-v="me">Personal</button><button class="chip ${scope === 'family' ? 'on' : ''}" data-a="scope" data-v="family">👨‍👩‍👧 ${esc(myFamily().name)}</button></div>` : '';
 const histTabs = on => `<div class="tabs"><button class="${on === 'history' ? 'on' : ''}" data-a="history">Orders</button><button class="${on === 'spend' ? 'on' : ''}" data-a="spend">Spending</button></div>`;
 
 function snapshotOf(r) {
@@ -391,10 +414,31 @@ function snapshotOf(r) {
     lines: cartLines(r).map(l => ({ itemId: l.item.id, name: l.item.name, qty: l.qty, price: l.item.price == null ? null : l.item.price, note: l.note || '' })),
     sub: b.sub, tip: b.tip, pct: b.pct, total: b.total };
 }
-async function markOrdered(r) {
+async function markOrdered(r, as) {
   if (!cartCount(r)) return;
-  const res = await api('api/history', { method: 'POST', body: JSON.stringify({ order: snapshotOf(r) }) });
-  (S.history ||= []).unshift(res.order); S.carts[r.id] = {}; save(); toast('Saved to your previous orders'); go('history');
+  if (as === 'family') {
+    const res = await api('api/family/orders', { method: 'POST', body: JSON.stringify({ order: snapshotOf(r) }) });
+    (S.famOrders ||= []).unshift(res.order); scope = 'family'; toast('Saved as a family expense');
+  } else {
+    const res = await api('api/history', { method: 'POST', body: JSON.stringify({ order: snapshotOf(r) }) });
+    (S.history ||= []).unshift(res.order); scope = 'me'; toast('Saved to your previous orders');
+  }
+  S.carts[r.id] = {}; save(); go('history');
+}
+function askPlaced(r) {
+  if (!cartCount(r)) return;
+  const f = myFamily(), m = document.createElement('div'); m.className = 'modal';
+  m.innerHTML = `<div class="sheet"><h2 style="margin:0 0 8px">Who is this order for?</h2>
+    <button class="btn" data-x="me">👤 Personal order<br><small>Only you can see it</small></button><div style="height:8px"></div>
+    ${f ? `<button class="btn sec" data-x="family">👨‍👩‍👧 Family expense · ${esc(f.name)}<br><small>Everyone in the family can see it and it counts in the family spending</small></button>`
+        : `<p class="mute">Want to share it as a family expense? Create or join a family in Settings first.</p><button class="btn sec" data-x="settings">Open Settings</button>`}
+    <div style="height:8px"></div><button class="btn ghost" data-x="cancel">Cancel</button></div>`;
+  document.body.appendChild(m);
+  m.addEventListener('click', async ev => {
+    const x = ev.target === m ? 'cancel' : ev.target.closest('[data-x]') && ev.target.closest('[data-x]').dataset.x; if (!x) return;
+    m.remove(); if (x === 'cancel') return; if (x === 'settings') return go('settings');
+    try { await markOrdered(r, x); } catch (err) { toast(err.message); }
+  });
 }
 function repeatOrder(o) {
   const r = restOfOrder(o); if (!r) return toast('That restaurant is no longer in the shared archive.');
@@ -407,26 +451,26 @@ function repeatOrder(o) {
   if (missing.length) toast('Not on the menu any more: ' + missing.join(', '));
 }
 function historyHTML() {
-  const hs = (S.history || []).slice().sort((a, b) => b.at.localeCompare(a.at)), sq = query.trim().toLowerCase();
+  const fam = scope === 'family' && myFamily(), hs = scopeOrders().slice().sort((a, b) => b.at.localeCompare(a.at)), sq = query.trim().toLowerCase();
   const list = hs.filter(o => !sq || o.restName.toLowerCase().includes(sq) || o.lines.some(l => l.name.toLowerCase().includes(sq)));
-  let out = histTabs('history') + `<input class="search" id="q" type="text" placeholder="Search restaurants or dishes…" value="${esc(query)}">`;
-  if (!hs.length) return out + `<div class="card" style="text-align:center">No previous orders yet. When you've phoned an order in, tap <b>Mark as ordered</b> on its summary and it is saved here with the date.</div>`;
+  let out = histTabs('history') + scopeChips() + `<input class="search" id="q" type="text" placeholder="Search restaurants or dishes…" value="${esc(query)}">`;
+  if (!hs.length) return out + `<div class="card" style="text-align:center">${fam ? 'No family orders yet. Choose <b>Family expense</b> when you mark an order as ordered.<br><br>' : ''}No previous orders yet. When you've phoned an order in, tap <b>Mark as ordered</b> on its summary and it is saved here with the date.</div>`;
   if (!list.length) return out + `<div class="card" style="text-align:center">Nothing matches “${esc(query)}”.</div>`;
   let last = '';
   list.forEach(o => {
     const k = monthKey(dOf(o));
     if (k !== last) { last = k; out += `<div class="sub-h">${esc(dOf(o).toLocaleDateString(undefined, { month: 'long', year: 'numeric' }))}</div>`; }
     out += `<div class="card"><div class="row" style="justify-content:space-between;gap:8px"><div class="h" style="margin:0">${esc(o.restName)}${o.branch ? ' <span class="mute">(' + esc(o.branch) + ')</span>' : ''}</div><div class="price">${o.total ? cm(o.currency, o.total) : ''}</div></div>
-      <div class="mute" style="margin-bottom:6px">${esc(dayFmt(o))}</div>
+      <div class="mute" style="margin-bottom:6px">${esc(dayFmt(o))}${fam ? ' · by ' + esc(o.byName || 'someone') : ''}</div>
       ${o.lines.map(l => `<div class="sum-line"><div class="q">${l.qty}×</div><div class="grow">${esc(l.name)}${l.note ? `<div class="note">${esc(l.note)}</div>` : ''}</div></div>`).join('')}
-      <div class="row" style="gap:8px;margin-top:10px"><button class="btn sec" data-a="repeat" data-id="${o.id}">🔁 Repeat this order</button><button class="icon-btn" data-a="del-order" data-id="${o.id}" title="Delete from history">🗑</button></div></div>`;
+      <div class="row" style="gap:8px;margin-top:10px"><button class="btn sec" data-a="repeat" data-id="${o.id}">🔁 Repeat this order</button>${!fam || (me && (o.byId === me.id || myFamily().isOwner)) ? `<button class="icon-btn" data-a="del-order" data-id="${o.id}" title="Delete from history">🗑</button>` : ''}</div></div>`;
   });
   return out;
 }
 function spendHTML() {
-  const all = (S.history || []).filter(o => o.total > 0);
-  let out = histTabs('spend');
-  if (!all.length) return out + `<div class="card" style="text-align:center">Spending appears here once you've marked priced orders as ordered.</div>`;
+  const all = scopeOrders().filter(o => o.total > 0), famView = scope === 'family' && myFamily();
+  let out = histTabs('spend') + scopeChips();
+  if (!all.length) return out + `<div class="card" style="text-align:center">Spending appears here once you've marked priced orders as ordered${scope === 'family' ? ' as a family expense' : ''}.</div>`;
   const curs = [...new Set(all.map(o => o.currency))];
   if (!curs.includes(spendCur)) spendCur = curs.sort((a, b) => all.filter(o => o.currency === b).length - all.filter(o => o.currency === a).length)[0];
   const now = new Date(), cut = spendPeriod ? new Date(now.getFullYear(), now.getMonth() - spendPeriod + 1, 1) : null;
@@ -453,6 +497,11 @@ function spendHTML() {
   const by = new Map();
   os.forEach(o => { const k = normName(o.restName), e = by.get(k) || { name: o.restName, spent: 0, n: 0 }; e.spent += o.total; e.n++; e.name = o.restName; by.set(k, e); });
   const rows = [...by.values()].sort((a, b) => b.spent - a.spent), top = rows[0].spent;
+  if (famView) {
+    const who = new Map(); os.forEach(o => { const e = who.get(o.byId) || { name: o.byName || 'Someone', spent: 0, n: 0 }; e.spent += o.total; e.n++; who.set(o.byId, e); });
+    const wr = [...who.values()].sort((a, b) => b.spent - a.spent);
+    out += `<div class="card"><div class="h">Who placed the orders</div>` + wr.map(e => `<div class="kv"><span>${esc(e.name)} · ${e.n} order${e.n > 1 ? 's' : ''}</span><span>${cm(spendCur, e.spent)}</span></div>`).join('') + `</div>`;
+  }
   out += `<div class="card"><div class="h">Where you order from</div>` + rows.map(e => `<div style="margin:10px 0"><div class="row" style="justify-content:space-between;gap:8px"><div>${esc(e.name)}</div><div class="price">${cm(spendCur, e.spent)}</div></div>
       <div style="background:var(--line);border-radius:99px;height:8px;margin:4px 0"><div style="width:${Math.max(2, Math.round(e.spent / top * 100))}%;height:8px;border-radius:99px;background:var(--accent)"></div></div>
       <div class="mute">${e.n} order${e.n > 1 ? 's' : ''} · ${Math.round(e.spent / total * 100)}% of spend · avg ${cm(spendCur, e.spent / e.n)}</div></div>`).join('') + `</div>`;
@@ -498,6 +547,8 @@ function orderText(r) {
 }
 
 document.addEventListener('submit', async e => {
+  if (e.target.id === 'famnew') { e.preventDefault(); return famAct({ action: 'create', name: e.target.elements.name.value }); }
+  if (e.target.id === 'faminv') { e.preventDefault(); const em = e.target.elements.email.value; await famAct({ action: 'invite', email: em }); return; }
   if (e.target.id !== 'newbranch') return;
   e.preventDefault(); const r = rest(), f = e.target.elements;
   try { const res = await api('api/menus/' + r.id + '/branch', { method: 'POST', body: JSON.stringify({ name: f.name.value, phone: f.phone.value }) }); const ix = S.restaurants.findIndex(x => x.id === r.id); S.restaurants[ix] = res.menu; render(); toast('Branch added for everyone'); }
@@ -544,15 +595,22 @@ document.addEventListener('click', async e => {
   const el = e.target.closest('[data-a]'); if (!el) return;
   const a = el.dataset.a, id = el.dataset.id, v = el.dataset.v, i = +el.dataset.i;
   if (a === 'home') return go('home');
-  if (a === 'history') return go('history');
-  if (a === 'spend') return go('spend');
+  if (a === 'history' || a === 'spend') { go(a); if (myFamily()) loadFamily().then(() => { if (view === a) render(); }); return; }
   if (a === 'period') { spendPeriod = +v; return render(); }
   if (a === 'cur') { spendCur = v; return render(); }
-  if (a === 'placed') { try { await markOrdered(S.restaurants.find(r => r.id === id)); } catch (err) { toast(err.message); } return; }
-  if (a === 'repeat') return repeatOrder((S.history || []).find(o => o.id === id));
+  if (a === 'placed') return askPlaced(S.restaurants.find(r => r.id === id));
+  if (a === 'scope') { scope = v; return render(); }
+  if (a === 'fam-yes' || a === 'fam-no') return famAct({ action: 'respond', familyId: id, accept: a === 'fam-yes' });
+  if (a === 'fam-rm') return famAct({ action: 'remove', memberId: id });
+  if (a === 'fam-leave') { if (confirm('Leave this family? Orders already filed stay with the family.')) famAct({ action: 'leave' }); return; }
+  if (a === 'repeat') return repeatOrder([...(S.history || []), ...(S.famOrders || [])].find(o => o.id === id));
   if (a === 'del-order') {
     if (!confirm('Delete this order from your history? It will no longer count in your spending.')) return;
-    try { await api('api/history/' + id, { method: 'DELETE' }); S.history = S.history.filter(o => o.id !== id); render(); } catch (err) { toast(err.message); } return;
+    try {
+      if (scope === 'family' && myFamily()) { await api('api/family/orders/' + id, { method: 'DELETE' }); S.famOrders = S.famOrders.filter(o => o.id !== id); }
+      else { await api('api/history/' + id, { method: 'DELETE' }); S.history = S.history.filter(o => o.id !== id); }
+      render();
+    } catch (err) { toast(err.message); } return;
   }
   if (a === 'settings') return go('settings');
   if (a === 'rest-all') { S.hidden = []; save(); return render(); }

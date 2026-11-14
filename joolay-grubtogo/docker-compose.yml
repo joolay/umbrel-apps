@@ -50,6 +50,27 @@ x-pocketbase: {
         {"name": "byName", "type": "text"},
         {"name": "data", "type": "json", "maxSize": 5000000}
       ]
+    },
+    {
+      "name": "grubtogo_families",
+      "fields": [
+        {"name": "name", "type": "text", "required": true},
+        {"name": "owner", "type": "text", "required": true},
+        {"name": "ownerName", "type": "text"},
+        {"name": "memberIds", "type": "text"},
+        {"name": "invitedIds", "type": "text"},
+        {"name": "members", "type": "json", "maxSize": 100000},
+        {"name": "invited", "type": "json", "maxSize": 100000}
+      ]
+    },
+    {
+      "name": "grubtogo_family_orders",
+      "fields": [
+        {"name": "familyId", "type": "text", "required": true},
+        {"name": "byId", "type": "text", "required": true},
+        {"name": "byName", "type": "text"},
+        {"name": "data", "type": "json", "maxSize": 1000000}
+      ]
     }
   ]
 }

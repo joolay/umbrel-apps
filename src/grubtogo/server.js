@@ -8,6 +8,7 @@ const dns = require("dns").promises;
 const net = require("net");
 const pb = require("./pocketbase");
 const menus = require("./menus");
+const family = require("./family");
 
 const PORT = +process.env.PORT || 3893;
 const DATA_DIR = path.resolve(process.env.DATA_DIR || path.join(__dirname, "data"));
@@ -254,7 +255,7 @@ const server = http.createServer(async (req, res) => {
     const p = decodeURIComponent(url.pathname);
     const isPage = p === "/" || p === "/index.html";
     const isMenus = /^\/api\/menus(\/[A-Za-z0-9]{1,40}(\/(item|branch|versions|restore))?)?$/.test(p);
-    const isData = isMenus || p === "/api/state" || /^\/api\/history(\/[A-Za-z0-9]{1,20})?$/.test(p) || p === "/api/extract" || p === "/api/ai/status" || p === "/api/ai/config";
+    const isData = isMenus || p === "/api/state" || /^\/api\/family(\/orders(\/[A-Za-z0-9]{1,20})?)?$/.test(p) || /^\/api\/history(\/[A-Za-z0-9]{1,20})?$/.test(p) || p === "/api/extract" || p === "/api/ai/status" || p === "/api/ai/config";
 
     // The app and its data are only for signed-in people the admin has let in (admins always can).
     // Umbrel's own login is off for this app, so this is the lock: with REQUIRE_ACCOUNTS set it fails closed.
@@ -297,6 +298,26 @@ const server = http.createServer(async (req, res) => {
       }
       if (id && req.method === "PUT") { const r = await menus.update(user, id, JSON.parse((await readBody(req)).toString() || "{}")); return r.status ? send(res, r.status, { code: "menu_denied", message: r.message }) : send(res, 200, r); }
       if (id && req.method === "DELETE") { const r = await menus.remove(user, id); return r.status ? send(res, r.status, { code: "menu_denied", message: r.message }) : send(res, 200, r); }
+      return send(res, 405, { message: "Method not allowed" });
+    }
+    if (/^\/api\/family/.test(p)) {
+      if (!user) return send(res, 503, { code: "accounts_unavailable", message: "Families need accounts. Connect PocketBase first." });
+      const out = r => r.status ? send(res, r.status, { code: "family_denied", message: r.message }) : send(res, 200, r);
+      const body = async () => JSON.parse((await readBody(req)).toString() || "{}");
+      if (p === "/api/family" && req.method === "GET") return out(await family.mine(user));
+      if (p === "/api/family" && req.method === "POST") {
+        const b = await body();
+        if (b.action === "create") return out(await family.create(user, b.name));
+        if (b.action === "invite") return out(await family.invite(user, b.email));
+        if (b.action === "respond") return out(await family.respond(user, b.familyId, !!b.accept));
+        if (b.action === "leave") return out(await family.drop(user, ""));
+        if (b.action === "remove") return out(await family.drop(user, b.memberId));
+        return send(res, 400, { message: "Unknown action" });
+      }
+      if (p === "/api/family/orders" && req.method === "GET") return out(await family.listOrders(user));
+      if (p === "/api/family/orders" && req.method === "POST") { const o = cleanOrder((await body()).order); return o ? out(await family.addOrder(user, o)) : send(res, 400, { code: "bad_order", message: "That order is empty." }); }
+      const fm = p.match(/^\/api\/family\/orders\/([A-Za-z0-9]+)$/);
+      if (fm && req.method === "DELETE") return out(await family.removeOrder(user, fm[1]));
       return send(res, 405, { message: "Method not allowed" });
     }
     if (p === "/api/history" && req.method === "GET") return send(res, 200, { orders: readHistory(user) });
