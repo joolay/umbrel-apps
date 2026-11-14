@@ -58,7 +58,12 @@ details.ai{margin:10px 0;font-size:14px}details.ai summary{cursor:pointer;color:
     sub.textContent = reg ? "Create your JoolzApp account. One account works in all JoolzApp apps." : "Sign in with your JoolzApp account";
     var f = el("form"), name = field("Name", "text", "name"), email = field("Email", "email", "email"), pass = field("Password", "password", reg ? "new-password" : "current-password");
     email.i.required = true; pass.i.required = true; if (reg) pass.i.minLength = 8;
-    if (reg) f.appendChild(name.l); f.append(email.l, pass.l);
+    var dob = field("Date of birth", "date", "bday"), parent = field("Parent or guardian's JoolzApp email", "email", "off"), parentNote = el("p", "note", "You're under 18, so a parent or guardian with their own JoolzApp account has to approve yours. Ask them to create one first if they don't have one.");
+    var kid = el("div"); kid.hidden = true; kid.append(parentNote, parent.l);
+    if (reg) { dob.i.required = true; dob.i.max = new Date().toISOString().slice(0, 10); dob.i.min = "1900-01-01"; }
+    function checkAge() { var v = dob.i.value; if (!v) { kid.hidden = true; parent.i.required = false; return; } var b = new Date(v + "T00:00:00"), n = new Date(), a = n.getFullYear() - b.getFullYear(); if (n.getMonth() < b.getMonth() || (n.getMonth() === b.getMonth() && n.getDate() < b.getDate())) a--; kid.hidden = !(a < 18); parent.i.required = a < 18; }
+    dob.i.onchange = dob.i.oninput = checkAge;
+    if (reg) f.appendChild(name.l); f.append(email.l, pass.l); if (reg) f.append(dob.l, kid);
     var remember, forgot, ok = el("p", "ok");
     if (!reg) {
       var opts = el("div", "opts"), rl = el("label", "inline"); remember = el("input"); remember.type = "checkbox";
@@ -84,7 +89,7 @@ details.ai{margin:10px 0;font-size:14px}details.ai summary{cursor:pointer;color:
     f.append(err, ok, go);
     f.onsubmit = function (ev) {
       ev.preventDefault(); err.textContent = ""; go.disabled = true;
-      api(reg ? "api/account/register" : "api/account/login", { method: "POST", body: JSON.stringify({ email: email.i.value, password: pass.i.value, name: name.i.value, remember: !reg && remember.checked, ai: reg && aiKey.value.trim() ? { provider: aiProv.value, model: aiModel.value.trim(), apiKey: aiKey.value.trim() } : undefined }) })
+      api(reg ? "api/account/register" : "api/account/login", { method: "POST", body: JSON.stringify({ email: email.i.value, password: pass.i.value, name: name.i.value, dob: reg ? dob.i.value : undefined, parentEmails: reg && !kid.hidden ? [parent.i.value] : undefined, remember: !reg && remember.checked, ai: reg && aiKey.value.trim() ? { provider: aiProv.value, model: aiModel.value.trim(), apiKey: aiKey.value.trim() } : undefined }) })
         .then(function (j) { var rem = !reg && remember.checked; setTok(j.token, rem); try { if (rem) { localStorage.setItem("gd.remember", "1"); localStorage.setItem("gd.email", email.i.value); } else if (!reg) { localStorage.removeItem("gd.remember"); localStorage.removeItem("gd.email"); } } catch (e) {} j.user.canOpen ? location.reload() : waiting(j.user); })
         .catch(function (e) { err.textContent = e.message; go.disabled = false; });
     };
@@ -99,6 +104,11 @@ details.ai{margin:10px 0;font-size:14px}details.ai summary{cursor:pointer;color:
     view.appendChild(el("p", "note", "You're signed in as " + (u.name || u.email) + ". " + ((u.gate && u.gate.message) || "The admin hasn't opened GrubToGo to you yet. Ask them to give you access, then check again.")));
     var row = el("div", "row"), again = el("button", "", "Check again"), out = el("button", "", "Sign out");
     again.onclick = function () { start(); }; out.onclick = signOut; row.append(again, out); view.appendChild(row);
+    if (u.gate && u.gate.reason === "guardian_pending") {
+      var pf = el("form"), pe = field("Add another parent or guardian's email", "email", "off"), pm = el("p", "note"), pb = el("button", "", "Send request"); pb.type = "submit"; pe.i.required = true; pf.append(pe.l, pb, pm); pf.style.marginTop = "14px";
+      pf.onsubmit = function (ev) { ev.preventDefault(); pm.textContent = ""; api("api/account/guardian", { method: "POST", body: JSON.stringify({ parentEmails: [pe.i.value] }) }).then(function (j) { pm.textContent = j.message; pe.i.value = ""; }).catch(function (e) { pm.textContent = e.message; }); };
+      view.appendChild(pf);
+    }
   }
   function signOut() { setTok("", false); try { localStorage.removeItem("gd_prefs"); } catch (e) {} fetch("api/account/logout", { method: "POST" }).catch(function () {}).then(function () { location.reload(); }); }
   function problem(msg) {

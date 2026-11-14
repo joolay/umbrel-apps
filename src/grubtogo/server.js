@@ -9,6 +9,7 @@ const net = require("net");
 const pb = require("./pocketbase");
 const menus = require("./menus");
 const family = require("./family");
+const guardians = require("./guardians");
 
 const PORT = +process.env.PORT || 3893;
 const DATA_DIR = path.resolve(process.env.DATA_DIR || path.join(__dirname, "data"));
@@ -114,6 +115,7 @@ async function fetchPage(raw) {
 // Who may open the app: with Portal Admin set up the portal decides (per-app approval, on/off, maintenance); admins always get in.
 function gateOf(u) {
   if (u.isAdmin) return { ok: true };
+  if (u.guard && u.guard.minor && !u.guard.approved) return { ok: false, reason: "guardian_pending", message: "Waiting for a parent or guardian to approve your account. Ask them to open GrubToGo, then Settings, and approve you. Then check again here." };
   if (!u.portal) return u.access ? { ok: true } : { ok: false, reason: "no_access", message: "The admin hasn't opened GrubToGo to you yet. Ask them to give you access, then check again." };
   const a = u.portal.app;
   if (a && a.enabled === false) return { ok: false, reason: "disabled", message: "GrubToGo is switched off right now." };
@@ -121,7 +123,7 @@ function gateOf(u) {
   if (!u.portal.access) return { ok: false, reason: "no_access", message: "You need approval to use GrubToGo. Open Portal Admin, request access to GrubToGo, then check again here." };
   return { ok: true };
 }
-const publicUser = u => ({ id: u.id, email: u.email || "", name: u.name || "", isAdmin: !!u.isAdmin, canOpen: gateOf(u).ok, gate: gateOf(u), prefs: Object.fromEntries(Object.entries((u.portal && u.portal.prefs) || {}).filter(([k]) => k !== "ai.apiKey")) });
+const publicUser = u => ({ id: u.id, email: u.email || "", name: u.name || "", isAdmin: !!u.isAdmin, dob: u.dob || "", age: guardians.ageOf(u.dob), minor: !!(u.guard ? u.guard.minor : guardians.isMinor(u)), canOpen: gateOf(u).ok, gate: gateOf(u), prefs: Object.fromEntries(Object.entries((u.portal && u.portal.prefs) || {}).filter(([k]) => k !== "ai.apiKey")) });
 
 const tokenCache = new Map();
 function tokenOf(req) {
@@ -135,11 +137,14 @@ function setSessionCookie(req, res, token, remember) {
   res.setHeader("set-cookie", [`gd_token=${token}; Path=/; HttpOnly; SameSite=Lax${age}${secure}`, remember ? `gd_rem=1; Path=/; HttpOnly; SameSite=Lax${age}${secure}` : `gd_rem=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`]);
 }
 const clearSessionCookie = res => res.setHeader("set-cookie", ["gd_token=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0", "gd_rem=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0"]);
+// Adds whether a parent has approved (for under-18s) to the user record.
+async function withGuard(u) { if (u) u.guard = await guardians.statusOf(u).catch(() => ({ minor: guardians.isMinor(u), approved: !guardians.isMinor(u) })); return u; }
 async function currentUser(req) {
   const t = tokenOf(req); if (!t) return null;
   const c = tokenCache.get(t); if (c && Date.now() - c.at < 15000) return c.user;
   try {
     const j = await pb.verifyToken(t);
+    await withGuard(j.record);
     tokenCache.set(t, { user: j.record, at: Date.now() });
     if (tokenCache.size > 200) tokenCache.delete(tokenCache.keys().next().value);
     return j.record;
@@ -166,7 +171,16 @@ async function accountRoutes(req, res, p) {
       const email = String(body.email || "").trim().toLowerCase(), password = String(body.password || ""), name = String(body.name || "").trim().slice(0, 80);
       if (!validEmail(email)) return send(res, 400, { code: "bad_email", message: "Enter a valid email address." }), true;
       if (password.length < 8 || password.length > 200) return send(res, 400, { code: "bad_password", message: "Use a password of at least 8 characters." }), true;
-      let created; try { created = await pb.createUser({ email, password, name }); }
+      // Everyone gives a date of birth. Under 18s must name a parent or guardian who already has an account and approves theirs.
+      const dob = String(body.dob || "").trim();
+      if (!guardians.validDob(dob)) return send(res, 400, { code: "bad_dob", message: "Enter your date of birth." }), true;
+      let parents = [];
+      if (guardians.ageOf(dob) < 18) {
+        const chk = await guardians.checkParents(body.parentEmails, email);
+        if (chk.error) return send(res, 400, { code: "parent_needed", message: chk.error }), true;
+        parents = chk.parents;
+      }
+      let created; try { created = await pb.createUser({ email, password, name, dob }); }
       catch (e) {
         if (e instanceof pb.PBError && e.status === 400) return send(res, 400, { code: "cannot_register", message: e.data?.email?.code === "validation_not_unique" ? "That email is already registered. Sign in instead." : (e.data?.password?.message || e.data?.email?.message || "Couldn't create the account.") }), true;
         throw e;
@@ -178,14 +192,37 @@ async function accountRoutes(req, res, p) {
         const baseUrl = clip(ai.baseUrl, 300);
         if (provider !== "custom" || /^https?:\/\//i.test(baseUrl)) { try { await pb.setUserPrefs(created.id, { "ai.provider": provider, "ai.model": clip(ai.model, 120), "ai.apiKey": clip(ai.apiKey, 300), "ai.baseUrl": provider === "custom" ? baseUrl : "" }); } catch {} }
       }
+      if (parents.length) await guardians.requestApproval(created, parents);
       const j = await pb.login(email, password); setSessionCookie(req, res, j.token, false);
-      send(res, 200, { token: j.token, user: publicUser(j.record) }); return true;
+      send(res, 200, { token: j.token, user: publicUser(await withGuard(j.record)) }); return true;
     }
     if (p === "/api/account/login" && req.method === "POST") {
       if (throttled(req, "login", 10, 600e3)) return send(res, 429, { code: "slow_down", message: "Too many attempts. Try again in a few minutes." }), true;
-      try { const j = await pb.login(String(body.email || "").trim().toLowerCase(), String(body.password || "")); setSessionCookie(req, res, j.token, !!body.remember); send(res, 200, { token: j.token, user: publicUser(j.record) }); }
+      try { const j = await pb.login(String(body.email || "").trim().toLowerCase(), String(body.password || "")); setSessionCookie(req, res, j.token, !!body.remember); send(res, 200, { token: j.token, user: publicUser(await withGuard(j.record)) }); }
       catch (e) { if (e instanceof pb.PBError && e.status === 400) return send(res, 400, { code: "bad_login", message: "That email and password don't match." }), true; throw e; }
       return true;
+    }
+    // Accounts that pre-date date of birth give it once; it can't be changed afterwards. Under 18s then name a parent.
+    if (p === "/api/account/dob" && req.method === "POST") {
+      const u = await currentUser(req);
+      if (!u) return send(res, 401, { code: "signin_required", message: "Sign in to continue." }), true;
+      const fresh = await pb.getUser(u.id);
+      if (fresh.dob) return send(res, 400, { code: "dob_set", message: "Your date of birth is already saved. Ask an admin if it's wrong." }), true;
+      const dob = String(body.dob || "").trim(); if (!guardians.validDob(dob)) return send(res, 400, { code: "bad_dob", message: "Enter your date of birth." }), true;
+      let parents = [];
+      if (guardians.ageOf(dob) < 18) { const chk = await guardians.checkParents(body.parentEmails, fresh.email); if (chk.error) return send(res, 400, { code: "parent_needed", message: chk.error }), true; parents = chk.parents; }
+      await pb.setDob(u.id, dob); tokenCache.delete(tokenOf(req));
+      const f2 = await pb.getUser(u.id); if (parents.length) await guardians.requestApproval(f2, parents);
+      send(res, 200, { user: publicUser(await withGuard(f2)) }); return true;
+    }
+    // A minor adds (another) parent, for example if the first email was wrong.
+    if (p === "/api/account/guardian" && req.method === "POST") {
+      const u = await currentUser(req);
+      if (!u) return send(res, 401, { code: "signin_required", message: "Sign in to continue." }), true;
+      if (!guardians.isMinor(u)) return send(res, 400, { message: "Only under-18 accounts need a parent." }), true;
+      const chk = await guardians.checkParents(body.parentEmails, u.email); if (chk.error) return send(res, 400, { code: "parent_needed", message: chk.error }), true;
+      await guardians.requestApproval(u, chk.parents); tokenCache.delete(tokenOf(req));
+      send(res, 200, { ok: true, message: "Sent to " + chk.parents.map(x => x.name).join(" and ") + "." }); return true;
     }
     if (p === "/api/account/forgot" && req.method === "POST") {
       if (throttled(req, "forgot", 5, 3600e3)) return send(res, 429, { code: "slow_down", message: "Too many attempts. Try again later." }), true;
@@ -197,7 +234,7 @@ async function accountRoutes(req, res, p) {
       const u = await currentUser(req);
       if (!u) return send(res, 401, { code: "signin_required", message: "Sign in to continue." }), true;
       setSessionCookie(req, res, tokenOf(req));
-      send(res, 200, { user: { ...publicUser(await pb.getUser(u.id)), portalUrl: await pb.portalUrl().catch(() => "") } }); return true;
+      send(res, 200, { user: { ...publicUser(await withGuard(await pb.getUser(u.id))), portalUrl: await pb.portalUrl().catch(() => "") } }); return true;
     }
     if (p === "/api/account/logout" && req.method === "POST") { clearSessionCookie(res); send(res, 200, { ok: true }); return true; }
     send(res, 404, { code: "not_found" }); return true;
@@ -258,7 +295,7 @@ const server = http.createServer(async (req, res) => {
     const p = decodeURIComponent(url.pathname);
     const isPage = p === "/" || p === "/index.html";
     const isMenus = /^\/api\/menus(\/[A-Za-z0-9]{1,40}(\/(item|branch|versions|restore))?)?$/.test(p);
-    const isData = isMenus || p === "/api/state" || /^\/api\/family(\/orders(\/[A-Za-z0-9]{1,20})?)?$/.test(p) || /^\/api\/history(\/[A-Za-z0-9]{1,20})?$/.test(p) || p === "/api/extract" || p === "/api/ai/status" || p === "/api/ai/config";
+    const isData = isMenus || p === "/api/state" || p === "/api/guardians" || /^\/api\/family(\/orders(\/[A-Za-z0-9]{1,20})?)?$/.test(p) || /^\/api\/history(\/[A-Za-z0-9]{1,20})?$/.test(p) || p === "/api/extract" || p === "/api/ai/status" || p === "/api/ai/config";
 
     // The app and its data are only for signed-in people the admin has let in (admins always can).
     // Umbrel's own login is off for this app, so this is the lock: with REQUIRE_ACCOUNTS set it fails closed.
@@ -303,6 +340,22 @@ const server = http.createServer(async (req, res) => {
       if (id && req.method === "DELETE") { const r = await menus.remove(user, id); return r.status ? send(res, r.status, { code: "menu_denied", message: r.message }) : send(res, 200, r); }
       return send(res, 405, { message: "Method not allowed" });
     }
+    if (p === "/api/guardians") {
+      if (!user) return send(res, 503, { code: "accounts_unavailable", message: "This needs accounts. Connect PocketBase first." });
+      if (req.method === "GET") {
+        const st = await guardians.statusOf(user), ib = await guardians.inbox(user);
+        return send(res, 200, { minor: st.minor, parents: st.parents || [], ...ib });
+      }
+      if (req.method === "POST") {
+        const b = JSON.parse((await readBody(req)).toString() || "{}");
+        const join = async (childId, familyId) => { const c = await pb.getUser(childId); await family.respond({ id: c.id, name: c.name, email: c.email }, familyId, true); };
+        const r = b.action === "decide" ? await guardians.decide(user, b.id, !!b.approve, join) : b.action === "revoke" ? await guardians.revoke(user, b.childId) : { status: 400, message: "Unknown action" };
+        if (r.status) return send(res, r.status, { code: "guardian_denied", message: r.message });
+        tokenCache.clear();
+        return send(res, 200, { ...(await guardians.inbox(user)), ok: true });
+      }
+      return send(res, 405, { message: "Method not allowed" });
+    }
     if (/^\/api\/family/.test(p)) {
       if (!user) return send(res, 503, { code: "accounts_unavailable", message: "Families need accounts. Connect PocketBase first." });
       const out = r => r.status ? send(res, r.status, { code: "family_denied", message: r.message }) : send(res, 200, r);
@@ -310,11 +363,20 @@ const server = http.createServer(async (req, res) => {
       if (p === "/api/family" && req.method === "GET") return out(await family.mine(user));
       if (p === "/api/family" && req.method === "POST") {
         const b = await body();
-        if (b.action === "create") return out(await family.create(user, b.name));
+        if (b.action === "create") return guardians.isMinor(user) ? out({ status: 403, message: "A parent or guardian creates the family. They can invite you." }) : out(await family.create(user, b.name));
         if (b.action === "invite") return out(await family.invite(user, b.email, b.tier, b.relation));
-        if (b.action === "respond") return out(await family.respond(user, b.familyId, !!b.accept));
+        if (b.action === "respond") {
+          // A kid joining a family needs a parent's approval first.
+          if (b.accept && guardians.isMinor(user)) {
+            const inv = (await family.mine(user)).invites.find(i => i.id === String(b.familyId || ""));
+            if (!inv) return out({ status: 404, message: "That invitation is no longer there." });
+            await guardians.requestFamily(user, inv.id, inv.name);
+            return send(res, 200, { ...(await family.mine(user)), notice: "Sent to your parent. You'll join once they approve." });
+          }
+          return out(await family.respond(user, b.familyId, !!b.accept));
+        }
         if (b.action === "tier") return out(await family.setTier(user, b.memberId, b.tier, b.relation));
-        if (b.action === "manager") return out(await family.setManager(user, b.memberId, !!b.on));
+        if (b.action === "manager") { const t = await pb.getUser(String(b.memberId || "").replace(/[^A-Za-z0-9]/g, "")).catch(() => null); if (t && guardians.isMinor(t)) return out({ status: 403, message: "Under-18s can't manage a family." }); return out(await family.setManager(user, b.memberId, !!b.on)); }
         if (b.action === "leave") return out(await family.drop(user, ""));
         if (b.action === "remove") return out(await family.drop(user, b.memberId));
         return send(res, 400, { message: "Unknown action" });

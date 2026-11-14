@@ -72,6 +72,20 @@ x-pocketbase: {
         {"name": "byName", "type": "text"},
         {"name": "data", "type": "json", "maxSize": 1000000}
       ]
+    },
+    {
+      "name": "joolz_guardians",
+      "fields": [
+        {"name": "childId", "type": "text", "required": true},
+        {"name": "childName", "type": "text"},
+        {"name": "parentId", "type": "text", "required": true},
+        {"name": "parentName", "type": "text"},
+        {"name": "kind", "type": "text"},
+        {"name": "ref", "type": "text"},
+        {"name": "label", "type": "text"},
+        {"name": "status", "type": "text"},
+        {"name": "decidedAt", "type": "text"}
+      ]
     }
   ]
 }
