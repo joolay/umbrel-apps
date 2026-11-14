@@ -234,7 +234,7 @@ const ADMIN_NAV = $('#nav').innerHTML;
 function setBrand(name) { document.querySelectorAll('.brand span').forEach((n) => { n.textContent = name; }); document.title = name; }
 fetch('/config').then((r) => r.json()).then((c) => { state.public = !!c.public; if (state.public) setBrand('JoolzApp'); }).catch(() => {});
 function showShell() {
-  $('#nav').innerHTML = state.role === 'user' ? '<a href="#/home" data-route="home">Dashboard</a><a href="#/me" data-route="me">My settings</a>' : ADMIN_NAV;
+  $('#nav').innerHTML = state.role === 'user' ? '<a href="#/home" data-route="home">Dashboard</a><a href="#/family" data-route="family">Family</a><a href="#/me" data-route="me">My settings</a>' : ADMIN_NAV;
   setBrand(state.role === 'user' || state.public ? 'JoolzApp' : 'Portal Admin');
   $('#login').classList.add('hidden'); $('#shell').classList.remove('hidden');
   $('#who').textContent = state.actor; route(); startDetecting();
@@ -286,11 +286,11 @@ $('#login-forgot').onclick = async (e) => {
 window.addEventListener('hashchange', () => { if (resetToken()) return showReset(); state.token && route(); });
 function route() {
   let [, view = 'overview', arg] = location.hash.split('/');
-  if (state.role === 'user') view = view === 'me' ? 'me' : 'home';
-  const v = { home: viewHome, overview: viewOverview, global: viewGlobal, apps: viewApps, users: viewUsers, requests: viewRequests, cleanup: viewCleanup, audit: viewAudit, setup: viewSetup, me: viewMe }[view] || viewOverview;
+  if (state.role === 'user') view = (view === 'me' || view === 'family') ? view : 'home';
+  const v = { home: viewHome, overview: viewOverview, global: viewGlobal, apps: viewApps, users: viewUsers, requests: viewRequests, cleanup: viewCleanup, audit: viewAudit, setup: viewSetup, me: viewMe, family: viewFamily }[view] || viewOverview;
   document.querySelectorAll('#nav a').forEach((a) => a.classList.toggle('active', a.dataset.route === view));
   main().innerHTML = '<p class="muted">Loading…</p>';
-  guard(v)(arg ? decodeURIComponent(arg) : undefined);
+  guard(async (a) => { if (await needDob()) return; await v(a); })(arg ? decodeURIComponent(arg) : undefined);
 }
 
 /* ---------- Setup banner ---------- */
@@ -916,9 +916,8 @@ async function viewMe() {
     return `<label>${esc(label)}<select name="${key}">${opt('', '— not set —', v === '')}${list.map(([val, l]) => opt(val, l, v === val)).join('')}</select></label>`;
   };
   main().innerHTML = `<h1>My settings</h1><p class="sub">Signed in as ${esc(state.actor)}. These settings apply to every JoolzApp app you use.</p>
-    <div class="tabs"><button class="active" data-t="prefs">Preferences</button><button data-t="profile">Profile</button><button data-t="family">Family</button><button data-t="ai">AI</button><button data-t="account">Account</button></div>
+    <div class="tabs"><button class="active" data-t="prefs">Preferences</button><button data-t="profile">Profile</button><button data-t="ai">AI</button><button data-t="account">Account</button></div>
     <div data-pane="profile" hidden><div class="card" id="pane-profile"><p class="muted">Loading…</p></div></div>
-    <div data-pane="family" hidden><div id="pane-family"><div class="card"><p class="muted">Loading…</p></div></div></div>
     <div data-pane="prefs"><form id="prefs" class="card"><h2>Preferences</h2><div class="kv">${PREFS.map(field).join('')}</div>
       ${detected ? `<p class="muted small">Your device time zone: ${esc(detected)}</p>` : ''}<button class="btn primary">Save preferences</button></form></div>
     <div data-pane="ai" hidden><form id="ai" class="card"><h2>AI (for apps that use it)</h2><p class="muted small">Pick your own AI provider, model and API key. Apps that read menus, photos or text with AI will use these instead of the shared key. Only you and the admin can see them.</p>
@@ -973,7 +972,7 @@ async function viewMe() {
     for (const k of ['ai.apiKey', 'ai.model', 'ai.provider', 'ai.baseUrl']) await setPref(k, '');
     toast('AI settings removed'); route();
   });
-  profilePane(uid); familyPane(uid);
+  profilePane(uid);
   $('#prefs').onsubmit = guard(async (e) => {
     e.preventDefault();
     for (const [key] of PREFS) {
@@ -1033,6 +1032,30 @@ async function profilePane(uid) {
     f.onsubmit = guard(async (e) => { e.preventDefault(); await acctFetch('/account/dob', { dob: f.elements.dob.value, parentEmails: f.elements.parent.value ? [f.elements.parent.value] : [] }); toast('Saved'); route(); });
   }
   if ($('#pf-parent')) $('#pf-parent').onsubmit = guard(async (e) => { e.preventDefault(); const j = await acctFetch('/account/guardian', { parentEmails: [e.target.email.value] }); toast(j.message); profilePane(uid); });
+}
+
+async function viewFamily() {
+  main().innerHTML = '<h1>Family</h1><p class="sub">Linked across every JoolzApp app.</p><div id="pane-family"><p class="muted">Loading…</p></div>';
+  await familyPane(state.uid);
+}
+
+// Everyone has a date of birth. Accounts that pre-date it are asked once, before anything else.
+async function needDob() {
+  if (state.dobOk || !state.uid) return false;
+  const me = await api('GET', `/api/collections/${state.usersColl}/records/${state.uid}`).catch(() => null);
+  if (!me || me.dob) { state.dobOk = true; return false; }
+  const today = new Date().toISOString().slice(0, 10);
+  main().innerHTML = `<h1>One more thing</h1><p class="sub">Every JoolzApp account now has a date of birth. It can only be entered once. Under 18s need a parent or guardian with a JoolzApp account to approve them.</p>
+    <div class="card"><form id="dobreq" class="kv"><label>Date of birth<input name="dob" type="date" min="1900-01-01" max="${today}" required></label>
+    <label id="dr-parent" hidden>Parent or guardian's JoolzApp email<input name="parent" type="email" autocomplete="off"></label><div><button class="btn primary">Save</button></div></form></div>`;
+  const f = $('#dobreq');
+  f.elements.dob.onchange = () => { const v = f.elements.dob.value, kid = !!v && ageFrom(v) < 18; $('#dr-parent').hidden = !kid; f.elements.parent.required = kid; };
+  f.onsubmit = guard(async (e) => {
+    e.preventDefault();
+    await acctFetch('/account/dob', { dob: f.elements.dob.value, parentEmails: f.elements.parent.value ? [f.elements.parent.value] : [] });
+    state.dobOk = true; toast('Saved'); route();
+  });
+  return true;
 }
 
 async function familyPane(uid) {
@@ -1100,7 +1123,7 @@ async function viewHome() {
   // Parents: approve kids' accounts and settings here. Kids: see who has been asked.
   const g = isAdmin ? null : await fetch('/guardians', { headers: { authorization: state.token }, cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
   const fam = isAdmin ? null : await acctFetch('/family').catch(() => null);
-  const famInv = fam && fam.invites && fam.invites.length ? `<div class="card"><b>You've been invited to a family.</b> <a href="#/me">Open My settings → Family</a> to join or decline.</div>` : '';
+  const famInv = fam && fam.invites && fam.invites.length ? `<div class="card"><b>You've been invited to a family.</b> <a href="#/family">Open the Family page</a> to join or decline.</div>` : '';
   const guardCard = (!g ? '' : [
     g.minor && g.parents.length ? `<div class="card"><b>Your account needs a parent's approval.</b> ${g.parents.map((p) => `${esc(p.name)}: ${p.status === 'approved' ? 'approved' : p.status === 'pending' ? 'waiting' : 'declined'}`).join(' · ')}</div>` : '',
     g.pending.length ? `<div class="card"><h2>Needs your approval</h2>${g.pending.map((x) => `<div class="row spread" style="padding:6px 0"><span>${esc(x.label)}</span><span><button class="btn primary small" data-gact="yes" data-id="${esc(x.id)}">Approve</button> <button class="btn small" data-gact="no" data-id="${esc(x.id)}">Decline</button></span></div>`).join('')}</div>` : '',
