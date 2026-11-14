@@ -253,6 +253,7 @@ async function accountRoutes(req, res, pathname) {
   const out = (r) => (r.status ? send(res, r.status, { message: r.message }) : send(res, 200, r));
   try {
     let b = {}; if (req.method === 'POST') { try { b = JSON.parse(await readBody(req)); } catch { return send(res, 400, { message: 'Invalid request.' }); } }
+    if (pathname === '/family/users' && req.method === 'GET') return send(res, 200, { users: (await pbx.listUsers()).filter((u) => u.id !== user.id) });
     if (pathname === '/family') {
       if (req.method === 'GET') return out(await family.mine(user));
       if (req.method !== 'POST') return send(res, 405, { message: 'Method not allowed' });
@@ -331,7 +332,7 @@ const handle = async (req, res) => {
 
     if (pathname === '/signup-config') { if (req.method !== 'GET') return send(res, 405, { message: 'Method not allowed' }); return signupConfig(req, res); }
     if (pathname === '/guardians') return guardiansRoute(req, res);
-    if (pathname === '/family' || pathname === '/account/dob' || pathname === '/account/guardian') return accountRoutes(req, res, pathname);
+    if (pathname === '/family' || pathname === '/family/users' || pathname === '/account/dob' || pathname === '/account/guardian') return accountRoutes(req, res, pathname);
     if (pathname === '/signup') { if (req.method !== 'POST') return send(res, 405, { message: 'Method not allowed' }); return signup(req, res); }
 
     if (pathname === '/config') {

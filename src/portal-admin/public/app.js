@@ -1062,6 +1062,8 @@ async function familyPane(uid) {
   const box = $('#pane-family'); if (!box) return;
   let data; try { data = await acctFetch('/family'); } catch (e) { box.innerHTML = `<div class="card"><p class="muted">Families couldn't load: ${esc(e.message)}</p></div>`; return; }
   const f = data.family, inv = data.invites || [];
+  const taken = f ? new Set([...f.members, ...f.invited].flatMap((m) => [m.id, (m.email || '').toLowerCase()])) : new Set();
+  const people = f && f.canManage ? (await acctFetch('/family/users').catch(() => ({ users: [] }))).users.filter((u) => !taken.has(u.id) && !taken.has(u.email.toLowerCase())) : [];
   const act = async (body) => { try { const j = await acctFetch('/family', body); if (j.notice) toast(j.notice); familyPane(uid); } catch (e) { toast(e.message, true); } };
   let h = inv.map((i) => `<div class="card"><b>${esc(i.ownerName || 'Someone')}</b> invited you to the <b>${esc(i.name)}</b> family.<div class="row" style="gap:8px;margin-top:8px"><button class="btn primary small" data-fa="yes" data-id="${esc(i.id)}">Join</button><button class="btn small" data-fa="no" data-id="${esc(i.id)}">Decline</button></div></div>`).join('');
   if (!f) h += `<div class="card"><h2>Family</h2><p class="muted small">Link up with your family on JoolzApp. The link works in every JoolzApp app. Immediate family can share joint expenses; extended family (cousins, grandparents…) are linked for future apps.</p>
@@ -1072,13 +1074,13 @@ async function familyPane(uid) {
     const grp = (t, title, note) => { const ms = f.members.filter((m) => m.tier === t), ps = f.invited.filter((m) => m.tier === t); return `<h3>${title}</h3>${note ? `<p class="muted small">${note}</p>` : ''}${ms.map((m) => row(m, false)).join('')}${ps.map((m) => row(m, true)).join('')}${ms.length || ps.length ? '' : '<p class="muted small">Nobody yet.</p>'}`; };
     h += `<div class="card"><h2>${esc(f.name)}</h2>${f.myTier === 'extended' ? '<p class="muted small">You are linked as extended family. Family expenses are only shared with immediate family.</p>' : ''}
       ${grp('family', 'Immediate family', 'Shares joint expenses, such as family orders.')}${grp('extended', 'Extended family', '')}
-      ${f.canManage ? `<form id="fam-inv" class="kv" style="margin-top:12px"><label>Invite by email (they don't need an account yet)<input name="email" type="email" required></label><label>Link as<select name="tier"><option value="family">Immediate family</option><option value="extended">Extended family</option></select></label><label>Relationship (optional)<input name="relation" maxlength="40" placeholder="cousin, grandmother…"></label><div><button class="btn primary small">Invite</button></div></form>` : ''}
+      ${f.canManage ? `<form id="fam-inv" class="kv" style="margin-top:12px"><label>Registered JoolzApp users<select name="pick"><option value="">Choose someone…</option>${people.map((u) => `<option value="${esc(u.email)}">${esc(u.name)} (${esc(u.email)})</option>`).join('')}</select></label><label>Or invite by email (they don't need an account yet)<input name="email" type="email"></label><label>Link as<select name="tier"><option value="family">Immediate family</option><option value="extended">Extended family</option></select></label><label>Relationship (optional)<input name="relation" maxlength="40" placeholder="cousin, grandmother…"></label><div><button class="btn primary small">Invite</button></div></form>` : ''}
       ${f.isOwner ? '<p class="muted small">Tip: make someone a manager and they can invite, remove and move members too.</p>' : ''}
       <p><button class="btn small" data-fa="leave">Leave this family</button></p></div>`;
   }
   box.innerHTML = h;
   if ($('#fam-new')) $('#fam-new').onsubmit = (e) => { e.preventDefault(); act({ action: 'create', name: e.target.name.value }); };
-  if ($('#fam-inv')) $('#fam-inv').onsubmit = (e) => { e.preventDefault(); const f2 = e.target.elements; act({ action: 'invite', email: f2.email.value, tier: f2.tier.value, relation: f2.relation.value }); };
+  if ($('#fam-inv')) $('#fam-inv').onsubmit = (e) => { e.preventDefault(); const f2 = e.target.elements; const em = (f2.pick.value || f2.email.value).trim(); if (!em) return toast('Choose someone or enter an email.', true); act({ action: 'invite', email: em, tier: f2.tier.value, relation: f2.relation.value }); };
   box.onclick = (e) => {
     const b = e.target.closest('button[data-fa]'); if (!b) return; const a = b.dataset.fa, id = b.dataset.id, v = b.dataset.v;
     if (a === 'yes' || a === 'no') return act({ action: 'respond', familyId: id, accept: a === 'yes' });
