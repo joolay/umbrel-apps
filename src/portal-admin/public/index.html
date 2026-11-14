@@ -45,6 +45,15 @@
     <label>Confirm password
       <input id="signup-pass2" type="password" autocomplete="new-password" minlength="8" required>
     </label>
+    <label>Date of birth
+      <input id="signup-dob" type="date" autocomplete="bday" min="1900-01-01" required>
+    </label>
+    <div id="signup-kid" class="hidden">
+      <p class="muted small">You're under 18, so a parent or guardian with their own JoolzApp account has to approve yours. If they don't have one yet, ask them to create it first.</p>
+      <label>Parent or guardian's JoolzApp email
+        <input id="signup-parent" type="email" autocomplete="off">
+      </label>
+    </div>
     <details class="ai-setup"><summary>Set up AI now (optional)</summary>
       <p class="muted small">For apps that read things with AI. You can also do this later under My settings. Apps may include a few free uses before they ask for your own key.</p>
       <label>Provider <select id="signup-ai-prov"></select></label>

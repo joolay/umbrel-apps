@@ -88,12 +88,21 @@ function ensureSchema() {
     const mk = (name, type, required) => key === "fields" ? { name, type, required: !!required } : { name, type, required: !!required, options: {} };
     const have = new Set((col[key] || []).map(f => f.name));
     const patch = {};
-    if (!have.has("isAdmin")) patch[key] = [...(col[key] || []), mk("isAdmin", "bool")];
+    const add = [];
+    if (!have.has("isAdmin")) add.push(mk("isAdmin", "bool"));
+    if (!have.has("dob")) add.push(mk("dob", "text"));   // date of birth, YYYY-MM-DD; set only by the JoolzApp sign-up page (Portal Admin)
+    if (add.length) patch[key] = [...(col[key] || []), ...add];
     // Stop people changing their own admin flag straight through PocketBase's API.
     const ref = key === "fields" ? "@request.body." : "@request.data.";
     const guard = `${ref}isAdmin:isset = false`;
     if (col.updateRule === "id = @request.auth.id") patch.updateRule = "id = @request.auth.id && " + guard;
     if (col.createRule === "") patch.createRule = guard;
+    // Nobody can change their own date of birth through PocketBase's API either (it decides whether a parent has to approve).
+    const dobGuard = `${ref}dob:isset = false`;
+    for (const k of ["updateRule", "createRule"]) {
+      const r = patch[k] !== undefined ? patch[k] : col[k];
+      if (typeof r === "string" && r.includes("isAdmin:isset = false") && !r.includes("dob:isset")) patch[k] = r + " && " + dobGuard;
+    }
     if (Object.keys(patch).length) await asSuper("PATCH", "/api/collections/" + encodeURIComponent(COLL), patch);
 
     // Per-app access rows. No API rules, so only the superuser (the app servers) can read or write them.

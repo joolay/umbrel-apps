@@ -2,7 +2,7 @@ manifestVersion: 1
 id: joolay-portal-admin
 category: developer
 name: Portal Admin
-version: "0.10.1"
+version: "0.11.0"
 tagline: One admin panel for all your custom PocketBase apps
 description: >-
   A central admin panel for your custom apps that use PocketBase. Register each app, then manage
@@ -21,7 +21,7 @@ gallery: []
 path: ""
 defaultUsername: ""
 defaultPassword: ""
-releaseNotes: "Prettier glass-style look across the portal and Dashboard: frosted panels, soft gradient background, rounded tiles and buttons. Light and dark."
+releaseNotes: "Anyone signed in without a date of birth is now asked for it before anything else (under 18s add a parent). Family is its own page (create, invite, immediate and extended, managers) and My settings has a Profile tab (name, password, date of birth, parents): the one place to manage your JoolzApp account for every app. One JoolzApp sign-up page for every app: ShutterWorth and GrubToGo now send people here to create an account, and bring them back when it is made. Sign-up asks for a date of birth; under-18s name a parent who already has an account and are held until the parent approves. Parents approve (and withdraw) from the Dashboard. Accounts are now created by this app's server, using the PocketBase login you connected with Connect. Prettier glass-style look across the portal and Dashboard: frosted panels, soft gradient background, rounded tiles and buttons. Light and dark."
 submitter: joolay
 submission: https://github.com/joolay/umbrel-apps
 icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-portal-admin/icon.svg

@@ -144,6 +144,12 @@ async function boot() {
   $('#login-remember').checked = store.lget('pa.remember') === '1';
   $('#login-email').value = store.lget('pa.email');
   if (resetToken()) return showReset();
+  // Every app's "Create a JoolzApp account" button lands here.
+  { const qs = new URLSearchParams(location.search);
+    if (qs.get('signup') === '1') {
+      signupApp = (qs.get('app') || '').toLowerCase(); history.replaceState(null, '', location.pathname);
+      if (!state.token) { $('#shell').classList.add('hidden'); $('#login').classList.add('hidden'); $('#reset').classList.add('hidden'); $('#signup').classList.remove('hidden'); return; }
+    } }
   // Arriving from an app's "Back to Dashboard" button: sign in with the account the app already knows (only if not signed in here).
   const hs = location.hash.match(/^#sso=([^&]+)/);
   if (hs) {
@@ -167,15 +173,32 @@ $('#signup-ai-prov').innerHTML = AI_PROVIDERS.map(([v, l]) => `<option value="${
 $('#signup-ai-prov').onchange = () => { const p = AI_PROVIDERS.find(([v]) => v === $('#signup-ai-prov').value); $('#signup-ai-model').placeholder = p[2]; $('#signup-ai-hint').textContent = p[3]; $('#signup-ai-base-row').style.display = p[0] === 'custom' ? '' : 'none'; };
 $('#signup-ai-prov').onchange();
 $('#signup-cancel').onclick = (e) => { e.preventDefault(); showLogin(); };
+// Apps send people here with ?signup=1&app=<slug>; after the account is made they are taken straight back to that app.
+let signupApp = '';
+const kidMode = () => !$('#signup-kid').classList.contains('hidden');
+$('#signup-dob').max = new Date().toISOString().slice(0, 10);
+$('#signup-dob').oninput = $('#signup-dob').onchange = () => {
+  const v = $('#signup-dob').value; if (!v) { $('#signup-kid').classList.add('hidden'); $('#signup-parent').required = false; return; }
+  const b = new Date(v + 'T00:00:00'), n = new Date(); let a = n.getFullYear() - b.getFullYear(); if (n.getMonth() < b.getMonth() || (n.getMonth() === b.getMonth() && n.getDate() < b.getDate())) a--;
+  $('#signup-kid').classList.toggle('hidden', !(a < 18)); $('#signup-parent').required = a < 18;
+};
+async function openAfterSignup(slug) {
+  try {
+    const app = (await listAll('portal_apps', { filter: `slug = "${slug.replace(/[^a-z0-9-]/gi, '')}"` }))[0];
+    if (!app || !/^https?:\/\//i.test(app.url || '')) return;
+    let url = app.url; const t = await ssoToken().catch(() => '');
+    if (t) { try { url = new URL('sso.html', app.url).href + '#t=' + encodeURIComponent(t); } catch {} }
+    location.href = url;
+  } catch {}
+}
 $('#signup-form').onsubmit = async (e) => {
   e.preventDefault(); $('#signup-err').textContent = '';
   const email = $('#signup-email').value.trim(), password = $('#signup-pass').value;
   if (password !== $('#signup-pass2').value) { $('#signup-err').textContent = 'Passwords do not match.'; return; }
   try {
-    const body = { email, password, passwordConfirm: password, emailVisibility: true };
-    if ($('#signup-name').value.trim()) body.name = $('#signup-name').value.trim();
-    try { await api('POST', `/api/collections/${state.usersColl}/records`, body); }
-    catch (err) { throw new Error(err.status === 403 || err.status === 404 ? 'Sign-ups are currently closed. Ask the admin for an account.' : err.message); }
+    const r = await fetch('/signup', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email, password, name: $('#signup-name').value.trim(), dob: $('#signup-dob').value, parentEmails: kidMode() ? [$('#signup-parent').value] : [] }) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.message || 'Could not create that account.');
     Object.assign(state, await signIn(email, password));
     saveSession(false);
     ['#signup-pass', '#signup-pass2'].forEach((id) => { $(id).value = ''; });
@@ -186,7 +209,8 @@ $('#signup-form').onsubmit = async (e) => {
       catch { toast("Your account is ready, but the AI key couldn't be saved. Add it under My settings.", true); }
     }
     ['#signup-ai-key'].forEach((id) => { $(id).value = ''; });
-    $('#signup').classList.add('hidden'); showShell();
+    $('#signup').classList.add('hidden'); await showShell();
+    if (signupApp) openAfterSignup(signupApp);
   } catch (err) { $('#signup-err').textContent = err.message; }
 };
 function showReset() { $('#shell').classList.add('hidden'); $('#login').classList.add('hidden'); $('#signup').classList.add('hidden'); $('#reset').classList.remove('hidden'); $('#reset-pass').focus(); }
@@ -210,7 +234,7 @@ const ADMIN_NAV = $('#nav').innerHTML;
 function setBrand(name) { document.querySelectorAll('.brand span').forEach((n) => { n.textContent = name; }); document.title = name; }
 fetch('/config').then((r) => r.json()).then((c) => { state.public = !!c.public; if (state.public) setBrand('JoolzApp'); }).catch(() => {});
 function showShell() {
-  $('#nav').innerHTML = state.role === 'user' ? '<a href="#/home" data-route="home">Dashboard</a><a href="#/me" data-route="me">My settings</a>' : ADMIN_NAV;
+  $('#nav').innerHTML = state.role === 'user' ? '<a href="#/home" data-route="home">Dashboard</a><a href="#/family" data-route="family">Family</a><a href="#/me" data-route="me">My settings</a>' : ADMIN_NAV;
   setBrand(state.role === 'user' || state.public ? 'JoolzApp' : 'Portal Admin');
   $('#login').classList.add('hidden'); $('#shell').classList.remove('hidden');
   $('#who').textContent = state.actor; route(); startDetecting();
@@ -262,11 +286,11 @@ $('#login-forgot').onclick = async (e) => {
 window.addEventListener('hashchange', () => { if (resetToken()) return showReset(); state.token && route(); });
 function route() {
   let [, view = 'overview', arg] = location.hash.split('/');
-  if (state.role === 'user') view = view === 'me' ? 'me' : 'home';
-  const v = { home: viewHome, overview: viewOverview, global: viewGlobal, apps: viewApps, users: viewUsers, requests: viewRequests, cleanup: viewCleanup, audit: viewAudit, setup: viewSetup, me: viewMe }[view] || viewOverview;
+  if (state.role === 'user') view = (view === 'me' || view === 'family') ? view : 'home';
+  const v = { home: viewHome, overview: viewOverview, global: viewGlobal, apps: viewApps, users: viewUsers, requests: viewRequests, cleanup: viewCleanup, audit: viewAudit, setup: viewSetup, me: viewMe, family: viewFamily }[view] || viewOverview;
   document.querySelectorAll('#nav a').forEach((a) => a.classList.toggle('active', a.dataset.route === view));
   main().innerHTML = '<p class="muted">Loading…</p>';
-  guard(v)(arg ? decodeURIComponent(arg) : undefined);
+  guard(async (a) => { if (await needDob()) return; await v(a); })(arg ? decodeURIComponent(arg) : undefined);
 }
 
 /* ---------- Setup banner ---------- */
@@ -862,7 +886,9 @@ async function viewRequests() {
 
 /* ---------- My settings (regular JoolzApp users) ---------- */
 // Open sign-ups, but never let a new account set its own isAdmin flag (ShutterWorth and others use that field).
-const SIGNUP_RULE = '@request.body.isAdmin:isset = false';
+// Sign-up is "open" when this rule exists. It can never be met from a browser: accounts are created only by this app's server (POST /signup),
+// which checks date of birth and parent approval, so there is a single sign-up path for every JoolzApp app.
+const SIGNUP_RULE = '@request.body.email:isset = false && @request.body.email:isset = true';
 const DEL_REQ = '__account_deletion__';
 const PREFS = [
   ['language', 'Language', [['en', 'English'], ['af', 'Afrikaans'], ['zu', 'isiZulu'], ['xh', 'isiXhosa'], ['st', 'Sesotho'], ['tn', 'Setswana'], ['fr', 'Français'], ['es', 'Español'], ['pt', 'Português'], ['ar', 'العربية']]],
@@ -890,7 +916,8 @@ async function viewMe() {
     return `<label>${esc(label)}<select name="${key}">${opt('', '— not set —', v === '')}${list.map(([val, l]) => opt(val, l, v === val)).join('')}</select></label>`;
   };
   main().innerHTML = `<h1>My settings</h1><p class="sub">Signed in as ${esc(state.actor)}. These settings apply to every JoolzApp app you use.</p>
-    <div class="tabs"><button class="active" data-t="prefs">Preferences</button><button data-t="ai">AI</button><button data-t="account">Account</button></div>
+    <div class="tabs"><button class="active" data-t="prefs">Preferences</button><button data-t="profile">Profile</button><button data-t="ai">AI</button><button data-t="account">Account</button></div>
+    <div data-pane="profile" hidden><div class="card" id="pane-profile"><p class="muted">Loading…</p></div></div>
     <div data-pane="prefs"><form id="prefs" class="card"><h2>Preferences</h2><div class="kv">${PREFS.map(field).join('')}</div>
       ${detected ? `<p class="muted small">Your device time zone: ${esc(detected)}</p>` : ''}<button class="btn primary">Save preferences</button></form></div>
     <div data-pane="ai" hidden><form id="ai" class="card"><h2>AI (for apps that use it)</h2><p class="muted small">Pick your own AI provider, model and API key. Apps that read menus, photos or text with AI will use these instead of the shared key. Only you and the admin can see them.</p>
@@ -945,6 +972,7 @@ async function viewMe() {
     for (const k of ['ai.apiKey', 'ai.model', 'ai.provider', 'ai.baseUrl']) await setPref(k, '');
     toast('AI settings removed'); route();
   });
+  profilePane(uid);
   $('#prefs').onsubmit = guard(async (e) => {
     e.preventDefault();
     for (const [key] of PREFS) {
@@ -968,6 +996,98 @@ async function viewMe() {
   });
 }
 
+
+// ---- Account details and family: the one place they are managed. The apps only link here. ----
+const acctFetch = async (path, body) => {
+  const r = await fetch(path, { method: body === undefined ? 'GET' : 'POST', headers: { authorization: state.token, 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body), cache: 'no-store' });
+  const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.message || 'That did not work.'); return j;
+};
+const fmtDob = (d) => { const x = new Date(d + 'T00:00:00'); return isNaN(x) ? d : x.toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' }); };
+const ageFrom = (d) => { const b = new Date(d + 'T00:00:00'), n = new Date(); let a = n.getFullYear() - b.getFullYear(); if (n.getMonth() < b.getMonth() || (n.getMonth() === b.getMonth() && n.getDate() < b.getDate())) a--; return a; };
+
+async function profilePane(uid) {
+  const box = $('#pane-profile'); if (!box) return;
+  const [me, g] = await Promise.all([api('GET', `/api/collections/${state.usersColl}/records/${uid}`).catch(() => ({})), acctFetch('/guardians').catch(() => ({ minor: false, parents: [] }))]);
+  box.innerHTML = `<h2>Profile</h2>
+    <form id="pf-name" class="kv"><label>Name<input name="name" value="${esc(me.name || '')}" maxlength="80" autocomplete="name"></label><div><button class="btn primary small">Save name</button></div></form>
+    <p class="muted small">Email: <b>${esc(state.actor)}</b></p>
+    <h3>Change password</h3>
+    <form id="pf-pass" class="kv"><label>Current password<input name="old" type="password" autocomplete="current-password" required></label><label>New password (min 8)<input name="pw" type="password" autocomplete="new-password" minlength="8" required></label><label>Confirm new password<input name="pw2" type="password" autocomplete="new-password" minlength="8" required></label><div><button class="btn primary small">Change password</button></div></form>
+    <h3>Date of birth</h3>
+    ${me.dob ? `<p>${esc(fmtDob(me.dob))}</p><p class="muted small">It can't be changed here. Ask an admin if it is wrong.</p>`
+      : `<form id="pf-dob" class="kv"><p class="muted small">Every JoolzApp account has one. You can only enter it once. Under 18s need a parent or guardian's approval.</p><label>Date of birth<input name="dob" type="date" min="1900-01-01" max="${new Date().toISOString().slice(0, 10)}" required></label>
+        <label id="pf-dob-parent" hidden>Parent or guardian's JoolzApp email<input name="parent" type="email" autocomplete="off"></label><div><button class="btn primary small">Save date of birth</button></div></form>`}
+    ${g.minor ? `<h3>Your parents</h3><p class="muted small">A parent approves your account and settings such as joining a family.</p>${g.parents.map((p) => `<div class="row spread"><span>${esc(p.name)}</span><span>${p.status === 'approved' ? 'approved' : p.status === 'pending' ? 'waiting' : 'declined'}</span></div>`).join('')}
+      <form id="pf-parent" class="row" style="gap:6px;margin-top:8px"><input name="email" type="email" placeholder="Add another parent's email" required><button class="btn small">Add</button></form>` : ''}`;
+  $('#pf-name').onsubmit = guard(async (e) => { e.preventDefault(); await api('PATCH', `/api/collections/${state.usersColl}/records/${uid}`, { name: e.target.name.value.trim() }); toast('Name saved'); });
+  $('#pf-pass').onsubmit = guard(async (e) => {
+    e.preventDefault(); const f = e.target.elements;
+    if (f.pw.value !== f.pw2.value) throw new Error('The new passwords do not match.');
+    await api('PATCH', `/api/collections/${state.usersColl}/records/${uid}`, { oldPassword: f.old.value, password: f.pw.value, passwordConfirm: f.pw2.value });
+    toast('Password changed. Sign in again.'); setTimeout(() => $('#logout') && $('#logout').click(), 800);
+  });
+  if ($('#pf-dob')) {
+    const f = $('#pf-dob');
+    f.elements.dob.onchange = () => { const v = f.elements.dob.value; const kid = v && ageFrom(v) < 18; $('#pf-dob-parent').hidden = !kid; f.elements.parent.required = !!kid; };
+    f.onsubmit = guard(async (e) => { e.preventDefault(); await acctFetch('/account/dob', { dob: f.elements.dob.value, parentEmails: f.elements.parent.value ? [f.elements.parent.value] : [] }); toast('Saved'); route(); });
+  }
+  if ($('#pf-parent')) $('#pf-parent').onsubmit = guard(async (e) => { e.preventDefault(); const j = await acctFetch('/account/guardian', { parentEmails: [e.target.email.value] }); toast(j.message); profilePane(uid); });
+}
+
+async function viewFamily() {
+  main().innerHTML = '<h1>Family</h1><p class="sub">Linked across every JoolzApp app.</p><div id="pane-family"><p class="muted">Loading…</p></div>';
+  await familyPane(state.uid);
+}
+
+// Everyone has a date of birth. Accounts that pre-date it are asked once, before anything else.
+async function needDob() {
+  if (state.dobOk || !state.uid) return false;
+  const me = await api('GET', `/api/collections/${state.usersColl}/records/${state.uid}`).catch(() => null);
+  if (!me || me.dob) { state.dobOk = true; return false; }
+  const today = new Date().toISOString().slice(0, 10);
+  main().innerHTML = `<h1>One more thing</h1><p class="sub">Every JoolzApp account now has a date of birth. It can only be entered once. Under 18s need a parent or guardian with a JoolzApp account to approve them.</p>
+    <div class="card"><form id="dobreq" class="kv"><label>Date of birth<input name="dob" type="date" min="1900-01-01" max="${today}" required></label>
+    <label id="dr-parent" hidden>Parent or guardian's JoolzApp email<input name="parent" type="email" autocomplete="off"></label><div><button class="btn primary">Save</button></div></form></div>`;
+  const f = $('#dobreq');
+  f.elements.dob.onchange = () => { const v = f.elements.dob.value, kid = !!v && ageFrom(v) < 18; $('#dr-parent').hidden = !kid; f.elements.parent.required = kid; };
+  f.onsubmit = guard(async (e) => {
+    e.preventDefault();
+    await acctFetch('/account/dob', { dob: f.elements.dob.value, parentEmails: f.elements.parent.value ? [f.elements.parent.value] : [] });
+    state.dobOk = true; toast('Saved'); route();
+  });
+  return true;
+}
+
+async function familyPane(uid) {
+  const box = $('#pane-family'); if (!box) return;
+  let data; try { data = await acctFetch('/family'); } catch (e) { box.innerHTML = `<div class="card"><p class="muted">Families couldn't load: ${esc(e.message)}</p></div>`; return; }
+  const f = data.family, inv = data.invites || [];
+  const act = async (body) => { try { const j = await acctFetch('/family', body); if (j.notice) toast(j.notice); familyPane(uid); } catch (e) { toast(e.message, true); } };
+  let h = inv.map((i) => `<div class="card"><b>${esc(i.ownerName || 'Someone')}</b> invited you to the <b>${esc(i.name)}</b> family.<div class="row" style="gap:8px;margin-top:8px"><button class="btn primary small" data-fa="yes" data-id="${esc(i.id)}">Join</button><button class="btn small" data-fa="no" data-id="${esc(i.id)}">Decline</button></div></div>`).join('');
+  if (!f) h += `<div class="card"><h2>Family</h2><p class="muted small">Link up with your family on JoolzApp. The link works in every JoolzApp app. Immediate family can share joint expenses; extended family (cousins, grandparents…) are linked for future apps.</p>
+    <form id="fam-new" class="row" style="gap:6px"><input name="name" placeholder="Family name (e.g. The Joolays)" maxlength="60" required><button class="btn primary">Create</button></form></div>`;
+  else {
+    const row = (m, pending) => `<div class="row spread" style="padding:6px 0;border-top:1px solid var(--line,#0002)"><span class="${pending ? 'muted' : ''}">${esc(m.name)}${m.relation ? ' · ' + esc(m.relation) : ''}${m.id === f.owner ? ' <span class="chip">creator</span>' : m.manager ? ' <span class="chip">manager</span>' : ''}${m.id === uid ? ' <span class="muted">(you)</span>' : ''}${pending ? ' · invited' : ''}</span>
+      <span>${f.isOwner && m.id !== uid && !pending ? `<button class="btn small" data-fa="mgr" data-id="${esc(m.id)}" data-v="${m.manager ? '' : '1'}">${m.manager ? 'Remove manager' : 'Make manager'}</button> ` : ''}${f.canManage && m.id !== uid && m.id !== f.owner && !pending ? `<button class="btn small" data-fa="tier" data-id="${esc(m.id)}" data-v="${m.tier === 'extended' ? 'family' : 'extended'}">${m.tier === 'extended' ? 'Make immediate' : 'Make extended'}</button> ` : ''}${f.canManage && m.id !== uid && m.id !== f.owner && (f.isOwner || !m.manager) ? `<button class="btn small" data-fa="rm" data-id="${esc(m.id)}">${pending ? 'Cancel' : 'Remove'}</button>` : ''}</span></div>`;
+    const grp = (t, title, note) => { const ms = f.members.filter((m) => m.tier === t), ps = f.invited.filter((m) => m.tier === t); return `<h3>${title}</h3><p class="muted small">${note}</p>${ms.map((m) => row(m, false)).join('')}${ps.map((m) => row(m, true)).join('')}${ms.length || ps.length ? '' : '<p class="muted small">Nobody yet.</p>'}`; };
+    h += `<div class="card"><h2>${esc(f.name)}</h2>${f.myTier === 'extended' ? '<p class="muted small">You are linked as extended family. Family expenses are only shared with immediate family.</p>' : ''}
+      ${grp('family', 'Immediate family', 'Shares joint expenses, such as family orders.')}${grp('extended', 'Extended family', 'Cousins, grandparents, aunts and uncles… linked for future apps.')}
+      ${f.canManage ? `<form id="fam-inv" class="kv" style="margin-top:12px"><label>Invite by email (they don't need an account yet)<input name="email" type="email" required></label><label>Link as<select name="tier"><option value="family">Immediate family</option><option value="extended">Extended family</option></select></label><label>Relationship (optional)<input name="relation" maxlength="40" placeholder="cousin, grandmother…"></label><div><button class="btn primary small">Invite</button></div></form>` : ''}
+      ${f.isOwner ? '<p class="muted small">Tip: make someone a manager and they can invite, remove and move members too.</p>' : ''}
+      <p><button class="btn small" data-fa="leave">Leave this family</button></p></div>`;
+  }
+  box.innerHTML = h;
+  if ($('#fam-new')) $('#fam-new').onsubmit = (e) => { e.preventDefault(); act({ action: 'create', name: e.target.name.value }); };
+  if ($('#fam-inv')) $('#fam-inv').onsubmit = (e) => { e.preventDefault(); const f2 = e.target.elements; act({ action: 'invite', email: f2.email.value, tier: f2.tier.value, relation: f2.relation.value }); };
+  box.onclick = (e) => {
+    const b = e.target.closest('button[data-fa]'); if (!b) return; const a = b.dataset.fa, id = b.dataset.id, v = b.dataset.v;
+    if (a === 'yes' || a === 'no') return act({ action: 'respond', familyId: id, accept: a === 'yes' });
+    if (a === 'mgr') return act({ action: 'manager', memberId: id, on: !!v });
+    if (a === 'tier') return act({ action: 'tier', memberId: id, tier: v });
+    if (a === 'rm') return act({ action: 'remove', memberId: id });
+    if (a === 'leave' && confirm('Leave this family? Orders already filed stay with the family.')) return act({ action: 'leave' });
+  };
+}
 
 // The landing page: every JoolzApp app as a tile. Open goes to the app (signed in already where the app supports it);
 // apps the person isn't approved for show a request form instead.
@@ -1000,11 +1120,29 @@ async function viewHome() {
     }
     return `<div class="tile${a.enabled ? '' : ' off'}"><div class="tile-head"><span class="tile-ic">${esc((a.name || '?').trim().charAt(0).toUpperCase())}</span><div><b>${esc(a.name)}</b>${a.description ? `<div class="muted small">${esc(a.description)}</div>` : ''}</div></div><div class="tile-body">${body}</div></div>`;
   };
+  // Parents: approve kids' accounts and settings here. Kids: see who has been asked.
+  const g = isAdmin ? null : await fetch('/guardians', { headers: { authorization: state.token }, cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+  const fam = isAdmin ? null : await acctFetch('/family').catch(() => null);
+  const famInv = fam && fam.invites && fam.invites.length ? `<div class="card"><b>You've been invited to a family.</b> <a href="#/family">Open the Family page</a> to join or decline.</div>` : '';
+  const guardCard = (!g ? '' : [
+    g.minor && g.parents.length ? `<div class="card"><b>Your account needs a parent's approval.</b> ${g.parents.map((p) => `${esc(p.name)}: ${p.status === 'approved' ? 'approved' : p.status === 'pending' ? 'waiting' : 'declined'}`).join(' · ')}</div>` : '',
+    g.pending.length ? `<div class="card"><h2>Needs your approval</h2>${g.pending.map((x) => `<div class="row spread" style="padding:6px 0"><span>${esc(x.label)}</span><span><button class="btn primary small" data-gact="yes" data-id="${esc(x.id)}">Approve</button> <button class="btn small" data-gact="no" data-id="${esc(x.id)}">Decline</button></span></div>`).join('')}</div>` : '',
+    g.kids.length ? `<div class="card"><h2>Kids you look after</h2>${g.kids.map((k) => `<div class="row spread" style="padding:6px 0"><span>${esc(k.childName)}</span><button class="btn small" data-gact="revoke" data-id="${esc(k.childId)}">Withdraw approval</button></div>`).join('')}</div>` : '',
+  ].join('')) + famInv;
   main().innerHTML = `<h1>Dashboard</h1><p class="sub">${isAdmin ? 'This is the page your users see.' : 'All your JoolzApp apps in one place. One account works in every one.'}</p>
-    ${banner ? `<div class="card"><span class="chip warn">${esc(banner)}</span></div>` : ''}
+    ${banner ? `<div class="card"><span class="chip warn">${esc(banner)}</span></div>` : ''}${guardCard}
     <div class="tiles">${apps.map(tile).join('') || '<p class="muted">No apps have been added yet.</p>'}</div>`;
   bindOpen(main(), ssoSlugs);
   main().onclick = guard(async (e) => {
+    const gb = e.target.closest('button[data-gact]');
+    if (gb) {
+      e.preventDefault();
+      if (gb.dataset.gact === 'revoke' && !confirm('Withdraw your approval? They will be locked out of JoolzApp apps until a parent approves again.')) return;
+      const body = gb.dataset.gact === 'revoke' ? { action: 'revoke', childId: gb.dataset.id } : { action: 'decide', id: gb.dataset.id, approve: gb.dataset.gact === 'yes' };
+      const r = await fetch('/guardians', { method: 'POST', headers: { authorization: state.token, 'content-type': 'application/json' }, body: JSON.stringify(body) });
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).message || 'That did not work.');
+      toast('Done'); return route();
+    }
     const b = e.target.closest('button[data-req]'); if (!b) return; e.preventDefault();
     const slug = b.dataset.req; const msg = main().querySelector(`input[data-msg="${slug}"]`).value.trim();
     await api('POST', '/api/collections/portal_requests/records', { user: uid, email: state.actor, app: slug, message: msg, status: 'pending' });
@@ -1022,7 +1160,7 @@ async function viewSetup() {
   const st = await schemaStatus(); const cfg = await (await fetch('/config')).json();
   const uColl = await api('GET', `/api/collections/${state.usersColl}`).catch(() => null);
   // Harden: an open create rule with no guard would let anyone register themselves as an admin straight through PocketBase's API.
-  if (uColl && uColl.createRule === '') { try { await api('PATCH', `/api/collections/${state.usersColl}`, { createRule: SIGNUP_RULE }); uColl.createRule = SIGNUP_RULE; } catch {} }
+  if (uColl && uColl.createRule !== null && uColl.createRule !== SIGNUP_RULE) { try { await api('PATCH', `/api/collections/${state.usersColl}`, { createRule: SIGNUP_RULE }); uColl.createRule = SIGNUP_RULE; } catch {} }
   main().innerHTML = `<h1>Setup &amp; integration</h1><p class="sub">Connection details and how your apps consume these settings.</p>
     <div class="card"><h2>Connection</h2><p>PocketBase: <code>${esc(cfg.pbUrl)}</code> <span class="chip">${cfg.custom ? 'set by PB_URL' : 'built in: your Umbrel PocketBase'}</span></p>
       <label>Users collection<input id="uc" value="${esc(state.usersColl)}" style="max-width:260px"></label><button id="su" class="btn">Save</button></div>

@@ -129,7 +129,8 @@
     const err = el("p", "err"); err.setAttribute("role", "alert");
     const go = el("button", "pbtn accent", reg ? "Create account" : "Sign in"); go.type = "submit"; go.style.height = "42px";
     const sw = el("button", "link", reg ? "I already have a JoolzApp account" : "Create a JoolzApp account"); sw.type = "button";
-    sw.onclick = () => { mode = reg ? "in" : "up"; renderAccount(); };
+    // One JoolzApp sign-up page, in Portal Admin; it sends you back here when the account is made.
+    sw.onclick = () => { if (cfg.portalUrl) location.href = cfg.portalUrl.replace(/\/+$/, "") + "/?signup=1&app=shutterworth"; else err.textContent = "Sign-up lives in Portal Admin, but its address isn't set yet. Ask the admin."; };
     f.append(err, ok, go, sw);
     f.onsubmit = async ev => {
       ev.preventDefault(); err.textContent = ""; go.disabled = true;
@@ -152,7 +153,7 @@
     try {
       const j = await api("api/admin/users" + (query ? "?q=" + encodeURIComponent(query) : ""));
       users = j.users; settings = j.settings; meId = j.me;
-      $("swTrialLimit").value = settings.trialLimit; $("swSignups").checked = settings.signups;
+      $("swTrialLimit").value = settings.trialLimit;
       renderUsers(); note("");
     } catch (e) { note(e.message, true); }
   }
@@ -174,13 +175,7 @@
     unl.onclick = () => patch(u, { unlimited: !u.unlimited }, u.unlimited ? `${u.email} is back on the trial.` : `${u.email} can now use your key without a limit.`);
     const acc = el("button", "pbtn", u.access ? "Remove access" : "Allow access"); acc.type = "button"; acc.disabled = u.isAdmin;
     acc.onclick = () => patch(u, { access: !u.access }, u.access ? `${u.email} can no longer open the inventory.` : `${u.email} can now open the inventory.`);
-    const del = el("button", "pbtn", "Delete"); del.type = "button"; del.disabled = u.id === meId;
-    let t = null;
-    del.onclick = async () => {
-      if (!del.classList.contains("confirm")) { del.classList.add("confirm"); del.textContent = "Tap again to delete"; clearTimeout(t); t = setTimeout(() => { del.classList.remove("confirm"); del.textContent = "Delete"; }, 3500); return; }
-      try { await api("api/admin/users/" + u.id, { method: "DELETE" }); note(`Deleted ${u.email}.`); await loadUsers(); } catch (e) { note(e.message, true); }
-    };
-    acts.append(edit, reset, unl, acc, del);
+    acts.append(edit, reset, unl, acc);
     r.appendChild(acts);
     return r;
   }
@@ -200,11 +195,11 @@
     if (!dlg) { dlg = document.createElement("dialog"); dlg.id = "swUserDlg"; document.body.appendChild(dlg); dlg.addEventListener("click", e => { if (e.target === dlg) dlg.close(); }); }
     dlg.textContent = "";
     const f = el("form", "udlg"); f.noValidate = true; f.method = "dialog";
-    f.appendChild(el("h2", "", "Edit user"));
+    f.appendChild(el("h2", "", "ShutterWorth access"));
     const input = (label, type, value, extra) => { const l = el("label", "", label), i = el("input"); i.type = type; i.value = value; if (extra) Object.assign(i, extra); l.appendChild(i); f.appendChild(l); return i; };
-    const name = input("Name", "text", u.name, { maxLength: 80, autocomplete: "off" });
-    const email = input("Email", "email", u.email, { autocomplete: "off" });
-    const pass = input("New password", "password", "", { autocomplete: "new-password", placeholder: "Leave blank to keep the current one" });
+    // Name, email, password, admin rights and deleting accounts are the same in every JoolzApp app, so they are managed in Portal Admin.
+    const nt = el("p", "", u.email + ". Name, email, password and admin rights are managed in Portal Admin."); f.appendChild(nt);
+    if (cfg && cfg.portalUrl) { const a = el("a", "", "Open Portal Admin"); a.href = cfg.portalUrl; a.target = "_blank"; a.rel = "noopener"; f.appendChild(a); }
     const row = el("div", "row2");
     const mk = (label, value, hint) => { const l = el("label", "", label), i = el("input"); i.type = "number"; i.min = "0"; i.inputMode = "numeric"; i.value = value; l.appendChild(i); if (hint) l.appendChild(el("span", "hint2", hint)); row.appendChild(l); return i; };
     const limit = mk("Trial limit", u.trialLimit, `0 uses the default (${settings.trialLimit})`);
@@ -213,16 +208,13 @@
     const tg = (label, on) => { const l = el("label", "tg"), i = el("input"); i.type = "checkbox"; i.checked = on; l.append(i, document.createTextNode(label)); f.appendChild(l); return i; };
     const acc = tg("Can open this inventory (admins always can)", u.access); if (u.isAdmin) acc.disabled = true;
     const unl = tg("Allow unlimited use of my API key", u.unlimited);
-    const adm = tg("Admin", u.isAdmin); if (u.id === meId) { adm.disabled = true; }
     const err = el("p", "err"); err.setAttribute("role", "alert"); f.appendChild(err);
     const btns = el("div", "prow"), save = el("button", "pbtn accent", "Save changes"), cancel = el("button", "pbtn", "Cancel");
     save.type = "submit"; cancel.type = "button"; cancel.onclick = () => dlg.close(); btns.append(save, cancel); f.appendChild(btns);
     f.onsubmit = async ev => {
       ev.preventDefault(); err.textContent = ""; save.disabled = true;
-      const data = { name: name.value, email: email.value, unlimited: unl.checked, access: acc.checked, trialLimit: limit.value, trialUsed: used.value };
-      if (u.id !== meId) data.isAdmin = adm.checked;
-      if (pass.value) data.password = pass.value;
-      try { await api("api/admin/users/" + u.id, { method: "PATCH", body: JSON.stringify(data) }); dlg.close(); note("Saved " + (email.value || u.email) + "."); await loadUsers(); }
+      const data = { unlimited: unl.checked, access: acc.checked, trialLimit: limit.value, trialUsed: used.value };
+      try { await api("api/admin/users/" + u.id, { method: "PATCH", body: JSON.stringify(data) }); dlg.close(); note("Saved " + u.email + "."); await loadUsers(); }
       catch (e) { err.textContent = e.message; save.disabled = false; }
     };
     dlg.appendChild(f); dlg.showModal();
@@ -231,7 +223,7 @@
   function buildAdmin() {
     const p = adminPanel = el("div", "panel"); p.id = "swUsersPanel";
     p.appendChild(el("h2", "", "Users"));
-    p.appendChild(el("p", "", "Everyone with a JoolzApp account. Only admins and people you allow can open this inventory. Deleting a user removes their account from all your apps. Trials count photo identifications only; admins and users with unlimited access are never counted."));
+    p.appendChild(el("p", "", "Everyone with a JoolzApp account. Only admins and people you allow can open this inventory. Accounts (name, email, password, admins, deleting) are managed in Portal Admin. Trials count photo identifications only; admins and users with unlimited access are never counted."));
     const top = el("div", "prow");
     countEl = el("span", "count", ""); top.appendChild(countEl);
     p.appendChild(top);
@@ -243,15 +235,14 @@
     noteEl = el("span", "count", ""); p.appendChild(noteEl);
 
     const st = el("div", "aiform acct"); st.style.borderTop = "1px solid var(--line)"; st.style.paddingTop = "12px";
-    st.appendChild(el("h2", "", "Trial and sign-ups")); st.firstChild.style.fontSize = "1rem";
+    st.appendChild(el("h2", "", "Trial")); st.firstChild.style.fontSize = "1rem";
     const l1 = el("label", "", "Free photo identifications for new users"), n = el("input"); n.type = "number"; n.min = "0"; n.id = "swTrialLimit"; n.inputMode = "numeric"; l1.appendChild(n);
-    const l2 = el("label", "toggle"), c = el("input"); c.type = "checkbox"; c.id = "swSignups"; l2.append(c, document.createTextNode("Let new people create accounts"));
     const sv = el("button", "pbtn accent", "Save"); sv.type = "button"; sv.style.alignSelf = "start";
     sv.onclick = async () => {
-      try { settings = await api("api/admin/settings", { method: "POST", body: JSON.stringify({ trialLimit: n.value, signups: c.checked }) }); note("Saved the trial settings."); await loadUsers(); }
+      try { settings = await api("api/admin/settings", { method: "POST", body: JSON.stringify({ trialLimit: n.value, signups: settings.signups }) }); note("Saved the trial settings."); await loadUsers(); }
       catch (e) { note(e.message, true); }
     };
-    st.append(l1, l2, sv); p.appendChild(st);
+    st.append(l1, sv); p.appendChild(st);
     mount(p, false);
     // put it right under the account panel
     accountPanel.after(p);

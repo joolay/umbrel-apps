@@ -11,7 +11,7 @@ services:
       PROXY_AUTH_ADD: "false"
 
   web:
-    image: ghcr.io/joolay/shutterworth:1.6.3
+    image: ghcr.io/joolay/shutterworth:1.7.0
     restart: on-failure
     stop_grace_period: 1m
     # Public address https://shutterworth.<tailnet>.ts.net via TSDProxy + Funnel (see deploy/tsdproxy). The app locks itself
