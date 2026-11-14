@@ -1,0 +1,9 @@
+{
+  "name": "listsnap",
+  "version": "1.0.0",
+  "private": true,
+  "description": "ListSnap: checklists that follow your JoolzApp account.",
+  "main": "server.js",
+  "scripts": { "start": "node server.js" },
+  "license": "MIT"
+}

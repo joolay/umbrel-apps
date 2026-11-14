@@ -1,0 +1,23 @@
+manifestVersion: 1
+id: joolay-listsnap
+category: files
+name: ListSnap
+version: "1.0.0"
+tagline: Checklists that follow your JoolzApp account
+description: >-
+  ListSnap keeps simple checklists: several lists, dates, progress, swipe to delete, reorder, and a one-tap copy of the
+  open items for your Reminders shortcut. Sign in with your JoolzApp account and your lists follow you across devices.
+developer: joolay
+website: https://github.com/joolay/umbrel-apps/tree/main/src/listsnap
+dependencies: []
+repo: https://github.com/joolay/umbrel-apps
+support: https://github.com/joolay/umbrel-apps/issues
+port: 3895
+gallery: []
+path: ""
+defaultUsername: ""
+defaultPassword: ""
+releaseNotes: "First release: your ListSnap lists now live on this Umbrel and sign in with your JoolzApp account, so they are the same on every device."
+submitter: joolay
+submission: https://github.com/joolay/umbrel-apps
+icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-listsnap/icon.svg
