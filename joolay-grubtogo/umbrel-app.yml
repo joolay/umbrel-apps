@@ -2,7 +2,7 @@ manifestVersion: 1
 id: joolay-grubtogo
 category: files
 name: GrubToGo
-version: "1.1.0"
+version: "1.1.1"
 tagline: Read a menu, order from several restaurants, split the bill, tap to call
 description: >-
   GrubToGo reads a restaurant menu from a photo, PDF, link or pasted text, lets you build an order from one or more
@@ -18,7 +18,7 @@ gallery: []
 path: ""
 defaultUsername: ""
 defaultPassword: ""
-releaseNotes: "Every JoolzApp app now has a Back to Dashboard button that returns you to Portal Admin already signed in. Opens straight from the JoolzApp dashboard without a separate sign-in. Sign-in now matches Portal Admin: Remember me and Forgot password. New accounts can set up AI while signing up, and everyone gets 10 free menu reads on the shared key before they need their own. Default AI provider is Google Gemini. Reads menus with your own AI provider, model and key from Portal Admin (My settings), including OpenRouter; falls back to the shared key. First release of GrubToGo (previously GrubDial): read a menu from a photo, PDF, link or text, order from several restaurants, split the bill and tap to call. Menus go into one shared archive; only the uploader or an admin can edit them."
+releaseNotes: "Every password field now has a Show/Hide button."
 submitter: joolay
 submission: https://github.com/joolay/umbrel-apps
 icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-grubtogo/icon.svg
