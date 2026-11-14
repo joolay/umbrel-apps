@@ -12,6 +12,7 @@ const { URL } = require('url');
 const pbx = require('./pocketbase');
 const guardians = require('./guardians');
 const family = require('./family');
+const CHILD_REQ = '__child_account__';
 
 const PORT = Number(process.env.PORT || 3000);
 const PUBLIC_DIR = path.join(__dirname, 'public');
@@ -235,7 +236,7 @@ async function guardiansRoute(req, res) {
   const user = tok ? await pbx.userFromToken(tok).catch(() => null) : null;
   if (!user) return send(res, 401, { message: 'Sign in to continue.' });
   try {
-    if (req.method === 'GET') { const st = await guardians.statusOf(user), ib = await guardians.inbox(user); return send(res, 200, { minor: st.minor, parents: st.parents || [], ...ib }); }
+    if (req.method === 'GET') { const st = await guardians.statusOf(user), ib = await guardians.inbox(user); return send(res, 200, { minor: st.minor, adminPending: !!st.adminPending, parents: st.parents || [], ...ib }); }
     if (req.method !== 'POST') return send(res, 405, { message: 'Method not allowed' });
     let b; try { b = JSON.parse(await readBody(req)); } catch { return send(res, 400, { message: 'Invalid request.' }); }
     const join = async (childId, familyId) => { const c = await pbx.asSuper('GET', '/api/collections/' + encodeURIComponent(pbx.collection) + '/records/' + encodeURIComponent(childId)); await family.respond({ id: c.id, name: c.name, email: c.email }, familyId, true); };
@@ -260,6 +261,24 @@ async function accountRoutes(req, res, pathname) {
       const minor = guardians.isMinor(user);
       if (b.action === 'create') return minor ? out({ status: 403, message: 'A parent or guardian creates the family. They can invite you.' }) : out(await family.create(user, b.name));
       if (b.action === 'invite') return out(await family.invite(user, b.email, b.tier, b.relation));
+      if (b.action === 'createChild') {   // a parent makes a child's account; it is held until an admin approves it
+        if (minor) return out({ status: 403, message: 'Only a parent or guardian can create an account for a child.' });
+        const mineF = (await family.mine(user)).family;
+        if (!mineF || !mineF.canManage) return out({ status: 400, message: 'Create a family first, or ask its creator to make you a manager.' });
+        const email = String(b.email || '').trim().toLowerCase(), password = String(b.password || ''), name = String(b.name || '').trim().slice(0, 80), dob = String(b.dob || '').trim();
+        if (!name) return out({ status: 400, message: "Enter the child's name." });
+        if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return out({ status: 400, message: "Enter a valid email for the child's account." });
+        if (password.length < 8 || password.length > 200) return out({ status: 400, message: 'Use a password of at least 8 characters.' });
+        if (!guardians.validDob(dob) || guardians.ageOf(dob) >= 18) return out({ status: 400, message: "Enter the child's date of birth. This page is for under-18s; adults sign up themselves." });
+        let child;
+        try { child = await pbx.createUser({ email, password, name, dob }); }
+        catch (e) { if (e instanceof pbx.PBError && e.status === 400) return out({ status: 400, message: e.data && e.data.email ? 'That email is already registered.' : 'Those details were not accepted.' }); throw e; }
+        await guardians.createdByParent(child, user);
+        await family.invite(user, email, 'family', String(b.relation || 'child').slice(0, 40));
+        await family.respond(child, mineF.id, true);
+        await pbx.asSuper('POST', '/api/collections/portal_requests/records', { user: child.id, email, app: CHILD_REQ, message: `${name} (born ${dob}), created by ${user.name || user.email}`, status: 'pending' }).catch(() => {});
+        return send(res, 200, { ...(await family.mine(user)), notice: `${name}'s account is created. It can be used once an admin approves it.` });
+      }
       if (b.action === 'respond') {
         if (b.accept && minor) {   // a kid joining a family needs a parent's approval first
           const inv = (await family.mine(user)).invites.find((i) => i.id === String(b.familyId || ''));

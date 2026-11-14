@@ -55,8 +55,21 @@ async function rows(filter) {
 // Is this person a minor, and has a parent approved them?
 async function statusOf(u) {
   if (!isMinor(u)) return { minor: false, approved: true };
-  const r = await rows(`childId = '${clean(u.id)}' && kind = 'account'`);
-  return { minor: true, approved: r.some(x => x.status === "approved"), parents: r.map(x => ({ name: x.parentName || "", status: x.status })) };
+  const r = await rows(`childId = '${clean(u.id)}' && (kind = 'account' || kind = 'admin')`);
+  const par = r.filter(x => x.kind === "account"), adm = r.filter(x => x.kind === "admin");
+  const adminOk = !adm.some(x => x.status !== "approved");   // accounts a parent created here also need an admin's OK
+  return { minor: true, approved: adminOk && par.some(x => x.status === "approved"), adminPending: !adminOk, parents: par.map(x => ({ name: x.parentName || "", status: x.status })) };
+}
+// A parent creating a child's account: the parent has approved already, an admin still has to.
+async function createdByParent(child, parent) {
+  await ensure();
+  const base_ = { childId: child.id, childName: nameOf(child), parentId: parent.id, parentName: nameOf(parent), ref: "" };
+  await pb.asSuper("POST", base + "/records", { ...base_, kind: "account", label: "Created by " + nameOf(parent), status: "approved", decidedAt: new Date().toISOString() });
+  await pb.asSuper("POST", base + "/records", { ...base_, kind: "admin", label: "Admin approval", status: "pending" });
+}
+async function adminDecide(childId, approve) {
+  await ensure();
+  for (const x of await rows(`childId = '${clean(childId)}' && kind = 'admin'`)) await pb.asSuper("PATCH", base + "/records/" + x.id, { status: approve ? "approved" : "declined", decidedAt: new Date().toISOString() });
 }
 // Checks the parents someone names: each must already have an account, be a different person, and not be a minor themselves.
 async function checkParents(emails, childEmail) {
@@ -90,7 +103,7 @@ async function requestFamily(child, familyId, familyName) {
 }
 // What a parent sees: requests waiting on them, and the kids they look after.
 async function inbox(parent) {
-  const pend = await rows(`parentId = '${clean(parent.id)}' && status = 'pending'`);
+  const pend = await rows(`parentId = '${clean(parent.id)}' && status = 'pending' && kind != 'admin'`);
   const kids = await rows(`parentId = '${clean(parent.id)}' && kind = 'account' && status = 'approved'`);
   return { pending: pend.map(x => ({ id: x.id, kind: x.kind, childName: x.childName, label: x.label })), kids: kids.map(x => ({ childId: x.childId, childName: x.childName })) };
 }
@@ -99,7 +112,7 @@ async function decide(parent, id, approve, join) {
   await ensure();
   let r;
   try { r = await pb.asSuper("GET", `${base}/records/${encodeURIComponent(clean(id))}`); } catch (e) { if (e.status === 404) return { status: 404, message: "That request is no longer there." }; throw e; }
-  if (r.parentId !== parent.id || r.status !== "pending") return { status: 404, message: "That request is no longer there." };
+  if (r.parentId !== parent.id || r.status !== "pending" || r.kind === "admin") return { status: 404, message: "That request is no longer there." };
   const status = approve ? "approved" : "declined", at = new Date().toISOString();
   await pb.asSuper("PATCH", `${base}/records/${r.id}`, { status, decidedAt: at });
   if (r.kind === "family") {   // one parent's answer settles it for the others
@@ -114,4 +127,4 @@ async function revoke(parent, childId) {
   for (const r of await rows(`parentId = '${clean(parent.id)}' && childId = '${clean(childId)}' && kind = 'account' && status = 'approved'`)) await pb.asSuper("PATCH", `${base}/records/${r.id}`, { status: "declined", decidedAt: new Date().toISOString() });
   return { ok: true };
 }
-module.exports = { validDob, ageOf, isMinor, statusOf, checkParents, requestApproval, requestFamily, inbox, decide, revoke };
+module.exports = { createdByParent, adminDecide, validDob, ageOf, isMinor, statusOf, checkParents, requestApproval, requestFamily, inbox, decide, revoke };

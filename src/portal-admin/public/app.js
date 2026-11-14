@@ -799,7 +799,7 @@ async function findCleanup() {
   add('apps', 'Settings of apps that are no longer registered', 'The app they belong to is not in your Apps list.',
     settings.filter((r) => r.app && !slugs.has(r.app) && !used.has('portal_settings:' + r.id)).map((r) => rec('portal_settings', r, r.key, r.app + (r.scope === 'user' ? ' · user ' + r.user : ''))));
   add('reqs', 'Access requests that can no longer be answered', 'The person was deleted or the app is no longer registered.',
-    reqs.filter((r) => (usersKnown && !userIds.has(r.user)) || (r.app !== DEL_REQ && !slugs.has(r.app))).map((r) => rec('portal_requests', r, (r.email || r.user) + ' → ' + (r.app === DEL_REQ ? 'account deletion' : r.app), r.status || '')));
+    reqs.filter((r) => (usersKnown && !userIds.has(r.user)) || (r.app !== DEL_REQ && r.app !== CHILD_REQ && !slugs.has(r.app))).map((r) => rec('portal_requests', r, (r.email || r.user) + ' → ' + (r.app === DEL_REQ ? 'account deletion' : r.app), r.status || '')));
   if (installed) {
     const gone = apps.filter((a) => !installed.slugs.has(a.slug));
     add('uninstalled', 'Apps no longer installed on this Umbrel', 'Removing one also removes its settings and per-user overrides.',
@@ -857,7 +857,7 @@ async function viewCleanup() {
 async function viewRequests() {
   if (await needSetup()) return;
   const [reqs, apps] = await Promise.all([listAll('portal_requests', { sort: '-created', max: 500 }), listAll('portal_apps')]);
-  const appName = (slug) => slug === DEL_REQ ? 'Account deletion' : (apps.find((a) => a.slug === slug) || {}).name || slug;
+  const appName = (slug) => slug === DEL_REQ ? 'Account deletion' : slug === CHILD_REQ ? "Child's account (created by a parent)" : (apps.find((a) => a.slug === slug) || {}).name || slug;
   const pending = reqs.filter((r) => r.status === 'pending'), done = reqs.filter((r) => r.status !== 'pending');
   main().innerHTML = `<h1>Access requests</h1><p class="sub">Users asking for access to individual Joolzapp apps, and account deletion requests. Approving access sets <code>portal.access = true</code> for that user and app; confirming a deletion permanently removes the user and their settings.</p>
     <div class="card"><h2>Pending (${pending.length})</h2><table><tbody>${pending.map((r) => `<tr><td><b>${esc(r.email || r.user)}</b><div class="muted small">${esc(fmtDate(r.created))}</div></td>
@@ -873,6 +873,8 @@ async function viewRequests() {
       for (const x of await listAll('portal_settings', { filter: `scope = "user" && user = ${fq(r.user)}` })) await api('DELETE', `/api/collections/portal_settings/records/${x.id}`);
       await api('DELETE', `/api/collections/${state.usersColl}/records/${r.user}`);
       await audit('user.delete', r.user, { email: r.email, via: 'deletion request' });
+    } else if (r.app === CHILD_REQ) {
+      for (const x of await listAll('joolz_guardians', { filter: `childId = ${fq(r.user)} && kind = "admin"` })) await api('PATCH', `/api/collections/joolz_guardians/records/${x.id}`, { status: approve ? 'approved' : 'declined', decidedAt: new Date().toISOString() });
     } else if (approve) {
       const ex = (await listAll('portal_settings', { filter: `scope = "user" && user = ${fq(r.user)} && app = ${fq(r.app)} && key = "portal.access"` }))[0];
       if (ex) await api('PATCH', `/api/collections/portal_settings/records/${ex.id}`, { value: true });
@@ -889,7 +891,7 @@ async function viewRequests() {
 // Sign-up is "open" when this rule exists. It can never be met from a browser: accounts are created only by this app's server (POST /signup),
 // which checks date of birth and parent approval, so there is a single sign-up path for every JoolzApp app.
 const SIGNUP_RULE = '@request.body.email:isset = false && @request.body.email:isset = true';
-const DEL_REQ = '__account_deletion__';
+const DEL_REQ = '__account_deletion__', CHILD_REQ = '__child_account__';
 const PREFS = [
   ['language', 'Language', [['en', 'English'], ['af', 'Afrikaans'], ['zu', 'isiZulu'], ['xh', 'isiXhosa'], ['st', 'Sesotho'], ['tn', 'Setswana'], ['fr', 'Français'], ['es', 'Español'], ['pt', 'Português'], ['ar', 'العربية']]],
   ['currency', 'Currency', [['ZAR', 'ZAR – South African rand'], ['USD', 'USD – US dollar'], ['EUR', 'EUR – Euro'], ['GBP', 'GBP – Pound sterling'], ['AUD', 'AUD – Australian dollar'], ['CAD', 'CAD – Canadian dollar'], ['AED', 'AED – UAE dirham'], ['INR', 'INR – Indian rupee']]],
@@ -1076,11 +1078,17 @@ async function familyPane(uid) {
       ${grp('family', 'Immediate family', 'Shares joint expenses, such as family orders.')}${grp('extended', 'Extended family', '')}
       ${f.canManage ? `<form id="fam-inv" class="kv" style="margin-top:12px"><label>Registered JoolzApp users<select name="pick"><option value="">Choose someone…</option>${people.map((u) => `<option value="${esc(u.email)}">${esc(u.name)} (${esc(u.email)})</option>`).join('')}</select></label><label>Or invite by email (they don't need an account yet)<input name="email" type="email"></label><label>Link as<select name="tier"><option value="family">Immediate family</option><option value="extended">Extended family</option></select></label><label>Relationship (optional)<input name="relation" maxlength="40" placeholder="cousin, grandmother…"></label><div><button class="btn primary small">Invite</button></div></form>` : ''}
       ${f.isOwner ? '<p class="muted small">Tip: make someone a manager and they can invite, remove and move members too.</p>' : ''}
+      ${f.canManage && !data.minor ? `<details style="margin-top:12px"><summary><b>Create an account for your child</b></summary><form id="fam-child" class="kv" style="margin-top:8px"><p class="muted small">For under-18s. You approve them automatically; an admin still has to approve the new account before it can be used.</p>
+        <label>Child's name<input name="name" maxlength="80" required></label><label>Child's email (their sign-in)<input name="email" type="email" required autocomplete="off"></label>
+        <label>Password (min 8)<input name="pw" type="password" minlength="8" required autocomplete="new-password"></label>
+        <label>Date of birth<input name="dob" type="date" min="${new Date(Date.now() - 18 * 365.25 * 864e5).toISOString().slice(0, 10)}" max="${new Date().toISOString().slice(0, 10)}" required></label>
+        <label>Relationship (optional)<input name="relation" maxlength="40" placeholder="son, daughter…"></label><div><button class="btn primary small">Create account</button></div></form></details>` : ''}
       <p><button class="btn small" data-fa="leave">Leave this family</button></p></div>`;
   }
   box.innerHTML = h;
   if ($('#fam-new')) $('#fam-new').onsubmit = (e) => { e.preventDefault(); act({ action: 'create', name: e.target.name.value }); };
   if ($('#fam-inv')) $('#fam-inv').onsubmit = (e) => { e.preventDefault(); const f2 = e.target.elements; const em = (f2.pick.value || f2.email.value).trim(); if (!em) return toast('Choose someone or enter an email.', true); act({ action: 'invite', email: em, tier: f2.tier.value, relation: f2.relation.value }); };
+  if ($('#fam-child')) $('#fam-child').onsubmit = (e) => { e.preventDefault(); const c = e.target.elements; act({ action: 'createChild', name: c.name.value, email: c.email.value, password: c.pw.value, dob: c.dob.value, relation: c.relation.value }); };
   box.onclick = (e) => {
     const b = e.target.closest('button[data-fa]'); if (!b) return; const a = b.dataset.fa, id = b.dataset.id, v = b.dataset.v;
     if (a === 'yes' || a === 'no') return act({ action: 'respond', familyId: id, accept: a === 'yes' });
@@ -1127,7 +1135,8 @@ async function viewHome() {
   const fam = isAdmin ? null : await acctFetch('/family').catch(() => null);
   const famInv = fam && fam.invites && fam.invites.length ? `<div class="card"><b>You've been invited to a family.</b> <a href="#/family">Open the Family page</a> to join or decline.</div>` : '';
   const guardCard = (!g ? '' : [
-    g.minor && g.parents.length ? `<div class="card"><b>Your account needs a parent's approval.</b> ${g.parents.map((p) => `${esc(p.name)}: ${p.status === 'approved' ? 'approved' : p.status === 'pending' ? 'waiting' : 'declined'}`).join(' · ')}</div>` : '',
+    g.minor && g.adminPending ? `<div class="card"><b>Your account is waiting for an admin to approve it.</b> Once they do, you can use the apps.</div>` : '',
+    g.minor && g.parents.length && !g.adminPending ? `<div class="card"><b>Your account needs a parent's approval.</b> ${g.parents.map((p) => `${esc(p.name)}: ${p.status === 'approved' ? 'approved' : p.status === 'pending' ? 'waiting' : 'declined'}`).join(' · ')}</div>` : '',
     g.pending.length ? `<div class="card"><h2>Needs your approval</h2>${g.pending.map((x) => `<div class="row spread" style="padding:6px 0"><span>${esc(x.label)}</span><span><button class="btn primary small" data-gact="yes" data-id="${esc(x.id)}">Approve</button> <button class="btn small" data-gact="no" data-id="${esc(x.id)}">Decline</button></span></div>`).join('')}</div>` : '',
     g.kids.length ? `<div class="card"><h2>Kids you look after</h2>${g.kids.map((k) => `<div class="row spread" style="padding:6px 0"><span>${esc(k.childName)}</span><button class="btn small" data-gact="revoke" data-id="${esc(k.childId)}">Withdraw approval</button></div>`).join('')}</div>` : '',
   ].join('')) + famInv;
