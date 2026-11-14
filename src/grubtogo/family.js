@@ -159,4 +159,10 @@ async function removeOrder(user, id) {
   await pb.asSuper("DELETE", `${ordBase}/records/${encodeURIComponent(rec.id)}`);
   return { ok: true };
 }
-module.exports = { mine, create, invite, respond, drop, setTier, addOrder, listOrders, removeOrder };
+// Ids of everyone linked to this person (any tier), so a split bill can be logged to their own spending.
+async function linkedIds(user) {
+  await ensure();
+  const fam = await familyOf(user.id);
+  return new Set(fam ? (fam.members || []).map(m => m.id).filter(id => id !== user.id) : []);
+}
+module.exports = { linkedIds, mine, create, invite, respond, drop, setTier, addOrder, listOrders, removeOrder };

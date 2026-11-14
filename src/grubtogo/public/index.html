@@ -170,9 +170,10 @@ function bill(r) {
   const c = cartOf(r.id), lines = cartLines(r), pct = tipOf(c) || 0;
   const sub = lines.reduce((a, l) => a + lineCost(l), 0), tip = sub * pct / 100, total = sub + tip;
   let people = null, unassigned = 0;
-  if (c.mode === 'equal') people = Array.from({ length: c.n }, (_, i) => ({ name: 'Person ' + (i + 1), sub: sub / c.n, tip: tip / c.n, amt: total / c.n }));
+  const pid = i => (c.pids || [])[i] || '';
+  if (c.mode === 'equal') people = Array.from({ length: c.n }, (_, i) => ({ name: c.people[i] || 'Person ' + (i + 1), pid: pid(i), sub: sub / c.n, tip: tip / c.n, amt: total / c.n }));
   if (c.mode === 'items') {
-    people = c.people.map(n => ({ name: n, sub: 0, tip: 0, amt: 0 }));
+    people = c.people.map((n, i) => ({ name: n, pid: pid(i), sub: 0, tip: 0, amt: 0 }));
     lines.forEach(l => {
       const a = (c.assign[l.item.id] || []).filter(i => i < people.length);
       if (!a.length) unassigned += lineCost(l); else a.forEach(i => people[i].sub += lineCost(l) / a.length);
@@ -370,10 +371,19 @@ function billCardHTML(r) {
   const tipChips = [0, 10, 12.5, 15, 18, 20].map(p => `<button class="chip ${tipOf(c) === p ? 'on' : ''}" data-a="tip" data-v="${p}">${p}%</button>`).join('');
   const modes = [['none', 'No split'], ['equal', 'Equally'], ['items', 'By items']].map(([k, l]) => `<button class="${c.mode === k ? 'on' : ''}" data-a="mode" data-v="${k}">${l}</button>`).join('');
   let splitCfg = '';
-  if (c.mode === 'equal') splitCfg = `<div class="row" style="justify-content:space-between"><div>Number of people</div><div class="step"><button data-a="n-" >−</button><span>${c.n}</span><button data-a="n+">+</button></div></div>`;
+  const linkSel = i => {
+    const f = myFamily(); if (!f || !me) return '';
+    const cur = (c.pids || [])[i] || (i === 0 ? me.id : '');
+    return `<select data-plink="${i}" title="Link to a JoolzApp family member so their share is logged in their own spending" style="max-width:42%"><option value="">Not linked</option><option value="${esc(me.id)}" ${cur === me.id ? 'selected' : ''}>Me</option>${f.members.filter(m => m.id !== me.id).map(m => `<option value="${esc(m.id)}" ${cur === m.id ? 'selected' : ''}>${esc(m.name)}</option>`).join('')}</select>`;
+  };
+  if (c.mode === 'equal') {
+    while (c.people.length < c.n) c.people.push('Person ' + (c.people.length + 1));
+    splitCfg = `<div class="row" style="justify-content:space-between"><div>Number of people</div><div class="step"><button data-a="n-" >−</button><span>${c.n}</span><button data-a="n+">+</button></div></div>`
+      + (myFamily() ? `<div class="sub-h">Who is paying?</div>` + c.people.slice(0, c.n).map((n, i) => `<div class="row" style="margin-bottom:6px;gap:6px"><input type="text" data-pname="${i}" value="${esc(n)}" class="grow">${linkSel(i)}</div>`).join('') + `<div class="mute">Link a person to a family member and their share is logged in their own spending.</div>` : '');
+  }
   if (c.mode === 'items') {
     const lines = cartLines(r);
-    splitCfg = `<div class="sub-h">People</div>` + c.people.map((n, i) => `<div class="row" style="margin-bottom:6px"><input type="text" data-pname="${i}" value="${esc(n)}" class="grow">${c.people.length > 2 ? `<button class="icon-btn" data-a="rm-person" data-i="${i}">×</button>` : ''}</div>`).join('')
+    splitCfg = `<div class="sub-h">People</div>` + c.people.map((n, i) => `<div class="row" style="margin-bottom:6px"><input type="text" data-pname="${i}" value="${esc(n)}" class="grow">${linkSel(i)}${c.people.length > 2 ? `<button class="icon-btn" data-a="rm-person" data-i="${i}">×</button>` : ''}</div>`).join('')
       + `<button class="link" data-a="add-person">＋ Add person</button>
       <div class="sub-h">Who had what? (tap to share a dish)</div>` +
       lines.filter(l => l.item.price != null).map(l => {
@@ -420,16 +430,28 @@ function snapshotOf(r) {
   const b = bill(r), c = cartOf(r.id), ct = contactOf(r);
   return { restId: r.id, restName: r.name, branch: ct.branch || '', phone: ct.phone || '', currency: r.currency || 'R', instructions: c.instructions || '',
     lines: cartLines(r).map(l => ({ itemId: l.item.id, name: l.item.name, qty: l.qty, price: l.item.price == null ? null : l.item.price, note: l.note || '' })),
-    sub: b.sub, tip: b.tip, pct: b.pct, total: b.total };
+    sub: b.sub, tip: b.tip, pct: b.pct, total: b.total,
+    shares: b.people ? b.people.map(p => ({ name: p.name, userId: p.pid || '', sub: p.sub, tip: p.tip, total: p.amt })) : null };
+}
+// Splitting with linked family: this person's own spending is only their share; the others' shares are logged in their spending.
+function splitSnapshot(r, as) {
+  const o = snapshotOf(r), shares = o.shares; delete o.shares;
+  if (!shares || !shares.length) return { order: o, logs: [] };
+  const mine = shares.filter(s => me && s.userId === me.id), mineRows = mine.length ? mine : [shares[0]];
+  const sum = k => mineRows.reduce((a, s) => a + s[k], 0), others = shares.filter(s => !mineRows.includes(s));
+  if (as === 'family') return { order: { ...o, splitWith: others.map(s => s.name).filter(Boolean) }, logs: [] };   // a family expense stays whole
+  o.fullTotal = o.total; o.sub = sum('sub'); o.tip = sum('tip'); o.total = sum('total'); o.splitWith = others.map(s => s.name).filter(Boolean);
+  return { order: o, logs: others.filter(s => s.userId && s.userId !== (me && me.id)).map(s => ({ userId: s.userId, name: s.name, sub: s.sub, tip: s.tip, total: s.total })) };
 }
 async function markOrdered(r, as) {
   if (!cartCount(r)) return;
   if (as === 'family') {
-    const res = await api('api/family/orders', { method: 'POST', body: JSON.stringify({ order: snapshotOf(r) }) });
+    const res = await api('api/family/orders', { method: 'POST', body: JSON.stringify({ order: splitSnapshot(r, 'family').order }) });
     (S.famOrders ||= []).unshift(res.order); scope = 'family'; toast('Saved as a family expense');
   } else {
-    const res = await api('api/history', { method: 'POST', body: JSON.stringify({ order: snapshotOf(r) }) });
-    (S.history ||= []).unshift(res.order); scope = 'me'; toast('Saved to your previous orders');
+    const sp = splitSnapshot(r, 'me'), res = await api('api/history', { method: 'POST', body: JSON.stringify(sp) });
+    (S.history ||= []).unshift(res.order); scope = 'me';
+    toast(res.logged && res.logged.length ? 'Saved. ' + res.logged.join(', ') + (res.logged.length > 1 ? ' have' : ' has') + ' their share logged too' : 'Saved to your previous orders');
   }
   S.carts[r.id] = {}; save(); go('history');
 }
@@ -469,6 +491,7 @@ function historyHTML() {
     const k = monthKey(dOf(o));
     if (k !== last) { last = k; out += `<div class="sub-h">${esc(dOf(o).toLocaleDateString(undefined, { month: 'long', year: 'numeric' }))}</div>`; }
     out += `<div class="card"><div class="row" style="justify-content:space-between;gap:8px"><div class="h" style="margin:0">${esc(o.restName)}${o.branch ? ' <span class="mute">(' + esc(o.branch) + ')</span>' : ''}</div><div class="price">${o.total ? cm(o.currency, o.total) : ''}</div></div>
+      ${o.sharedBy ? `<div class="mute">Your share · ${esc(o.sharedBy)} paid and split the bill${o.fullTotal ? ' (' + cm(o.currency, o.fullTotal) + ' in all)' : ''}</div>` : (o.fullTotal ? `<div class="mute">Your share of ${cm(o.currency, o.fullTotal)}${o.splitWith && o.splitWith.length ? ', split with ' + esc(o.splitWith.join(', ')) : ''}</div>` : '')}
       <div class="mute" style="margin-bottom:6px">${esc(dayFmt(o))}${fam ? ' · by ' + esc(o.byName || 'someone') : ''}</div>
       ${o.lines.map(l => `<div class="sum-line"><div class="q">${l.qty}×</div><div class="grow">${esc(l.name)}${l.note ? `<div class="note">${esc(l.note)}</div>` : ''}</div></div>`).join('')}
       <div class="row" style="gap:8px;margin-top:10px"><button class="btn sec" data-a="repeat" data-id="${o.id}">🔁 Repeat this order</button>${!fam || (me && (o.byId === me.id || famOn().isOwner)) ? `<button class="icon-btn" data-a="del-order" data-id="${o.id}" title="Delete from history">🗑</button>` : ''}</div></div>`;
@@ -686,7 +709,7 @@ document.addEventListener('click', async e => {
   if (a === 'n+') { c.n = Math.min(30, c.n + 1); save(); return keepScroll(); }
   if (a === 'add-person') { c.people.push('Person ' + (c.people.length + 1)); save(); return keepScroll(); }
   if (a === 'rm-person') {
-    c.people.splice(i, 1);
+    c.people.splice(i, 1); if (c.pids) c.pids.splice(i, 1);
     for (const k in c.assign) c.assign[k] = c.assign[k].filter(x => x !== i).map(x => x > i ? x - 1 : x);
     save(); return keepScroll();
   }
@@ -724,6 +747,7 @@ document.addEventListener('change', e => {
   const t = e.target;
   if (t.id === 'f-photo' && t.files.length) ingest({ images: [...t.files].slice(0, 6) });
   if (t.id === 'f-pdf' && t.files.length) ingest({ pdf: t.files[0] });
+  if (t.dataset && t.dataset.plink != null) { const c = cart(); c.pids ||= []; c.pids[+t.dataset.plink] = t.value; save(); refreshBill(); }
   if (t.dataset && t.dataset.pname != null) render();   // refresh chip labels after editing a name
 });
 

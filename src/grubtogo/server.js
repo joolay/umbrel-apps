@@ -234,7 +234,10 @@ function cleanOrder(o) {
   if (!lines.length) return null;
   return { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7), at: new Date().toISOString(), restId: t(o.restId, 40).replace(/[^A-Za-z0-9]/g, ""),
     restName: t(o.restName, 120) || "Restaurant", branch: t(o.branch, 80), phone: t(o.phone, 40), currency: t(o.currency, 8) || "R",
-    lines, instructions: t(o.instructions, 500), sub: num(o.sub), tip: num(o.tip), pct: num(o.pct), total: num(o.total) };
+    lines, instructions: t(o.instructions, 500), sub: num(o.sub), tip: num(o.tip), pct: num(o.pct), total: num(o.total),
+    // When the bill was split: the whole bill, and who it was split with. (sub/tip/total above are then this person's own share.)
+    ...(num(o.fullTotal) ? { fullTotal: num(o.fullTotal) } : {}),
+    ...(Array.isArray(o.splitWith) && o.splitWith.length ? { splitWith: o.splitWith.slice(0, 20).map(x => t(x, 60)).filter(Boolean) } : {}) };
 }
 
 /* ---------- HTTP ---------- */
@@ -323,9 +326,25 @@ const server = http.createServer(async (req, res) => {
     }
     if (p === "/api/history" && req.method === "GET") return send(res, 200, { orders: readHistory(user) });
     if (p === "/api/history" && req.method === "POST") {
-      const o = cleanOrder(JSON.parse((await readBody(req)).toString() || "{}").order);
+      const b = JSON.parse((await readBody(req)).toString() || "{}"), o = cleanOrder(b.order);
       if (!o) return send(res, 400, { code: "bad_order", message: "That order is empty." });
-      writeHistory(user, [o, ...readHistory(user)].slice(0, 5000)); return send(res, 200, { order: o });
+      writeHistory(user, [o, ...readHistory(user)].slice(0, 5000));
+      // A split bill is logged for each linked family member too, as their own share, in their own history.
+      const logged = [];
+      if (user && Array.isArray(b.logs) && b.logs.length) {
+        const ok = await family.linkedIds(user).catch(() => new Set());
+        const who = String(user.name || String(user.email || "").split("@")[0]).slice(0, 80);
+        const seen = new Set();
+        for (const l of b.logs.slice(0, 20)) {
+          const id = String((l && l.userId) || "").replace(/[^A-Za-z0-9]/g, "");
+          if (!id || seen.has(id) || !ok.has(id)) continue; seen.add(id);
+          const num = v => (typeof v === "number" && isFinite(v) && v >= 0 && v < 1e9) ? Math.round(v * 100) / 100 : 0;
+          const e = { ...o, id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7), sub: num(l.sub), tip: num(l.tip), total: num(l.total), fullTotal: o.fullTotal || o.total, sharedBy: who, sharedById: user.id, instructions: "" };
+          delete e.splitWith;
+          writeHistory({ id }, [e, ...readHistory({ id })].slice(0, 5000)); logged.push(String(l.name || "").slice(0, 60));
+        }
+      }
+      return send(res, 200, { order: o, logged });
     }
     const hm = p.match(/^\/api\/history\/([A-Za-z0-9]{1,20})$/);
     if (hm && req.method === "DELETE") { writeHistory(user, readHistory(user).filter(x => x.id !== hm[1])); return send(res, 200, { ok: true }); }
