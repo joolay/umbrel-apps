@@ -143,11 +143,15 @@ function tokenOf(req) {
   return m ? m[1] : "";
 }
 // The browser keeps the sign-in in a cookie too, so photos and live updates (which can't send headers) are covered.
-function setSessionCookie(req, res, token) {
+// "Remember me" on: the cookie lasts 14 days. Off: a session cookie that goes when the browser closes. sw_rm records
+// which one it is, so the refresh on /api/account/me keeps the choice (a missing sw_rm counts as remembered).
+function remembered(req) { return !/(?:^|;\s*)sw_rm=0(?:;|$)/.test(String(req.headers.cookie || "")); }
+function setSessionCookie(req, res, token, remember = true) {
   const secure = String(req.headers["x-forwarded-proto"] || "").includes("https") ? "; Secure" : "";
-  res.setHeader("set-cookie", `sw_token=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${14 * 86400}${secure}`);
+  const life = remember ? `; Max-Age=${14 * 86400}` : "";
+  res.setHeader("set-cookie", [`sw_token=${token}; Path=/; HttpOnly; SameSite=Lax${life}${secure}`, `sw_rm=${remember ? 1 : 0}; Path=/; HttpOnly; SameSite=Lax${life}${secure}`]);
 }
-const clearSessionCookie = res => res.setHeader("set-cookie", "sw_token=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0");
+const clearSessionCookie = res => res.setHeader("set-cookie", ["sw_token=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0", "sw_rm=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0"]);
 async function currentUser(req) {
   const t = tokenOf(req);
   if (!t) return null;
@@ -194,19 +198,36 @@ async function accountRoutes(req, res, p, url) {
         throw e;
       }
       const j = await pb.login(email, password);
-      setSessionCookie(req, res, j.token);
+      setSessionCookie(req, res, j.token, body.remember !== false);
       send(res, 200, { token: j.token, user: publicUser(j.record) }); return true;
     }
     if (p === "/api/account/login" && req.method === "POST") {
       if (throttled(req, "login", 10, 600e3)) return send(res, 429, { code: "slow_down", message: "Too many attempts. Try again in a few minutes." }), true;
-      try { const j = await pb.login(String(body.email || "").trim().toLowerCase(), String(body.password || "")); setSessionCookie(req, res, j.token); send(res, 200, { token: j.token, user: publicUser(j.record) }); }
+      try { const j = await pb.login(String(body.email || "").trim().toLowerCase(), String(body.password || "")); setSessionCookie(req, res, j.token, body.remember !== false); send(res, 200, { token: j.token, user: publicUser(j.record) }); }
       catch (e) { if (e instanceof pb.PBError && e.status === 400) return send(res, 400, { code: "bad_login", message: "That email and password don't match." }), true; throw e; }
       return true;
+    }
+    if (p === "/api/account/forgot" && req.method === "POST") {
+      if (throttled(req, "forgot", 5, 3600e3)) return send(res, 429, { code: "slow_down", message: "Too many requests. Try again later." }), true;
+      const email = String(body.email || "").trim().toLowerCase();
+      if (!validEmail(email)) return send(res, 400, { code: "bad_email", message: "Enter a valid email address." }), true;
+      // Same answer whether or not the email exists, so this can't be used to find out who has an account.
+      try { await pb.requestPasswordReset(email); } catch (e) { console.warn("password reset request failed:", e.message); }
+      send(res, 200, { ok: true }); return true;
+    }
+    if (p === "/api/account/reset" && req.method === "POST") {
+      if (throttled(req, "reset", 10, 3600e3)) return send(res, 429, { code: "slow_down", message: "Too many attempts. Try again later." }), true;
+      const token = String(body.token || ""), password = String(body.password || "");
+      if (!token || token.length > 2000) return send(res, 400, { code: "bad_token", message: "That reset link is invalid or has expired." }), true;
+      if (password.length < 8 || password.length > 200) return send(res, 400, { code: "bad_password", message: "Use a password of at least 8 characters." }), true;
+      try { await pb.confirmPasswordReset(token, password); }
+      catch (e) { if (e instanceof pb.PBError && e.status === 400) return send(res, 400, { code: "bad_token", message: "That reset link is invalid or has expired. Ask for a new one." }), true; throw e; }
+      send(res, 200, { ok: true }); return true;
     }
     if (p === "/api/account/me" && req.method === "GET") {
       const u = await currentUser(req);
       if (!u) return send(res, 401, { code: "signin_required", message: "Sign in to continue." }), true;
-      setSessionCookie(req, res, tokenOf(req));
+      setSessionCookie(req, res, tokenOf(req), remembered(req));
       send(res, 200, { user: publicUser(await pb.getUser(u.id)) }); return true;
     }
     if (p === "/api/account/logout" && req.method === "POST") { clearSessionCookie(res); send(res, 200, { ok: true }); return true; }

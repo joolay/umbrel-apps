@@ -24,6 +24,11 @@ input{font:inherit;color:#1c2b26;background:#fbf8f0;border:2px solid transparent
 input:focus{outline:none;border-color:#d9ab55}
 .go{font:inherit;font-weight:700;border:0;border-radius:12px;padding:12px;margin-top:4px;color:#3a2a08;background:linear-gradient(135deg,#f1d28a,#d9ab55 55%,#b98633);cursor:pointer}
 .go:disabled{opacity:.6}
+input[type=checkbox]{width:auto;margin:0;accent-color:#d9ab55}
+.opts{display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:.88rem}
+.opts label{display:flex;flex-direction:row;align-items:center;gap:7px;color:#d9e6df}
+.opts .alt{margin:0;padding:2px 0;font-size:.88rem}
+.ok{margin:2px 0 0;color:#cfeedd;font-size:.92rem}
 .alt{font:inherit;background:none;border:0;color:#f1d28a;text-decoration:underline;margin-top:14px;cursor:pointer;padding:6px}
 .e{min-height:1.3em;margin:2px 0 0;color:#ffc9c4;font-size:.9rem}
 .note{background:rgba(255,255,255,.1);border-radius:14px;padding:14px 16px;margin:0 0 16px}
@@ -42,8 +47,15 @@ input:focus{outline:none;border-color:#d9ab55}
 (function () {
   "use strict";
   var TOKEN = "sw.token", mode = "in", cfg = {}, view = document.getElementById("view"), sub = document.getElementById("sub");
-  function tok() { try { return localStorage.getItem(TOKEN) || ""; } catch (e) { return ""; } }
-  function setTok(t) { try { t ? localStorage.setItem(TOKEN, t) : localStorage.removeItem(TOKEN); } catch (e) {} }
+  // Remember me on: the token lives in localStorage. Off: sessionStorage, which goes when the browser closes.
+  function tok() { try { return localStorage.getItem(TOKEN) || sessionStorage.getItem(TOKEN) || ""; } catch (e) { return ""; } }
+  function setTok(t, remember) {
+    try {
+      localStorage.removeItem(TOKEN); sessionStorage.removeItem(TOKEN);
+      if (t) (remember === false ? sessionStorage : localStorage).setItem(TOKEN, t);
+    } catch (e) {}
+  }
+  function resetToken() { var m = location.hash.match(/^#\/(?:reset|auth\/confirm-password-reset)\/([^/?]+)/); return m ? decodeURIComponent(m[1]) : ""; }
   function api(path, opts) {
     opts = opts || {}; var h = { "content-type": "application/json" }; if (tok()) h["x-sw-token"] = tok();
     return fetch(path, { method: opts.method || "GET", headers: h, body: opts.body, cache: "no-store" }).then(function (r) {
@@ -54,18 +66,29 @@ input:focus{outline:none;border-color:#d9ab55}
   function field(label, type, auto) { var l = el("label", "", label), i = el("input"); i.type = type; i.autocomplete = auto; l.appendChild(i); return { l: l, i: i }; }
 
   function form() {
+    if (mode === "forgot") return forgotForm();
+    if (mode === "reset") return resetForm();
     var reg = mode === "up"; view.textContent = "";
     sub.textContent = reg ? "Create your JoolzApp account. One account works in all JoolzApp apps." : "Sign in with your JoolzApp account";
     var f = el("form"), name = field("Name", "text", "name"), email = field("Email", "email", "email"), pass = field("Password", "password", reg ? "new-password" : "current-password");
     email.i.required = true; pass.i.required = true; if (reg) pass.i.minLength = 8;
+    try { var saved = localStorage.getItem("sw.email"); if (saved && !reg) email.i.value = saved; } catch (e) {}
     if (reg) f.appendChild(name.l); f.append(email.l, pass.l);
+    var rem = el("input"); rem.type = "checkbox"; rem.checked = true; rem.id = "rem";
+    var opts = el("div", "opts"), rl = el("label"); rl.htmlFor = "rem"; rl.append(rem, document.createTextNode("Remember me")); opts.appendChild(rl);
+    if (!reg) { var fg = el("button", "alt", "Forgot password?"); fg.type = "button"; fg.onclick = function () { mode = "forgot"; form(); }; opts.appendChild(fg); }
+    f.appendChild(opts);
     var err = el("p", "e"); err.setAttribute("role", "alert");
     var go = el("button", "go", reg ? "Create account" : "Sign in"); go.type = "submit";
     f.append(err, go);
     f.onsubmit = function (ev) {
       ev.preventDefault(); err.textContent = ""; go.disabled = true;
-      api(reg ? "api/account/register" : "api/account/login", { method: "POST", body: JSON.stringify({ email: email.i.value, password: pass.i.value, name: name.i.value }) })
-        .then(function (j) { setTok(j.token); j.user.canOpen ? location.reload() : waiting(j.user); })
+      api(reg ? "api/account/register" : "api/account/login", { method: "POST", body: JSON.stringify({ email: email.i.value, password: pass.i.value, name: name.i.value, remember: rem.checked }) })
+        .then(function (j) {
+          setTok(j.token, rem.checked);
+          try { if (rem.checked) localStorage.setItem("sw.email", email.i.value.trim()); else localStorage.removeItem("sw.email"); } catch (e) {}
+          j.user.canOpen ? location.reload() : waiting(j.user);
+        })
         .catch(function (e) { err.textContent = e.message; go.disabled = false; });
     };
     view.appendChild(f);
@@ -73,6 +96,39 @@ input:focus{outline:none;border-color:#d9ab55}
       var alt = el("button", "alt", reg ? "I already have a JoolzApp account" : "Create a JoolzApp account"); alt.type = "button";
       alt.onclick = function () { mode = reg ? "in" : "up"; form(); }; view.appendChild(alt);
     }
+  }
+  function backToSignIn() { var b = el("button", "alt", "Back to sign in"); b.type = "button"; b.onclick = function () { mode = "in"; if (resetToken()) history.replaceState(null, "", location.pathname); form(); }; return b; }
+  function forgotForm() {
+    view.textContent = ""; sub.textContent = "Reset your password";
+    var f = el("form"), email = field("Email", "email", "email"); email.i.required = true;
+    var msg = el("p", "e"); msg.setAttribute("role", "alert");
+    var go = el("button", "go", "Email me a reset link"); go.type = "submit";
+    f.append(email.l, msg, go);
+    f.onsubmit = function (ev) {
+      ev.preventDefault(); msg.className = "e"; msg.textContent = ""; go.disabled = true;
+      api("api/account/forgot", { method: "POST", body: JSON.stringify({ email: email.i.value }) })
+        .then(function () { msg.className = "ok"; msg.textContent = "If that email has a JoolzApp account, a reset link is on its way. Check your inbox."; })
+        .catch(function (e) { msg.textContent = e.message; })
+        .then(function () { go.disabled = false; });
+    };
+    view.append(f, backToSignIn());
+  }
+  function resetForm() {
+    view.textContent = ""; sub.textContent = "Choose a new password";
+    var f = el("form"), p1 = field("New password", "password", "new-password"), p2 = field("Repeat password", "password", "new-password");
+    p1.i.required = p2.i.required = true; p1.i.minLength = p2.i.minLength = 8;
+    var msg = el("p", "e"); msg.setAttribute("role", "alert");
+    var go = el("button", "go", "Set new password"); go.type = "submit";
+    f.append(p1.l, p2.l, msg, go);
+    f.onsubmit = function (ev) {
+      ev.preventDefault(); msg.className = "e"; msg.textContent = "";
+      if (p1.i.value !== p2.i.value) { msg.textContent = "Passwords do not match."; return; }
+      go.disabled = true;
+      api("api/account/reset", { method: "POST", body: JSON.stringify({ token: resetToken(), password: p1.i.value }) })
+        .then(function () { history.replaceState(null, "", location.pathname); mode = "in"; form(); var ok = el("p", "ok", "Password changed. Sign in with your new password."); view.insertBefore(ok, view.firstChild); })
+        .catch(function (e) { msg.textContent = e.message; go.disabled = false; });
+    };
+    view.append(f, backToSignIn());
   }
   function waiting(u) {
     view.textContent = ""; sub.textContent = "Almost there";
@@ -89,7 +145,7 @@ input:focus{outline:none;border-color:#d9ab55}
   function start() {
     api("api/app-config").then(function (c) { cfg = c; })
       .catch(function () {})
-      .then(function () { return api("api/account/me"); })
+      .then(function () { if (resetToken()) { mode = "reset"; form(); return new Promise(function () {}); } return api("api/account/me"); })
       .then(function (j) { if (j.user.canOpen) location.reload(); else waiting(j.user); })
       .catch(function (e) { if (e.status === 401 || e.status === 404) { setTok(""); form(); } else problem(e.message); });
   }

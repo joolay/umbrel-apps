@@ -247,6 +247,12 @@ async function verifyToken(token) {
   const j = await raw("POST", colPath + "/auth-refresh", { token });
   return { ...j, record: await withPortal(merge(j.record, await getAccess(j.record.id, true))) };
 }
+// Password reset by email. PocketBase sends the message (needs SMTP set up in PocketBase) and builds the link from its
+// own reset URL template, which is shared by every JoolzApp app because the accounts are shared.
+async function requestPasswordReset(email) { await raw("POST", colPath + "/request-password-reset", { body: { email } }); }
+async function confirmPasswordReset(token, password) {
+  await raw("POST", colPath + "/confirm-password-reset", { body: { token, password, passwordConfirm: password } });
+}
 async function createUser({ email, password, name }) {
   await ensureSchema();
   const u = await asSuper("POST", rec(), { email, password, passwordConfirm: password, name: name || "", emailVisibility: true, isAdmin: false });
@@ -327,4 +333,4 @@ async function findByEmail(email) {
   return (j.items || [])[0] || null;
 }
 
-module.exports = { portalAvailable, setPortalAccess, signupsOpen, enabled, PBError, login, verifyToken, createUser, listUsers, getUser, updateUser, updateAccess, deleteUser, countAdmins, findByEmail, firstAdmin, asSuper, superFetch, ensureSchema, collection: COLL, app: APP };
+module.exports = { requestPasswordReset, confirmPasswordReset, portalAvailable, setPortalAccess, signupsOpen, enabled, PBError, login, verifyToken, createUser, listUsers, getUser, updateUser, updateAccess, deleteUser, countAdmins, findByEmail, firstAdmin, asSuper, superFetch, ensureSchema, collection: COLL, app: APP };

@@ -4,8 +4,9 @@
   "use strict";
   const $ = id => document.getElementById(id);
   const TOKEN = "sw.token";
-  const getToken = () => { try { return localStorage.getItem(TOKEN) || ""; } catch (e) { return ""; } };
-  const setToken = t => { try { t ? localStorage.setItem(TOKEN, t) : localStorage.removeItem(TOKEN); } catch (e) {} };
+  // Remember me on: localStorage. Off: sessionStorage (gone when the browser closes).
+  const getToken = () => { try { return localStorage.getItem(TOKEN) || sessionStorage.getItem(TOKEN) || ""; } catch (e) { return ""; } };
+  const setToken = (t, remember) => { try { localStorage.removeItem(TOKEN); sessionStorage.removeItem(TOKEN); if (t) (remember === false ? sessionStorage : localStorage).setItem(TOKEN, t); } catch (e) {} };
 
   // If the sign-in runs out while the app is open, go back to the sign-in page.
   const nativeFetch = window.fetch.bind(window);
@@ -88,6 +89,22 @@
       row.appendChild(out); p.appendChild(row);
       return;
     }
+    if (mode === "forgot") {
+      p.appendChild(el("p", "", "Enter your email and we'll send a link to reset your password."));
+      const f = el("form"); f.noValidate = true;
+      const l = el("label", "", "Email"), em = el("input"); em.type = "email"; em.name = "email"; em.autocomplete = "email"; l.appendChild(em); f.appendChild(l);
+      const msg = el("p", "err"); msg.setAttribute("role", "alert");
+      const go = el("button", "pbtn accent", "Email me a reset link"); go.type = "submit"; go.style.height = "42px";
+      const back = el("button", "link", "Back to sign in"); back.type = "button"; back.onclick = () => { mode = "in"; renderAccount(); };
+      f.append(msg, go, back);
+      f.onsubmit = async ev => {
+        ev.preventDefault(); msg.className = "err"; msg.textContent = ""; go.disabled = true;
+        try { await api("api/account/forgot", { method: "POST", body: JSON.stringify({ email: em.value }) }); msg.className = ""; msg.textContent = "If that email has a JoolzApp account, a reset link is on its way."; }
+        catch (e) { msg.textContent = e.message; }
+        go.disabled = false;
+      };
+      p.appendChild(f); return;
+    }
     const reg = mode === "up";
     p.appendChild(el("p", "", reg
       ? `Create your JoolzApp account to use photo identification. One account works in all JoolzApp apps. You get ${cfg.trialLimit} free photo identifications to start.`
@@ -98,16 +115,19 @@
     const name = reg ? field("Name (optional)", "text", "name", "name") : null;
     const email = field("Email", "email", "email", "email"), pass = field("Password", "password", "password", reg ? "new-password" : "current-password");
     if (reg) pass.placeholder = "At least 8 characters";
+    const rem = el("input"); rem.type = "checkbox"; rem.checked = true; rem.style.cssText = "width:auto;margin-right:6px";
+    const remL = el("label", ""); remL.style.cssText = "display:flex;align-items:center;flex-direction:row"; remL.append(rem, document.createTextNode("Remember me")); f.appendChild(remL);
     const err = el("p", "err"); err.setAttribute("role", "alert");
     const go = el("button", "pbtn accent", reg ? "Create account" : "Sign in"); go.type = "submit"; go.style.height = "42px";
     const sw = el("button", "link", reg ? "I already have a JoolzApp account" : "Create a JoolzApp account"); sw.type = "button";
     sw.onclick = () => { mode = reg ? "in" : "up"; renderAccount(); };
     f.append(err, go, sw);
+    if (!reg) { const fg = el("button", "link", "Forgot password?"); fg.type = "button"; fg.onclick = () => { mode = "forgot"; renderAccount(); }; f.appendChild(fg); }
     f.onsubmit = async ev => {
       ev.preventDefault(); err.textContent = ""; go.disabled = true;
       try {
-        const j = await api(reg ? "api/account/register" : "api/account/login", { method: "POST", body: JSON.stringify({ email: email.value, password: pass.value, name: name ? name.value : "" }) });
-        setToken(j.token); location.reload();
+        const j = await api(reg ? "api/account/register" : "api/account/login", { method: "POST", body: JSON.stringify({ email: email.value, password: pass.value, name: name ? name.value : "", remember: rem.checked }) });
+        setToken(j.token, rem.checked); location.reload();
       } catch (e) { err.textContent = e.message; go.disabled = false; }
     };
     p.appendChild(f);

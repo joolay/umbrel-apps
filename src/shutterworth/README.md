@@ -143,3 +143,11 @@ It skips the update if files in the folder were edited on the server, so nothing
 | `release-notes.txt` | One line shown in Umbrel's update notes |
 
 Run without Docker: `node server.js` (Node 20+), then open http://localhost:3880.
+
+### Sign-in options
+The sign-in page has **Remember me** (on: stays signed in for 14 days; off: signed out when the browser closes),
+**Forgot password?** and **Create a JoolzApp account** (when sign-ups are open).
+Forgot password asks PocketBase to email a reset link, so PocketBase needs SMTP set up. The reset link comes from
+PocketBase's password-reset template, which is shared by all JoolzApp apps. Point it at Portal Admin
+(`https://joolzapp.<tailnet>.ts.net/#/reset/{TOKEN}`) or at ShutterWorth (`https://shutterworth.<tailnet>.ts.net/#/reset/{TOKEN}`):
+both have a "choose a new password" screen.
