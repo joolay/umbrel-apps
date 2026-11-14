@@ -89,12 +89,21 @@ function ensureSchema() {
     const mk = (name, type, required) => key === "fields" ? { name, type, required: !!required } : { name, type, required: !!required, options: {} };
     const have = new Set((col[key] || []).map(f => f.name));
     const patch = {};
-    if (!have.has("isAdmin")) patch[key] = [...(col[key] || []), mk("isAdmin", "bool")];
+    const add = [];
+    if (!have.has("isAdmin")) add.push(mk("isAdmin", "bool"));
+    if (!have.has("dob")) add.push(mk("dob", "text"));   // date of birth, YYYY-MM-DD; set by the app servers, never by the person (see the rule guard below)
+    if (add.length) patch[key] = [...(col[key] || []), ...add];
     // Stop people changing their own admin flag straight through PocketBase's API.
     const ref = key === "fields" ? "@request.body." : "@request.data.";
     const guard = `${ref}isAdmin:isset = false`;
     if (col.updateRule === "id = @request.auth.id") patch.updateRule = "id = @request.auth.id && " + guard;
     if (col.createRule === "") patch.createRule = guard;
+    // Nobody can change their own date of birth through PocketBase's API either (it decides whether a parent has to approve).
+    const dobGuard = `${ref}dob:isset = false`;
+    for (const k of ["updateRule", "createRule"]) {
+      const r = patch[k] !== undefined ? patch[k] : col[k];
+      if (typeof r === "string" && r.includes("isAdmin:isset = false") && !r.includes("dob:isset")) patch[k] = r + " && " + dobGuard;
+    }
     if (Object.keys(patch).length) await asSuper("PATCH", "/api/collections/" + encodeURIComponent(COLL), patch);
 
     // Per-app access rows. No API rules, so only the superuser (the app servers) can read or write them.
@@ -250,9 +259,9 @@ async function verifyToken(token) {
   const j = await raw("POST", colPath + "/auth-refresh", { token });
   return { ...j, record: await withPortal(merge(j.record, await getAccess(j.record.id, true))) };
 }
-async function createUser({ email, password, name }) {
+async function createUser({ email, password, name, dob }) {
   await ensureSchema();
-  const u = await asSuper("POST", rec(), { email, password, passwordConfirm: password, name: name || "", emailVisibility: true, isAdmin: false });
+  const u = await asSuper("POST", rec(), { email, password, passwordConfirm: password, name: name || "", emailVisibility: true, isAdmin: false, ...(dob ? { dob } : {}) });
   return merge(u, null);
 }
 async function listUsers(search) {
@@ -363,4 +372,5 @@ async function portalUrl() {
     const v = (j.items || [])[0] && j.items[0].value; return typeof v === "string" && /^https?:\/\//i.test(v) ? v : "";
   })) || "";
 }
-module.exports = { portalUrl, requestPasswordReset, trialUsed, trialBump, setUserPrefs, portalAvailable, setPortalAccess, signupsOpen, enabled, PBError, login, verifyToken, createUser, listUsers, getUser, updateUser, updateAccess, deleteUser, countAdmins, findByEmail, firstAdmin, asSuper, superFetch, ensureSchema, collection: COLL, app: APP };
+async function setDob(id, dob) { await ensureSchema(); await asSuper("PATCH", rec("/" + encodeURIComponent(id)), { dob }); }
+module.exports = { setDob, portalUrl, requestPasswordReset, trialUsed, trialBump, setUserPrefs, portalAvailable, setPortalAccess, signupsOpen, enabled, PBError, login, verifyToken, createUser, listUsers, getUser, updateUser, updateAccess, deleteUser, countAdmins, findByEmail, firstAdmin, asSuper, superFetch, ensureSchema, collection: COLL, app: APP };

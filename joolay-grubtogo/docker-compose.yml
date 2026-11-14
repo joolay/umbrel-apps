@@ -11,7 +11,7 @@ services:
       PROXY_AUTH_ADD: "false"
 
   web:
-    image: ghcr.io/joolay/grubtogo:1.1.3
+    image: ghcr.io/joolay/grubtogo:1.2.0
     restart: on-failure
     stop_grace_period: 1m
     # Lets the container reach the PocketBase app (port 5400) published on this Umbrel.
@@ -33,7 +33,7 @@ services:
       # Refuse to show anything until PocketBase accounts are working (Umbrel's login is off, so this is the lock).
       - REQUIRE_ACCOUNTS=1
 
-# What GrubToGo needs in PocketBase. Portal Admin reads this and creates the collection when the app is installed.
+# What GrubToGo needs in PocketBase. (joolz_families is shared by every JoolzApp app: it holds the family links.) Portal Admin reads this and creates the collection when the app is installed.
 x-pocketbase: {
   "collections": [
     {
@@ -44,7 +44,55 @@ x-pocketbase: {
         {"name": "name", "type": "text", "required": true},
         {"name": "phone", "type": "text"},
         {"name": "currency", "type": "text"},
-        {"name": "categories", "type": "json", "maxSize": 5000000}
+        {"name": "categories", "type": "json", "maxSize": 5000000},
+        {"name": "branches", "type": "json", "maxSize": 200000},
+        {"name": "version", "type": "text"},
+        {"name": "versionByName", "type": "text"}
+      ]
+    },
+    {
+      "name": "grubtogo_menu_archive",
+      "fields": [
+        {"name": "menuId", "type": "text", "required": true},
+        {"name": "version", "type": "text"},
+        {"name": "byName", "type": "text"},
+        {"name": "data", "type": "json", "maxSize": 5000000}
+      ]
+    },
+    {
+      "name": "joolz_families",
+      "fields": [
+        {"name": "name", "type": "text", "required": true},
+        {"name": "owner", "type": "text", "required": true},
+        {"name": "ownerName", "type": "text"},
+        {"name": "memberIds", "type": "text"},
+        {"name": "invitedIds", "type": "text"},
+        {"name": "invitedEmails", "type": "text"},
+        {"name": "members", "type": "json", "maxSize": 100000},
+        {"name": "invited", "type": "json", "maxSize": 100000}
+      ]
+    },
+    {
+      "name": "grubtogo_family_orders",
+      "fields": [
+        {"name": "familyId", "type": "text", "required": true},
+        {"name": "byId", "type": "text", "required": true},
+        {"name": "byName", "type": "text"},
+        {"name": "data", "type": "json", "maxSize": 1000000}
+      ]
+    },
+    {
+      "name": "joolz_guardians",
+      "fields": [
+        {"name": "childId", "type": "text", "required": true},
+        {"name": "childName", "type": "text"},
+        {"name": "parentId", "type": "text", "required": true},
+        {"name": "parentName", "type": "text"},
+        {"name": "kind", "type": "text"},
+        {"name": "ref", "type": "text"},
+        {"name": "label", "type": "text"},
+        {"name": "status", "type": "text"},
+        {"name": "decidedAt", "type": "text"}
       ]
     }
   ]
