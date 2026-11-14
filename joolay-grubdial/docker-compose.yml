@@ -1,0 +1,23 @@
+# GrubDial runs here as a real Umbrel app. Source: src/grubdial in this repo, built by .github/workflows/build-images.yml.
+# Keep the image tag equal to `version` in umbrel-app.yml.
+# Data (saved menus per person, AI key) lives in this app's data folder and survives updates.
+# Sign-in settings go in <app data>/data/pocketbase.env (same POCKETBASE_* values as ShutterWorth), never in this public repo.
+services:
+  app_proxy:
+    environment:
+      APP_HOST: joolay-grubdial_web_1
+      APP_PORT: 3893
+      # No Umbrel login for this app: GrubDial locks itself behind the JoolzApp account.
+      PROXY_AUTH_ADD: "false"
+
+  web:
+    image: ghcr.io/joolay/grubdial:1.0.0
+    restart: on-failure
+    stop_grace_period: 1m
+    volumes:
+      - ${APP_DATA_DIR}/data:/data
+    environment:
+      - POCKETBASE_APP_ID=grubdial
+      - POCKETBASE_APP_NAME=GrubDial
+      # Refuse to show anything until PocketBase accounts are working (Umbrel's login is off, so this is the lock).
+      - REQUIRE_ACCOUNTS=1

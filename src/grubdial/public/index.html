@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>GrubDial</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<style>
+:root{--bg:#faf6f0;--card:#fff;--ink:#241c15;--mute:#7a6d60;--line:#eadfd2;--accent:#d9480f;--accent2:#fff1e8;--ok:#2b8a3e;--r:16px}
+@media (prefers-color-scheme:dark){:root{--bg:#17130f;--card:#241e18;--ink:#f4ece3;--mute:#a69888;--line:#3a3128;--accent:#ff8a4c;--accent2:#33231a;--ok:#2f9e44}}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+body{padding-bottom:calc(96px + env(safe-area-inset-bottom))}
+header{position:sticky;top:0;z-index:5;background:var(--bg);padding:calc(12px + env(safe-area-inset-top)) 16px 10px;display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--line)}
+header h1{font-size:19px;margin:0;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.icon-btn{background:var(--card);color:var(--ink);width:40px;height:40px;border-radius:12px;font-size:19px;border:1px solid var(--line);flex:none}
+main{padding:14px 16px;max-width:640px;margin:0 auto}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:14px;margin-bottom:12px}
+.row{display:flex;align-items:center;gap:10px}
+.grow{flex:1;min-width:0}
+.btn{display:block;text-align:center;border:0;background:var(--accent);color:#fff;font:600 16px system-ui;padding:13px 18px;border-radius:14px;width:100%}
+.btn.sec{background:var(--accent2);color:var(--accent)}
+.btn.ghost{background:transparent;color:var(--mute);border:1px solid var(--line)}
+.btn:disabled{opacity:.5}
+.mute{color:var(--mute);font-size:14px}
+.tabs{display:flex;gap:6px;margin-bottom:12px;background:var(--accent2);padding:4px;border-radius:14px}
+.tabs button{flex:1;border:0;background:transparent;color:var(--mute);font:600 14px system-ui;padding:9px 4px;border-radius:10px}
+.tabs button.on{background:var(--card);color:var(--accent);box-shadow:0 1px 3px #0002}
+input[type=text],input[type=password],select,input[type=url],input[type=tel],input[type=number],textarea{width:100%;border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:12px;padding:12px;font:16px system-ui}
+textarea{min-height:90px;resize:vertical}
+label.drop{display:block;border:2px dashed var(--line);border-radius:var(--r);padding:28px 12px;text-align:center;color:var(--mute)}
+label.drop b{display:block;color:var(--ink);font-size:17px;margin-bottom:4px}
+.cat{font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);margin:20px 0 8px;font-weight:700}
+.item{display:flex;gap:12px;align-items:flex-start;padding:12px 0;border-bottom:1px solid var(--line)}
+.item:last-child{border-bottom:0}
+.item h3{margin:0;font-size:16px}
+.item p{margin:2px 0 0;font-size:13.5px;color:var(--mute)}
+.price{font-weight:700;white-space:nowrap}
+.step{display:flex;align-items:center;gap:2px;background:var(--accent2);border-radius:12px}
+.step button{border:0;background:transparent;color:var(--accent);font:700 20px system-ui;width:38px;height:38px}
+.step span{min-width:22px;text-align:center;font-weight:700}
+.add{border:0;background:var(--accent2);color:var(--accent);font:700 14px system-ui;padding:9px 16px;border-radius:12px}
+.bar{position:fixed;left:0;right:0;bottom:0;padding:10px 16px calc(10px + env(safe-area-inset-bottom));background:var(--bg);border-top:1px solid var(--line);z-index:6}
+.bar .inner{max-width:640px;margin:auto}
+.badge{background:#fff3;border-radius:10px;padding:2px 9px;margin-right:8px}
+.spin{width:22px;height:22px;border:3px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:s .8s linear infinite;flex:none}
+@keyframes s{to{transform:rotate(360deg)}}
+.err{background:#e0313122;color:#c92a2a;border-radius:12px;padding:10px 12px;margin:10px 0;font-size:14px}
+@media (prefers-color-scheme:dark){.err{color:#ff8787}}
+.call{display:block;text-align:center;text-decoration:none;background:var(--ok);color:#fff;font:700 19px system-ui;padding:16px;border-radius:16px}
+.call.sm{font-size:15px;padding:11px;border-radius:12px}
+.sum-line{display:flex;gap:10px;padding:8px 0;border-bottom:1px dashed var(--line)}
+.sum-line:last-of-type{border-bottom:0}
+.sum-line .q{font-weight:700;min-width:30px;color:var(--accent)}
+.note{font-size:13.5px;color:var(--mute);font-style:italic}
+.kv{display:flex;justify-content:space-between;padding:4px 0}
+.kv.big{font-size:19px;font-weight:800;border-top:1px solid var(--line);margin-top:6px;padding-top:10px}
+.link{background:none;border:0;color:var(--accent);font:600 14px system-ui;padding:4px 0}
+.search{margin-bottom:6px}
+.pill{display:inline-block;background:var(--accent2);color:var(--accent);border-radius:99px;padding:2px 10px;font-size:12px;font-weight:700}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:99px;padding:7px 13px;font:600 14px system-ui}
+.chip.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.h{font-weight:700;margin:0 0 8px}
+.person{background:var(--accent2);border-radius:12px;padding:10px 12px;margin-top:8px}
+.toast{position:fixed;left:16px;right:16px;bottom:calc(88px + env(safe-area-inset-bottom));background:var(--ink);color:var(--bg);padding:12px 14px;border-radius:12px;z-index:9;text-align:center;font-size:14px}
+.sub-h{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--mute);margin:12px 0 6px;font-weight:700}
+</style>
+</head>
+<body>
+<header id="hdr"></header>
+<main id="app"></main>
+<div id="bar" class="bar" hidden></div>
+<div id="toast" class="toast" hidden></div>
+
+<script>
+/* ---------- state & storage ---------- */
+const KEY = 'takeout.v1';   // old local save: copied up to your account once, so menus from before sign-in carry over
+let S = { restaurants: [], carts: {} };
+try { const raw = localStorage.getItem(KEY); if (raw) S = Object.assign(S, JSON.parse(raw)); } catch (e) {}
+
+let view = 'home';         // home | add | menu | summary | orders
+let curId = null, addTab = 'photo', busy = null, error = '', query = '';
+let sample = true, canImages = true;
+let me = null, ai = { configured: true, isAdmin: false }, pushT = null;
+
+async function api(path, opts) {
+  opts = opts || {}; const h = { 'content-type': 'application/json' };
+  try { const t = localStorage.getItem('gd.token'); if (t) h['x-gd-token'] = t; } catch (e) {}
+  const r = await fetch(path, { method: opts.method || 'GET', headers: h, body: opts.body, cache: 'no-store' });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) { const e = new Error(j.message || 'Something went wrong (' + r.status + ')'); e.status = r.status; throw e; }
+  return j;
+}
+function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} clearTimeout(pushT); pushT = setTimeout(push, 800); }
+async function push() {
+  try { await api('api/state', { method: 'PUT', body: JSON.stringify({ restaurants: S.restaurants, carts: S.carts }) }); }
+  catch (e) { if (e.status === 401 || e.status === 403) location.reload(); }
+}
+(async () => {
+  try { me = (await api('api/account/me')).user; } catch (e) {}
+  try { ai = await api('api/ai/status'); } catch (e) {}
+  try {
+    const { state } = await api('api/state');
+    if (state && Array.isArray(state.restaurants)) {
+      S = { restaurants: state.restaurants, carts: state.carts || {} };
+      try { localStorage.setItem(KEY, JSON.stringify(S)); localStorage.setItem('grubdial.migrated', '1'); } catch (e) {}
+    } else {
+      let done = false; try { done = !!localStorage.getItem('grubdial.migrated'); } catch (e) {}
+      if (!done && S.restaurants.length) { await push(); try { localStorage.setItem('grubdial.migrated', '1'); } catch (e) {} }
+      else S = { restaurants: [], carts: {} };
+    }
+  } catch (e) {}
+  render();
+})();
+
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const rest = () => S.restaurants.find(r => r.id === curId);
+const D = c => { c.items ||= {}; c.instructions ||= ''; if (c.tip == null) c.tip = 15; c.mode ||= 'none'; c.n ||= 2; c.people ||= ['Me', 'Person 2']; c.assign ||= {}; return c; };
+const cartOf = id => D(S.carts[id] ||= {});
+const cart = () => cartOf(curId);
+const money = (r, n) => (r.currency || 'R') + (Math.round(n * 100) / 100).toFixed(2);
+const itemsOf = r => r.categories.flatMap(c => c.items.map(i => ({ ...i, cat: c.name })));
+function cartLines(r) {
+  const c = S.carts[r.id]; if (!c || !c.items) return [];
+  const all = itemsOf(r);
+  return Object.entries(c.items).filter(([, v]) => v.qty > 0).map(([id, v]) => ({ item: all.find(i => i.id === id), ...v })).filter(l => l.item);
+}
+const cartCount = r => cartLines(r).reduce((a, l) => a + l.qty, 0);
+const lineCost = l => (l.item.price || 0) * l.qty;
+const hasPrices = r => cartLines(r).some(l => l.item.price != null);
+const telHref = p => 'tel:' + String(p || '').replace(/[^\d+]/g, '');
+const activeRests = () => S.restaurants.filter(r => cartCount(r) > 0);
+
+function bill(r) {
+  const c = cartOf(r.id), lines = cartLines(r), pct = c.tip || 0;
+  const sub = lines.reduce((a, l) => a + lineCost(l), 0), tip = sub * pct / 100, total = sub + tip;
+  let people = null, unassigned = 0;
+  if (c.mode === 'equal') people = Array.from({ length: c.n }, (_, i) => ({ name: 'Person ' + (i + 1), sub: sub / c.n, tip: tip / c.n, amt: total / c.n }));
+  if (c.mode === 'items') {
+    people = c.people.map(n => ({ name: n, sub: 0, tip: 0, amt: 0 }));
+    lines.forEach(l => {
+      const a = (c.assign[l.item.id] || []).filter(i => i < people.length);
+      if (!a.length) unassigned += lineCost(l); else a.forEach(i => people[i].sub += lineCost(l) / a.length);
+    });
+    people.forEach(p => { p.tip = p.sub * pct / 100; p.amt = p.sub + p.tip; });
+  }
+  return { sub, tip, total, pct, people, unassigned };
+}
+
+/* ---------- navigation ---------- */
+function go(v, id) { view = v; if (id !== undefined) curId = id; error = ''; query = ''; render(); window.scrollTo(0, 0); }
+function keepScroll() { const y = scrollY; render(); scrollTo(0, y); }
+let tt; function toast(m) { const t = $('#toast'); t.textContent = m; t.hidden = false; clearTimeout(tt); tt = setTimeout(() => t.hidden = true, 2800); }
+
+/* ---------- render ---------- */
+function render() {
+  const h = $('#hdr'), a = $('#app'), bar = $('#bar');
+  bar.hidden = true;
+  const back = t => `<button class="icon-btn" data-a="${t}">‹</button>`;
+  if (view === 'home') {
+    h.innerHTML = `<h1>🍽️ GrubDial</h1>${S.restaurants.length ? `<button class="icon-btn" data-a="save-all" title="Save all menus to file">💾</button>` : ''}${me ? `<button class="icon-btn" data-a="signout" title="Sign out ${esc(me.email)}">⎋</button>` : ''}`;
+    a.innerHTML = homeHTML();
+    const n = activeRests().length;
+    if (n) { bar.hidden = false; bar.innerHTML = `<div class="inner"><button class="btn" data-a="orders">View all orders · ${n} restaurant${n > 1 ? 's' : ''}</button></div>`; }
+  } else if (view === 'add') {
+    h.innerHTML = back('home') + `<h1>Add a menu</h1>`; a.innerHTML = addHTML();
+  } else if (view === 'menu') {
+    const r = rest();
+    h.innerHTML = back('home') + `<h1>${esc(r.name)}</h1><button class="icon-btn" data-a="save-one" title="Save menu to file">💾</button><button class="icon-btn" data-a="del" title="Remove">🗑</button>`;
+    a.innerHTML = menuHTML(r);
+    const n = cartCount(r);
+    if (n) { bar.hidden = false; bar.innerHTML = `<div class="inner"><button class="btn" data-a="summary"><span class="badge">${n}</span>View order${hasPrices(r) ? ' · ' + money(r, bill(r).sub) : ''}</button></div>`; }
+  } else if (view === 'summary') {
+    const r = rest();
+    h.innerHTML = back('menu') + `<h1>${esc(r.name)} order</h1>`; a.innerHTML = summaryHTML(r);
+  } else if (view === 'orders') {
+    h.innerHTML = back('home') + `<h1>All orders</h1>`; a.innerHTML = ordersHTML();
+  }
+}
+
+function aiNote() {
+  if (ai.configured) return '';
+  if (!ai.isAdmin) return `<div class="err">Menu reading isn't set up yet. Ask the admin to add an AI key.</div>`;
+  return `<div class="card"><div style="font-weight:700">Set up menu reading</div><p class="mute">Add an AI key so GrubDial can read menus from photos, PDFs and links. Only admins see this.</p>
+    <select id="ai-prov"><option value="anthropic">Anthropic (Claude)</option><option value="gemini">Google Gemini</option><option value="openai">OpenAI</option></select><div style="height:8px"></div>
+    <input id="ai-key" type="password" placeholder="API key" autocomplete="off"><div style="height:8px"></div>
+    <input id="ai-model" type="text" placeholder="Model (optional)" autocomplete="off"><div style="height:8px"></div>
+    <button class="btn" data-a="ai-save">Save key</button></div>`;
+}
+function homeHTML() {
+  const list = S.restaurants.map(r => `
+    <div class="card row" data-a="open" data-id="${r.id}" style="cursor:pointer">
+      <div class="grow"><div style="font-weight:700;font-size:17px">${esc(r.name)}</div>
+      <div class="mute">${itemsOf(r).length} items${r.phone ? ' · ' + esc(r.phone) : ' · no phone yet'}</div></div>
+      ${cartCount(r) ? `<span class="pill">${cartCount(r)} in order</span>` : ''}<span class="mute">›</span>
+    </div>`).join('');
+  return `${aiNote()}${list || `<div class="card" style="text-align:center;padding:30px 16px"><div style="font-size:42px">📋</div><h2 style="margin:6px 0">No menus yet</h2><p class="mute">Upload a photo, PDF or link of a restaurant menu, or import a saved menu file.</p></div>`}
+    <button class="btn" data-a="add">＋ Add a menu</button><div style="height:8px"></div>
+    <label class="btn sec" style="cursor:pointer">📂 Import saved menu file(s)<input id="f-import" type="file" accept=".json,application/json" multiple hidden></label>
+    <p class="mute" style="text-align:center">Use 💾 to save menus to files you can keep and re-import any time.</p>`;
+}
+
+function addHTML() {
+  const T = (k, l) => `<button class="${addTab === k ? 'on' : ''}" data-a="tab" data-k="${k}">${l}</button>`;
+  let body = '';
+  if (addTab === 'photo') body = `<label class="drop"><b>📷 Take or choose photos</b>Multiple pages are fine<input id="f-photo" type="file" accept="image/*" multiple hidden></label>`;
+  if (addTab === 'pdf') body = `<label class="drop"><b>📄 Choose a PDF menu</b>Up to 6 pages are read<input id="f-pdf" type="file" accept="application/pdf" hidden></label>`;
+  if (addTab === 'url') body = `<input id="f-url" type="url" placeholder="https://restaurant.com/menu" inputmode="url"><p class="mute">Not every site can be read. If this fails, screenshot the menu page or use the Paste tab.</p><button class="btn" data-a="go-url">Read menu</button>`;
+  if (addTab === 'text') body = `<textarea id="f-text" placeholder="Paste the menu text here…" style="min-height:160px"></textarea><div style="height:10px"></div><button class="btn" data-a="go-text">Read menu</button>`;
+  return `<div class="tabs">${T('photo', 'Photo')}${T('pdf', 'PDF')}${T('url', 'Link')}${T('text', 'Paste')}</div>
+    ${busy ? `<div class="card row"><div class="spin"></div><div>${esc(busy)}</div></div>` : body}
+    ${error ? `<div class="err">${esc(error)}</div>` : ''}`;
+}
+
+function menuHTML(r) {
+  const q = query.trim().toLowerCase(), c = cart();
+  let out = `<div class="card"><div class="mute" style="margin-bottom:6px">Restaurant phone</div>
+    <input id="phone" type="tel" value="${esc(r.phone || '')}" placeholder="Add phone number"></div>
+    <input class="search" id="q" type="text" placeholder="Search menu…" value="${esc(query)}">`;
+  for (const cat of r.categories) {
+    const items = cat.items.filter(i => !q || (i.name + ' ' + (i.description || '')).toLowerCase().includes(q));
+    if (!items.length) continue;
+    out += `<div class="cat">${esc(cat.name)}</div><div class="card" style="padding:2px 14px">` + items.map(i => {
+      const qty = c.items[i.id]?.qty || 0;
+      return `<div class="item"><div class="grow"><h3>${esc(i.name)}</h3>${i.description ? `<p>${esc(i.description)}</p>` : ''}${i.price != null ? `<div class="price" style="margin-top:4px">${money(r, i.price)}</div>` : ''}</div>
+        ${qty ? `<div class="step"><button data-a="dec" data-id="${i.id}">−</button><span>${qty}</span><button data-a="inc" data-id="${i.id}">+</button></div>` : `<button class="add" data-a="inc" data-id="${i.id}">Add</button>`}</div>`;
+    }).join('') + `</div>`;
+  }
+  return out;
+}
+
+/* ----- per-restaurant summary + bill ----- */
+function callHTML(r, small) {
+  return r.phone ? `<a class="call ${small ? 'sm' : ''}" href="${telHref(r.phone)}">📞 Call ${esc(r.name)} · ${esc(r.phone)}</a>${small ? '' : `<div class="row" style="justify-content:center;margin-top:6px"><button class="link" data-a="copy-phone" data-id="${r.id}">Copy number</button></div>`}`
+    : `<div class="mute">No phone number saved – add one on the menu page.</div>`;
+}
+
+function summaryHTML(r) {
+  const lines = cartLines(r), c = cart();
+  if (!lines.length) return `<div class="card" style="text-align:center">Your order is empty.</div><button class="btn" data-a="menu">Back to menu</button>`;
+  const rows = lines.map(l => `<div class="sum-line"><div class="q">${l.qty}×</div><div class="grow"><div>${esc(l.item.name)}</div>
+      <textarea data-note="${l.item.id}" placeholder="Special instructions (e.g. no onions)" style="min-height:48px;margin-top:6px;font-size:14px">${esc(l.note || '')}</textarea></div>
+      <div class="price">${l.item.price != null ? money(r, lineCost(l)) : ''}</div></div>`).join('');
+  return `<div class="card"><div class="h">${esc(r.name)}</div>${rows}</div>
+    <div class="card"><div class="mute" style="margin-bottom:6px">Notes for the whole order</div>
+      <textarea id="gen" placeholder="Allergies, collection time, name for the order…">${esc(c.instructions)}</textarea></div>
+    ${callHTML(r)}
+    <div style="height:14px"></div>
+    ${hasPrices(r) ? billCardHTML(r) : ''}
+    <button class="btn sec" data-a="copy-order" data-id="${r.id}">Copy order text</button>
+    <div style="height:8px"></div><button class="btn ghost" data-a="clear">Clear this order</button>`;
+}
+
+function billCardHTML(r) {
+  const c = cart();
+  const tipChips = [0, 10, 12.5, 15, 18, 20].map(p => `<button class="chip ${c.tip === p ? 'on' : ''}" data-a="tip" data-v="${p}">${p}%</button>`).join('');
+  const modes = [['none', 'No split'], ['equal', 'Equally'], ['items', 'By items']].map(([k, l]) => `<button class="${c.mode === k ? 'on' : ''}" data-a="mode" data-v="${k}">${l}</button>`).join('');
+  let splitCfg = '';
+  if (c.mode === 'equal') splitCfg = `<div class="row" style="justify-content:space-between"><div>Number of people</div><div class="step"><button data-a="n-" >−</button><span>${c.n}</span><button data-a="n+">+</button></div></div>`;
+  if (c.mode === 'items') {
+    const lines = cartLines(r);
+    splitCfg = `<div class="sub-h">People</div>` + c.people.map((n, i) => `<div class="row" style="margin-bottom:6px"><input type="text" data-pname="${i}" value="${esc(n)}" class="grow">${c.people.length > 2 ? `<button class="icon-btn" data-a="rm-person" data-i="${i}">×</button>` : ''}</div>`).join('')
+      + `<button class="link" data-a="add-person">＋ Add person</button>
+      <div class="sub-h">Who had what? (tap to share a dish)</div>` +
+      lines.filter(l => l.item.price != null).map(l => {
+        const a = c.assign[l.item.id] || [];
+        return `<div style="margin-bottom:10px"><div class="row" style="justify-content:space-between"><div>${l.qty}× ${esc(l.item.name)}</div><div class="price">${money(r, lineCost(l))}</div></div>
+          <div class="chips" style="margin-top:6px">${c.people.map((n, i) => `<button class="chip ${a.includes(i) ? 'on' : ''}" data-a="assign" data-id="${l.item.id}" data-i="${i}">${esc(n || 'Person ' + (i + 1))}</button>`).join('')}</div></div>`;
+      }).join('') + `<div class="mute">Dishes with several people are split evenly between them.</div>`;
+  }
+  return `<div class="card"><div class="h">Bill</div>
+    <div class="sub-h" style="margin-top:0">Tip</div>
+    <div class="chips">${tipChips}</div>
+    <div class="row" style="margin-top:8px"><span class="mute">Custom %</span><input id="tipc" type="number" inputmode="decimal" min="0" max="100" step="0.5" value="${c.tip}" style="width:100px"></div>
+    <div id="bn">${billNumsHTML(r)}</div></div>
+    <div class="card"><div class="h">Split the bill</div><div class="tabs">${modes}</div>${splitCfg}<div id="sp">${splitHTML(r)}</div></div>`;
+}
+function billNumsHTML(r) {
+  const b = bill(r);
+  return `<div style="margin-top:10px"><div class="kv"><span>Subtotal</span><span>${money(r, b.sub)}</span></div>
+    <div class="kv"><span>Tip (${b.pct}%)</span><span>${money(r, b.tip)}</span></div>
+    <div class="kv big"><span>Total</span><span>${money(r, b.total)}</span></div></div>`;
+}
+function splitHTML(r) {
+  const c = cartOf(r.id), b = bill(r);
+  if (c.mode === 'none') return '';
+  if (c.mode === 'equal') return `<div class="person" style="margin-top:12px;text-align:center"><div class="mute">Each of ${c.n} people pays</div><div style="font-size:26px;font-weight:800">${money(r, b.people[0].amt)}</div></div>`;
+  return `<div class="sub-h">Each person pays</div>` + b.people.map(p => `<div class="person row" style="justify-content:space-between"><div><b>${esc(p.name || 'Person')}</b><div class="mute">${money(r, p.sub)} + ${money(r, p.tip)} tip</div></div><div style="font-size:19px;font-weight:800">${money(r, p.amt)}</div></div>`).join('')
+    + (b.unassigned > 0.004 ? `<div class="err">${money(r, b.unassigned)} of food isn't assigned to anyone yet.</div>` : '');
+}
+
+/* ----- all orders (multiple restaurants) ----- */
+function ordersHTML() {
+  const rs = activeRests();
+  if (!rs.length) return `<div class="card" style="text-align:center">No items in any order yet.</div><button class="btn" data-a="home">Pick a restaurant</button>`;
+  const cur = new Set(rs.map(r => r.currency)); let grand = 0;
+  const blocks = rs.map(r => {
+    const b = bill(r); grand += b.total;
+    const lines = cartLines(r).map(l => `<div class="sum-line"><div class="q">${l.qty}×</div><div class="grow">${esc(l.item.name)}${l.note ? `<div class="note">${esc(l.note)}</div>` : ''}</div><div class="price">${l.item.price != null ? money(r, lineCost(l)) : ''}</div></div>`).join('');
+    const c = cartOf(r.id);
+    return `<div class="card"><div class="h">${esc(r.name)}</div>${lines}
+      ${c.instructions ? `<div class="note" style="margin-top:6px">Notes: ${esc(c.instructions)}</div>` : ''}
+      ${hasPrices(r) ? `<div class="kv"><span>Subtotal</span><span>${money(r, b.sub)}</span></div><div class="kv"><span>Tip (${b.pct}%)</span><span>${money(r, b.tip)}</span></div><div class="kv big"><span>Total</span><span>${money(r, b.total)}</span></div>` : ''}
+      <div style="height:10px"></div>${callHTML(r, true)}
+      <div style="height:8px"></div><button class="btn sec" data-a="open-sum" data-id="${r.id}">Tip & split bill</button></div>`;
+  }).join('');
+  return blocks + (cur.size === 1 ? `<div class="card"><div class="kv big" style="border:0;margin:0;padding:0"><span>Grand total (${rs.length} restaurants)</span><span>${money(rs[0], grand)}</span></div></div>` : '');
+}
+
+function orderText(r) {
+  const c = cartOf(r.id), b = bill(r);
+  let t = `Order for ${r.name}\n\n` + cartLines(r).map(l => `${l.qty}× ${l.item.name}` + (l.note ? `\n   – ${l.note}` : '')).join('\n');
+  if (c.instructions) t += `\n\nNotes: ${c.instructions}`;
+  if (hasPrices(r)) {
+    t += `\n\nSubtotal: ${money(r, b.sub)}\nTip (${b.pct}%): ${money(r, b.tip)}\nTotal: ${money(r, b.total)}`;
+    if (b.people && c.mode === 'equal') t += `\nSplit ${c.n} ways: ${money(r, b.people[0].amt)} each`;
+    if (b.people && c.mode === 'items') t += `\n\nSplit:\n` + b.people.map(p => `${p.name}: ${money(r, p.amt)}`).join('\n');
+  }
+  return t;
+}
+
+/* ---------- files: save / import ---------- */
+const slug = s => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'menu';
+function saveFile(list, filename) {
+  const blob = new Blob([JSON.stringify({ app: 'grubdial', version: 1, restaurants: list }, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  toast('Menu file saved ✓');
+}
+async function importFiles(files) {
+  let added = 0, bad = 0;
+  for (const f of files) {
+    try {
+      const j = JSON.parse(await f.text());
+      const list = Array.isArray(j.restaurants) ? j.restaurants : (j.categories ? [j] : []);
+      for (const x of list) {
+        if (!x || !Array.isArray(x.categories)) { bad++; continue; }
+        const cats = x.categories.map((c, ci) => ({ name: String(c.name || 'Menu'), items: (c.items || []).filter(i => i && i.name).map((i, ii) => ({ id: String(i.id || `c${ci}i${ii}`), name: String(i.name), description: String(i.description || ''), price: typeof i.price === 'number' ? i.price : null })) })).filter(c => c.items.length);
+        if (!cats.length) { bad++; continue; }
+        const r = { id: String(x.id || 'r' + Date.now().toString(36) + added), name: String(x.name || 'Restaurant'), phone: String(x.phone || ''), currency: String(x.currency || 'R'), categories: cats };
+        const k = S.restaurants.findIndex(y => y.id === r.id);
+        if (k >= 0) S.restaurants[k] = r; else S.restaurants.unshift(r);
+        added++;
+      }
+    } catch (e) { bad++; }
+  }
+  save(); render();
+  toast(added ? `Imported ${added} restaurant${added > 1 ? 's' : ''}` + (bad ? ` (${bad} skipped)` : '') : 'That file isn\'t a GrubDial menu file.');
+}
+
+/* ---------- events ---------- */
+document.addEventListener('click', async e => {
+  const el = e.target.closest('[data-a]'); if (!el) return;
+  const a = el.dataset.a, id = el.dataset.id, v = el.dataset.v, i = +el.dataset.i;
+  if (a === 'home') return go('home');
+  if (a === 'signout') { try { localStorage.removeItem('gd.token'); } catch (e) {} await fetch('api/account/logout', { method: 'POST' }).catch(() => {}); return location.reload(); }
+  if (a === 'ai-save') {
+    const key = $('#ai-key').value.trim(); if (!key) return toast('Paste your API key first.');
+    try { const j = await api('api/ai/config', { method: 'POST', body: JSON.stringify({ provider: $('#ai-prov').value, apiKey: key, model: $('#ai-model').value.trim() }) }); ai = { ...ai, ...j }; toast(ai.configured ? 'Menu reading is ready ✓' : 'Saved — this provider also needs a model name.'); render(); }
+    catch (e) { toast(e.message); }
+    return;
+  }
+  if (a === 'add') { addTab = 'photo'; busy = null; return go('add'); }
+  if (a === 'tab') { addTab = el.dataset.k; error = ''; return render(); }
+  if (a === 'open') return go('menu', id);
+  if (a === 'menu') return go('menu');
+  if (a === 'summary') return go('summary');
+  if (a === 'orders') return go('orders');
+  if (a === 'open-sum') return go('summary', id);
+  if (a === 'inc') { const l = (cart().items[id] ||= { qty: 0, note: '' }); l.qty++; save(); return keepScroll(); }
+  if (a === 'dec') { const c = cart(), l = c.items[id]; if (l) { l.qty = Math.max(0, l.qty - 1); if (!l.qty) delete c.items[id]; } save(); return keepScroll(); }
+  if (a === 'del') {
+    if (el.dataset.arm) { S.restaurants = S.restaurants.filter(r => r.id !== curId); delete S.carts[curId]; save(); return go('home'); }
+    el.dataset.arm = 1; el.textContent = '✔?'; toast('Tap again to delete this restaurant and its order');
+    setTimeout(() => { delete el.dataset.arm; el.textContent = '🗑'; }, 3000); return;
+  }
+  if (a === 'clear') { S.carts[curId] = {}; save(); return go('menu'); }
+  if (a === 'copy-phone') return copy(S.restaurants.find(r => r.id === id).phone, el);
+  if (a === 'copy-order') return copy(orderText(S.restaurants.find(r => r.id === id)), el);
+  if (a === 'save-one') { const r = rest(); return saveFile([r], slug(r.name) + '.grubdial.json'); }
+  if (a === 'save-all') return saveFile(S.restaurants, 'grubdial-menus.json');
+  if (a === 'go-url') { const u = $('#f-url').value.trim(); if (u) ingest({ url: u }); return; }
+  if (a === 'go-text') { const t = $('#f-text').value.trim(); if (t.length >= 20) ingest({ text: t }); return; }
+  // bill controls
+  const c = curId && S.carts[curId] ? cart() : null;
+  if (a === 'tip') { c.tip = parseFloat(v); save(); return keepScroll(); }
+  if (a === 'mode') { c.mode = v; save(); return keepScroll(); }
+  if (a === 'n-') { c.n = Math.max(2, c.n - 1); save(); return keepScroll(); }
+  if (a === 'n+') { c.n = Math.min(30, c.n + 1); save(); return keepScroll(); }
+  if (a === 'add-person') { c.people.push('Person ' + (c.people.length + 1)); save(); return keepScroll(); }
+  if (a === 'rm-person') {
+    c.people.splice(i, 1);
+    for (const k in c.assign) c.assign[k] = c.assign[k].filter(x => x !== i).map(x => x > i ? x - 1 : x);
+    save(); return keepScroll();
+  }
+  if (a === 'assign') { const s = (c.assign[id] ||= []); const k = s.indexOf(i); k >= 0 ? s.splice(k, 1) : s.push(i); save(); return keepScroll(); }
+});
+async function copy(text, el) {
+  const old = el.textContent;
+  try { await navigator.clipboard.writeText(text); el.textContent = 'Copied ✓'; } catch (e) { el.textContent = 'Copy not available'; }
+  setTimeout(() => el.textContent = old, 1800);
+}
+function refreshBill() { const r = rest(), n = $('#bn'), s = $('#sp'); if (n) n.innerHTML = billNumsHTML(r); if (s) s.innerHTML = splitHTML(r); }
+document.addEventListener('input', e => {
+  const t = e.target;
+  if (t.id === 'q') { query = t.value; const pos = t.selectionStart; render(); const q = $('#q'); q.focus(); q.setSelectionRange(pos, pos); }
+  else if (t.id === 'phone') { rest().phone = t.value.trim(); save(); }
+  else if (t.id === 'gen') { cart().instructions = t.value; save(); }
+  else if (t.id === 'tipc') { cart().tip = Math.max(0, Math.min(100, parseFloat(t.value) || 0)); save(); refreshBill(); }
+  else if (t.dataset.note) { const l = cart().items[t.dataset.note]; if (l) { l.note = t.value; save(); } }
+  else if (t.dataset.pname != null) { cart().people[+t.dataset.pname] = t.value; save(); refreshBill(); }
+});
+document.addEventListener('change', e => {
+  const t = e.target;
+  if (t.id === 'f-photo' && t.files.length) ingest({ images: [...t.files].slice(0, 6) });
+  if (t.id === 'f-pdf' && t.files.length) ingest({ pdf: t.files[0] });
+  if (t.id === 'f-import' && t.files.length) importFiles([...t.files]);
+  if (t.dataset && t.dataset.pname != null) render();   // refresh chip labels after editing a name
+});
+
+/* ---------- menu extraction ---------- */
+const PROMPT = `You extract restaurant menus into JSON. Reply with ONLY one JSON object, no prose, no code fences:
+{"name": string, "phone": string|null, "currency": string, "categories": [{"name": string, "items": [{"name": string, "description": string, "price": number|null}]}]}
+Rules: include every dish and drink actually on the menu; never invent items or prices. "phone" is the restaurant's telephone number exactly as printed anywhere in the source, else null. "currency" is the symbol used for prices (e.g. "R", "$", "€"; default "R" if unclear). "price" is a plain number without symbol (use the base price if sizes vary). Keep the menu's own language. If the source contains no readable menu, reply {"error":"reason"}.`;
+
+async function ingest(src) {
+  error = '';
+  try {
+    let body;
+    if (src.images || src.pdf) {
+      busy = src.pdf ? 'Reading PDF…' : 'Preparing photos…'; render();
+      let imgs = [], text = '';
+      if (src.pdf) { const r = await readPdf(src.pdf); imgs = r.images; text = r.text; }
+      else imgs = await Promise.all(src.images.map(shrink));
+      body = text.length > 300 ? { text } : { images: await Promise.all(imgs.map(b64)) };
+    } else if (src.url) body = { url: src.url };
+    else body = { text: src.text };
+
+    busy = 'Reading the menu…'; render();
+    const j = (await api('api/extract', { method: 'POST', body: JSON.stringify(body) })).menu;
+    if (!j) throw new Error('Could not read a menu from that.');
+    if (j.error) throw new Error(src.url ? 'Could not open that link (' + j.error + '). Try a screenshot, PDF, or the Paste tab.' : 'No readable menu found (' + j.error + ').');
+    let n = 0;
+    const cats = (j.categories || []).map((c, ci) => ({ name: c.name || 'Menu', items: (c.items || []).filter(i => i && i.name).map((i, ii) => ({ id: `c${ci}i${ii}`, name: String(i.name), description: i.description || '', price: typeof i.price === 'number' ? i.price : (parseFloat(i.price) || null) })) })).filter(c => c.items.length);
+    cats.forEach(c => n += c.items.length);
+    if (!n) throw new Error('No menu items were found.');
+    const r = { id: 'r' + Date.now().toString(36), name: j.name || 'Restaurant', phone: j.phone || '', currency: j.currency || 'R', categories: cats };
+    S.restaurants.unshift(r); save(); busy = null; go('menu', r.id);
+    toast('Menu added — tap 💾 to save it to a file');
+  } catch (e) {
+    busy = null; error = (e && e.message) || (e && e.code === 'not_granted' ? 'Permission to read menus was not granted.' : 'Something went wrong.'); render();
+  }
+}
+const b64 = blob => new Promise((res, rej) => { const f = new FileReader(); f.onload = () => res({ type: 'image/jpeg', data: String(f.result).split(',')[1] }); f.onerror = rej; f.readAsDataURL(blob); });
+async function shrink(file) {
+  const bmp = await createImageBitmap(file);
+  const k = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
+  const cv = document.createElement('canvas'); cv.width = Math.round(bmp.width * k); cv.height = Math.round(bmp.height * k);
+  cv.getContext('2d').drawImage(bmp, 0, 0, cv.width, cv.height);
+  return new Promise(r => cv.toBlob(r, 'image/jpeg', 0.85));
+}
+function loadScript(src) { return new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error('Could not load the PDF reader.')); document.head.appendChild(s); }); }
+async function readPdf(file) {
+  if (!window.pdfjsLib) await loadScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js');
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  const pdf = await pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise;
+  const pages = Math.min(pdf.numPages, 6); let text = ''; const images = [];
+  for (let p = 1; p <= pages; p++) { const pg = await pdf.getPage(p); const tc = await pg.getTextContent(); text += tc.items.map(i => i.str).join(' ') + '\n'; }
+  if (text.length <= 300) {
+    for (let p = 1; p <= pages; p++) {
+      const pg = await pdf.getPage(p); const vp0 = pg.getViewport({ scale: 1 });
+      const vp = pg.getViewport({ scale: Math.min(2, 1600 / Math.max(vp0.width, vp0.height)) });
+      const cv = document.createElement('canvas'); cv.width = vp.width; cv.height = vp.height;
+      await pg.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise;
+      images.push(await new Promise(r => cv.toBlob(r, 'image/jpeg', 0.85)));
+    }
+  }
+  return { text, images };
+}
+render();
+</script>
+</body>
+</html>
