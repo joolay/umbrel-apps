@@ -420,6 +420,16 @@ async function viewGlobal() {
 // POCKETBASE_APP_ID) are registered here automatically; any other new app is offered under "Detected on your Umbrel".
 const hiddenApps = () => { try { return JSON.parse(localStorage.getItem('pa.hiddenApps') || '[]'); } catch { return []; } };
 const slugOf = (id) => String(id).toLowerCase().replace(/^joolay-/, '').replace(/[^a-z0-9_-]+/g, '-').replace(/^[^a-z0-9]+/, '').slice(0, 48);
+// Where an installed app lives. Apps published through Tailscale (a tsdproxy name in their compose file) are at
+// https://<name>.<your tailnet>.ts.net; the tailnet is learned from this page's address or from apps already registered.
+// Anything else falls back to this Umbrel's own address and the app's port.
+function appUrlFinder(existing) {
+  let tail = '';
+  const fromHost = /\.ts\.net$/i.test(location.hostname) ? location.hostname.split('.').slice(1).join('.') : '';
+  tail = fromHost;
+  if (!tail) for (const e of existing) { const m = /^https:\/\/[a-z0-9-]+\.([a-z0-9-]+\.ts\.net)(?:[/:]|$)/i.exec(e.url || ''); if (m) { tail = m[1]; break; } }
+  return (a) => a.funnel && tail ? `https://${a.funnel}.${tail}` : (a.port ? `${location.protocol}//${location.hostname}:${a.port}` : '');
+}
 async function detectApps() {
   if (state.role === 'user' || !state.token) return null;
   try {
@@ -427,13 +437,16 @@ async function detectApps() {
     if (!r.ok) return null;
     const d = await r.json();
     if (!d.available) return { available: false, added: [], pending: [] };
-    const have = new Set((await listAll('portal_apps')).map((a) => a.slug));
+    const existing = await listAll('portal_apps'), have = new Set(existing.map((a) => a.slug));
+    const urlFor = appUrlFinder(existing);
+    // Apps added before their address was known get it filled in now (an address you set yourself is never changed).
+    for (const e of existing) { if (e.url) continue; const m = d.apps.find((x) => x.slug === e.slug), u = m && urlFor(m); if (u) { await api('PATCH', `/api/collections/portal_apps/records/${e.id}`, { url: u }).catch(() => {}); await audit('app.url', e.slug, { url: u, detected: true }); } }
     const added = [], pending = [];
     for (const a of d.apps) {
       if (a.slug) {
         if (have.has(a.slug)) continue;
         try {
-          await api('POST', '/api/collections/portal_apps/records', { slug: a.slug, name: a.pbName || a.name, description: a.tagline || '', enabled: true });
+          await api('POST', '/api/collections/portal_apps/records', { slug: a.slug, name: a.pbName || a.name, description: a.tagline || '', url: urlFor(a), enabled: true });
           have.add(a.slug); added.push(a); await audit('app.detected', a.slug, { umbrelId: a.id, version: a.version });
         } catch (e) { if (e.status !== 400) throw e; }
       } else if (!have.has(slugOf(a.id)) && !hiddenApps().includes(a.id)) pending.push(a);
@@ -556,7 +569,7 @@ async function appList() {
     if (add || hide) {
       const a = found.pending.find((x) => x.id === (add || hide).dataset[add ? 'add' : 'hide']); if (!a) return;
       if (hide) { localStorage.setItem('pa.hiddenApps', JSON.stringify([...hiddenApps(), a.id])); return route(); }
-      const body = { slug: slugOf(a.id), name: a.name, description: a.tagline || '', enabled: true };
+      const body = { slug: slugOf(a.id), name: a.name, description: a.tagline || '', url: appUrlFinder(await listAll('portal_apps'))(a), enabled: true };
       await api('POST', '/api/collections/portal_apps/records', body); await audit('app.create', body.slug, { ...body, umbrelId: a.id });
       toast('Added ' + a.name); return route();
     }
@@ -1128,7 +1141,7 @@ async function viewHome() {
       body = reqs === null ? '<span class="muted small">Ask the admin for access</span>' : pend ? '<span class="chip warn">request pending</span>'
         : `<div class="req-row"><input data-msg="${esc(a.slug)}" placeholder="Why do you need it? (optional)" maxlength="300"><button class="btn small" data-req="${esc(a.slug)}">Request access</button></div>${denied ? '<div class="muted small">Your last request was denied.</div>' : ''}`;
     }
-    return `<div class="tile${a.enabled ? '' : ' off'}"><div class="tile-head"><span class="tile-ic">${esc((a.name || '?').trim().charAt(0).toUpperCase())}</span><div><b>${esc(a.name)}</b>${a.description ? `<div class="muted small">${esc(a.description)}</div>` : ''}</div></div><div class="tile-body">${body}</div></div>`;
+    return `<div class="tile${a.enabled ? '' : ' off'}"><div class="tile-head"><span class="tile-ic">${esc((a.name || '?').trim().charAt(0).toUpperCase())}</span><div style="min-width:0"><b>${esc(a.name)}</b><div class="muted small" data-desc="${esc(a.slug)}">${esc(a.description || '')}${isAdmin ? ` <button class="link" data-dedit="${esc(a.slug)}" title="Edit description">${a.description ? '✎ Edit' : '✎ Add a description'}</button>` : ''}</div></div></div><div class="tile-body">${body}</div></div>`;
   };
   // Parents: approve kids' accounts and settings here. Kids: see who has been asked.
   const g = isAdmin ? null : await fetch('/guardians', { headers: { authorization: state.token }, cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
@@ -1145,6 +1158,21 @@ async function viewHome() {
     <div class="tiles">${apps.map(tile).join('') || '<p class="muted">No apps have been added yet.</p>'}</div>`;
   bindOpen(main(), ssoSlugs);
   main().onclick = guard(async (e) => {
+    // Admins edit an app's description right on the Dashboard tile.
+    const de = e.target.closest('button[data-dedit]');
+    if (de) {
+      const slug = de.dataset.dedit, app = apps.find((x) => x.slug === slug), box = de.closest('[data-desc]'); if (!app || !box) return;
+      box.innerHTML = `<textarea rows="3" maxlength="300" style="width:100%" aria-label="Description for ${esc(app.name)}">${esc(app.description || '')}</textarea><div class="row" style="gap:6px;margin-top:6px"><button class="btn primary small" data-dsave="${esc(slug)}">Save</button><button class="btn small" data-dcancel="1">Cancel</button></div>`;
+      box.querySelector('textarea').focus(); return;
+    }
+    if (e.target.closest('button[data-dcancel]')) return route();
+    const ds = e.target.closest('button[data-dsave]');
+    if (ds) {
+      const app = apps.find((x) => x.slug === ds.dataset.dsave); if (!app) return;
+      const val = ds.closest('[data-desc]').querySelector('textarea').value.trim().slice(0, 300);
+      await api('PATCH', `/api/collections/portal_apps/records/${app.id}`, { description: val });
+      await audit('app.update', app.slug, { description: val }); toast('Description saved'); return route();
+    }
     const gb = e.target.closest('button[data-gact]');
     if (gb) {
       e.preventDefault();

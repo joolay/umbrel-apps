@@ -159,7 +159,7 @@ function installedApps() {
       const dataDir = path.join(APPS_DIR, dir, 'data');
       let env = 'no-data-dir';
       try { if (fs.statSync(dataDir).isDirectory()) env = fs.existsSync(path.join(dataDir, 'pocketbase.env')) ? 'present' : 'missing'; } catch {}
-      apps.push({ dir, env, id, name: yamlKey(yml, 'name') || id, version: yamlKey(yml, 'version'), tagline: yamlKey(yml, 'tagline'), category: yamlKey(yml, 'category'), port: Number(yamlKey(yml, 'port')) || 0, slug, pbName, pocketbase: xPocketbase(compose) });
+      apps.push({ dir, env, id, name: yamlKey(yml, 'name') || id, version: yamlKey(yml, 'version'), tagline: yamlKey(yml, 'tagline'), category: yamlKey(yml, 'category'), port: Number(yamlKey(yml, 'port')) || 0, funnel: ((compose.match(/tsdproxy\.name["']?\s*[=:]\s*["']?([a-z0-9-]{1,63})/i) || [])[1] || '').toLowerCase(), slug, pbName, pocketbase: xPocketbase(compose) });
     }
     out = { available: true, apps: apps.sort((a, b) => a.name.localeCompare(b.name)) };
   } catch { out = { available: false, apps: [] }; }
