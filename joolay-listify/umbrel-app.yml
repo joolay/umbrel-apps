@@ -2,7 +2,7 @@ manifestVersion: 1
 id: joolay-listify
 category: files
 name: Listify
-version: "1.0.0"
+version: "1.0.1"
 tagline: Checklists that follow your JoolzApp account
 description: >-
   Listify keeps simple checklists: several lists, dates, progress, swipe to delete, reorder, and a one-tap copy of the
@@ -17,7 +17,7 @@ gallery: []
 path: ""
 defaultUsername: ""
 defaultPassword: ""
-releaseNotes: "First release: your Listify lists now live on this Umbrel and sign in with your JoolzApp account, so they are the same on every device."
+releaseNotes: "Listify is now reachable at its own https://listify.<your tailnet>.ts.net address (it was missing from the Tailscale publishing setup, so the dashboard link did not load). First release: your Listify lists now live on this Umbrel and sign in with your JoolzApp account, so they are the same on every device."
 submitter: joolay
 submission: https://github.com/joolay/umbrel-apps
 icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-listify/icon.svg
