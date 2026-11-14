@@ -67,6 +67,53 @@ function proxy(req, res, pbUrl, subPath) {
   req.pipe(up);
 }
 
+
+// ---- Public-exposure guard -------------------------------------------------------------------------------------
+// When this app is published through Tailscale Funnel (or any reverse proxy), requests from the public internet may
+// reach it. Those requests may use the user-facing side (sign in, My settings, request access) but never the admin
+// side: no superuser sign-in, no PocketBase admin/collection APIs, and no superuser tokens.
+// A request counts as public if Tailscale marks it as Funnel traffic, or any X-Forwarded-For hop is not a
+// loopback / private / tailnet (CGNAT 100.64.0.0/10) address. Set ALLOW_PUBLIC_ADMIN=1 to switch the guard off.
+const ALLOW_PUBLIC_ADMIN = /^(1|true|yes)$/i.test(String(process.env.ALLOW_PUBLIC_ADMIN || ''));
+const SUPERUSER_COLLECTION_ID = 'pbc_3142635823'; // PocketBase's built-in _superusers collection
+
+function isPrivateAddr(a) {
+  a = String(a || '').trim().toLowerCase().replace(/^::ffff:/, '');
+  if (!a) return true;
+  if (a === '::1' || a === 'localhost') return true;
+  if (/^f[cd][0-9a-f]{2}:/.test(a) || /^fe80:/.test(a)) return true; // IPv6 ULA / link-local (Tailscale uses fd7a:115c:a1e0::/48)
+  const m = a.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)(?::\d+)?$/);
+  if (!m) return false;
+  const [x, y] = [Number(m[1]), Number(m[2])];
+  return x === 10 || x === 127 || (x === 192 && y === 168) || (x === 172 && y >= 16 && y <= 31) || (x === 169 && y === 254) || (x === 100 && y >= 64 && y <= 127);
+}
+function isPublicRequest(req) {
+  if (ALLOW_PUBLIC_ADMIN) return false;
+  if (req.headers['tailscale-funnel-request'] !== undefined) return true;
+  const xff = String(req.headers['x-forwarded-for'] || '').split(',').map((x) => x.trim()).filter(Boolean);
+  return xff.some((a) => !isPrivateAddr(a));
+}
+function isSuperuserToken(auth) {
+  try {
+    const tok = String(auth || '').replace(/^Bearer\s+/i, '');
+    const payload = JSON.parse(Buffer.from(tok.split('.')[1] || '', 'base64url').toString('utf8'));
+    return payload.collectionId === SUPERUSER_COLLECTION_ID;
+  } catch { return false; }
+}
+// Only these PocketBase API calls are allowed from the public side: record access and auth flows of normal
+// collections (collection rules still apply), plus health. Collection definitions, settings, backups, logs and
+// every system collection (names starting with "_") stay private.
+const PUBLIC_PB_ALLOW = [
+  /^\/api\/health\/?$/,
+  /^\/api\/collections\/(?!_)[^/]+\/(records|auth-with-password|auth-refresh|auth-methods|request-password-reset|confirm-password-reset|request-verification|confirm-verification)(\/|$)/,
+  /^\/api\/files\//,
+];
+function publicBlockReason(req, sub) {
+  if (isSuperuserToken(req.headers.authorization)) return 'Admin sessions are only available from your home network or tailnet.';
+  if (!PUBLIC_PB_ALLOW.some((re) => re.test(sub))) return 'Admin sign-in is only available from your home network or tailnet.';
+  return '';
+}
+
 function serveStatic(req, res, pathname) {
   let rel = pathname === '/' ? '/index.html' : pathname;
   const file = path.normalize(path.join(PUBLIC_DIR, rel));
@@ -84,13 +131,14 @@ const server = http.createServer(async (req, res) => {
 
     if (pathname === '/config') {
       if (req.method !== 'GET') return send(res, 405, { message: 'Method not allowed' });
-      return send(res, 200, { pbUrl: currentPbUrl(), locked: true, custom: !!(ENV_PB_URL && normaliseUrl(ENV_PB_URL)) });
+      return send(res, 200, { pbUrl: currentPbUrl(), locked: true, custom: !!(ENV_PB_URL && normaliseUrl(ENV_PB_URL)), public: isPublicRequest(req) });
     }
 
     if (pathname === '/pb' || pathname.startsWith('/pb/')) {
       const pb = currentPbUrl();
       const sub = pathname.slice(3) || '/';
       if (!sub.startsWith('/api/')) return send(res, 403, { message: 'Only /api/ is proxied.' });
+      if (isPublicRequest(req)) { const why = publicBlockReason(req, sub); if (why) return send(res, 403, { message: why }); }
       return proxy(req, res, pb, sub + (search || ''));
     }
 

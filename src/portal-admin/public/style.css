@@ -38,6 +38,7 @@ label.inline{flex-direction:row;align-items:center;gap:8px;color:var(--text);fon
 .btn:hover{border-color:var(--accent)}
 .btn.primary{background:var(--accent);color:var(--accent-t);border-color:var(--accent);font-weight:600}
 .btn.danger{color:var(--danger)}.btn.danger:hover{border-color:var(--danger)}
+a.btn{text-decoration:none;display:inline-block}
 .btn.small{padding:4px 9px;font-size:13px}
 .chip{display:inline-block;padding:2px 9px;border-radius:99px;background:var(--chip);font-size:12px;color:var(--muted);white-space:nowrap}
 .chip.ok{color:var(--ok)}.chip.bad{color:var(--danger)}.chip.warn{color:var(--warn)}
