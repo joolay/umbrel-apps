@@ -40,11 +40,13 @@ const PRESETS = {
   anthropic: { baseUrl: "https://api.anthropic.com", model: "claude-sonnet-5-5", quickModel: "claude-haiku-5-5" },
   gemini: { baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai/", model: "gemini-3.8-flash", quickModel: "" },
   openai: { baseUrl: "https://api.openai.com/v1", model: "", quickModel: "" },
+  openrouter: { baseUrl: "https://openrouter.ai/api/v1", model: "", quickModel: "" },
+  custom: { baseUrl: "", model: "", quickModel: "" },
 };
 function loadAI() {
   let c = {};
   try { c = JSON.parse(fs.readFileSync(AI_FILE, "utf8")); } catch {}
-  const provider = c.provider || process.env.AI_PROVIDER || "anthropic";
+  const provider = c.provider || process.env.AI_PROVIDER || "gemini";
   const pre = PRESETS[provider] || PRESETS.openai;
   return {
     provider,
@@ -54,6 +56,17 @@ function loadAI() {
     quickModel: c.quickModel ?? process.env.AI_QUICK_MODEL ?? pre.quickModel,
   };
 }
+// A person can save their own provider, model and key in Portal Admin ("My settings"); those win over the shared key
+// and are not counted against the free trial.
+function userAI(user) {
+  const pr = (user && user.portal && user.portal.prefs) || {};
+  const key = typeof pr["ai.apiKey"] === "string" ? pr["ai.apiKey"].trim() : "";
+  if (!key) return null;
+  const provider = PRESETS[pr["ai.provider"]] ? pr["ai.provider"] : "gemini", pre = PRESETS[provider];
+  const model = (typeof pr["ai.model"] === "string" ? pr["ai.model"].trim() : "") || pre.model;
+  const baseUrl = provider === "custom" ? String(pr["ai.baseUrl"] || "").trim() : pre.baseUrl;
+  return model && baseUrl ? { provider, apiKey: key, baseUrl, model, quickModel: "", own: true } : null;
+}
 function publicAI(c) {
   return { provider: c.provider, hasKey: !!c.apiKey, keyHint: c.apiKey ? "…" + c.apiKey.slice(-4) : "",
     baseUrl: c.baseUrl, model: c.model, quickModel: c.quickModel, presets: PRESETS };
@@ -61,8 +74,8 @@ function publicAI(c) {
 
 class AIError extends Error { constructor(code, msg) { super(msg || code); this.code = code; } }
 
-async function callAI({ prompt, images = [], tier = "default" }) {
-  const c = loadAI();
+async function callAI({ prompt, images = [], tier = "default" }, cfg = null) {
+  const c = cfg || loadAI();
   if (!c.apiKey && c.provider !== "openai") throw new AIError("not_configured", "No AI key set in Settings");
   if (!c.model) throw new AIError("not_configured", "No AI model set in Settings");
   const model = tier === "quick" && c.quickModel ? c.quickModel : c.model;
@@ -95,7 +108,7 @@ async function readJSON(r) {
   const body = await r.text();
   let j = {}; try { j = JSON.parse(body); } catch {}
   if (r.status === 429 || r.status === 529) throw new AIError("rate_limited", "The AI service is busy");
-  if (r.status === 401 || r.status === 403) throw new AIError("bad_key", "The AI service rejected the API key");
+  if (r.status === 401 || r.status === 403) throw new AIError("bad_key", "The AI service rejected the API key. If it is your own key, check it in Portal Admin (My settings).");
   if (!r.ok) throw new AIError("ai_error", (j.error?.message || body || "HTTP " + r.status).slice(0, 300));
   return j;
 }
@@ -132,7 +145,7 @@ function gateOf(u) {
   if (!u.portal.access) return { ok: false, reason: "no_access", message: "You need approval to use ShutterWorth. Open Portal Admin, request access to ShutterWorth, then check again here." };
   return { ok: true };
 }
-const publicUser = u => ({ id: u.id, email: u.email || "", name: u.name || "", isAdmin: !!u.isAdmin, unlimited: !!u.unlimited, access: u.portal ? u.portal.access : !!u.access, canOpen: gateOf(u).ok, gate: gateOf(u), prefs: (u.portal && u.portal.prefs) || {},
+const publicUser = u => ({ id: u.id, email: u.email || "", name: u.name || "", isAdmin: !!u.isAdmin, unlimited: !!u.unlimited, access: u.portal ? u.portal.access : !!u.access, canOpen: gateOf(u).ok, gate: gateOf(u), prefs: Object.fromEntries(Object.entries((u.portal && u.portal.prefs) || {}).filter(([k]) => k !== "ai.apiKey")),
   trialUsed: Math.max(0, Math.floor(+u.trialUsed) || 0), trialLimit: Math.max(0, Math.floor(+u.trialLimit) || 0), created: u.created || "", trial: trialInfo(u) });
 
 const tokenCache = new Map();
@@ -188,10 +201,16 @@ async function accountRoutes(req, res, p, url) {
       const email = String(body.email || "").trim().toLowerCase(), password = String(body.password || ""), name = String(body.name || "").trim().slice(0, 80);
       if (!validEmail(email)) return send(res, 400, { code: "bad_email", message: "Enter a valid email address." }), true;
       if (password.length < 8 || password.length > 200) return send(res, 400, { code: "bad_password", message: "Use a password of at least 8 characters." }), true;
-      try { await pb.createUser({ email, password, name }); }
+      let created; try { created = await pb.createUser({ email, password, name }); }
       catch (e) {
         if (e instanceof pb.PBError && e.status === 400) return send(res, 400, { code: "cannot_register", message: e.data?.email?.code === "validation_not_unique" ? "That email is already registered. Sign in instead." : (e.data?.password?.message || e.data?.email?.message || "Couldn't create the account.") }), true;
         throw e;
+      }
+      // Optional: the AI provider, model and key chosen while creating the account are saved as the person's own settings.
+      const ai = body.ai && typeof body.ai === "object" ? body.ai : null;
+      if (ai && typeof ai.apiKey === "string" && ai.apiKey.trim() && created && created.id) {
+        const provider = PRESETS[ai.provider] ? ai.provider : "gemini", clip = (v, n) => String(v || "").trim().slice(0, n), baseUrl = clip(ai.baseUrl, 300);
+        if (provider !== "custom" || /^https?:\/\//i.test(baseUrl)) { try { await pb.setUserPrefs(created.id, { "ai.provider": provider, "ai.model": clip(ai.model, 120), "ai.apiKey": clip(ai.apiKey, 300), "ai.baseUrl": provider === "custom" ? baseUrl : "" }); } catch {} }
       }
       const j = await pb.login(email, password);
       setSessionCookie(req, res, j.token);
@@ -274,10 +293,12 @@ async function aiGate(req, body) {
   if (!u) return { deny: { status: 401, body: { code: "signin_required", message: "Sign in under Settings > Account to use photo identification." } } };
   const fresh = await pb.getUser(u.id);
   if (fresh.portal) { const g = gateOf(fresh); if (!g.ok) return { deny: { status: 403, body: { code: g.reason, message: g.message } } }; }
+  const mine = userAI(fresh);
+  if (mine) return { id: u.id, reserved: false, cfg: mine };   // their own key: no trial limit
   const info = trialInfo(fresh);
   const counted = Array.isArray(body.images) && body.images.length > 0;
   if (info.unlimited || !counted) return { id: u.id, reserved: false };
-  if (info.used >= info.limit) return { deny: { status: 403, body: { code: "trial_over", message: `Your free trial of ${info.limit} photo identifications is used up. Ask the admin to extend it.` } } };
+  if (info.used >= info.limit) return { deny: { status: 403, body: { code: "trial_over", message: `Your free trial of ${info.limit} photo identifications is used up. Add your own AI key in Portal Admin (My settings) to keep going, or ask the admin to extend it.` } } };
   await pb.updateAccess(u.id, { "trialUsed+": 1 });
   return { id: u.id, reserved: true };
 }
@@ -387,7 +408,11 @@ const server = http.createServer(async (req, res) => {
       fs.writeFileSync(AI_FILE, JSON.stringify(next), { mode: 0o600 });
       return send(res, 200, publicAI(loadAI()));
     }
-    if (p === "/api/ai/status") { const c = loadAI(); return send(res, 200, { configured: !!(c.model && (c.apiKey || c.provider === "openai")) }); }
+    if (p === "/api/ai/status") {
+      const c = loadAI(); let own = false;
+      if (pb.enabled) { const u = await currentUser(req).catch(() => null); if (u) own = !!userAI(await pb.getUser(u.id).catch(() => null)); }
+      return send(res, 200, { configured: own || !!(c.model && (c.apiKey || c.provider === "openai")), own });
+    }
     if (p === "/api/ai" && req.method === "POST") {
       const body = JSON.parse((await readBody(req)).toString() || "{}");
       let gate = null;
@@ -396,7 +421,7 @@ const server = http.createServer(async (req, res) => {
         catch (e) { if (e instanceof pb.PBError) return send(res, 503, { code: "accounts_unavailable", message: e.message }); throw e; }
         if (gate.deny) return send(res, gate.deny.status, gate.deny.body);
       }
-      try { return send(res, 200, { result: await callAI(body) }); }
+      try { return send(res, 200, { result: await callAI(body, gate && gate.cfg) }); }
       catch (e) {
         if (gate && gate.reserved) await pb.updateAccess(gate.id, { "trialUsed-": 1 }).catch(() => {}); // a failed request doesn't use up the trial
         return send(res, e.code === "rate_limited" ? 429 : 502, { code: e.code || "ai_error", message: e.message });

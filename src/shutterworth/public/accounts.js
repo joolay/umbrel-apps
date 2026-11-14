@@ -90,7 +90,7 @@
     }
     const reg = mode === "up";
     p.appendChild(el("p", "", reg
-      ? `Create your JoolzApp account to use photo identification. One account works in all JoolzApp apps. You get ${cfg.trialLimit} free photo identifications to start.`
+      ? `Create your JoolzApp account to use photo identification. One account works in all JoolzApp apps. You get ${cfg.trialLimit} free photo identifications to start, then add your own AI key.`
       : "Sign in with your JoolzApp account to use photo identification."));
     if (reg && cfg.signups === false) { p.appendChild(el("p", "err", "New sign-ups are closed right now.")); }
     const f = el("form"); f.noValidate = true;
@@ -98,6 +98,14 @@
     const name = reg ? field("Name (optional)", "text", "name", "name") : null;
     const email = field("Email", "email", "email", "email"), pass = field("Password", "password", "password", reg ? "new-password" : "current-password");
     if (reg) pass.placeholder = "At least 8 characters";
+    let aiProv, aiModel, aiKey;
+    if (reg) {
+      const d = el("details"), sm = el("summary", "", `Set up AI now (optional, ${cfg.trialLimit} free photo identifications without it)`); d.appendChild(sm);
+      aiProv = el("select"); [["gemini", "Google Gemini (free key available)"], ["openrouter", "OpenRouter"], ["anthropic", "Anthropic (Claude)"], ["openai", "OpenAI"]].forEach(o => { const op = el("option", "", o[1]); op.value = o[0]; aiProv.appendChild(op); });
+      aiModel = el("input"); aiModel.type = "text"; aiModel.autocomplete = "off"; aiKey = el("input"); aiKey.type = "password"; aiKey.autocomplete = "off";
+      [["AI provider", aiProv], ["Model (blank = default)", aiModel], ["API key", aiKey]].forEach(([t, i]) => { const l = el("label", "", t); l.appendChild(i); d.appendChild(l); });
+      f.appendChild(d);
+    }
     const err = el("p", "err"); err.setAttribute("role", "alert");
     const go = el("button", "pbtn accent", reg ? "Create account" : "Sign in"); go.type = "submit"; go.style.height = "42px";
     const sw = el("button", "link", reg ? "I already have a JoolzApp account" : "Create a JoolzApp account"); sw.type = "button";
@@ -106,7 +114,7 @@
     f.onsubmit = async ev => {
       ev.preventDefault(); err.textContent = ""; go.disabled = true;
       try {
-        const j = await api(reg ? "api/account/register" : "api/account/login", { method: "POST", body: JSON.stringify({ email: email.value, password: pass.value, name: name ? name.value : "" }) });
+        const j = await api(reg ? "api/account/register" : "api/account/login", { method: "POST", body: JSON.stringify({ email: email.value, password: pass.value, name: name ? name.value : "", ai: reg && aiKey.value.trim() ? { provider: aiProv.value, model: aiModel.value.trim(), apiKey: aiKey.value.trim() } : undefined }) });
         setToken(j.token); location.reload();
       } catch (e) { err.textContent = e.message; go.disabled = false; }
     };
