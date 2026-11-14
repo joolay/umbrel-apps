@@ -114,6 +114,34 @@ function publicBlockReason(req, sub) {
   return '';
 }
 
+// ---- Installed Umbrel apps ------------------------------------------------------------------------------------
+// Umbrel keeps a copy of every installed app's umbrel-app.yml and docker-compose.yml in <umbrel>/app-data/<app-id>/.
+// That folder is mounted here read-only so the admin page can spot newly installed apps. Only those two files are read,
+// and only for the admin side (never for public requests).
+const APPS_DIR = process.env.UMBREL_APPS_DIR || '/umbrel-app-data';
+const SELF_ID = 'joolay-portal-admin';
+let appsCache = { at: 0, v: null };
+const yamlKey = (txt, k) => { const m = txt.match(new RegExp('^' + k + ':[ \\t]*(.*)$', 'm')); return m ? m[1].trim().replace(/^(["'])(.*)\1$/, '$2') : ''; };
+function installedApps() {
+  if (appsCache.v && Date.now() - appsCache.at < 15000) return appsCache.v;
+  let out;
+  try {
+    const apps = [];
+    for (const dir of fs.readdirSync(APPS_DIR)) {
+      if (!/^[a-z0-9][a-z0-9_.-]{0,80}$/.test(dir) || dir === SELF_ID) continue;
+      let yml; try { yml = fs.readFileSync(path.join(APPS_DIR, dir, 'umbrel-app.yml'), 'utf8'); } catch { continue; }
+      let compose = ''; try { compose = fs.readFileSync(path.join(APPS_DIR, dir, 'docker-compose.yml'), 'utf8'); } catch {}
+      const id = yamlKey(yml, 'id') || dir;
+      const slug = ((compose.match(/POCKETBASE_APP_ID["']?\s*[=:]\s*["']?([A-Za-z0-9_-]{1,48})/) || [])[1] || '').toLowerCase();
+      const pbName = ((compose.match(/POCKETBASE_APP_NAME["']?\s*[=:]\s*["']?([^"'\r\n]{1,80})/) || [])[1] || '').trim();
+      apps.push({ id, name: yamlKey(yml, 'name') || id, version: yamlKey(yml, 'version'), tagline: yamlKey(yml, 'tagline'), category: yamlKey(yml, 'category'), port: Number(yamlKey(yml, 'port')) || 0, slug, pbName });
+    }
+    out = { available: true, apps: apps.sort((a, b) => a.name.localeCompare(b.name)) };
+  } catch { out = { available: false, apps: [] }; }
+  appsCache = { at: Date.now(), v: out };
+  return out;
+}
+
 function serveStatic(req, res, pathname) {
   let rel = pathname === '/' ? '/index.html' : pathname;
   const file = path.normalize(path.join(PUBLIC_DIR, rel));
@@ -132,6 +160,12 @@ const server = http.createServer(async (req, res) => {
     if (pathname === '/config') {
       if (req.method !== 'GET') return send(res, 405, { message: 'Method not allowed' });
       return send(res, 200, { pbUrl: currentPbUrl(), locked: true, custom: !!(ENV_PB_URL && normaliseUrl(ENV_PB_URL)), public: isPublicRequest(req) });
+    }
+
+    if (pathname === '/umbrel-apps') {
+      if (req.method !== 'GET') return send(res, 405, { message: 'Method not allowed' });
+      if (isPublicRequest(req)) return send(res, 403, { message: 'Only available from your home network or tailnet.' });
+      return send(res, 200, installedApps());
     }
 
     if (pathname === '/pb' || pathname.startsWith('/pb/')) {

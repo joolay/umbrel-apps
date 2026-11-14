@@ -173,7 +173,7 @@ const ADMIN_NAV = $('#nav').innerHTML;
 function showShell() {
   $('#nav').innerHTML = state.role === 'user' ? '<a href="#/me" data-route="me">My settings</a>' : ADMIN_NAV;
   $('#login').classList.add('hidden'); $('#shell').classList.remove('hidden');
-  $('#who').textContent = state.actor; route();
+  $('#who').textContent = state.actor; route(); startDetecting();
 }
 const SESSION_KEYS = ['token', 'actor', 'role', 'uid'];
 function saveSession(remember) { SESSION_KEYS.forEach((k) => { store.set('pa.' + k, state[k]); store.lset('pa.' + k, remember ? state[k] : null); }); }
@@ -351,19 +351,74 @@ async function viewGlobal() {
   await settingsEditor($('#ed'), { scope: 'global' });
 }
 
+/* ---------- Apps installed on this Umbrel ---------- */
+// The server lists the apps installed on this Umbrel (read-only). Apps that sign in with the JoolzApp account (they declare
+// POCKETBASE_APP_ID) are registered here automatically; any other new app is offered under "Detected on your Umbrel".
+const hiddenApps = () => { try { return JSON.parse(localStorage.getItem('pa.hiddenApps') || '[]'); } catch { return []; } };
+const slugOf = (id) => String(id).toLowerCase().replace(/^joolay-/, '').replace(/[^a-z0-9_-]+/g, '-').replace(/^[^a-z0-9]+/, '').slice(0, 48);
+async function detectApps() {
+  if (state.role === 'user' || !state.token) return null;
+  try {
+    const r = await fetch('/umbrel-apps', { cache: 'no-store' });
+    if (!r.ok) return null;
+    const d = await r.json();
+    if (!d.available) return { available: false, added: [], pending: [] };
+    const have = new Set((await listAll('portal_apps')).map((a) => a.slug));
+    const added = [], pending = [];
+    for (const a of d.apps) {
+      if (a.slug) {
+        if (have.has(a.slug)) continue;
+        try {
+          await api('POST', '/api/collections/portal_apps/records', { slug: a.slug, name: a.pbName || a.name, description: a.tagline || '', enabled: true });
+          have.add(a.slug); added.push(a); await audit('app.detected', a.slug, { umbrelId: a.id, version: a.version });
+        } catch (e) { if (e.status !== 400) throw e; }
+      } else if (!have.has(slugOf(a.id)) && !hiddenApps().includes(a.id)) pending.push(a);
+    }
+    if (added.length) toast('Added from your Umbrel: ' + added.map((a) => a.pbName || a.name).join(', '));
+    return { available: true, added, pending };
+  } catch { return null; }
+}
+let detectTimer;
+function startDetecting() {
+  clearInterval(detectTimer);
+  if (state.role === 'user') return;
+  detectApps().then((r) => { if (r && r.added.length && location.hash.startsWith('#/apps')) route(); });
+  detectTimer = setInterval(() => {
+    if (!state.token || state.role === 'user' || document.hidden) return;
+    detectApps().then((r) => { if (r && r.added.length && location.hash.startsWith('#/apps')) route(); });
+  }, 5 * 60 * 1000);
+}
+
 async function viewApps(slug) {
   if (await needSetup()) return;
   return slug ? appDetail(slug) : appList();
 }
 async function appList() {
+  const found = await detectApps();
   const apps = await listAll('portal_apps', { sort: 'name' });
-  main().innerHTML = `<div class="row spread"><div><h1>Apps</h1><p class="sub">Register each custom app so you can control it here.</p></div><button id="new" class="btn primary">+ Register app</button></div>
+  main().innerHTML = `<div class="row spread"><div><h1>Apps</h1><p class="sub">Apps installed on your Umbrel appear here automatically, or register one by hand.</p></div><button id="new" class="btn primary">+ Register app</button></div>
     <div class="card"><table><thead><tr><th>App</th><th>Status</th><th>URL</th></tr></thead><tbody>${apps.map((a) => `
       <tr class="click" data-slug="${esc(a.slug)}"><td><b>${esc(a.name)}</b><div class="muted small">${esc(a.slug)}</div></td>
       <td>${a.enabled ? '<span class="chip ok">enabled</span>' : '<span class="chip bad">disabled</span>'} ${a.maintenance ? '<span class="chip warn">maintenance</span>' : ''}</td>
       <td class="muted small">${esc(a.url)}</td></tr>`).join('') || '<tr><td colspan="3" class="muted">No apps yet.</td></tr>'}</tbody></table></div>`;
   $('#new').onclick = () => { location.hash = '#/apps/__new'; };
-  main().onclick = (e) => { const tr = e.target.closest('tr[data-slug]'); if (tr) location.hash = '#/apps/' + encodeURIComponent(tr.dataset.slug); };
+  if (found && found.available && found.pending.length) {
+    main().insertAdjacentHTML('beforeend', `<div class="card"><h2>Detected on your Umbrel</h2><p class="muted small">Installed apps that don't use the JoolzApp account. Add the ones you want to control here.</p>
+      <table><tbody>${found.pending.map((a) => `<tr><td><b>${esc(a.name)}</b><div class="muted small">${esc(a.id)}${a.version ? ' · v' + esc(a.version) : ''}</div></td>
+        <td style="text-align:right"><button class="btn" data-add="${esc(a.id)}">Add</button> <button class="btn" data-hide="${esc(a.id)}">Hide</button></td></tr>`).join('')}</tbody></table></div>`);
+  }
+  if (found && !found.available) main().insertAdjacentHTML('beforeend', '<p class="muted small">Portal Admin can\'t see which apps are installed on this Umbrel (the app list isn\'t mounted), so new apps aren\'t detected automatically.</p>');
+  main().onclick = guard(async (e) => {
+    const add = e.target.closest('[data-add]'), hide = e.target.closest('[data-hide]');
+    if (add || hide) {
+      const a = found.pending.find((x) => x.id === (add || hide).dataset[add ? 'add' : 'hide']); if (!a) return;
+      if (hide) { localStorage.setItem('pa.hiddenApps', JSON.stringify([...hiddenApps(), a.id])); return route(); }
+      const body = { slug: slugOf(a.id), name: a.name, description: a.tagline || '', enabled: true };
+      await api('POST', '/api/collections/portal_apps/records', body); await audit('app.create', body.slug, { ...body, umbrelId: a.id });
+      toast('Added ' + a.name); return route();
+    }
+    const tr = e.target.closest('tr[data-slug]'); if (tr) location.hash = '#/apps/' + encodeURIComponent(tr.dataset.slug);
+  });
 }
 async function appDetail(slug) {
   const isNew = slug === '__new';
