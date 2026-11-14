@@ -79,3 +79,33 @@ details.ai-setup{margin:10px 0}details.ai-setup summary{cursor:pointer;color:var
 .tile-body .btn{display:inline-block}
 .tile-body .req-row{flex-wrap:wrap}
 [hidden]{display:none!important}
+
+/* ---- Glass theme (iOS / Tailscale style): soft gradient, frosted translucent panels ---- */
+:root{--glass:rgba(255,255,255,.58);--glass-strong:rgba(255,255,255,.78);--glass-line:rgba(255,255,255,.65);--shadow:0 8px 30px rgba(31,42,68,.12),0 1px 2px rgba(31,42,68,.06);--r:18px;--g1:#cfe0ff;--g2:#e9d8ff;--g3:#c9f1e6}
+@media (prefers-color-scheme:dark){:root{--glass:rgba(32,39,58,.55);--glass-strong:rgba(40,48,70,.72);--glass-line:rgba(255,255,255,.09);--shadow:0 8px 30px rgba(0,0,0,.35),0 1px 2px rgba(0,0,0,.3);--g1:#1b2c58;--g2:#2d1f52;--g3:#123b3a}}
+body{background:radial-gradient(60vmax 45vmax at 12% 8%,var(--g1),transparent 60%),radial-gradient(55vmax 45vmax at 92% 18%,var(--g2),transparent 60%),radial-gradient(60vmax 50vmax at 50% 105%,var(--g3),transparent 60%),var(--bg);background-attachment:fixed;-webkit-font-smoothing:antialiased}
+.side{background:var(--glass);-webkit-backdrop-filter:blur(26px) saturate(170%);backdrop-filter:blur(26px) saturate(170%);border-right:1px solid var(--glass-line);color:var(--text)}
+.side nav a{color:var(--text);border-radius:12px;transition:background .15s}
+.side nav a:hover{background:rgba(127,127,127,.14)}
+.side nav a.active{background:var(--accent);color:var(--accent-t);box-shadow:0 4px 14px rgba(59,109,240,.35)}
+.brand{color:var(--text)}
+.card,.stat,.tile,.login-card{background:var(--glass);-webkit-backdrop-filter:blur(22px) saturate(170%);backdrop-filter:blur(22px) saturate(170%);border:1px solid var(--glass-line);border-radius:var(--r);box-shadow:var(--shadow)}
+.tile{transition:transform .18s ease,box-shadow .18s ease;position:relative;overflow:hidden}
+.tile::before{content:"";position:absolute;inset:0;background:linear-gradient(135deg,rgba(255,255,255,.35),transparent 45%);pointer-events:none;border-radius:inherit}
+@media (hover:hover){.tile:hover{transform:translateY(-3px);box-shadow:0 14px 38px rgba(31,42,68,.18)}}
+.tile-ic{width:46px;height:46px;border-radius:14px;background:linear-gradient(145deg,var(--accent),#8f6bff);color:#fff;box-shadow:0 6px 16px rgba(80,100,240,.4),inset 0 1px 0 rgba(255,255,255,.35);font-size:20px}
+.tile-body .btn{border-radius:99px;padding:7px 18px}
+input,select,textarea{background:var(--glass-strong);border:1px solid var(--glass-line);border-radius:12px;padding:9px 12px}
+input:focus,select:focus,textarea:focus{outline:2px solid var(--accent);outline-offset:0}
+.btn{background:var(--glass-strong);border:1px solid var(--glass-line);border-radius:12px;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);transition:transform .12s ease,box-shadow .12s ease}
+.btn:active{transform:scale(.97)}
+.btn.primary{background:linear-gradient(145deg,var(--accent),#7a7dff);border-color:transparent;color:#fff;box-shadow:0 6px 16px rgba(59,109,240,.35)}
+.chip{background:rgba(127,127,127,.16);backdrop-filter:blur(6px)}
+.tabs{background:var(--glass);border:1px solid var(--glass-line);border-radius:14px;padding:4px;display:inline-flex;backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px)}
+.tabs button{border-radius:11px}
+.tabs button.active{background:var(--glass-strong);box-shadow:0 2px 8px rgba(31,42,68,.12)}
+th,td{border-bottom-color:rgba(127,127,127,.18)}
+tr.click:hover td{background:rgba(127,127,127,.10)}
+.toast{border-radius:99px;backdrop-filter:blur(14px)}
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){.side,.card,.stat,.tile,.login-card{background:var(--glass-strong)}}
+@media (max-width:760px){.side{border-right:0;border-bottom:1px solid var(--glass-line)}}

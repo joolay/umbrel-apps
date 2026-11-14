@@ -2,7 +2,7 @@ manifestVersion: 1
 id: joolay-portal-admin
 category: developer
 name: Portal Admin
-version: "0.10.0"
+version: "0.10.1"
 tagline: One admin panel for all your custom PocketBase apps
 description: >-
   A central admin panel for your custom apps that use PocketBase. Register each app, then manage
@@ -21,7 +21,7 @@ gallery: []
 path: ""
 defaultUsername: ""
 defaultPassword: ""
-releaseNotes: "New Dashboard home page: everyone who signs in sees all their JoolzApp apps as tiles, with Open and Request access. My settings is now split into Preferences, AI and Account tabs. Admins get a Dashboard link to preview it, and the public address is branded JoolzApp. The public address now uses a dedicated user-only port, so admin sign-in can never be reached from the internet."
+releaseNotes: "Prettier glass-style look across the portal and Dashboard: frosted panels, soft gradient background, rounded tiles and buttons. Light and dark."
 submitter: joolay
 submission: https://github.com/joolay/umbrel-apps
 icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-portal-admin/icon.svg
