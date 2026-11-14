@@ -70,3 +70,12 @@ pre{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:
 .stat.click{cursor:pointer}.req-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.req-row input{flex:1;min-width:140px}
 
 details.ai-setup{margin:10px 0}details.ai-setup summary{cursor:pointer;color:var(--accent,#2563eb)}details.ai-setup label{display:block;margin-top:8px}details.ai-setup select,details.ai-setup input{width:100%;box-sizing:border-box;margin-top:4px}
+
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px}
+.tile{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:14px;justify-content:space-between}
+.tile.off{opacity:.6}
+.tile-head{display:flex;gap:12px;align-items:flex-start}
+.tile-ic{flex:none;width:40px;height:40px;border-radius:11px;background:var(--accent);color:var(--accent-t);display:grid;place-items:center;font-weight:700;font-size:18px}
+.tile-body .btn{display:inline-block}
+.tile-body .req-row{flex-wrap:wrap}
+[hidden]{display:none!important}

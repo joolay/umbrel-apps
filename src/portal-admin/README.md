@@ -28,7 +28,7 @@ Image is built by the monorepo workflow (`.github/workflows/build-images.yml`) t
 Setup → *Require admin approval per app* sets a global `portal.access = false` (every app closed by default) and gives existing users a user-wide `portal.access = true` so they keep access. New sign-ups request each app and you approve them one by one under *Access requests*, which sets `portal.access = true` for that user × app. Apps only need the `portal.access` check they already do.
 
 ## Public access guard and the hub
-Portal Admin can double as the public front door for all your apps (see `deploy/joolzapp-tunnel`). Requests that arrive
+Portal Admin can double as the public front door for all your apps (see `deploy/tsdproxy`). Requests that arrive
 through Tailscale Funnel (or with a non-private `X-Forwarded-For` address) are treated as public: they may sign in as a
 normal user, change preferences and request app access, but admin sign-in, superuser sessions and PocketBase's
 admin/collection APIs are refused. Admin works from your home network or tailnet. `ALLOW_PUBLIC_ADMIN=1` turns the guard off.
@@ -38,3 +38,9 @@ Register each app's public address in **Apps > URL**; approved users then get an
 ## Setting a user's password
 Users > a user > **Set password** changes the password immediately (no email needed) and signs the user out everywhere.
 **Generate** fills a random password you can copy and pass on.
+
+## Dashboard and My settings
+People who sign in (not admins) land on the **Dashboard**: every app registered under Apps as a tile. **Open** goes to the app's
+address (signed in already where the app supports it); apps they aren't approved for show a request form. Admins have a
+**Dashboard** link in the sidebar to preview exactly what users see. On the public address the page is branded JoolzApp.
+**My settings** has three tabs: Preferences, AI and Account (account deletion request).

@@ -88,6 +88,7 @@ function isPrivateAddr(a) {
   return x === 10 || x === 127 || (x === 192 && y === 168) || (x === 172 && y >= 16 && y <= 31) || (x === 169 && y === 254) || (x === 100 && y >= 64 && y <= 127);
 }
 function isPublicRequest(req) {
+  if (req.publicPort) return true;   // arrived on the dedicated public port: always user-only, whatever any proxy sends or strips
   if (ALLOW_PUBLIC_ADMIN) return false;
   if (req.headers['tailscale-funnel-request'] !== undefined) return true;
   const xff = String(req.headers['x-forwarded-for'] || '').split(',').map((x) => x.trim()).filter(Boolean);
@@ -215,7 +216,7 @@ function serveStatic(req, res, pathname) {
   });
 }
 
-const server = http.createServer(async (req, res) => {
+const handle = async (req, res) => {
   try {
     const { pathname, search } = new URL(req.url, 'http://x');
     if (pathname === '/healthz') return send(res, 200, { ok: true });
@@ -249,7 +250,17 @@ const server = http.createServer(async (req, res) => {
   } catch (e) {
     send(res, 500, { message: String(e.message || e) });
   }
-});
+};
 
+// Two listeners, one app. PORT is the normal one (Umbrel's app address, behind Umbrel's login). PUBLIC_PORT is the one to
+// publish on the internet (Tailscale Funnel): requests that arrive there are ALWAYS treated as public, so admin sign-in and the
+// PocketBase admin APIs stay refused no matter how the tunnel forwards or labels traffic. Set PUBLIC_PORT=0 to turn it off.
+const PUBLIC_PORT = Number(process.env.PUBLIC_PORT === undefined ? 3001 : process.env.PUBLIC_PORT);
+const server = http.createServer(handle);
 server.listen(PORT, '0.0.0.0', () => console.log(`Portal Admin listening on :${PORT}`));
-process.on('SIGTERM', () => server.close(() => process.exit(0)));
+let pubServer = null;
+if (PUBLIC_PORT && PUBLIC_PORT !== PORT) {
+  pubServer = http.createServer((req, res) => { req.publicPort = true; handle(req, res); });
+  pubServer.listen(PUBLIC_PORT, '0.0.0.0', () => console.log(`Portal Admin public (user-only) listening on :${PUBLIC_PORT}`));
+}
+process.on('SIGTERM', () => { if (pubServer) pubServer.close(); server.close(() => process.exit(0)); });
