@@ -1,0 +1,21 @@
+# TSDProxy: gives every labelled container its own Tailscale address (and Funnel), automatically.
+#   https://joolzapp.<tailnet>.ts.net      Portal Admin dashboard (the public hub)
+#   https://shutterworth.<tailnet>.ts.net  ShutterWorth
+#   https://grubtogo.<tailnet>.ts.net      GrubToGo
+# The labels live in each app's own compose file in this repo (joolay-*/docker-compose.yml), so installing or updating an app
+# from the store is what publishes it. Run once with setup.sh (see README.md).
+services:
+  tsdproxy:
+    image: almeidapaulopt/tsdproxy:2
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - tsdproxy-data:/data
+      - ./config:/config
+    ports:
+      - "127.0.0.1:8088:8080"      # dashboard, this machine only
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+volumes:
+  tsdproxy-data:

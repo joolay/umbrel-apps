@@ -29,6 +29,17 @@ input:focus{outline:none;border-color:#d9ab55}
 .note{background:rgba(255,255,255,.1);border-radius:14px;padding:14px 16px;margin:0 0 16px}
 .row{display:flex;gap:10px;justify-content:center}
 .row button{font:inherit;font-weight:600;border:2px solid rgba(248,244,234,.5);background:none;color:#f8f4ea;border-radius:12px;padding:9px 16px;cursor:pointer}
+
+/* glass sign-in card */
+main{background:rgba(255,255,255,.14);-webkit-backdrop-filter:blur(26px) saturate(170%);backdrop-filter:blur(26px) saturate(170%);border:1px solid rgba(255,255,255,.3);border-radius:28px;padding:30px 24px 26px;box-shadow:0 20px 50px rgba(0,0,0,.28),inset 0 1px 0 rgba(255,255,255,.35)}
+.logo{box-shadow:0 10px 26px rgba(0,0,0,.3),inset 0 1px 0 rgba(255,255,255,.3)}
+input{background:rgba(255,255,255,.88);border:1px solid rgba(255,255,255,.55);border-radius:14px;padding:12px 14px}
+input:focus{border-color:#fff;box-shadow:0 0 0 3px rgba(255,255,255,.3)}
+.go{border-radius:99px;padding:13px;box-shadow:0 8px 20px rgba(0,0,0,.25),inset 0 1px 0 rgba(255,255,255,.5);transition:transform .12s ease}
+.go:active{transform:scale(.97)}
+.row button{border-radius:99px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.4)}
+.note{background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.22);border-radius:16px}
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){main{background:rgba(0,0,0,.28)}}
 </style>
 </head>
 <body>
@@ -38,6 +49,7 @@ input:focus{outline:none;border-color:#d9ab55}
   <p class="sub" id="sub">Sign in with your JoolzApp account</p>
   <div id="view"></div>
 </main>
+<script src="pwtoggle.js"></script>
 <script>
 (function () {
   "use strict";

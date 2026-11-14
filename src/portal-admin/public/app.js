@@ -205,8 +205,13 @@ $('#reset-form').onsubmit = async (e) => {
   } catch (err) { $('#reset-err').textContent = err.message; }
 };
 const ADMIN_NAV = $('#nav').innerHTML;
+// People who sign in here are users of the JoolzApp apps, not admins, so the page is branded JoolzApp for them
+// and on the public address (the server tells us which one we are on through /config).
+function setBrand(name) { document.querySelectorAll('.brand span').forEach((n) => { n.textContent = name; }); document.title = name; }
+fetch('/config').then((r) => r.json()).then((c) => { state.public = !!c.public; if (state.public) setBrand('JoolzApp'); }).catch(() => {});
 function showShell() {
-  $('#nav').innerHTML = state.role === 'user' ? '<a href="#/me" data-route="me">My settings</a>' : ADMIN_NAV;
+  $('#nav').innerHTML = state.role === 'user' ? '<a href="#/home" data-route="home">Dashboard</a><a href="#/me" data-route="me">My settings</a>' : ADMIN_NAV;
+  setBrand(state.role === 'user' || state.public ? 'JoolzApp' : 'Portal Admin');
   $('#login').classList.add('hidden'); $('#shell').classList.remove('hidden');
   $('#who').textContent = state.actor; route(); startDetecting();
 }
@@ -257,8 +262,8 @@ $('#login-forgot').onclick = async (e) => {
 window.addEventListener('hashchange', () => { if (resetToken()) return showReset(); state.token && route(); });
 function route() {
   let [, view = 'overview', arg] = location.hash.split('/');
-  if (state.role === 'user') view = 'me';
-  const v = { overview: viewOverview, global: viewGlobal, apps: viewApps, users: viewUsers, requests: viewRequests, cleanup: viewCleanup, audit: viewAudit, setup: viewSetup, me: viewMe }[view] || viewOverview;
+  if (state.role === 'user') view = view === 'me' ? 'me' : 'home';
+  const v = { home: viewHome, overview: viewOverview, global: viewGlobal, apps: viewApps, users: viewUsers, requests: viewRequests, cleanup: viewCleanup, audit: viewAudit, setup: viewSetup, me: viewMe }[view] || viewOverview;
   document.querySelectorAll('#nav a').forEach((a) => a.classList.toggle('active', a.dataset.route === view));
   main().innerHTML = '<p class="muted">Loading…</p>';
   guard(v)(arg ? decodeURIComponent(arg) : undefined);
@@ -870,21 +875,13 @@ const PREFS = [
 ];
 async function viewMe() {
   const uid = state.uid;
-  const [rows, apps, reqs, acc] = await Promise.all([
+  const [rows, reqs] = await Promise.all([
     listAll('portal_settings', { filter: `scope = "user" && user = ${fq(uid)} && app = "" && key ~ "pref."` }),
-    listAll('portal_apps', { sort: 'name' }),
     listAll('portal_requests', { filter: `user = ${fq(uid)}`, sort: '-created' }).catch(() => null),
-    listAll('portal_settings', { filter: 'key = "portal.access"' }),
   ]);
-  const ssoSlugs = new Set((await listAll('portal_settings', { filter: 'scope = "app" && key = "app.sso"' }).catch(() => [])).filter((r) => r.value === true).map((r) => r.app));
   const cur = Object.fromEntries(rows.map((r) => [r.key.slice(5), r]));
   let zones; try { zones = Intl.supportedValuesOf('timeZone'); } catch { zones = ['Africa/Johannesburg', 'UTC']; }
   const detected = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return ''; } })();
-  const rank = (r) => r.scope === 'global' ? 0 : r.scope === 'app' ? 1 : (r.app ? 3 : 2);
-  const allowed = (slug) => {
-    const rs = acc.filter((r) => r.scope === 'global' || (r.scope === 'app' && r.app === slug) || (r.scope === 'user' && (r.app === '' || r.app === slug))).sort((a, b) => rank(a) - rank(b));
-    const last = rs[rs.length - 1]; return !(last && last.value === false);
-  };
   const delPend = (reqs || []).find((r) => r.app === DEL_REQ && r.status === 'pending'), delDenied = (reqs || []).find((r) => r.app === DEL_REQ && r.status === 'denied');
   const opt = (v, label, sel) => `<option value="${esc(v)}"${sel ? ' selected' : ''}>${esc(label)}</option>`;
   const field = ([key, label, opts]) => {
@@ -892,34 +889,25 @@ async function viewMe() {
     const list = opts || zones.map((z) => [z, z]);
     return `<label>${esc(label)}<select name="${key}">${opt('', '— not set —', v === '')}${list.map(([val, l]) => opt(val, l, v === val)).join('')}</select></label>`;
   };
-  const userRow = acc.find((r) => r.scope === 'user' && r.app === ''), globalBlock = acc.find((r) => r.scope === 'global' && r.value === false);
-  const banner = userRow && userRow.value === false ? 'Your account access has been turned off. Contact the admin.' : (globalBlock && !userRow ? 'The admin approves access to each app separately. Request access to the apps you need below.' : '');
-  main().innerHTML = `<h1>My settings</h1><p class="sub">Signed in as ${esc(state.actor)}. These preferences apply to every Joolzapp app you use.</p>
-    ${banner ? `<div class="card"><span class="chip warn">${esc(banner)}</span></div>` : ''}
-    <form id="prefs" class="card"><h2>Preferences</h2><div class="kv">${PREFS.map(field).join('')}</div>
-      ${detected ? `<p class="muted small">Your device time zone: ${esc(detected)}</p>` : ''}<button class="btn primary">Save preferences</button></form>
-    <form id="ai" class="card"><h2>AI (for apps that use it)</h2><p class="muted small">Pick your own AI provider, model and API key. Apps that read menus, photos or text with AI will use these instead of the shared key. Only you and the admin can see them.</p>
+  main().innerHTML = `<h1>My settings</h1><p class="sub">Signed in as ${esc(state.actor)}. These settings apply to every JoolzApp app you use.</p>
+    <div class="tabs"><button class="active" data-t="prefs">Preferences</button><button data-t="ai">AI</button><button data-t="account">Account</button></div>
+    <div data-pane="prefs"><form id="prefs" class="card"><h2>Preferences</h2><div class="kv">${PREFS.map(field).join('')}</div>
+      ${detected ? `<p class="muted small">Your device time zone: ${esc(detected)}</p>` : ''}<button class="btn primary">Save preferences</button></form></div>
+    <div data-pane="ai" hidden><form id="ai" class="card"><h2>AI (for apps that use it)</h2><p class="muted small">Pick your own AI provider, model and API key. Apps that read menus, photos or text with AI will use these instead of the shared key. Only you and the admin can see them.</p>
       <div class="kv"><label>Provider<select name="provider">${AI_PROVIDERS.map(([v, l]) => opt(v, l, (cur['ai.provider'] ? cur['ai.provider'].value : 'gemini') === v)).join('')}</select></label>
       <label>Model<input name="model" list="ai-models" value="${esc(cur['ai.model'] ? cur['ai.model'].value : '')}" placeholder="" autocomplete="off"><datalist id="ai-models"></datalist></label>
       <label>API key<input name="apiKey" type="password" autocomplete="off" placeholder="${cur['ai.apiKey'] && cur['ai.apiKey'].value ? 'Saved (ends …' + esc(String(cur['ai.apiKey'].value).slice(-4)) + '). Leave blank to keep it.' : 'Paste your API key'}"></label>
       <label id="ai-base-row">Base URL<input name="baseUrl" value="${esc(cur['ai.baseUrl'] ? cur['ai.baseUrl'].value : '')}" placeholder="https://your-host/v1" autocomplete="off"></label></div>
       <p class="muted small" id="ai-hint"></p>
-      <div class="row" style="gap:8px"><button class="btn primary">Save AI settings</button>${cur['ai.apiKey'] ? ' <button type="button" class="btn danger" id="ai-clear">Remove my key</button>' : ''}</div></form>
-    <div class="card"><h2>Joolzapp services</h2>${reqs === null ? '<p class="muted">Access requests are not set up yet. Ask the admin.</p>' : `<table><tbody>${apps.map((a) => {
-      const pend = reqs.find((r) => r.app === a.slug && r.status === 'pending'), denied = reqs.find((r) => r.app === a.slug && r.status === 'denied');
-      let right;
-      if (!a.enabled) right = '<span class="chip bad">unavailable</span>';
-      else if (allowed(a.slug)) right = `<span class="chip ok">access granted</span>${/^https?:\/\//i.test(a.url || '') ? ` <a class="btn primary small" href="${esc(a.url)}" data-open="${esc(a.slug)}" target="_blank" rel="noopener">Open</a>` : ''}`;
-      else if (pend) right = '<span class="chip warn">request pending</span>';
-      else right = `<div class="req-row"><input data-msg="${esc(a.slug)}" placeholder="Why do you need it? (optional)" maxlength="300"><button class="btn small" data-req="${esc(a.slug)}">Request access</button></div>${denied ? '<div class="muted small">Your last request was denied.</div>' : ''}`;
-      return `<tr><td><b>${esc(a.name)}</b>${a.description ? `<div class="muted small">${esc(a.description)}</div>` : ''}</td><td>${right}</td></tr>`;
-    }).join('') || '<tr><td class="muted">No services registered yet.</td></tr>'}</tbody></table>`}</div>
-    <div class="card"><h2>Delete my account</h2>${delPend
+      <div class="row" style="gap:8px"><button class="btn primary">Save AI settings</button>${cur['ai.apiKey'] ? ' <button type="button" class="btn danger" id="ai-clear">Remove my key</button>' : ''}</div></form></div>
+    <div data-pane="account" hidden><div class="card"><h2>Delete my account</h2>${delPend
       ? `<p><span class="chip warn">deletion requested</span></p><p class="muted small">Sent ${esc(fmtDate(delPend.created))}. The admin will review it and confirm. Your account stays active until then.</p><button id="delcancel" class="btn">Cancel request</button>`
       : `<form id="del"><p class="muted small">This asks the admin to permanently delete your JoolzApp account and preferences from <b>every</b> Joolzapp app. Nothing is deleted until the admin confirms.</p>
       <div class="kv"><label>Type your email to confirm<input name="confirmText" autocomplete="off" required></label><label>Password<input name="pw" type="password" autocomplete="current-password" required></label></div>
       <label>Reason (optional)<input name="reason" maxlength="300"></label>
-      <button class="btn danger">Request account deletion</button></form>`}${delDenied && !delPend ? '<p class="muted small">Your last deletion request was declined.</p>' : ''}</div>`;
+      <button class="btn danger">Request account deletion</button></form>`}${delDenied && !delPend ? '<p class="muted small">Your last deletion request was declined.</p>' : ''}</div></div>`;
+  const showTab = (t) => { main().querySelectorAll('.tabs button').forEach((x) => x.classList.toggle('active', x.dataset.t === t)); main().querySelectorAll('[data-pane]').forEach((x) => { x.hidden = x.dataset.pane !== t; }); };
+  main().onclick = (e) => { const b = e.target.closest('.tabs button'); if (b) showTab(b.dataset.t); };
 
   // AI settings are stored as the person's own "pref.ai.*" rows, so every app can read them through the shared account.
   const setPref = async (key, val) => {
@@ -957,7 +945,6 @@ async function viewMe() {
     for (const k of ['ai.apiKey', 'ai.model', 'ai.provider', 'ai.baseUrl']) await setPref(k, '');
     toast('AI settings removed'); route();
   });
-  bindOpen(main(), ssoSlugs);
   $('#prefs').onsubmit = guard(async (e) => {
     e.preventDefault();
     for (const [key] of PREFS) {
@@ -967,12 +954,6 @@ async function viewMe() {
       else if (val !== '') cur[key] = await api('POST', '/api/collections/portal_settings/records', { scope: 'user', user: uid, app: '', key: 'pref.' + key, value: val, secret: false });
     }
     toast('Preferences saved');
-  });
-  main().onclick = guard(async (e) => {
-    const b = e.target.closest('button[data-req]'); if (!b) return; e.preventDefault();
-    const slug = b.dataset.req; const msg = main().querySelector(`input[data-msg="${slug}"]`).value.trim();
-    await api('POST', '/api/collections/portal_requests/records', { user: uid, email: state.actor, app: slug, message: msg, status: 'pending' });
-    toast('Request sent'); route();
   });
   if ($('#del')) $('#del').onsubmit = guard(async (e) => {
     e.preventDefault();
@@ -984,6 +965,50 @@ async function viewMe() {
   });
   if ($('#delcancel')) $('#delcancel').onclick = guard(async () => {
     await api('DELETE', `/api/collections/portal_requests/records/${delPend.id}`); toast('Request cancelled'); route();
+  });
+}
+
+
+// The landing page: every JoolzApp app as a tile. Open goes to the app (signed in already where the app supports it);
+// apps the person isn't approved for show a request form instead.
+async function viewHome() {
+  const uid = state.uid, isAdmin = state.role !== 'user';
+  const [apps, reqs, acc] = await Promise.all([
+    listAll('portal_apps', { sort: 'name' }),
+    isAdmin ? Promise.resolve([]) : listAll('portal_requests', { filter: `user = ${fq(uid)}`, sort: '-created' }).catch(() => null),
+    isAdmin ? Promise.resolve([]) : listAll('portal_settings', { filter: 'key = "portal.access"' }),
+  ]);
+  const ssoSlugs = new Set((await listAll('portal_settings', { filter: 'scope = "app" && key = "app.sso"' }).catch(() => [])).filter((r) => r.value === true).map((r) => r.app));
+  const rank = (r) => r.scope === 'global' ? 0 : r.scope === 'app' ? 1 : (r.app ? 3 : 2);
+  const allowed = (slug) => {
+    if (isAdmin) return true;
+    const rs = acc.filter((r) => r.scope === 'global' || (r.scope === 'app' && r.app === slug) || (r.scope === 'user' && (r.app === '' || r.app === slug))).sort((a, b) => rank(a) - rank(b));
+    const last = rs[rs.length - 1]; return !(last && last.value === false);
+  };
+  const userRow = acc.find((r) => r.scope === 'user' && r.app === ''), globalBlock = acc.find((r) => r.scope === 'global' && r.value === false);
+  const banner = isAdmin ? '' : userRow && userRow.value === false ? 'Your account access has been turned off. Contact the admin.' : (globalBlock && !userRow ? 'The admin approves access to each app separately. Request access to the apps you need below.' : '');
+  const tile = (a) => {
+    let body;
+    if (!a.enabled) body = '<span class="chip bad">unavailable</span>';
+    else if (allowed(a.slug)) {
+      const open = /^https?:\/\//i.test(a.url || '') ? `<a class="btn primary" href="${esc(a.url)}" data-open="${esc(a.slug)}" target="_blank" rel="noopener">Open</a>` : '<span class="muted small">No address set yet</span>';
+      body = `${a.maintenance ? `<span class="chip warn">maintenance</span> <span class="muted small">${esc(a.message || '')}</span>` : open}`;
+    } else {
+      const pend = reqs && reqs.find((r) => r.app === a.slug && r.status === 'pending'), denied = reqs && reqs.find((r) => r.app === a.slug && r.status === 'denied');
+      body = reqs === null ? '<span class="muted small">Ask the admin for access</span>' : pend ? '<span class="chip warn">request pending</span>'
+        : `<div class="req-row"><input data-msg="${esc(a.slug)}" placeholder="Why do you need it? (optional)" maxlength="300"><button class="btn small" data-req="${esc(a.slug)}">Request access</button></div>${denied ? '<div class="muted small">Your last request was denied.</div>' : ''}`;
+    }
+    return `<div class="tile${a.enabled ? '' : ' off'}"><div class="tile-head"><span class="tile-ic">${esc((a.name || '?').trim().charAt(0).toUpperCase())}</span><div><b>${esc(a.name)}</b>${a.description ? `<div class="muted small">${esc(a.description)}</div>` : ''}</div></div><div class="tile-body">${body}</div></div>`;
+  };
+  main().innerHTML = `<h1>Dashboard</h1><p class="sub">${isAdmin ? 'This is the page your users see.' : 'All your JoolzApp apps in one place. One account works in every one.'}</p>
+    ${banner ? `<div class="card"><span class="chip warn">${esc(banner)}</span></div>` : ''}
+    <div class="tiles">${apps.map(tile).join('') || '<p class="muted">No apps have been added yet.</p>'}</div>`;
+  bindOpen(main(), ssoSlugs);
+  main().onclick = guard(async (e) => {
+    const b = e.target.closest('button[data-req]'); if (!b) return; e.preventDefault();
+    const slug = b.dataset.req; const msg = main().querySelector(`input[data-msg="${slug}"]`).value.trim();
+    await api('POST', '/api/collections/portal_requests/records', { user: uid, email: state.actor, app: slug, message: msg, status: 'pending' });
+    toast('Request sent'); route();
   });
 }
 
