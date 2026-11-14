@@ -85,7 +85,8 @@ const KEY = 'takeout.v1';   // old local save: copied up to your account once, s
 let S = { restaurants: [], carts: {}, hidden: [], seen: null };
 try { const raw = localStorage.getItem(KEY); if (raw) S = Object.assign(S, JSON.parse(raw)); } catch (e) {}
 
-let view = 'home';         // home | add | menu | summary | orders | settings
+let view = 'home';         // home | add | menu | summary | orders | history | spend | settings
+let spendPeriod = 6, spendCur = '';
 let curId = null, addTab = 'photo', busy = null, error = '', query = '';
 let sample = true, canImages = true;
 let me = null, ai = { configured: true, isAdmin: false }, pushT = null;
@@ -112,7 +113,8 @@ async function loadMenus() { S.restaurants = (await api('api/menus')).menus || [
   try { const { state } = await api('api/state'); if (state) { Object.assign(carts, state.carts || {}); if (Array.isArray(state.hidden)) hidden = state.hidden; if (Array.isArray(state.seen)) seen = state.seen; if (Array.isArray(state.restaurants)) legacy = state.restaurants; } } catch (e) {}
   let done = false; try { done = !!localStorage.getItem('grubtogo.migrated'); } catch (e) {}
   if (!done && !legacy.length) legacy = (S.restaurants || []).slice();
-  S = { restaurants: [], carts, hidden, seen };
+  S = { restaurants: [], carts, hidden, seen, history: [] };
+  try { S.history = (await api('api/history')).orders || []; } catch (e) {}
   let failed = 0;
   for (const r of legacy) {
     try { const m = (await api('api/menus', { method: 'POST', body: JSON.stringify(r) })).menu; if (S.carts[r.id]) { S.carts[m.id] = S.carts[r.id]; delete S.carts[r.id]; } }
@@ -184,7 +186,7 @@ function render() {
   bar.hidden = true;
   const back = t => `<button class="icon-btn" data-a="${t}">‹</button>`;
   if (view === 'home') {
-    h.innerHTML = `<h1>🍽️ GrubToGo</h1><button class="icon-btn" data-a="settings" title="Settings" aria-label="Settings">⚙️</button>${me ? `<button class="icon-btn" data-a="dashboard" title="Back to Dashboard" aria-label="Back to Dashboard">🏠</button>` : ''}${me ? `<button class="icon-btn" data-a="signout" title="Sign out ${esc(me.email)}">⎋</button>` : ''}`;
+    h.innerHTML = `<h1>🍽️ GrubToGo</h1><button class="icon-btn" data-a="history" title="Previous orders and spending" aria-label="Previous orders and spending">🧾</button><button class="icon-btn" data-a="settings" title="Settings" aria-label="Settings">⚙️</button>${me ? `<button class="icon-btn" data-a="dashboard" title="Back to Dashboard" aria-label="Back to Dashboard">🏠</button>` : ''}${me ? `<button class="icon-btn" data-a="signout" title="Sign out ${esc(me.email)}">⎋</button>` : ''}`;
     a.innerHTML = homeHTML();
     const n = activeRests().length;
     if (n) { bar.hidden = false; bar.innerHTML = `<div class="inner"><button class="btn" data-a="orders">View all orders · ${n} restaurant${n > 1 ? 's' : ''}</button></div>`; }
@@ -203,6 +205,10 @@ function render() {
     h.innerHTML = back('home') + `<h1>Settings</h1>`; a.innerHTML = settingsHTML();
   } else if (view === 'orders') {
     h.innerHTML = back('home') + `<h1>All orders</h1>`; a.innerHTML = ordersHTML();
+  } else if (view === 'history') {
+    h.innerHTML = back('home') + `<h1>Previous orders</h1>`; a.innerHTML = historyHTML();
+  } else if (view === 'spend') {
+    h.innerHTML = back('home') + `<h1>Spending</h1>`; a.innerHTML = spendHTML();
   }
 }
 
@@ -265,7 +271,8 @@ function menuHTML(r) {
       + `<button class="link" data-a="add-branch">＋ Add a branch (franchise)</button>`
     : bs.map(b => `<div class="kv"><span>${esc(b.name || 'Branch')}</span><a href="${telHref(b.phone)}">${esc(b.phone)}</a></div>`).join('')
       + `<form class="row" id="newbranch" style="gap:6px;margin-top:8px"><input type="text" name="name" placeholder="New branch (e.g. Sandton)"><input type="tel" name="phone" placeholder="Phone" required><button class="btn">Add</button></form>`;
-  let out = `<div class="card"><div class="mute" style="margin-bottom:6px">Restaurant phone${r.ownerName ? ' · added by ' + esc(r.ownerName) : ''}${r.canEdit ? '' : ' · view only'}</div>
+  const lastO = (S.history || []).filter(o => o.restId === r.id || normName(o.restName) === normName(r.name)).sort((a, b) => b.at.localeCompare(a.at))[0];
+  let out = (lastO && !cartCount(r) ? `<button class="btn sec" data-a="repeat" data-id="${lastO.id}">🔁 Repeat last order · ${esc(dOf(lastO).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }))}${lastO.total ? ' · ' + cm(lastO.currency, lastO.total) : ''}</button><div style="height:10px"></div>` : '') + `<div class="card"><div class="mute" style="margin-bottom:6px">Restaurant phone${r.ownerName ? ' · added by ' + esc(r.ownerName) : ''}${r.canEdit ? '' : ' · view only'}</div>
     <input id="phone" type="tel" value="${esc(r.phone || '')}" placeholder="${r.canEdit ? 'Main phone number' : 'No phone number'}"${r.canEdit ? '' : ' readonly'}>
     <div class="mute" style="margin:10px 0 2px">Branches${r.canEdit ? '' : ' · anyone can add one'}</div>${branchRows}</div>
     <input class="search" id="q" type="text" placeholder="Search menu…" value="${esc(query)}">`;
@@ -324,7 +331,8 @@ function summaryHTML(r) {
     ${callHTML(r)}
     <div style="height:14px"></div>
     ${hasPrices(r) ? billCardHTML(r) : ''}
-    <button class="btn sec" data-a="copy-order" data-id="${r.id}">📋 Copy this order</button>
+    <button class="btn" data-a="placed" data-id="${r.id}">✅ Mark as ordered</button>
+    <div style="height:8px"></div><button class="btn sec" data-a="copy-order" data-id="${r.id}">📋 Copy this order</button>
     <div style="height:8px"></div><button class="btn ghost" data-a="clear">Clear this order</button>`;
 }
 
@@ -367,6 +375,90 @@ function splitHTML(r) {
 }
 
 /* ----- all orders (multiple restaurants) ----- */
+/* ---------- previous orders, spending ---------- */
+const normName = s => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '');
+const cm = (cur, n) => (cur || 'R') + (Math.round(n * 100) / 100).toFixed(2);
+const dOf = o => new Date(o.at);
+const dayFmt = o => dOf(o).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }) + ' · ' + dOf(o).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+const monthKey = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+const monthLbl = k => { const [y, m] = k.split('-'); return new Date(+y, +m - 1, 1).toLocaleDateString(undefined, { month: 'short' }) + ' ' + String(y).slice(2); };
+const restOfOrder = o => S.restaurants.find(x => x.id === o.restId) || S.restaurants.find(x => normName(x.name) === normName(o.restName));
+const histTabs = on => `<div class="tabs"><button class="${on === 'history' ? 'on' : ''}" data-a="history">Orders</button><button class="${on === 'spend' ? 'on' : ''}" data-a="spend">Spending</button></div>`;
+
+function snapshotOf(r) {
+  const b = bill(r), c = cartOf(r.id), ct = contactOf(r);
+  return { restId: r.id, restName: r.name, branch: ct.branch || '', phone: ct.phone || '', currency: r.currency || 'R', instructions: c.instructions || '',
+    lines: cartLines(r).map(l => ({ itemId: l.item.id, name: l.item.name, qty: l.qty, price: l.item.price == null ? null : l.item.price, note: l.note || '' })),
+    sub: b.sub, tip: b.tip, pct: b.pct, total: b.total };
+}
+async function markOrdered(r) {
+  if (!cartCount(r)) return;
+  const res = await api('api/history', { method: 'POST', body: JSON.stringify({ order: snapshotOf(r) }) });
+  (S.history ||= []).unshift(res.order); S.carts[r.id] = {}; save(); toast('Saved to your previous orders'); go('history');
+}
+function repeatOrder(o) {
+  const r = restOfOrder(o); if (!r) return toast('That restaurant is no longer in the shared archive.');
+  const all = itemsOf(r), items = {}, missing = [];
+  o.lines.forEach(l => { const it = all.find(i => i.id === l.itemId) || all.find(i => normName(i.name) === normName(l.name)); if (!it) missing.push(l.name); else items[it.id] = { qty: l.qty, note: l.note || '' }; });
+  if (!Object.keys(items).length) return toast('None of those dishes are on the menu any more.');
+  if (cartCount(r) && !confirm('Replace your current ' + r.name + ' order with this one?')) return;
+  S.carts[r.id] = D({ items, instructions: o.instructions || '' }); S.hidden = (S.hidden || []).filter(x => x !== r.id); save();
+  go('summary', r.id);
+  if (missing.length) toast('Not on the menu any more: ' + missing.join(', '));
+}
+function historyHTML() {
+  const hs = (S.history || []).slice().sort((a, b) => b.at.localeCompare(a.at)), sq = query.trim().toLowerCase();
+  const list = hs.filter(o => !sq || o.restName.toLowerCase().includes(sq) || o.lines.some(l => l.name.toLowerCase().includes(sq)));
+  let out = histTabs('history') + `<input class="search" id="q" type="text" placeholder="Search restaurants or dishes…" value="${esc(query)}">`;
+  if (!hs.length) return out + `<div class="card" style="text-align:center">No previous orders yet. When you've phoned an order in, tap <b>Mark as ordered</b> on its summary and it is saved here with the date.</div>`;
+  if (!list.length) return out + `<div class="card" style="text-align:center">Nothing matches “${esc(query)}”.</div>`;
+  let last = '';
+  list.forEach(o => {
+    const k = monthKey(dOf(o));
+    if (k !== last) { last = k; out += `<div class="sub-h">${esc(dOf(o).toLocaleDateString(undefined, { month: 'long', year: 'numeric' }))}</div>`; }
+    out += `<div class="card"><div class="row" style="justify-content:space-between;gap:8px"><div class="h" style="margin:0">${esc(o.restName)}${o.branch ? ' <span class="mute">(' + esc(o.branch) + ')</span>' : ''}</div><div class="price">${o.total ? cm(o.currency, o.total) : ''}</div></div>
+      <div class="mute" style="margin-bottom:6px">${esc(dayFmt(o))}</div>
+      ${o.lines.map(l => `<div class="sum-line"><div class="q">${l.qty}×</div><div class="grow">${esc(l.name)}${l.note ? `<div class="note">${esc(l.note)}</div>` : ''}</div></div>`).join('')}
+      <div class="row" style="gap:8px;margin-top:10px"><button class="btn sec" data-a="repeat" data-id="${o.id}">🔁 Repeat this order</button><button class="icon-btn" data-a="del-order" data-id="${o.id}" title="Delete from history">🗑</button></div></div>`;
+  });
+  return out;
+}
+function spendHTML() {
+  const all = (S.history || []).filter(o => o.total > 0);
+  let out = histTabs('spend');
+  if (!all.length) return out + `<div class="card" style="text-align:center">Spending appears here once you've marked priced orders as ordered.</div>`;
+  const curs = [...new Set(all.map(o => o.currency))];
+  if (!curs.includes(spendCur)) spendCur = curs.sort((a, b) => all.filter(o => o.currency === b).length - all.filter(o => o.currency === a).length)[0];
+  const now = new Date(), cut = spendPeriod ? new Date(now.getFullYear(), now.getMonth() - spendPeriod + 1, 1) : null;
+  const os = all.filter(o => o.currency === spendCur && (!cut || dOf(o) >= cut));
+  const chips = [[3, '3 months'], [6, '6 months'], [12, '12 months'], [0, 'Lifetime']].map(([n, l]) => `<button class="chip ${spendPeriod === n ? 'on' : ''}" data-a="period" data-v="${n}">${l}</button>`).join('');
+  out += `<div class="chips" style="margin-bottom:10px">${chips}</div>` + (curs.length > 1 ? `<div class="chips" style="margin-bottom:10px">${curs.map(c => `<button class="chip ${spendCur === c ? 'on' : ''}" data-a="cur" data-v="${esc(c)}">${esc(c)}</button>`).join('')}</div>` : '');
+  if (!os.length) return out + `<div class="card" style="text-align:center">No orders in this period.</div>`;
+  const total = os.reduce((a, o) => a + o.total, 0), first = os.reduce((m, o) => dOf(o) < m ? dOf(o) : m, new Date());
+  const months = Math.max(1, spendPeriod || ((now.getFullYear() - first.getFullYear()) * 12 + now.getMonth() - first.getMonth() + 1));
+  // monthly buckets (yearly when lifetime runs past two years)
+  const byYear = !spendPeriod && months > 24, buckets = new Map();
+  for (let n = months - 1; n >= 0; n--) { const d = new Date(now.getFullYear(), now.getMonth() - n, 1); buckets.set(byYear ? String(d.getFullYear()) : monthKey(d), 0); }
+  os.forEach(o => { const k = byYear ? String(dOf(o).getFullYear()) : monthKey(dOf(o)); buckets.set(k, (buckets.get(k) || 0) + o.total); });
+  const data = [...buckets.entries()], max = Math.max(...data.map(d => d[1]), 1), W = 320, H = 150, bw = W / data.length;
+  const bars = data.map(([k, v], ix) => { const bh = Math.round(v / max * (H - 34)); return `<g><rect x="${(ix * bw + bw * .15).toFixed(1)}" y="${H - 18 - bh}" width="${(bw * .7).toFixed(1)}" height="${bh}" rx="3" fill="var(--accent)"><title>${esc(byYear ? k : monthLbl(k))}: ${cm(spendCur, v)}</title></rect>`
+    + (data.length <= 13 || ix % Math.ceil(data.length / 12) === 0 ? `<text x="${(ix * bw + bw / 2).toFixed(1)}" y="${H - 5}" text-anchor="middle" font-size="9" fill="currentColor" opacity=".65">${esc(byYear ? k : monthLbl(k).split(' ')[0])}</text>` : '')
+    + (v && data.length <= 13 ? `<text x="${(ix * bw + bw / 2).toFixed(1)}" y="${H - 21 - bh}" text-anchor="middle" font-size="8" fill="currentColor" opacity=".8">${Math.round(v)}</text>` : '') + `</g>`; }).join('');
+  out += `<div class="card"><div class="row" style="justify-content:space-around;text-align:center">
+      <div><div class="mute">Spent</div><div class="h" style="margin:0">${cm(spendCur, total)}</div></div>
+      <div><div class="mute">Orders</div><div class="h" style="margin:0">${os.length}</div></div>
+      <div><div class="mute">Avg / order</div><div class="h" style="margin:0">${cm(spendCur, total / os.length)}</div></div>
+      <div><div class="mute">Avg / ${byYear ? 'year' : 'month'}</div><div class="h" style="margin:0">${cm(spendCur, total / data.length)}</div></div></div></div>
+    <div class="card"><div class="h">${byYear ? 'Yearly' : 'Monthly'} expenditure</div><svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="${byYear ? 'Yearly' : 'Monthly'} spending">${bars}</svg></div>`;
+  const by = new Map();
+  os.forEach(o => { const k = normName(o.restName), e = by.get(k) || { name: o.restName, spent: 0, n: 0 }; e.spent += o.total; e.n++; e.name = o.restName; by.set(k, e); });
+  const rows = [...by.values()].sort((a, b) => b.spent - a.spent), top = rows[0].spent;
+  out += `<div class="card"><div class="h">Where you order from</div>` + rows.map(e => `<div style="margin:10px 0"><div class="row" style="justify-content:space-between;gap:8px"><div>${esc(e.name)}</div><div class="price">${cm(spendCur, e.spent)}</div></div>
+      <div style="background:var(--line);border-radius:99px;height:8px;margin:4px 0"><div style="width:${Math.max(2, Math.round(e.spent / top * 100))}%;height:8px;border-radius:99px;background:var(--accent)"></div></div>
+      <div class="mute">${e.n} order${e.n > 1 ? 's' : ''} · ${Math.round(e.spent / total * 100)}% of spend · avg ${cm(spendCur, e.spent / e.n)}</div></div>`).join('') + `</div>`;
+  return out;
+}
+
 function ordersHTML() {
   const rs = activeRests();
   if (!rs.length) return `<div class="card" style="text-align:center">No items in any order yet.</div><button class="btn" data-a="home">Pick a restaurant</button>`;
@@ -379,7 +471,8 @@ function ordersHTML() {
       ${c.instructions ? `<div class="note" style="margin-top:6px">Notes: ${esc(c.instructions)}</div>` : ''}
       ${hasPrices(r) ? `<div class="kv"><span>Subtotal</span><span>${money(r, b.sub)}</span></div><div class="kv"><span>Tip (${b.pct}%)</span><span>${money(r, b.tip)}</span></div><div class="kv big"><span>Total</span><span>${money(r, b.total)}</span></div>` : ''}
       <div style="height:10px"></div>${callHTML(r, true)}
-      <div style="height:8px"></div><div class="row" style="gap:8px"><button class="btn sec" data-a="open-sum" data-id="${r.id}">Tip & split bill</button><button class="btn sec" data-a="copy-order" data-id="${r.id}">📋 Copy order</button></div></div>`;
+      <div style="height:8px"></div><div class="row" style="gap:8px"><button class="btn sec" data-a="open-sum" data-id="${r.id}">Tip & split bill</button><button class="btn sec" data-a="copy-order" data-id="${r.id}">📋 Copy order</button></div>
+      <div style="height:8px"></div><button class="btn" data-a="placed" data-id="${r.id}">✅ Mark as ordered</button></div>`;
   }).join('');
   return blocks + (cur.size === 1 ? `<div class="card"><div class="kv big" style="border:0;margin:0;padding:0"><span>Grand total (${rs.length} restaurants)</span><span>${money(rs[0], grand)}</span></div></div>` : '')
     + `<button class="btn" data-a="copy-all">📋 Copy whole basket</button>`;
@@ -451,6 +544,16 @@ document.addEventListener('click', async e => {
   const el = e.target.closest('[data-a]'); if (!el) return;
   const a = el.dataset.a, id = el.dataset.id, v = el.dataset.v, i = +el.dataset.i;
   if (a === 'home') return go('home');
+  if (a === 'history') return go('history');
+  if (a === 'spend') return go('spend');
+  if (a === 'period') { spendPeriod = +v; return render(); }
+  if (a === 'cur') { spendCur = v; return render(); }
+  if (a === 'placed') { try { await markOrdered(S.restaurants.find(r => r.id === id)); } catch (err) { toast(err.message); } return; }
+  if (a === 'repeat') return repeatOrder((S.history || []).find(o => o.id === id));
+  if (a === 'del-order') {
+    if (!confirm('Delete this order from your history? It will no longer count in your spending.')) return;
+    try { await api('api/history/' + id, { method: 'DELETE' }); S.history = S.history.filter(o => o.id !== id); render(); } catch (err) { toast(err.message); } return;
+  }
   if (a === 'settings') return go('settings');
   if (a === 'rest-all') { S.hidden = []; save(); return render(); }
   if (a === 'rest-none') { S.hidden = S.restaurants.map(r => r.id); save(); return render(); }

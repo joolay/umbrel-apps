@@ -218,6 +218,24 @@ function cleanState(s) {
   return { restaurants: [], carts: s.carts && typeof s.carts === "object" && !Array.isArray(s.carts) ? s.carts : {}, hidden: ids(s.hidden) || [], seen: ids(s.seen), at: Date.now() };
 }
 
+/* ---------- order history, one file per person ---------- */
+const histFile = u => path.join(USERS_DIR, ownerKey(u) + ".history.json");
+function readHistory(u) { try { const a = JSON.parse(fs.readFileSync(histFile(u), "utf8")); return Array.isArray(a) ? a : []; } catch { return []; } }
+function writeHistory(u, a) { const f = histFile(u), t = f + ".tmp"; fs.writeFileSync(t, JSON.stringify(a)); fs.renameSync(t, f); }
+// A placed order is kept as a snapshot, so later menu changes never rewrite what was ordered or paid.
+function cleanOrder(o) {
+  if (!o || typeof o !== "object") return null;
+  const t = (v, n) => String(v == null ? "" : v).slice(0, n);
+  const num = v => (typeof v === "number" && isFinite(v) && v >= 0 && v < 1e9) ? Math.round(v * 100) / 100 : 0;
+  const lines = (Array.isArray(o.lines) ? o.lines : []).slice(0, 80).map(l => ({
+    itemId: t(l && l.itemId, 60), name: t(l && l.name, 160), qty: Math.min(99, Math.max(1, Math.floor(+(l && l.qty)) || 1)),
+    price: l && typeof l.price === "number" && isFinite(l.price) && l.price >= 0 ? l.price : null, note: t(l && l.note, 300) })).filter(l => l.name);
+  if (!lines.length) return null;
+  return { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7), at: new Date().toISOString(), restId: t(o.restId, 40).replace(/[^A-Za-z0-9]/g, ""),
+    restName: t(o.restName, 120) || "Restaurant", branch: t(o.branch, 80), phone: t(o.phone, 40), currency: t(o.currency, 8) || "R",
+    lines, instructions: t(o.instructions, 500), sub: num(o.sub), tip: num(o.tip), pct: num(o.pct), total: num(o.total) };
+}
+
 /* ---------- HTTP ---------- */
 const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css", ".svg": "image/svg+xml", ".png": "image/png", ".json": "application/json" };
 function readBody(req) {
@@ -236,7 +254,7 @@ const server = http.createServer(async (req, res) => {
     const p = decodeURIComponent(url.pathname);
     const isPage = p === "/" || p === "/index.html";
     const isMenus = /^\/api\/menus(\/[A-Za-z0-9]{1,40}(\/(item|branch|versions|restore))?)?$/.test(p);
-    const isData = isMenus || p === "/api/state" || p === "/api/extract" || p === "/api/ai/status" || p === "/api/ai/config";
+    const isData = isMenus || p === "/api/state" || /^\/api\/history(\/[A-Za-z0-9]{1,20})?$/.test(p) || p === "/api/extract" || p === "/api/ai/status" || p === "/api/ai/config";
 
     // The app and its data are only for signed-in people the admin has let in (admins always can).
     // Umbrel's own login is off for this app, so this is the lock: with REQUIRE_ACCOUNTS set it fails closed.
@@ -281,6 +299,14 @@ const server = http.createServer(async (req, res) => {
       if (id && req.method === "DELETE") { const r = await menus.remove(user, id); return r.status ? send(res, r.status, { code: "menu_denied", message: r.message }) : send(res, 200, r); }
       return send(res, 405, { message: "Method not allowed" });
     }
+    if (p === "/api/history" && req.method === "GET") return send(res, 200, { orders: readHistory(user) });
+    if (p === "/api/history" && req.method === "POST") {
+      const o = cleanOrder(JSON.parse((await readBody(req)).toString() || "{}").order);
+      if (!o) return send(res, 400, { code: "bad_order", message: "That order is empty." });
+      writeHistory(user, [o, ...readHistory(user)].slice(0, 5000)); return send(res, 200, { order: o });
+    }
+    const hm = p.match(/^\/api\/history\/([A-Za-z0-9]{1,20})$/);
+    if (hm && req.method === "DELETE") { writeHistory(user, readHistory(user).filter(x => x.id !== hm[1])); return send(res, 200, { ok: true }); }
     if (p === "/api/state" && req.method === "GET") return send(res, 200, { state: readState(user) });
     if (p === "/api/state" && req.method === "PUT") {
       const s = cleanState(JSON.parse((await readBody(req)).toString() || "{}"));
