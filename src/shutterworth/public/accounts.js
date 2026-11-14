@@ -229,7 +229,7 @@
   }
 
   /* ---------- start ---------- */
-  // Shared Joolzapp Portal preferences (currency, theme, time zone...). Kept locally too so the next page load starts with them.
+  // Shared Portal Admin preferences (currency, theme, time zone...). Kept locally too so the next page load starts with them.
   function applyPrefs(p) {
     p = p || {};
     try { const was = localStorage.getItem("sw_prefs") || "{}", now = JSON.stringify(p); if (was === now) return; localStorage.setItem("sw_prefs", now); } catch (e) {}

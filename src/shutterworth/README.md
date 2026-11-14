@@ -72,9 +72,9 @@ How it is stored:
 - A second collection, `app_access`, holds the per-app part: trial used, trial limit and unlimited. There is one row per person per app, so a trial in one app doesn't use up another's. Only the app servers can read it.
 - Deleting a user in the panel deletes the JoolzApp account itself, so it disappears from every app.
 
-### With Joolzapp Portal
+### With Portal Admin
 
-If Joolzapp Portal is installed (its `portal_settings`, `portal_apps` and `portal_requests` collections exist), ShutterWorth follows it automatically:
+If Portal Admin is installed (its `portal_settings`, `portal_apps` and `portal_requests` collections exist), ShutterWorth follows it automatically:
 
 - **Access**: the portal decides who may open the app. `portal.access` is resolved global, then app, then user, then user x app. With per-app approval switched on in the portal, new accounts are closed out until you approve ShutterWorth for them (they request it in the portal). The Users panel's Allow access button now sets that same portal setting and closes the person's pending request. Admins always get in. Without the portal, the old `access` flag still applies.
 - **App on/off and maintenance**: switching ShutterWorth off, or putting it in maintenance, in the portal shows non-admins the portal's message.

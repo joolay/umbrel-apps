@@ -1,5 +1,5 @@
 'use strict';
-/* Joolzapp Portal front-end. Talks to PocketBase through the /pb proxy using the signed-in superuser's token. */
+/* Portal Admin front-end. Talks to PocketBase through the /pb proxy using the signed-in superuser's token. */
 const $ = (s, r = document) => r.querySelector(s);
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const store = {
@@ -227,7 +227,7 @@ function route() {
 async function needSetup() {
   const st = await schemaStatus();
   if (st.every((s) => s.ok)) return false;
-  main().innerHTML = `<h1>First-time setup</h1><p class="sub">Joolzapp Portal stores its data in PocketBase collections, and some are missing or need updated permissions.</p>
+  main().innerHTML = `<h1>First-time setup</h1><p class="sub">Portal Admin stores its data in PocketBase collections, and some are missing or need updated permissions.</p>
     <div class="card"><ul>${st.map((s) => `<li><code>${s.name}</code> ${s.ok ? '<span class="chip ok">ready</span>' : '<span class="chip bad">missing</span>'}</li>`).join('')}</ul>
     <button id="mk" class="btn primary">Create collections</button></div>`;
   $('#mk').onclick = guard(async () => { await ensureSchema(); await audit('setup', 'schema'); toast('Collections created'); route(); });

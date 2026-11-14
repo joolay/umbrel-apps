@@ -121,7 +121,7 @@ function trialInfo(u) {
   const unlimited = !!(u.unlimited || u.isAdmin);
   return { unlimited, limit, used, remaining: unlimited ? null : Math.max(0, limit - used) };
 }
-// Who may open the app. With Joolzapp Portal set up, the portal decides (per-app approval, app on/off, maintenance);
+// Who may open the app. With Portal Admin set up, the portal decides (per-app approval, app on/off, maintenance);
 // admins always get in. Without the portal, the app's own `access` flag applies as before.
 function gateOf(u) {
   if (u.isAdmin) return { ok: true };
@@ -129,7 +129,7 @@ function gateOf(u) {
   const a = u.portal.app;
   if (a && a.enabled === false) return { ok: false, reason: "disabled", message: "ShutterWorth is switched off right now." };
   if (a && a.maintenance) return { ok: false, reason: "maintenance", message: a.message || "ShutterWorth is under maintenance. Try again soon." };
-  if (!u.portal.access) return { ok: false, reason: "no_access", message: "You need approval to use ShutterWorth. Open Joolzapp Portal, request access to ShutterWorth, then check again here." };
+  if (!u.portal.access) return { ok: false, reason: "no_access", message: "You need approval to use ShutterWorth. Open Portal Admin, request access to ShutterWorth, then check again here." };
   return { ok: true };
 }
 const publicUser = u => ({ id: u.id, email: u.email || "", name: u.name || "", isAdmin: !!u.isAdmin, unlimited: !!u.unlimited, access: u.portal ? u.portal.access : !!u.access, canOpen: gateOf(u).ok, gate: gateOf(u), prefs: (u.portal && u.portal.prefs) || {},

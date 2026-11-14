@@ -488,7 +488,7 @@ body.in-list .tot b{font-size:.9rem}
 (() => {
 const $ = id => document.getElementById(id);
 const listEl = $("list");
-// Shared Joolzapp Portal preferences (language, currency, timezone, dateFormat, timeFormat, theme). Defaults match the old look.
+// Shared Portal Admin preferences (language, currency, timezone, dateFormat, timeFormat, theme). Defaults match the old look.
 const LOCALES = { en:"en-ZA", af:"af-ZA", zu:"zu-ZA", xh:"xh-ZA", st:"st-ZA", tn:"tn-ZA", fr:"fr-FR", es:"es-ES", pt:"pt-PT", ar:"ar" };
 const prefs = () => window.SW_PREFS || {};
 const loc = () => LOCALES[prefs().language] || "en-ZA";
