@@ -4,8 +4,8 @@
   "use strict";
   const $ = id => document.getElementById(id);
   const TOKEN = "sw.token";
-  const getToken = () => { try { return localStorage.getItem(TOKEN) || ""; } catch (e) { return ""; } };
-  const setToken = t => { try { t ? localStorage.setItem(TOKEN, t) : localStorage.removeItem(TOKEN); } catch (e) {} };
+  const getToken = () => { try { return sessionStorage.getItem(TOKEN) || localStorage.getItem(TOKEN) || ""; } catch (e) { return ""; } };
+  const setToken = (t, remember) => { try { localStorage.removeItem(TOKEN); sessionStorage.removeItem(TOKEN); if (t) (remember ? localStorage : sessionStorage).setItem(TOKEN, t); } catch (e) {} };
 
   // If the sign-in runs out while the app is open, go back to the sign-in page.
   const nativeFetch = window.fetch.bind(window);
@@ -74,7 +74,14 @@
     if (t.unlimited) return "Unlimited photo identification.";
     return `${t.remaining} of ${t.limit} free photo identifications left.`;
   }
+  // Back to the JoolzApp dashboard (Portal Admin); it signs you in with the same account, so there is no second login.
+  function syncDash() {
+    const b = document.getElementById("dashBtn"); if (!b) return;
+    b.hidden = !user;
+    b.onclick = () => { const t = getToken(), base = (user && user.portalUrl) || (location.protocol + "//" + location.hostname + ":3892/"); location.href = base + (t ? "#sso=" + encodeURIComponent(t) : ""); };
+  }
   function renderAccount() {
+    syncDash();
     const p = accountPanel; p.textContent = "";
     p.appendChild(el("h2", "", "JoolzApp account"));
     if (user) {
@@ -84,13 +91,13 @@
         const m = el("div", "meter"), i = el("i"); i.style.width = Math.min(100, Math.round(100 * user.trial.used / user.trial.limit)) + "%"; m.appendChild(i); p.appendChild(m);
       }
       const row = el("div", "prow"), out = el("button", "pbtn", "Sign out"); out.type = "button";
-      out.onclick = () => { setToken(""); fetch("api/account/logout", { method: "POST" }).catch(() => {}).then(() => location.reload()); };
+      out.onclick = () => { setToken("", false); fetch("api/account/logout", { method: "POST" }).catch(() => {}).then(() => location.reload()); };
       row.appendChild(out); p.appendChild(row);
       return;
     }
     const reg = mode === "up";
     p.appendChild(el("p", "", reg
-      ? `Create your JoolzApp account to use photo identification. One account works in all JoolzApp apps. You get ${cfg.trialLimit} free photo identifications to start.`
+      ? `Create your JoolzApp account to use photo identification. One account works in all JoolzApp apps. You get ${cfg.trialLimit} free photo identifications to start, then add your own AI key.`
       : "Sign in with your JoolzApp account to use photo identification."));
     if (reg && cfg.signups === false) { p.appendChild(el("p", "err", "New sign-ups are closed right now.")); }
     const f = el("form"); f.noValidate = true;
@@ -98,16 +105,39 @@
     const name = reg ? field("Name (optional)", "text", "name", "name") : null;
     const email = field("Email", "email", "email", "email"), pass = field("Password", "password", "password", reg ? "new-password" : "current-password");
     if (reg) pass.placeholder = "At least 8 characters";
+    let remember, ok = el("p", "ok");
+    if (!reg) {
+      const opts = el("div", "prow"), rl = el("label", "", ""); remember = el("input"); remember.type = "checkbox"; remember.style.width = "auto";
+      try { remember.checked = localStorage.getItem("sw.remember") === "1"; if (remember.checked) email.value = localStorage.getItem("sw.email") || ""; } catch (e) {}
+      rl.append(remember, document.createTextNode(" Remember me")); rl.style.display = "flex"; rl.style.gap = "6px"; rl.style.alignItems = "center";
+      const forgot = el("button", "link", "Forgot password?"); forgot.type = "button";
+      forgot.onclick = async () => {
+        err.textContent = ""; ok.textContent = "";
+        if (!email.value.trim()) { err.textContent = "Enter your email above first."; email.focus(); return; }
+        try { ok.textContent = (await api("api/account/forgot", { method: "POST", body: JSON.stringify({ email: email.value.trim() }) })).message; } catch (e) { err.textContent = e.message; }
+      };
+      opts.style.justifyContent = "space-between"; opts.append(rl, forgot); f.appendChild(opts);
+    }
+    let aiProv, aiModel, aiKey;
+    if (reg) {
+      const d = el("details"), sm = el("summary", "", `Set up AI now (optional, ${cfg.trialLimit} free photo identifications without it)`); d.appendChild(sm);
+      aiProv = el("select"); [["gemini", "Google Gemini (free key available)"], ["openrouter", "OpenRouter"], ["anthropic", "Anthropic (Claude)"], ["openai", "OpenAI"]].forEach(o => { const op = el("option", "", o[1]); op.value = o[0]; aiProv.appendChild(op); });
+      aiModel = el("input"); aiModel.type = "text"; aiModel.autocomplete = "off"; aiKey = el("input"); aiKey.type = "password"; aiKey.autocomplete = "off";
+      [["AI provider", aiProv], ["Model (blank = default)", aiModel], ["API key", aiKey]].forEach(([t, i]) => { const l = el("label", "", t); l.appendChild(i); d.appendChild(l); });
+      f.appendChild(d);
+    }
     const err = el("p", "err"); err.setAttribute("role", "alert");
     const go = el("button", "pbtn accent", reg ? "Create account" : "Sign in"); go.type = "submit"; go.style.height = "42px";
     const sw = el("button", "link", reg ? "I already have a JoolzApp account" : "Create a JoolzApp account"); sw.type = "button";
     sw.onclick = () => { mode = reg ? "in" : "up"; renderAccount(); };
-    f.append(err, go, sw);
+    f.append(err, ok, go, sw);
     f.onsubmit = async ev => {
       ev.preventDefault(); err.textContent = ""; go.disabled = true;
       try {
-        const j = await api(reg ? "api/account/register" : "api/account/login", { method: "POST", body: JSON.stringify({ email: email.value, password: pass.value, name: name ? name.value : "" }) });
-        setToken(j.token); location.reload();
+        const j = await api(reg ? "api/account/register" : "api/account/login", { method: "POST", body: JSON.stringify({ email: email.value, password: pass.value, name: name ? name.value : "", remember: !reg && remember.checked, ai: reg && aiKey.value.trim() ? { provider: aiProv.value, model: aiModel.value.trim(), apiKey: aiKey.value.trim() } : undefined }) });
+        const rem = !reg && remember.checked; setToken(j.token, rem);
+        try { if (rem) { localStorage.setItem("sw.remember", "1"); localStorage.setItem("sw.email", email.value); } else if (!reg) { localStorage.removeItem("sw.remember"); localStorage.removeItem("sw.email"); } } catch (e) {}
+        location.reload();
       } catch (e) { err.textContent = e.message; go.disabled = false; }
     };
     p.appendChild(f);
@@ -259,7 +289,7 @@
     new MutationObserver(() => { if (!$("setView").hidden) { refreshMe(); if (user && user.isAdmin) loadUsers(); } }).observe($("setView"), { attributes: true, attributeFilter: ["hidden"] });
   }
   // Sign out sits in the top bar (shown only when accounts are on).
-  const signOut = () => { setToken(""); try { localStorage.removeItem("sw_prefs"); } catch (e) {} fetch("api/account/logout", { method: "POST" }).catch(() => {}).then(() => location.reload()); };
+  const signOut = () => { setToken("", false); try { localStorage.removeItem("sw_prefs"); } catch (e) {} fetch("api/account/logout", { method: "POST" }).catch(() => {}).then(() => location.reload()); };
   const showOut = () => nativeFetch("api/app-config", { cache: "no-store" }).then(r => r.json()).then(c => {
     const b = document.getElementById("outBtn"); if (c.accounts && b) { b.hidden = false; b.onclick = signOut; }
   }).catch(() => {});

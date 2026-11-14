@@ -19,10 +19,13 @@ const MAX_BODY = 25 * 1024 * 1024;
 fs.mkdirSync(USERS_DIR, { recursive: true });
 
 /* ---------- AI (reads menus) ---------- */
+const TRIAL_LIMIT = Math.max(0, parseInt(process.env.GRUBTOGO_TRIAL_LIMIT || "10", 10) || 0);
 const PRESETS = {
   anthropic: { baseUrl: "https://api.anthropic.com", model: "claude-sonnet-5-5" },
   gemini: { baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai/", model: "gemini-3.8-flash" },
   openai: { baseUrl: "https://api.openai.com/v1", model: "" },
+  openrouter: { baseUrl: "https://openrouter.ai/api/v1", model: "" },
+  custom: { baseUrl: "", model: "" },
 };
 function loadAI() {
   let c = {}; try { c = JSON.parse(fs.readFileSync(AI_FILE, "utf8")); } catch {}
@@ -30,12 +33,30 @@ function loadAI() {
   const pre = PRESETS[provider] || PRESETS.openai;
   return { provider, apiKey: c.apiKey ?? process.env.AI_API_KEY ?? "", baseUrl: c.baseUrl || process.env.AI_BASE_URL || pre.baseUrl, model: c.model || process.env.AI_MODEL || pre.model };
 }
+// A person can save their own provider, model and key in Portal Admin ("My settings"); those win over the shared key.
+function userAI(user) {
+  const pr = (user && user.portal && user.portal.prefs) || {};
+  const key = typeof pr["ai.apiKey"] === "string" ? pr["ai.apiKey"].trim() : "";
+  if (!key) return null;
+  const provider = PRESETS[pr["ai.provider"]] ? pr["ai.provider"] : "gemini", pre = PRESETS[provider];
+  const model = (typeof pr["ai.model"] === "string" ? pr["ai.model"].trim() : "") || pre.model;
+  if (!model) return null;
+  const baseUrl = provider === "custom" ? String(pr["ai.baseUrl"] || "").trim() : pre.baseUrl;
+  return baseUrl ? { provider, apiKey: key, baseUrl, model, own: true } : null;
+}
+const aiFor = user => userAI(user) || loadAI();
 const aiReady = c => !!(c.model && (c.apiKey || c.provider === "openai"));
 class AIError extends Error { constructor(code, msg) { super(msg || code); this.code = code; } }
+// People without their own AI key get TRIAL_LIMIT free menu reads on the shared key (admins are not limited).
+async function trialInfo(user, c) {
+  if (!pb.enabled || !user || user.isAdmin || c.own || !aiReady(c)) return { on: false, over: false, used: 0 };
+  const t = await pb.trialUsed(user.id); if (t.noPortal) return { on: false, over: false, used: 0 };
+  return { on: true, used: t.used, over: t.used >= TRIAL_LIMIT };
+}
 
-async function callAI(prompt, images = []) {
-  const c = loadAI();
-  if (!aiReady(c)) throw new AIError("not_configured", "Menu reading isn't set up yet. An admin needs to add an AI key.");
+async function callAI(prompt, images = [], user = null) {
+  const c = aiFor(user);
+  if (!aiReady(c)) throw new AIError("not_configured", "Menu reading isn't set up yet. Add your own AI key in Portal Admin (My settings), or ask an admin to add a shared one.");
   let r, text;
   if (c.provider === "anthropic") {
     const content = images.map(im => ({ type: "image", source: { type: "base64", media_type: im.type || "image/jpeg", data: im.data } }));
@@ -49,6 +70,7 @@ async function callAI(prompt, images = []) {
   } else {
     const content = [{ type: "text", text: prompt }, ...images.map(im => ({ type: "image_url", image_url: { url: `data:${im.type || "image/jpeg"};base64,${im.data}` } }))];
     const headers = { "content-type": "application/json" }; if (c.apiKey) headers.authorization = "Bearer " + c.apiKey;
+    if (c.provider === "openrouter") { headers["x-title"] = "GrubToGo"; }
     r = await fetch(c.baseUrl.replace(/\/+$/, "") + "/chat/completions", { method: "POST", headers, signal: AbortSignal.timeout(120000), body: JSON.stringify({ model: c.model, max_tokens: 8000, messages: [{ role: "user", content }] }) });
     const j = await readAI(r); text = j.choices?.[0]?.message?.content || "";
     if (Array.isArray(text)) text = text.map(p => p.text || "").join("");
@@ -60,7 +82,7 @@ async function callAI(prompt, images = []) {
 async function readAI(r) {
   const body = await r.text(); let j = {}; try { j = JSON.parse(body); } catch {}
   if (r.status === 429 || r.status === 529) throw new AIError("rate_limited", "The AI service is busy. Try again in a moment.");
-  if (r.status === 401 || r.status === 403) throw new AIError("bad_key", "The AI service rejected the API key.");
+  if (r.status === 401 || r.status === 403) throw new AIError("bad_key", "The AI service rejected the API key. Check it in Portal Admin (My settings) or ask the admin.");
   if (!r.ok) throw new AIError("ai_error", (j.error?.message || body || "HTTP " + r.status).slice(0, 300));
   return j;
 }
@@ -98,18 +120,20 @@ function gateOf(u) {
   if (!u.portal.access) return { ok: false, reason: "no_access", message: "You need approval to use GrubToGo. Open Portal Admin, request access to GrubToGo, then check again here." };
   return { ok: true };
 }
-const publicUser = u => ({ id: u.id, email: u.email || "", name: u.name || "", isAdmin: !!u.isAdmin, canOpen: gateOf(u).ok, gate: gateOf(u), prefs: (u.portal && u.portal.prefs) || {} });
+const publicUser = u => ({ id: u.id, email: u.email || "", name: u.name || "", isAdmin: !!u.isAdmin, canOpen: gateOf(u).ok, gate: gateOf(u), prefs: Object.fromEntries(Object.entries((u.portal && u.portal.prefs) || {}).filter(([k]) => k !== "ai.apiKey")) });
 
 const tokenCache = new Map();
 function tokenOf(req) {
   const h = String(req.headers["x-gd-token"] || ""); if (h) return h;
   const m = String(req.headers.cookie || "").match(/(?:^|;\s*)gd_token=([^;]+)/); return m ? m[1] : "";
 }
-function setSessionCookie(req, res, token) {
-  const secure = String(req.headers["x-forwarded-proto"] || "").includes("https") ? "; Secure" : "";
-  res.setHeader("set-cookie", `gd_token=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${14 * 86400}${secure}`);
+// "Remember me" keeps the sign-in for 14 days; otherwise the cookie lasts until the browser closes. gd_rem remembers the choice.
+function setSessionCookie(req, res, token, remember) {
+  if (remember === undefined) remember = /(?:^|;\s*)gd_rem=1/.test(String(req.headers.cookie || ""));
+  const secure = String(req.headers["x-forwarded-proto"] || "").includes("https") ? "; Secure" : "", age = remember ? `; Max-Age=${14 * 86400}` : "";
+  res.setHeader("set-cookie", [`gd_token=${token}; Path=/; HttpOnly; SameSite=Lax${age}${secure}`, remember ? `gd_rem=1; Path=/; HttpOnly; SameSite=Lax${age}${secure}` : `gd_rem=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`]);
 }
-const clearSessionCookie = res => res.setHeader("set-cookie", "gd_token=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0");
+const clearSessionCookie = res => res.setHeader("set-cookie", ["gd_token=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0", "gd_rem=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0"]);
 async function currentUser(req) {
   const t = tokenOf(req); if (!t) return null;
   const c = tokenCache.get(t); if (c && Date.now() - c.at < 15000) return c.user;
@@ -141,25 +165,38 @@ async function accountRoutes(req, res, p) {
       const email = String(body.email || "").trim().toLowerCase(), password = String(body.password || ""), name = String(body.name || "").trim().slice(0, 80);
       if (!validEmail(email)) return send(res, 400, { code: "bad_email", message: "Enter a valid email address." }), true;
       if (password.length < 8 || password.length > 200) return send(res, 400, { code: "bad_password", message: "Use a password of at least 8 characters." }), true;
-      try { await pb.createUser({ email, password, name }); }
+      let created; try { created = await pb.createUser({ email, password, name }); }
       catch (e) {
         if (e instanceof pb.PBError && e.status === 400) return send(res, 400, { code: "cannot_register", message: e.data?.email?.code === "validation_not_unique" ? "That email is already registered. Sign in instead." : (e.data?.password?.message || e.data?.email?.message || "Couldn't create the account.") }), true;
         throw e;
       }
-      const j = await pb.login(email, password); setSessionCookie(req, res, j.token);
+      // Optional: the AI provider, model and key chosen while creating the account are saved as the person's own settings.
+      const ai = body.ai && typeof body.ai === "object" ? body.ai : null;
+      if (ai && typeof ai.apiKey === "string" && ai.apiKey.trim() && created && created.id) {
+        const provider = PRESETS[ai.provider] ? ai.provider : "gemini", clip = (v, n) => String(v || "").trim().slice(0, n);
+        const baseUrl = clip(ai.baseUrl, 300);
+        if (provider !== "custom" || /^https?:\/\//i.test(baseUrl)) { try { await pb.setUserPrefs(created.id, { "ai.provider": provider, "ai.model": clip(ai.model, 120), "ai.apiKey": clip(ai.apiKey, 300), "ai.baseUrl": provider === "custom" ? baseUrl : "" }); } catch {} }
+      }
+      const j = await pb.login(email, password); setSessionCookie(req, res, j.token, false);
       send(res, 200, { token: j.token, user: publicUser(j.record) }); return true;
     }
     if (p === "/api/account/login" && req.method === "POST") {
       if (throttled(req, "login", 10, 600e3)) return send(res, 429, { code: "slow_down", message: "Too many attempts. Try again in a few minutes." }), true;
-      try { const j = await pb.login(String(body.email || "").trim().toLowerCase(), String(body.password || "")); setSessionCookie(req, res, j.token); send(res, 200, { token: j.token, user: publicUser(j.record) }); }
+      try { const j = await pb.login(String(body.email || "").trim().toLowerCase(), String(body.password || "")); setSessionCookie(req, res, j.token, !!body.remember); send(res, 200, { token: j.token, user: publicUser(j.record) }); }
       catch (e) { if (e instanceof pb.PBError && e.status === 400) return send(res, 400, { code: "bad_login", message: "That email and password don't match." }), true; throw e; }
       return true;
+    }
+    if (p === "/api/account/forgot" && req.method === "POST") {
+      if (throttled(req, "forgot", 5, 3600e3)) return send(res, 429, { code: "slow_down", message: "Too many attempts. Try again later." }), true;
+      const email = String(body.email || "").trim().toLowerCase();
+      if (validEmail(email)) { try { await pb.requestPasswordReset(email); } catch {} }
+      send(res, 200, { ok: true, message: "If that account exists, a password reset email has been sent." }); return true;
     }
     if (p === "/api/account/me" && req.method === "GET") {
       const u = await currentUser(req);
       if (!u) return send(res, 401, { code: "signin_required", message: "Sign in to continue." }), true;
       setSessionCookie(req, res, tokenOf(req));
-      send(res, 200, { user: publicUser(await pb.getUser(u.id)) }); return true;
+      send(res, 200, { user: { ...publicUser(await pb.getUser(u.id)), portalUrl: await pb.portalUrl().catch(() => "") } }); return true;
     }
     if (p === "/api/account/logout" && req.method === "POST") { clearSessionCookie(res); send(res, 200, { ok: true }); return true; }
     send(res, 404, { code: "not_found" }); return true;
@@ -243,7 +280,10 @@ const server = http.createServer(async (req, res) => {
       writeState(user, s); return send(res, 200, { ok: true, at: s.at });
     }
 
-    if (p === "/api/ai/status") { const c = loadAI(); return send(res, 200, { configured: aiReady(c), isAdmin: !pb.enabled || !!(user && user.isAdmin), provider: c.provider, model: c.model, keyHint: c.apiKey ? "…" + c.apiKey.slice(-4) : "" }); }
+    if (p === "/api/ai/status") {
+      const c = aiFor(user), trial = await trialInfo(user, c); const ready = aiReady(c) && !trial.over;
+      return send(res, 200, { configured: ready, own: !!c.own, trial: trial.on ? { limit: TRIAL_LIMIT, used: trial.used } : null, trialOver: trial.over, isAdmin: !pb.enabled || !!(user && user.isAdmin), provider: c.provider, model: c.model, keyHint: c.apiKey ? "…" + c.apiKey.slice(-4) : "" });
+    }
     if (p === "/api/ai/config" && req.method === "POST") {
       if (pb.enabled && !(user && user.isAdmin)) return send(res, 403, { code: "forbidden", message: "Admins only." });
       const b = JSON.parse((await readBody(req)).toString() || "{}"), cur = loadAI();
@@ -261,7 +301,11 @@ const server = http.createServer(async (req, res) => {
         else if (Array.isArray(b.images) && b.images.length) { images = b.images.slice(0, 6).filter(i => i && typeof i.data === "string"); prompt = PROMPT + "\n\nThe menu is in the attached image(s)."; }
         else if (typeof b.text === "string" && b.text.trim()) prompt = PROMPT + "\n\nMENU TEXT:\n" + b.text.slice(0, 40000);
         else return send(res, 400, { code: "empty", message: "Nothing to read." });
-        return send(res, 200, { menu: await callAI(prompt, images) });
+        const c = aiFor(user), trial = await trialInfo(user, c);
+        if (trial.over) return send(res, 402, { code: "trial_over", message: `You've used your ${TRIAL_LIMIT} free menu reads. Add your own AI key in Portal Admin (My settings) to keep going.` });
+        const menu = await callAI(prompt, images, user);
+        if (trial.on) { try { await pb.trialBump(user.id); } catch {} }
+        return send(res, 200, { menu });
       } catch (e) {
         if (e instanceof AIError) return send(res, e.code === "rate_limited" ? 429 : e.code === "bad_url" || e.code === "not_configured" ? 400 : 502, { code: e.code, message: e.message });
         throw e;

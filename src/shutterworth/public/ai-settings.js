@@ -3,7 +3,7 @@
   "use strict";
   const $ = id => document.getElementById(id);
   let cfg = null, wasConfigured = false;
-  const tok = () => { try { const t = localStorage.getItem("sw.token"); return t ? { "x-sw-token": t } : {}; } catch (e) { return {}; } };
+  const tok = () => { try { const t = (sessionStorage.getItem("sw.token") || localStorage.getItem("sw.token")); return t ? { "x-sw-token": t } : {}; } catch (e) { return {}; } };
 
   function note(t, bad) { const n = $("aiNote"); n.textContent = t; n.style.color = bad ? "#b42318" : ""; }
   function presetFor(p) { return (cfg && cfg.presets && cfg.presets[p]) || {}; }

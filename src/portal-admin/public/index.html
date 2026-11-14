@@ -45,6 +45,14 @@
     <label>Confirm password
       <input id="signup-pass2" type="password" autocomplete="new-password" minlength="8" required>
     </label>
+    <details class="ai-setup"><summary>Set up AI now (optional)</summary>
+      <p class="muted small">For apps that read things with AI. You can also do this later under My settings. Apps may include a few free uses before they ask for your own key.</p>
+      <label>Provider <select id="signup-ai-prov"></select></label>
+      <label>Model (blank = default) <input id="signup-ai-model" autocomplete="off"></label>
+      <label>API key <input id="signup-ai-key" type="password" autocomplete="off"></label>
+      <label id="signup-ai-base-row" style="display:none">Base URL <input id="signup-ai-base" placeholder="https://your-host/v1" autocomplete="off"></label>
+      <p class="muted small" id="signup-ai-hint"></p>
+    </details>
     <div id="signup-err" class="error"></div>
     <button class="btn primary" type="submit">Create account</button>
     <p class="small"><a href="#" id="signup-cancel">Back to sign in</a></p>

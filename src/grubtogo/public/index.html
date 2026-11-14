@@ -86,7 +86,7 @@ let me = null, ai = { configured: true, isAdmin: false }, pushT = null;
 
 async function api(path, opts) {
   opts = opts || {}; const h = { 'content-type': 'application/json' };
-  try { const t = localStorage.getItem('gd.token'); if (t) h['x-gd-token'] = t; } catch (e) {}
+  try { const t = sessionStorage.getItem('gd.token') || localStorage.getItem('gd.token'); if (t) h['x-gd-token'] = t; } catch (e) {}
   const r = await fetch(path, { method: opts.method || 'GET', headers: h, body: opts.body, cache: 'no-store' });
   const j = await r.json().catch(() => ({}));
   if (!r.ok) { const e = new Error(j.message || 'Something went wrong (' + r.status + ')'); e.status = r.status; throw e; }
@@ -164,7 +164,7 @@ function render() {
   bar.hidden = true;
   const back = t => `<button class="icon-btn" data-a="${t}">‹</button>`;
   if (view === 'home') {
-    h.innerHTML = `<h1>🍽️ GrubToGo</h1>${S.restaurants.length ? `<button class="icon-btn" data-a="save-all" title="Save all menus to file">💾</button>` : ''}${me ? `<button class="icon-btn" data-a="signout" title="Sign out ${esc(me.email)}">⎋</button>` : ''}`;
+    h.innerHTML = `<h1>🍽️ GrubToGo</h1>${S.restaurants.length ? `<button class="icon-btn" data-a="save-all" title="Save all menus to file">💾</button>` : ''}${me ? `<button class="icon-btn" data-a="dashboard" title="Back to Dashboard" aria-label="Back to Dashboard">🏠</button>` : ''}${me ? `<button class="icon-btn" data-a="signout" title="Sign out ${esc(me.email)}">⎋</button>` : ''}`;
     a.innerHTML = homeHTML();
     const n = activeRests().length;
     if (n) { bar.hidden = false; bar.innerHTML = `<div class="inner"><button class="btn" data-a="orders">View all orders · ${n} restaurant${n > 1 ? 's' : ''}</button></div>`; }
@@ -185,10 +185,11 @@ function render() {
 }
 
 function aiNote() {
-  if (ai.configured) return '';
-  if (!ai.isAdmin) return `<div class="err">Menu reading isn't set up yet. Ask the admin to add an AI key.</div>`;
+  if (ai.configured) return ai.trial ? `<div class="card" style="font-size:14px">🎁 Free trial: ${Math.max(0, ai.trial.limit - ai.trial.used)} of ${ai.trial.limit} menu reads left. After that, add your own AI key in Portal Admin (My settings).</div>` : '';
+  if (ai.trialOver) return `<div class="err">You've used your free menu reads. Add your own AI key in Portal Admin (My settings) to keep adding menus.</div>`;
+  if (!ai.isAdmin) return `<div class="err">Menu reading isn't set up yet. Add your own AI key in Portal Admin (My settings), or ask the admin.</div>`;
   return `<div class="card"><div style="font-weight:700">Set up menu reading</div><p class="mute">Add an AI key so GrubToGo can read menus from photos, PDFs and links. Only admins see this.</p>
-    <select id="ai-prov"><option value="anthropic">Anthropic (Claude)</option><option value="gemini">Google Gemini</option><option value="openai">OpenAI</option></select><div style="height:8px"></div>
+    <select id="ai-prov"><option value="anthropic">Anthropic (Claude)</option><option value="gemini">Google Gemini</option><option value="openai">OpenAI</option><option value="openrouter">OpenRouter</option></select><div style="height:8px"></div>
     <input id="ai-key" type="password" placeholder="API key" autocomplete="off"><div style="height:8px"></div>
     <input id="ai-model" type="text" placeholder="Model (optional)" autocomplete="off"><div style="height:8px"></div>
     <button class="btn" data-a="ai-save">Save key</button></div>`;
@@ -358,7 +359,13 @@ document.addEventListener('click', async e => {
   const el = e.target.closest('[data-a]'); if (!el) return;
   const a = el.dataset.a, id = el.dataset.id, v = el.dataset.v, i = +el.dataset.i;
   if (a === 'home') return go('home');
-  if (a === 'signout') { try { localStorage.removeItem('gd.token'); } catch (e) {} await fetch('api/account/logout', { method: 'POST' }).catch(() => {}); return location.reload(); }
+  if (a === 'dashboard') {
+    // Back to the JoolzApp dashboard (Portal Admin); it signs you in with the same account, so there is no second login.
+    let t = ''; try { t = sessionStorage.getItem('gd.token') || localStorage.getItem('gd.token') || ''; } catch (e) {}
+    const base = (me && me.portalUrl) || (location.protocol + '//' + location.hostname + ':3892/');
+    location.href = base + (t ? '#sso=' + encodeURIComponent(t) : ''); return;
+  }
+  if (a === 'signout') { try { localStorage.removeItem('gd.token'); sessionStorage.removeItem('gd.token'); } catch (e) {} await fetch('api/account/logout', { method: 'POST' }).catch(() => {}); return location.reload(); }
   if (a === 'ai-save') {
     const key = $('#ai-key').value.trim(); if (!key) return toast('Paste your API key first.');
     try { const j = await api('api/ai/config', { method: 'POST', body: JSON.stringify({ provider: $('#ai-prov').value, apiKey: key, model: $('#ai-model').value.trim() }) }); ai = { ...ai, ...j }; toast(ai.configured ? 'Menu reading is ready ✓' : 'Saved — this provider also needs a model name.'); render(); }
@@ -447,6 +454,7 @@ async function ingest(src) {
 
     busy = 'Reading the menu…'; render();
     const j = (await api('api/extract', { method: 'POST', body: JSON.stringify(body) })).menu;
+    try { ai = await api('api/ai/status'); } catch (e) {}
     if (!j) throw new Error('Could not read a menu from that.');
     if (j.error) throw new Error(src.url ? 'Could not open that link (' + j.error + '). Try a screenshot, PDF, or the Paste tab.' : 'No readable menu found (' + j.error + ').');
     let n = 0;

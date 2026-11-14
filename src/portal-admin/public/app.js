@@ -13,6 +13,7 @@ const state = { token: sess('token'), actor: sess('actor'), role: sess('role') |
 const SLUG = /^[a-z0-9][a-z0-9_-]{0,47}$/;
 const RESERVED = [
   ['portal.access', 'boolean', 'false blocks a user (all apps, or one app) from using the app'],
+  ['portal.url', 'string', 'Address of this dashboard, used by the "Back to Dashboard" button in apps (blank = same address with port 3892)'],
 ];
 
 /* ---------- API ---------- */
@@ -35,6 +36,17 @@ async function api(method, path, body) {
 }
 const q = encodeURIComponent;
 const fq = (s) => '"' + String(s).replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
+const AI_PROVIDERS = [ // [id, label, model hint, help, default model]
+  ['gemini', 'Google Gemini', 'gemini-3.8-flash', 'Free keys are available at aistudio.google.com/apikey.', 'gemini-3.8-flash'],
+  ['openrouter', 'OpenRouter', 'e.g. anthropic/claude-sonnet-4.5 (pick from the list)', 'One OpenRouter key works with hundreds of models. Get a key at openrouter.ai/keys.', ''],
+  ['anthropic', 'Anthropic (Claude)', 'claude-sonnet-5-5', 'Use a key from console.anthropic.com.', 'claude-sonnet-5-5'],
+  ['openai', 'OpenAI', 'e.g. gpt-4o', 'Use a key from platform.openai.com.', ''],
+  ['custom', 'Custom (OpenAI-compatible)', 'Model name', 'Any service that speaks the OpenAI chat API, such as a local Ollama or LM Studio.', ''],
+];
+async function saveAiPrefs(uid, { provider, model, apiKey, baseUrl }) {
+  const put = (k, v) => v ? api('POST', '/api/collections/portal_settings/records', { scope: 'user', user: uid, app: '', key: 'pref.' + k, value: v, secret: false }) : null;
+  await put('ai.provider', provider); await put('ai.model', model); await put('ai.apiKey', apiKey); await put('ai.baseUrl', baseUrl);
+}
 async function listAll(coll, { filter = '', sort = '', max = 2000 } = {}) {
   let page = 1, out = [];
   for (;;) {
@@ -132,12 +144,28 @@ async function boot() {
   $('#login-remember').checked = store.lget('pa.remember') === '1';
   $('#login-email').value = store.lget('pa.email');
   if (resetToken()) return showReset();
+  // Arriving from an app's "Back to Dashboard" button: sign in with the account the app already knows (only if not signed in here).
+  const hs = location.hash.match(/^#sso=([^&]+)/);
+  if (hs) {
+    history.replaceState(null, '', location.pathname + location.search);
+    if (!state.token) {
+      try {
+        state.token = decodeURIComponent(hs[1]);
+        const r = await api('POST', `/api/collections/${state.usersColl}/auth-refresh`);
+        Object.assign(state, { token: r.token, actor: r.record.email, role: 'user', uid: r.record.id }); saveSession(false);
+        location.hash = '#/me'; return showShell();
+      } catch { state.token = ''; }
+    }
+  }
   if (state.token) { try { await api('GET', '/api/collections/portal_apps/records?perPage=1').catch((e) => { if (e.status !== 404) throw e; }); return showShell(); } catch {} }
   showLogin();
 }
 function showLogin() { $('#shell').classList.add('hidden'); $('#reset').classList.add('hidden'); $('#signup').classList.add('hidden'); $('#login').classList.remove('hidden'); }
 function resetToken() { const m = location.hash.match(/^#\/(?:reset|auth\/confirm-password-reset)\/([^/?]+)/); return m ? decodeURIComponent(m[1]) : ''; }
 $('#login-signup').onclick = (e) => { e.preventDefault(); $('#login').classList.add('hidden'); $('#signup').classList.remove('hidden'); $('#signup-err').textContent = ''; $('#signup-email').value = $('#login-email').value; $('#signup-email').focus(); };
+$('#signup-ai-prov').innerHTML = AI_PROVIDERS.map(([v, l]) => `<option value="${v}">${l}</option>`).join('');
+$('#signup-ai-prov').onchange = () => { const p = AI_PROVIDERS.find(([v]) => v === $('#signup-ai-prov').value); $('#signup-ai-model').placeholder = p[2]; $('#signup-ai-hint').textContent = p[3]; $('#signup-ai-base-row').style.display = p[0] === 'custom' ? '' : 'none'; };
+$('#signup-ai-prov').onchange();
 $('#signup-cancel').onclick = (e) => { e.preventDefault(); showLogin(); };
 $('#signup-form').onsubmit = async (e) => {
   e.preventDefault(); $('#signup-err').textContent = '';
@@ -151,6 +179,13 @@ $('#signup-form').onsubmit = async (e) => {
     Object.assign(state, await signIn(email, password));
     saveSession(false);
     ['#signup-pass', '#signup-pass2'].forEach((id) => { $(id).value = ''; });
+    const aiKey = $('#signup-ai-key').value.trim();
+    if (aiKey) {
+      const provider = $('#signup-ai-prov').value, baseUrl = $('#signup-ai-base').value.trim();
+      try { await saveAiPrefs(state.uid, { provider, model: $('#signup-ai-model').value.trim(), apiKey: aiKey, baseUrl: provider === 'custom' ? baseUrl : '' }); }
+      catch { toast("Your account is ready, but the AI key couldn't be saved. Add it under My settings.", true); }
+    }
+    ['#signup-ai-key'].forEach((id) => { $(id).value = ''; });
     $('#signup').classList.add('hidden'); showShell();
   } catch (err) { $('#signup-err').textContent = err.message; }
 };
@@ -375,6 +410,7 @@ async function detectApps() {
       } else if (!have.has(slugOf(a.id)) && !hiddenApps().includes(a.id)) pending.push(a);
     }
     if (added.length) toast('Added from your Umbrel: ' + added.map((a) => a.pbName || a.name).join(', '));
+    await markSsoApps(d.apps);
     const schemaApplied = await syncSchemas(d.apps);
     return { available: true, added, pending, schemaApplied, apps: d.apps };
   } catch { return null; }
@@ -449,10 +485,11 @@ async function appList() {
   const apps = await listAll('portal_apps', { sort: 'name' });
   main().innerHTML = `<div class="row spread"><div><h1>Apps</h1><p class="sub">Apps installed on your Umbrel appear here automatically, or register one by hand.</p></div><button id="new" class="btn primary">+ Register app</button></div>
     <div class="card"><table><thead><tr><th>App</th><th>Status</th><th>URL</th></tr></thead><tbody>${apps.map((a) => `
-      <tr class="click" data-slug="${esc(a.slug)}"><td><b>${esc(a.name)}</b><div class="muted small">${esc(a.slug)}</div></td>
+      <tr class="click" data-slug="${esc(a.slug)}"><td><b>${esc(a.name)}</b>${/^https?:\/\//i.test(a.url || '') ? ` <a class="btn small" href="${esc(a.url)}" data-open="${esc(a.slug)}" target="_blank" rel="noopener">Open</a>` : ''}<div class="muted small">${esc(a.slug)}</div></td>
       <td>${a.enabled ? '<span class="chip ok">enabled</span>' : '<span class="chip bad">disabled</span>'} ${a.maintenance ? '<span class="chip warn">maintenance</span>' : ''}</td>
       <td class="muted small">${esc(a.url)}</td></tr>`).join('') || '<tr><td colspan="3" class="muted">No apps yet.</td></tr>'}</tbody></table></div>`;
   $('#new').onclick = () => { location.hash = '#/apps/__new'; };
+  { const ss = new Set((await listAll('portal_settings', { filter: 'scope = "app" && key = "app.sso"' }).catch(() => [])).filter((r) => r.value === true).map((r) => r.app)); bindOpen(main(), ss); }
   if (found && found.available && found.pending.length) {
     main().insertAdjacentHTML('beforeend', `<div class="card"><h2>Detected on your Umbrel</h2><p class="muted small">Installed apps that don't use the JoolzApp account. Add the ones you want to control here.</p>
       <table><tbody>${found.pending.map((a) => `<tr><td><b>${esc(a.name)}</b><div class="muted small">${esc(a.id)}${a.version ? ' · v' + esc(a.version) : ''}</div></td>
@@ -494,6 +531,7 @@ async function appList() {
       await api('POST', '/api/collections/portal_apps/records', body); await audit('app.create', body.slug, { ...body, umbrelId: a.id });
       toast('Added ' + a.name); return route();
     }
+    if (e.target.closest('a[data-open]')) return;
     const tr = e.target.closest('tr[data-slug]'); if (tr) location.hash = '#/apps/' + encodeURIComponent(tr.dataset.slug);
   });
 }
@@ -680,6 +718,35 @@ async function setAccess(user, app, value) {
   else await api('POST', '/api/collections/portal_settings/records', { scope: 'user', user, app, key: 'portal.access', value });
 }
 
+/* ---------- One sign-in for every JoolzApp app ---------- */
+// Apps of your own store that use the shared account have a /sso.html page. From the dashboard, "Open" passes the person's
+// sign-in to it (in the address fragment, which is never sent to a server) so they skip the app's own login page.
+// An "app.sso" setting marks which apps support this, so a sign-in is never handed to an app that doesn't.
+async function markSsoApps(apps) {
+  const want = apps.filter((a) => /^joolay-/.test(a.id) && a.slug).map((a) => a.slug);
+  if (!want.length) return;
+  const have = new Set((await listAll('portal_settings', { filter: 'scope = "app" && key = "app.sso"' })).map((r) => r.app));
+  for (const slug of want) if (!have.has(slug)) { try { await api('POST', '/api/collections/portal_settings/records', { scope: 'app', app: slug, user: '', key: 'app.sso', value: true, secret: false }); } catch (e) { if (e.status !== 400) throw e; } }
+}
+async function ssoToken() {
+  if (state.role === 'user') return (await api('POST', `/api/collections/${state.usersColl}/auth-refresh`)).token;
+  // Admins sign in here as a PocketBase superuser; apps use the matching JoolzApp user (same email), if there is one.
+  const u = (await api('GET', `/api/collections/${state.usersColl}/records?perPage=1&filter=${q('email = ' + fq(state.actor))}`)).items[0];
+  return u ? (await api('POST', `/api/collections/${state.usersColl}/impersonate/${u.id}`, { duration: 7 * 86400 })).token : '';
+}
+let ssoSlugs = new Set();
+const bindOpen = (root, slugs) => { ssoSlugs = slugs; };
+document.addEventListener('click', (e) => {
+  const a = e.target.closest('a[data-open]'); if (!a || e.ctrlKey || e.metaKey || e.shiftKey || !ssoSlugs.has(a.dataset.open)) return;   // not a JoolzApp app: plain link
+  e.preventDefault();
+  const w = window.open('about:blank', '_blank');       // opened now so the browser doesn't block it
+  (async () => {
+    let url = a.href;
+    try { const t = await ssoToken(); if (t) url = new URL('sso.html', a.href).href + '#t=' + encodeURIComponent(t); } catch {}
+    if (w) w.location.href = url; else location.href = url;
+  })();
+});
+
 /* ---------- Cleanup review ---------- */
 // Portal Admin never deletes anything on its own. This page only LISTS leftovers that look safe to remove (rows that belong to
 // deleted users or uninstalled apps); you tick what you want gone and confirm. Anything it can't judge with confidence is left out.
@@ -809,6 +876,7 @@ async function viewMe() {
     listAll('portal_requests', { filter: `user = ${fq(uid)}`, sort: '-created' }).catch(() => null),
     listAll('portal_settings', { filter: 'key = "portal.access"' }),
   ]);
+  const ssoSlugs = new Set((await listAll('portal_settings', { filter: 'scope = "app" && key = "app.sso"' }).catch(() => [])).filter((r) => r.value === true).map((r) => r.app));
   const cur = Object.fromEntries(rows.map((r) => [r.key.slice(5), r]));
   let zones; try { zones = Intl.supportedValuesOf('timeZone'); } catch { zones = ['Africa/Johannesburg', 'UTC']; }
   const detected = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return ''; } })();
@@ -830,11 +898,18 @@ async function viewMe() {
     ${banner ? `<div class="card"><span class="chip warn">${esc(banner)}</span></div>` : ''}
     <form id="prefs" class="card"><h2>Preferences</h2><div class="kv">${PREFS.map(field).join('')}</div>
       ${detected ? `<p class="muted small">Your device time zone: ${esc(detected)}</p>` : ''}<button class="btn primary">Save preferences</button></form>
+    <form id="ai" class="card"><h2>AI (for apps that use it)</h2><p class="muted small">Pick your own AI provider, model and API key. Apps that read menus, photos or text with AI will use these instead of the shared key. Only you and the admin can see them.</p>
+      <div class="kv"><label>Provider<select name="provider">${AI_PROVIDERS.map(([v, l]) => opt(v, l, (cur['ai.provider'] ? cur['ai.provider'].value : 'gemini') === v)).join('')}</select></label>
+      <label>Model<input name="model" list="ai-models" value="${esc(cur['ai.model'] ? cur['ai.model'].value : '')}" placeholder="" autocomplete="off"><datalist id="ai-models"></datalist></label>
+      <label>API key<input name="apiKey" type="password" autocomplete="off" placeholder="${cur['ai.apiKey'] && cur['ai.apiKey'].value ? 'Saved (ends …' + esc(String(cur['ai.apiKey'].value).slice(-4)) + '). Leave blank to keep it.' : 'Paste your API key'}"></label>
+      <label id="ai-base-row">Base URL<input name="baseUrl" value="${esc(cur['ai.baseUrl'] ? cur['ai.baseUrl'].value : '')}" placeholder="https://your-host/v1" autocomplete="off"></label></div>
+      <p class="muted small" id="ai-hint"></p>
+      <div class="row" style="gap:8px"><button class="btn primary">Save AI settings</button>${cur['ai.apiKey'] ? ' <button type="button" class="btn danger" id="ai-clear">Remove my key</button>' : ''}</div></form>
     <div class="card"><h2>Joolzapp services</h2>${reqs === null ? '<p class="muted">Access requests are not set up yet. Ask the admin.</p>' : `<table><tbody>${apps.map((a) => {
       const pend = reqs.find((r) => r.app === a.slug && r.status === 'pending'), denied = reqs.find((r) => r.app === a.slug && r.status === 'denied');
       let right;
       if (!a.enabled) right = '<span class="chip bad">unavailable</span>';
-      else if (allowed(a.slug)) right = `<span class="chip ok">access granted</span>${/^https?:\/\//i.test(a.url || '') ? ` <a class="btn primary small" href="${esc(a.url)}" target="_blank" rel="noopener">Open</a>` : ''}`;
+      else if (allowed(a.slug)) right = `<span class="chip ok">access granted</span>${/^https?:\/\//i.test(a.url || '') ? ` <a class="btn primary small" href="${esc(a.url)}" data-open="${esc(a.slug)}" target="_blank" rel="noopener">Open</a>` : ''}`;
       else if (pend) right = '<span class="chip warn">request pending</span>';
       else right = `<div class="req-row"><input data-msg="${esc(a.slug)}" placeholder="Why do you need it? (optional)" maxlength="300"><button class="btn small" data-req="${esc(a.slug)}">Request access</button></div>${denied ? '<div class="muted small">Your last request was denied.</div>' : ''}`;
       return `<tr><td><b>${esc(a.name)}</b>${a.description ? `<div class="muted small">${esc(a.description)}</div>` : ''}</td><td>${right}</td></tr>`;
@@ -846,6 +921,43 @@ async function viewMe() {
       <label>Reason (optional)<input name="reason" maxlength="300"></label>
       <button class="btn danger">Request account deletion</button></form>`}${delDenied && !delPend ? '<p class="muted small">Your last deletion request was declined.</p>' : ''}</div>`;
 
+  // AI settings are stored as the person's own "pref.ai.*" rows, so every app can read them through the shared account.
+  const setPref = async (key, val) => {
+    const ex = cur[key];
+    if ((val === '' || val == null) && ex) { await api('DELETE', `/api/collections/portal_settings/records/${ex.id}`); delete cur[key]; }
+    else if (val !== '' && ex) { if (ex.value !== val) { await api('PATCH', `/api/collections/portal_settings/records/${ex.id}`, { value: val }); ex.value = val; } }
+    else if (val !== '') cur[key] = await api('POST', '/api/collections/portal_settings/records', { scope: 'user', user: uid, app: '', key: 'pref.' + key, value: val, secret: false });
+  };
+  const aiForm = $('#ai'), aiShow = () => {
+    const p = AI_PROVIDERS.find(([v]) => v === aiForm.provider.value) || AI_PROVIDERS[0];
+    $('#ai-base-row').style.display = aiForm.provider.value === 'custom' ? '' : 'none';
+    aiForm.model.placeholder = p[2]; $('#ai-hint').textContent = p[3];
+    if (aiForm.provider.value === 'openrouter') loadOpenRouterModels();
+  };
+  let orModels = null;
+  const loadOpenRouterModels = async () => {
+    if (!orModels) { try { const r = await fetch('https://openrouter.ai/api/v1/models'); orModels = ((await r.json()).data || []).map((m) => m.id).filter(Boolean).sort(); } catch { orModels = []; } }
+    $('#ai-models').innerHTML = orModels.map((m) => `<option value="${esc(m)}">`).join('');
+  };
+  aiForm.provider.onchange = aiShow; aiShow();
+  aiForm.onsubmit = guard(async (e) => {
+    e.preventDefault();
+    const f = e.target.elements, key = f.apiKey.value.trim(), base = f.baseUrl.value.trim();
+    if (f.provider.value === 'custom' && !/^https?:\/\//i.test(base)) return toast('Enter the base URL for your custom provider', true);
+    const model = f.model.value.trim() || (AI_PROVIDERS.find(([v]) => v === f.provider.value) || [])[4] || '';
+    if (!model) return toast('Enter the model you want to use', true);
+    if (!key && !cur['ai.apiKey']) return toast('Paste your API key', true);
+    await setPref('ai.provider', f.provider.value); await setPref('ai.model', model);
+    if (key) await setPref('ai.apiKey', key);
+    await setPref('ai.baseUrl', f.provider.value === 'custom' ? base : '');
+    toast('AI settings saved'); route();
+  });
+  if ($('#ai-clear')) $('#ai-clear').onclick = guard(async () => {
+    if (!confirm('Remove your AI key and model? Apps will go back to the shared key, if there is one.')) return;
+    for (const k of ['ai.apiKey', 'ai.model', 'ai.provider', 'ai.baseUrl']) await setPref(k, '');
+    toast('AI settings removed'); route();
+  });
+  bindOpen(main(), ssoSlugs);
   $('#prefs').onsubmit = guard(async (e) => {
     e.preventDefault();
     for (const [key] of PREFS) {

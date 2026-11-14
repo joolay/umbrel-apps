@@ -120,7 +120,7 @@
   };
 
   // when accounts are on, accounts.js keeps the sign-in token here
-  const swTokenHeader = () => { try { const t = localStorage.getItem("sw.token"); return t ? { "x-sw-token": t } : {}; } catch (e) { return {}; } };
+  const swTokenHeader = () => { try { const t = (sessionStorage.getItem("sw.token") || localStorage.getItem("sw.token")); return t ? { "x-sw-token": t } : {}; } catch (e) { return {}; } };
   const toB64 = blob => new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result).split(",")[1]); fr.onerror = rej; fr.readAsDataURL(blob); });
   const sample = {
     async limits() {

@@ -237,6 +237,8 @@ async function portalForget(userId) {
 }
 
 /* ---------- users ---------- */
+// Sends PocketBase's own reset email (the same one Portal Admin's "Forgot password?" sends).
+async function requestPasswordReset(email) { await raw("POST", colPath + "/request-password-reset", { body: { email } }); }
 async function login(email, password) {
   await ensureSchema();
   const j = await raw("POST", colPath + "/auth-with-password", { body: { identity: email, password } });
@@ -327,4 +329,22 @@ async function findByEmail(email) {
   return (j.items || [])[0] || null;
 }
 
-module.exports = { portalAvailable, setPortalAccess, signupsOpen, enabled, PBError, login, verifyToken, createUser, listUsers, getUser, updateUser, updateAccess, deleteUser, countAdmins, findByEmail, firstAdmin, asSuper, superFetch, ensureSchema, collection: COLL, app: APP };
+
+// Saves "pref.<name>" rows for one person (used for the AI choice made while creating an account).
+async function setUserPrefs(userId, prefs) {
+  for (const [k, v] of Object.entries(prefs)) {
+    if (v === "" || v == null) continue;
+    try { await asSuper("POST", "/api/collections/portal_settings/records", { scope: "user", user: userId, app: "", key: "pref." + k, value: v, secret: false }); } catch (e) { if (e.status !== 400 && e.status !== 404) throw e; }
+  }
+  portalCache.delete("u:" + userId);
+}
+
+// Address of the JoolzApp dashboard (Portal Admin), from the global "portal.url" setting. Empty means "work it out from the browser".
+async function portalUrl() {
+  return (await cached("purl", 30000, async () => {
+    const f = "scope = 'global' && key = 'portal.url'";
+    const j = await asSuper("GET", `/api/collections/portal_settings/records?page=1&perPage=1&filter=${q(f)}`);
+    const v = (j.items || [])[0] && j.items[0].value; return typeof v === "string" && /^https?:\/\//i.test(v) ? v : "";
+  })) || "";
+}
+module.exports = { portalUrl, requestPasswordReset, setUserPrefs, portalAvailable, setPortalAccess, signupsOpen, enabled, PBError, login, verifyToken, createUser, listUsers, getUser, updateUser, updateAccess, deleteUser, countAdmins, findByEmail, firstAdmin, asSuper, superFetch, ensureSchema, collection: COLL, app: APP };
