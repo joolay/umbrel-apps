@@ -26,10 +26,10 @@ const URL_BASE = (process.env.POCKETBASE_URL || "http://host.docker.internal:540
 const SU_EMAIL = process.env.POCKETBASE_SUPERUSER_EMAIL || "";
 const SU_PASS = process.env.POCKETBASE_SUPERUSER_PASSWORD || "";
 const COLL = process.env.POCKETBASE_USERS_COLLECTION || "users";
-const APP = (process.env.POCKETBASE_APP_ID || "grubdial").trim().toLowerCase();
+const APP = (process.env.POCKETBASE_APP_ID || "grubtogo").trim().toLowerCase();
 const ACCESS = process.env.POCKETBASE_ACCESS_COLLECTION || "app_access";
 
-const APP_NAME = (process.env.POCKETBASE_APP_NAME || (APP === "grubdial" ? "GrubToGo" : APP)).trim();
+const APP_NAME = (process.env.POCKETBASE_APP_NAME || (APP === "grubtogo" ? "GrubToGo" : APP)).trim();
 
 const enabled = !!(URL_BASE && SU_EMAIL && SU_PASS);
 

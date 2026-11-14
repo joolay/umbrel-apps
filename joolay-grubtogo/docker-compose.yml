@@ -1,17 +1,17 @@
-# GrubToGo runs here as a real Umbrel app. Source: src/grubdial in this repo, built by .github/workflows/build-images.yml.
+# GrubToGo runs here as a real Umbrel app. Source: src/grubtogo in this repo, built by .github/workflows/build-images.yml.
 # Keep the image tag equal to `version` in umbrel-app.yml.
 # Data (saved menus per person, AI key) lives in this app's data folder and survives updates.
 # PocketBase is found at http://host.docker.internal:5400. Put the superuser login in <app data>/data/pocketbase.env (POCKETBASE_SUPERUSER_EMAIL and POCKETBASE_SUPERUSER_PASSWORD), never in this public repo.
 services:
   app_proxy:
     environment:
-      APP_HOST: joolay-grubdial_web_1
+      APP_HOST: joolay-grubtogo_web_1
       APP_PORT: 3893
       # No Umbrel login for this app: GrubToGo locks itself behind the JoolzApp account.
       PROXY_AUTH_ADD: "false"
 
   web:
-    image: ghcr.io/joolay/grubdial:1.1.1
+    image: ghcr.io/joolay/grubtogo:1.0.0
     restart: on-failure
     stop_grace_period: 1m
     # Lets the container reach the PocketBase app (port 5400) published on this Umbrel.
@@ -20,7 +20,7 @@ services:
     volumes:
       - ${APP_DATA_DIR}/data:/data
     environment:
-      - POCKETBASE_APP_ID=grubdial
+      - POCKETBASE_APP_ID=grubtogo
       - POCKETBASE_APP_NAME=GrubToGo
       # Refuse to show anything until PocketBase accounts are working (Umbrel's login is off, so this is the lock).
       - REQUIRE_ACCOUNTS=1
@@ -29,7 +29,7 @@ services:
 x-pocketbase: {
   "collections": [
     {
-      "name": "grubdial_menus",
+      "name": "grubtogo_menus",
       "fields": [
         {"name": "owner", "type": "text", "required": true},
         {"name": "ownerName", "type": "text"},

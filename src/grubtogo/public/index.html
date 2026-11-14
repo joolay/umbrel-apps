@@ -104,7 +104,7 @@ async function loadMenus() { S.restaurants = (await api('api/menus')).menus || [
   // Menus now live in the shared archive on the server. Anything saved the old way (on this device, or in your account) is copied up once.
   let legacy = [], carts = Object.assign({}, S.carts || {});
   try { const { state } = await api('api/state'); if (state) { Object.assign(carts, state.carts || {}); if (Array.isArray(state.restaurants)) legacy = state.restaurants; } } catch (e) {}
-  let done = false; try { done = !!localStorage.getItem('grubdial.migrated'); } catch (e) {}
+  let done = false; try { done = !!localStorage.getItem('grubtogo.migrated'); } catch (e) {}
   if (!done && !legacy.length) legacy = (S.restaurants || []).slice();
   S = { restaurants: [], carts };
   let failed = 0;
@@ -112,7 +112,7 @@ async function loadMenus() { S.restaurants = (await api('api/menus')).menus || [
     try { const m = (await api('api/menus', { method: 'POST', body: JSON.stringify(r) })).menu; if (S.carts[r.id]) { S.carts[m.id] = S.carts[r.id]; delete S.carts[r.id]; } }
     catch (e) { failed++; }
   }
-  if (!failed) { try { localStorage.setItem('grubdial.migrated', '1'); } catch (e) {} }
+  if (!failed) { try { localStorage.setItem('grubtogo.migrated', '1'); } catch (e) {} }
   if (legacy.length) push();
   try { await loadMenus(); } catch (e) { error = e.message; }
   render();
@@ -328,7 +328,7 @@ function orderText(r) {
 /* ---------- files: save / import ---------- */
 const slug = s => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'menu';
 function saveFile(list, filename) {
-  const blob = new Blob([JSON.stringify({ app: 'grubdial', version: 1, restaurants: list }, null, 2)], { type: 'application/json' });
+  const blob = new Blob([JSON.stringify({ app: 'grubtogo', version: 1, restaurants: list }, null, 2)], { type: 'application/json' });
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = filename;
   document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
   toast('Menu file saved ✓');
@@ -385,8 +385,8 @@ document.addEventListener('click', async e => {
   if (a === 'clear') { S.carts[curId] = {}; save(); return go('menu'); }
   if (a === 'copy-phone') return copy(S.restaurants.find(r => r.id === id).phone, el);
   if (a === 'copy-order') return copy(orderText(S.restaurants.find(r => r.id === id)), el);
-  if (a === 'save-one') { const r = rest(); return saveFile([r], slug(r.name) + '.grubdial.json'); }
-  if (a === 'save-all') return saveFile(S.restaurants, 'grubdial-menus.json');
+  if (a === 'save-one') { const r = rest(); return saveFile([r], slug(r.name) + '.grubtogo.json'); }
+  if (a === 'save-all') return saveFile(S.restaurants, 'grubtogo-menus.json');
   if (a === 'go-url') { const u = $('#f-url').value.trim(); if (u) ingest({ url: u }); return; }
   if (a === 'go-text') { const t = $('#f-text').value.trim(); if (t.length >= 20) ingest({ text: t }); return; }
   // bill controls
