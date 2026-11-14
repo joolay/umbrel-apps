@@ -38,3 +38,9 @@ Register each app's public address in **Apps > URL**; approved users then get an
 ## Setting a user's password
 Users > a user > **Set password** changes the password immediately (no email needed) and signs the user out everywhere.
 **Generate** fills a random password you can copy and pass on.
+
+## Dashboard and My settings
+People who sign in (not admins) land on the **Dashboard**: every app registered under Apps as a tile. **Open** goes to the app's
+address (signed in already where the app supports it); apps they aren't approved for show a request form. Admins have a
+**Dashboard** link in the sidebar to preview exactly what users see. On the public address the page is branded JoolzApp.
+**My settings** has three tabs: Preferences, AI and Account (account deletion request).
