@@ -185,7 +185,8 @@ function render() {
 }
 
 function aiNote() {
-  if (ai.configured) return '';
+  if (ai.configured) return ai.trial ? `<div class="card" style="font-size:14px">🎁 Free trial: ${Math.max(0, ai.trial.limit - ai.trial.used)} of ${ai.trial.limit} menu reads left. After that, add your own AI key in Portal Admin (My settings).</div>` : '';
+  if (ai.trialOver) return `<div class="err">You've used your free menu reads. Add your own AI key in Portal Admin (My settings) to keep adding menus.</div>`;
   if (!ai.isAdmin) return `<div class="err">Menu reading isn't set up yet. Add your own AI key in Portal Admin (My settings), or ask the admin.</div>`;
   return `<div class="card"><div style="font-weight:700">Set up menu reading</div><p class="mute">Add an AI key so GrubToGo can read menus from photos, PDFs and links. Only admins see this.</p>
     <select id="ai-prov"><option value="anthropic">Anthropic (Claude)</option><option value="gemini">Google Gemini</option><option value="openai">OpenAI</option><option value="openrouter">OpenRouter</option></select><div style="height:8px"></div>
@@ -447,6 +448,7 @@ async function ingest(src) {
 
     busy = 'Reading the menu…'; render();
     const j = (await api('api/extract', { method: 'POST', body: JSON.stringify(body) })).menu;
+    try { ai = await api('api/ai/status'); } catch (e) {}
     if (!j) throw new Error('Could not read a menu from that.');
     if (j.error) throw new Error(src.url ? 'Could not open that link (' + j.error + '). Try a screenshot, PDF, or the Paste tab.' : 'No readable menu found (' + j.error + ').');
     let n = 0;

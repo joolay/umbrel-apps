@@ -35,6 +35,17 @@ async function api(method, path, body) {
 }
 const q = encodeURIComponent;
 const fq = (s) => '"' + String(s).replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
+const AI_PROVIDERS = [ // [id, label, model hint, help, default model]
+  ['gemini', 'Google Gemini', 'gemini-3.8-flash', 'Free keys are available at aistudio.google.com/apikey.', 'gemini-3.8-flash'],
+  ['openrouter', 'OpenRouter', 'e.g. anthropic/claude-sonnet-4.5 (pick from the list)', 'One OpenRouter key works with hundreds of models. Get a key at openrouter.ai/keys.', ''],
+  ['anthropic', 'Anthropic (Claude)', 'claude-sonnet-5-5', 'Use a key from console.anthropic.com.', 'claude-sonnet-5-5'],
+  ['openai', 'OpenAI', 'e.g. gpt-4o', 'Use a key from platform.openai.com.', ''],
+  ['custom', 'Custom (OpenAI-compatible)', 'Model name', 'Any service that speaks the OpenAI chat API, such as a local Ollama or LM Studio.', ''],
+];
+async function saveAiPrefs(uid, { provider, model, apiKey, baseUrl }) {
+  const put = (k, v) => v ? api('POST', '/api/collections/portal_settings/records', { scope: 'user', user: uid, app: '', key: 'pref.' + k, value: v, secret: false }) : null;
+  await put('ai.provider', provider); await put('ai.model', model); await put('ai.apiKey', apiKey); await put('ai.baseUrl', baseUrl);
+}
 async function listAll(coll, { filter = '', sort = '', max = 2000 } = {}) {
   let page = 1, out = [];
   for (;;) {
@@ -138,6 +149,9 @@ async function boot() {
 function showLogin() { $('#shell').classList.add('hidden'); $('#reset').classList.add('hidden'); $('#signup').classList.add('hidden'); $('#login').classList.remove('hidden'); }
 function resetToken() { const m = location.hash.match(/^#\/(?:reset|auth\/confirm-password-reset)\/([^/?]+)/); return m ? decodeURIComponent(m[1]) : ''; }
 $('#login-signup').onclick = (e) => { e.preventDefault(); $('#login').classList.add('hidden'); $('#signup').classList.remove('hidden'); $('#signup-err').textContent = ''; $('#signup-email').value = $('#login-email').value; $('#signup-email').focus(); };
+$('#signup-ai-prov').innerHTML = AI_PROVIDERS.map(([v, l]) => `<option value="${v}">${l}</option>`).join('');
+$('#signup-ai-prov').onchange = () => { const p = AI_PROVIDERS.find(([v]) => v === $('#signup-ai-prov').value); $('#signup-ai-model').placeholder = p[2]; $('#signup-ai-hint').textContent = p[3]; $('#signup-ai-base-row').style.display = p[0] === 'custom' ? '' : 'none'; };
+$('#signup-ai-prov').onchange();
 $('#signup-cancel').onclick = (e) => { e.preventDefault(); showLogin(); };
 $('#signup-form').onsubmit = async (e) => {
   e.preventDefault(); $('#signup-err').textContent = '';
@@ -151,6 +165,13 @@ $('#signup-form').onsubmit = async (e) => {
     Object.assign(state, await signIn(email, password));
     saveSession(false);
     ['#signup-pass', '#signup-pass2'].forEach((id) => { $(id).value = ''; });
+    const aiKey = $('#signup-ai-key').value.trim();
+    if (aiKey) {
+      const provider = $('#signup-ai-prov').value, baseUrl = $('#signup-ai-base').value.trim();
+      try { await saveAiPrefs(state.uid, { provider, model: $('#signup-ai-model').value.trim(), apiKey: aiKey, baseUrl: provider === 'custom' ? baseUrl : '' }); }
+      catch { toast("Your account is ready, but the AI key couldn't be saved. Add it under My settings.", true); }
+    }
+    ['#signup-ai-key'].forEach((id) => { $(id).value = ''; });
     $('#signup').classList.add('hidden'); showShell();
   } catch (err) { $('#signup-err').textContent = err.message; }
 };
@@ -801,13 +822,6 @@ const PREFS = [
   ['units', 'Units', [['metric', 'Metric (km, kg, °C)'], ['imperial', 'Imperial (mi, lb, °F)']]],
   ['theme', 'Theme', [['auto', 'Match my device'], ['light', 'Light'], ['dark', 'Dark']]],
 ];
-const AI_PROVIDERS = [
-  ['openrouter', 'OpenRouter', 'e.g. anthropic/claude-sonnet-4.5 (pick from the list)', 'One OpenRouter key works with hundreds of models. Get a key at openrouter.ai/keys.'],
-  ['anthropic', 'Anthropic (Claude)', 'Claude model name', 'Use a key from console.anthropic.com.'],
-  ['openai', 'OpenAI', 'e.g. gpt-4o', 'Use a key from platform.openai.com.'],
-  ['gemini', 'Google Gemini', 'Gemini model name', 'Use a key from aistudio.google.com.'],
-  ['custom', 'Custom (OpenAI-compatible)', 'Model name', 'Any service that speaks the OpenAI chat API, such as a local Ollama or LM Studio.'],
-];
 async function viewMe() {
   const uid = state.uid;
   const [rows, apps, reqs, acc] = await Promise.all([
@@ -838,7 +852,7 @@ async function viewMe() {
     <form id="prefs" class="card"><h2>Preferences</h2><div class="kv">${PREFS.map(field).join('')}</div>
       ${detected ? `<p class="muted small">Your device time zone: ${esc(detected)}</p>` : ''}<button class="btn primary">Save preferences</button></form>
     <form id="ai" class="card"><h2>AI (for apps that use it)</h2><p class="muted small">Pick your own AI provider, model and API key. Apps that read menus, photos or text with AI will use these instead of the shared key. Only you and the admin can see them.</p>
-      <div class="kv"><label>Provider<select name="provider">${AI_PROVIDERS.map(([v, l]) => opt(v, l, (cur['ai.provider'] ? cur['ai.provider'].value : 'openrouter') === v)).join('')}</select></label>
+      <div class="kv"><label>Provider<select name="provider">${AI_PROVIDERS.map(([v, l]) => opt(v, l, (cur['ai.provider'] ? cur['ai.provider'].value : 'gemini') === v)).join('')}</select></label>
       <label>Model<input name="model" list="ai-models" value="${esc(cur['ai.model'] ? cur['ai.model'].value : '')}" placeholder="" autocomplete="off"><datalist id="ai-models"></datalist></label>
       <label>API key<input name="apiKey" type="password" autocomplete="off" placeholder="${cur['ai.apiKey'] && cur['ai.apiKey'].value ? 'Saved (ends …' + esc(String(cur['ai.apiKey'].value).slice(-4)) + '). Leave blank to keep it.' : 'Paste your API key'}"></label>
       <label id="ai-base-row">Base URL<input name="baseUrl" value="${esc(cur['ai.baseUrl'] ? cur['ai.baseUrl'].value : '')}" placeholder="https://your-host/v1" autocomplete="off"></label></div>
@@ -881,8 +895,9 @@ async function viewMe() {
   aiForm.provider.onchange = aiShow; aiShow();
   aiForm.onsubmit = guard(async (e) => {
     e.preventDefault();
-    const f = e.target.elements, model = f.model.value.trim(), key = f.apiKey.value.trim(), base = f.baseUrl.value.trim();
+    const f = e.target.elements, key = f.apiKey.value.trim(), base = f.baseUrl.value.trim();
     if (f.provider.value === 'custom' && !/^https?:\/\//i.test(base)) return toast('Enter the base URL for your custom provider', true);
+    const model = f.model.value.trim() || (AI_PROVIDERS.find(([v]) => v === f.provider.value) || [])[4] || '';
     if (!model) return toast('Enter the model you want to use', true);
     if (!key && !cur['ai.apiKey']) return toast('Paste your API key', true);
     await setPref('ai.provider', f.provider.value); await setPref('ai.model', model);

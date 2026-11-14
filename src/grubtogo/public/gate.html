@@ -27,6 +27,7 @@ input:focus{outline:none;border-color:#d9ab55}
 .note{background:rgba(255,255,255,.1);border-radius:14px;padding:14px 16px;margin:0 0 16px}
 .row{display:flex;gap:10px;justify-content:center}
 .row button{font:inherit;font-weight:600;border:2px solid rgba(248,244,234,.5);background:none;color:#f8f4ea;border-radius:12px;padding:9px 16px;cursor:pointer}
+details.ai{margin:10px 0;font-size:14px}details.ai summary{cursor:pointer;color:#b4531a}details.ai label{margin-top:8px;display:block}details.ai select,details.ai input{width:100%;box-sizing:border-box;margin-top:4px}
 </style>
 </head>
 <body>
@@ -57,12 +58,20 @@ input:focus{outline:none;border-color:#d9ab55}
     var f = el("form"), name = field("Name", "text", "name"), email = field("Email", "email", "email"), pass = field("Password", "password", reg ? "new-password" : "current-password");
     email.i.required = true; pass.i.required = true; if (reg) pass.i.minLength = 8;
     if (reg) f.appendChild(name.l); f.append(email.l, pass.l);
+    var aiProv, aiModel, aiKey;
+    if (reg) {
+      var d = el("details", "ai"), sm = el("summary", "", "Set up AI now (optional, 10 free menu reads without it)");
+      aiProv = el("select"); [["gemini", "Google Gemini (free key available)"], ["openrouter", "OpenRouter"], ["anthropic", "Anthropic (Claude)"], ["openai", "OpenAI"]].forEach(function (o) { var op = el("option", "", o[1]); op.value = o[0]; aiProv.appendChild(op); });
+      var lp = el("label", "", "AI provider"), lm = el("label", "", "Model (leave blank for the default)"), lk = el("label", "", "API key");
+      aiModel = el("input"); aiModel.type = "text"; aiModel.autocomplete = "off"; aiKey = el("input"); aiKey.type = "password"; aiKey.autocomplete = "off";
+      lp.appendChild(aiProv); lm.appendChild(aiModel); lk.appendChild(aiKey); d.append(sm, lp, lm, lk); f.appendChild(d);
+    }
     var err = el("p", "e"); err.setAttribute("role", "alert");
     var go = el("button", "go", reg ? "Create account" : "Sign in"); go.type = "submit";
     f.append(err, go);
     f.onsubmit = function (ev) {
       ev.preventDefault(); err.textContent = ""; go.disabled = true;
-      api(reg ? "api/account/register" : "api/account/login", { method: "POST", body: JSON.stringify({ email: email.i.value, password: pass.i.value, name: name.i.value }) })
+      api(reg ? "api/account/register" : "api/account/login", { method: "POST", body: JSON.stringify({ email: email.i.value, password: pass.i.value, name: name.i.value, ai: reg && aiKey.value.trim() ? { provider: aiProv.value, model: aiModel.value.trim(), apiKey: aiKey.value.trim() } : undefined }) })
         .then(function (j) { setTok(j.token); j.user.canOpen ? location.reload() : waiting(j.user); })
         .catch(function (e) { err.textContent = e.message; go.disabled = false; });
     };

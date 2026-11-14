@@ -19,6 +19,7 @@ const MAX_BODY = 25 * 1024 * 1024;
 fs.mkdirSync(USERS_DIR, { recursive: true });
 
 /* ---------- AI (reads menus) ---------- */
+const TRIAL_LIMIT = Math.max(0, parseInt(process.env.GRUBTOGO_TRIAL_LIMIT || "10", 10) || 0);
 const PRESETS = {
   anthropic: { baseUrl: "https://api.anthropic.com", model: "claude-sonnet-5-5" },
   gemini: { baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai/", model: "gemini-3.8-flash" },
@@ -35,15 +36,23 @@ function loadAI() {
 // A person can save their own provider, model and key in Portal Admin ("My settings"); those win over the shared key.
 function userAI(user) {
   const pr = (user && user.portal && user.portal.prefs) || {};
-  const key = typeof pr["ai.apiKey"] === "string" ? pr["ai.apiKey"].trim() : "", model = typeof pr["ai.model"] === "string" ? pr["ai.model"].trim() : "";
-  if (!key || !model) return null;
-  const provider = PRESETS[pr["ai.provider"]] ? pr["ai.provider"] : "openrouter", pre = PRESETS[provider];
+  const key = typeof pr["ai.apiKey"] === "string" ? pr["ai.apiKey"].trim() : "";
+  if (!key) return null;
+  const provider = PRESETS[pr["ai.provider"]] ? pr["ai.provider"] : "gemini", pre = PRESETS[provider];
+  const model = (typeof pr["ai.model"] === "string" ? pr["ai.model"].trim() : "") || pre.model;
+  if (!model) return null;
   const baseUrl = provider === "custom" ? String(pr["ai.baseUrl"] || "").trim() : pre.baseUrl;
   return baseUrl ? { provider, apiKey: key, baseUrl, model, own: true } : null;
 }
 const aiFor = user => userAI(user) || loadAI();
 const aiReady = c => !!(c.model && (c.apiKey || c.provider === "openai"));
 class AIError extends Error { constructor(code, msg) { super(msg || code); this.code = code; } }
+// People without their own AI key get TRIAL_LIMIT free menu reads on the shared key (admins are not limited).
+async function trialInfo(user, c) {
+  if (!pb.enabled || !user || user.isAdmin || c.own || !aiReady(c)) return { on: false, over: false, used: 0 };
+  const t = await pb.trialUsed(user.id); if (t.noPortal) return { on: false, over: false, used: 0 };
+  return { on: true, used: t.used, over: t.used >= TRIAL_LIMIT };
+}
 
 async function callAI(prompt, images = [], user = null) {
   const c = aiFor(user);
@@ -154,10 +163,17 @@ async function accountRoutes(req, res, p) {
       const email = String(body.email || "").trim().toLowerCase(), password = String(body.password || ""), name = String(body.name || "").trim().slice(0, 80);
       if (!validEmail(email)) return send(res, 400, { code: "bad_email", message: "Enter a valid email address." }), true;
       if (password.length < 8 || password.length > 200) return send(res, 400, { code: "bad_password", message: "Use a password of at least 8 characters." }), true;
-      try { await pb.createUser({ email, password, name }); }
+      let created; try { created = await pb.createUser({ email, password, name }); }
       catch (e) {
         if (e instanceof pb.PBError && e.status === 400) return send(res, 400, { code: "cannot_register", message: e.data?.email?.code === "validation_not_unique" ? "That email is already registered. Sign in instead." : (e.data?.password?.message || e.data?.email?.message || "Couldn't create the account.") }), true;
         throw e;
+      }
+      // Optional: the AI provider, model and key chosen while creating the account are saved as the person's own settings.
+      const ai = body.ai && typeof body.ai === "object" ? body.ai : null;
+      if (ai && typeof ai.apiKey === "string" && ai.apiKey.trim() && created && created.id) {
+        const provider = PRESETS[ai.provider] ? ai.provider : "gemini", clip = (v, n) => String(v || "").trim().slice(0, n);
+        const baseUrl = clip(ai.baseUrl, 300);
+        if (provider !== "custom" || /^https?:\/\//i.test(baseUrl)) { try { await pb.setUserPrefs(created.id, { "ai.provider": provider, "ai.model": clip(ai.model, 120), "ai.apiKey": clip(ai.apiKey, 300), "ai.baseUrl": provider === "custom" ? baseUrl : "" }); } catch {} }
       }
       const j = await pb.login(email, password); setSessionCookie(req, res, j.token);
       send(res, 200, { token: j.token, user: publicUser(j.record) }); return true;
@@ -256,7 +272,10 @@ const server = http.createServer(async (req, res) => {
       writeState(user, s); return send(res, 200, { ok: true, at: s.at });
     }
 
-    if (p === "/api/ai/status") { const c = aiFor(user); return send(res, 200, { configured: aiReady(c), own: !!c.own, isAdmin: !pb.enabled || !!(user && user.isAdmin), provider: c.provider, model: c.model, keyHint: c.apiKey ? "…" + c.apiKey.slice(-4) : "" }); }
+    if (p === "/api/ai/status") {
+      const c = aiFor(user), trial = await trialInfo(user, c); const ready = aiReady(c) && !trial.over;
+      return send(res, 200, { configured: ready, own: !!c.own, trial: trial.on ? { limit: TRIAL_LIMIT, used: trial.used } : null, trialOver: trial.over, isAdmin: !pb.enabled || !!(user && user.isAdmin), provider: c.provider, model: c.model, keyHint: c.apiKey ? "…" + c.apiKey.slice(-4) : "" });
+    }
     if (p === "/api/ai/config" && req.method === "POST") {
       if (pb.enabled && !(user && user.isAdmin)) return send(res, 403, { code: "forbidden", message: "Admins only." });
       const b = JSON.parse((await readBody(req)).toString() || "{}"), cur = loadAI();
@@ -274,7 +293,11 @@ const server = http.createServer(async (req, res) => {
         else if (Array.isArray(b.images) && b.images.length) { images = b.images.slice(0, 6).filter(i => i && typeof i.data === "string"); prompt = PROMPT + "\n\nThe menu is in the attached image(s)."; }
         else if (typeof b.text === "string" && b.text.trim()) prompt = PROMPT + "\n\nMENU TEXT:\n" + b.text.slice(0, 40000);
         else return send(res, 400, { code: "empty", message: "Nothing to read." });
-        return send(res, 200, { menu: await callAI(prompt, images, user) });
+        const c = aiFor(user), trial = await trialInfo(user, c);
+        if (trial.over) return send(res, 402, { code: "trial_over", message: `You've used your ${TRIAL_LIMIT} free menu reads. Add your own AI key in Portal Admin (My settings) to keep going.` });
+        const menu = await callAI(prompt, images, user);
+        if (trial.on) { try { await pb.trialBump(user.id); } catch {} }
+        return send(res, 200, { menu });
       } catch (e) {
         if (e instanceof AIError) return send(res, e.code === "rate_limited" ? 429 : e.code === "bad_url" || e.code === "not_configured" ? 400 : 502, { code: e.code, message: e.message });
         throw e;

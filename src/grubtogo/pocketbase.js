@@ -328,4 +328,28 @@ async function findByEmail(email) {
   return (j.items || [])[0] || null;
 }
 
-module.exports = { portalAvailable, setPortalAccess, signupsOpen, enabled, PBError, login, verifyToken, createUser, listUsers, getUser, updateUser, updateAccess, deleteUser, countAdmins, findByEmail, firstAdmin, asSuper, superFetch, ensureSchema, collection: COLL, app: APP };
+
+// ---- free trial counter and per-person settings (stored in the portal's settings table, written with the superuser) ----
+const TRIAL_KEY = "trial.ai";
+async function trialUsed(userId) {
+  const f = `scope = 'user' && user = '${esc(userId)}' && app = '${esc(APP)}' && key = '${TRIAL_KEY}'`;
+  try {
+    const j = await asSuper("GET", `/api/collections/portal_settings/records?page=1&perPage=1&filter=${q(f)}`);
+    const r = (j.items || [])[0]; return { id: r ? r.id : "", used: r ? Number(r.value) || 0 : 0 };
+  } catch (e) { if (e.status === 404) return { id: "", used: 0, noPortal: true }; throw e; }
+}
+async function trialBump(userId) {
+  const t = await trialUsed(userId); if (t.noPortal) return 0;
+  if (t.id) await asSuper("PATCH", `/api/collections/portal_settings/records/${t.id}`, { value: t.used + 1 });
+  else await asSuper("POST", "/api/collections/portal_settings/records", { scope: "user", user: userId, app: APP, key: TRIAL_KEY, value: 1, secret: false });
+  return t.used + 1;
+}
+// Saves "pref.<name>" rows for one person (used for the AI choice made while creating an account).
+async function setUserPrefs(userId, prefs) {
+  for (const [k, v] of Object.entries(prefs)) {
+    if (v === "" || v == null) continue;
+    try { await asSuper("POST", "/api/collections/portal_settings/records", { scope: "user", user: userId, app: "", key: "pref." + k, value: v, secret: false }); } catch (e) { if (e.status !== 400 && e.status !== 404) throw e; }
+  }
+  portalCache.delete("u:" + userId);
+}
+module.exports = { trialUsed, trialBump, setUserPrefs, portalAvailable, setPortalAccess, signupsOpen, enabled, PBError, login, verifyToken, createUser, listUsers, getUser, updateUser, updateAccess, deleteUser, countAdmins, findByEmail, firstAdmin, asSuper, superFetch, ensureSchema, collection: COLL, app: APP };
