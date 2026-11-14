@@ -142,8 +142,8 @@ async function getAccess(userId, create) {
 }
 
 
-/* ---------- Joolzapp Portal (optional): per-app approval, app on/off, and shared user preferences ---------- */
-// Joolzapp Portal keeps its settings in `portal_settings` (and apps in `portal_apps`, requests in `portal_requests`).
+/* ---------- Portal Admin (optional): per-app approval, app on/off, and shared user preferences ---------- */
+// Portal Admin keeps its settings in `portal_settings` (and apps in `portal_apps`, requests in `portal_requests`).
 // Precedence: global < app < user (all apps) < user x app. `portal.access = false` blocks; `pref.*` are the person's
 // shared preferences (language, currency, timezone, dateFormat, timeFormat, units, theme). If those collections don't
 // exist (the portal isn't installed) every function here quietly returns null and the app falls back to its own rules.

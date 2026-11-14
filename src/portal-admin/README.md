@@ -1,4 +1,4 @@
-# Joolzapp Portal
+# Portal Admin
 
 Central admin panel for custom apps that share a PocketBase.
 

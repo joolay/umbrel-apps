@@ -1,5 +1,5 @@
 'use strict';
-// Joolzapp Portal: tiny zero-dependency server.
+// Portal Admin: tiny zero-dependency server.
 //  - serves the static admin UI
 //  - /config   : where PocketBase lives. Built in: the PocketBase app on this Umbrel (override with env PB_URL).
 //  - /pb/*     : transparent proxy to PocketBase (so the browser needs no CORS / network access to it).
@@ -101,5 +101,5 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, '0.0.0.0', () => console.log(`Joolzapp Portal listening on :${PORT}`));
+server.listen(PORT, '0.0.0.0', () => console.log(`Portal Admin listening on :${PORT}`));
 process.on('SIGTERM', () => server.close(() => process.exit(0)));
