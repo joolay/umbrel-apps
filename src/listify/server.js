@@ -116,6 +116,7 @@ function cleanState(d) {
   if (!d || !Array.isArray(d.lists)) return null;
   const lists = d.lists.slice(0, 100).filter(l => l && typeof l.name === "string" && Array.isArray(l.items)).map(l => ({
     id: String(l.id || "").slice(0, 40), name: l.name.slice(0, 60) || "Untitled list", sample: !!l.sample,
+    tag: typeof l.tag === "string" && l.tag.trim() ? l.tag.trim().slice(0, 30) : "Groceries",
     date: typeof l.date === "string" && DATE_RE.test(l.date) ? l.date : "",
     items: l.items.filter(i => i && typeof i.text === "string" && i.text.trim()).slice(0, 2000).map(i => ({ id: String(i.id || "").slice(0, 40), text: i.text.slice(0, 300), done: !!i.done }))
   })).filter(l => l.id);

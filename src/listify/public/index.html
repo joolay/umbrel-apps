@@ -96,6 +96,9 @@ input[type="text"]::placeholder, textarea::placeholder { color: var(--muted); }
 .item { display: flex; align-items: center; gap: 2px; border-top: 1px solid var(--line); }
 .date-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: -6px; }
 .datechip { position: relative; display: inline-flex; align-items: center; gap: 6px; min-height: 44px; min-width: 44px; padding: 6px 11px; border-radius: 9px; border: 1px solid var(--line-strong); background: var(--surface); color: var(--accent-text); font-weight: 600; font-size: 13.5px; cursor: pointer; overflow: hidden; }
+.tagchip { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 8px 0 11px; border-radius: 9px; border: 1px solid var(--line-strong); background: var(--surface); color: var(--accent-text); }
+.tagchip svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+.tagchip input { border: 0; background: transparent; color: inherit; font: inherit; font-weight: 600; font-size: 16px; width: 11ch; min-width: 0; padding: 0; outline-offset: 4px; }
 .datechip.empty { color: var(--muted); border-style: dashed; }
 .datechip svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex: none; }
 .datechip:hover { background: var(--surface-2); }
@@ -236,6 +239,7 @@ button, label, .tab { touch-action: manipulation; -webkit-tap-highlight-color: t
     </aside>
   </div>
 
+  <datalist id="tag-options"><option value="Groceries"><option value="Household"><option value="Pharmacy"><option value="Hardware"><option value="Gifts"><option value="Tasks"><option value="Other"></datalist>
   <p class="foot" id="foot"></p>
 </div>
 
@@ -287,6 +291,7 @@ button, label, .tab { touch-action: manipulation; -webkit-tap-highlight-color: t
     up: '<path d="M6 14l6-6 6 6"/>',
     down: '<path d="M6 10l6 6 6-6"/>',
     plus: '<path d="M12 5v14M5 12h14"/>',
+    tag: '<path d="M4 4h7l9 9-7 7-9-9z"/><circle cx="8.5" cy="8.5" r="1.2"/>',
     camera: '<path d="M4 8h3l1.5-2h7L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.5"/>',
     check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
     x: '<path d="M6 6l12 12M18 6L6 18"/>',
@@ -332,10 +337,12 @@ button, label, .tab { touch-action: manipulation; -webkit-tap-highlight-color: t
   }
 
   /* ---------- data ---------- */
+  const DEFAULT_TAG = 'Groceries';
+  const cleanTag = (v) => (typeof v === 'string' && v.trim() ? v.trim().slice(0, 30) : DEFAULT_TAG);
   const mkItem = (text, done) => ({ id: uid(), text: text, done: !!done });
 
   function seed() {
-    const mk = (name, items) => ({ id: uid(), name: name, sample: true, items: items.map((p) => mkItem(p[0], p[1])) });
+    const mk = (name, items) => ({ id: uid(), name: name, sample: true, tag: DEFAULT_TAG, items: items.map((p) => mkItem(p[0], p[1])) });
     const lists = [
       mk('Braai on Saturday', [
         ['Boerewors, 2 kg', true], ['Charcoal and firelighters', true], ['Mielies for the coals', false],
@@ -357,6 +364,7 @@ button, label, .tab { touch-action: manipulation; -webkit-tap-highlight-color: t
         id: String(l.id || uid()),
         name: l.name.slice(0, 60) || 'Untitled list',
         sample: !!l.sample,
+        tag: cleanTag(l.tag),
         date: typeof l.date === 'string' && DATE_RE.test(l.date) ? l.date : '',
         items: l.items
           .filter((i) => i && typeof i.text === 'string' && i.text.trim())
@@ -388,7 +396,7 @@ button, label, .tab { touch-action: manipulation; -webkit-tap-highlight-color: t
   const active = () => state.lists.find((l) => l.id === state.activeId) || state.lists[0];
 
   function ensureActive() {
-    if (!state.lists.length) state.lists.push({ id: uid(), name: 'My list', sample: false, items: [] });
+    if (!state.lists.length) state.lists.push({ id: uid(), name: 'My list', sample: false, tag: DEFAULT_TAG, items: [] });
     if (!state.lists.some((l) => l.id === state.activeId)) state.activeId = state.lists[0].id;
   }
 
@@ -636,6 +644,13 @@ button, label, .tab { touch-action: manipulation; -webkit-tap-highlight-color: t
       if (v !== (l.date || '')) mutate(function () { l.date = v; l.sample = false; });
     });
     box.appendChild(h('label', { class: 'datechip' + (l.date ? '' : ' empty') }, icon('calendar'), l.date ? h('span', { text: longDate(l.date) }) : null, input));
+    const tagIn = h('input', { type: 'text', list: 'tag-options', value: l.tag || DEFAULT_TAG, maxlength: '30', 'aria-label': 'List tag', autocomplete: 'off', enterkeyhint: 'done' });
+    tagIn.addEventListener('change', function () {
+      const v = cleanTag(tagIn.value);
+      tagIn.value = v;
+      if (v !== l.tag) mutate(function () { l.tag = v; l.sample = false; });
+    });
+    box.appendChild(h('label', { class: 'tagchip', title: 'Tag, used to group lists for analysis' }, icon('tag'), tagIn));
     if (l.date) {
       box.appendChild(h('button', { type: 'button', class: 'btn quiet sm ico', icon: 'x', label: 'Clear date', onclick: function () { mutate(function () { l.date = ''; }); } }, bt('Clear')));
     }
@@ -978,7 +993,7 @@ button, label, .tab { touch-action: manipulation; -webkit-tap-highlight-color: t
   $('new-list-form').addEventListener('submit', function (e) {
     e.preventDefault();
     const name = $('new-list-name').value.trim().slice(0, 60) || 'New list';
-    const l = { id: uid(), name: name, sample: false, date: todayKey(), items: [] };
+    const l = { id: uid(), name: name, sample: false, tag: DEFAULT_TAG, date: todayKey(), items: [] };
     closeNewList();
     ui.editingId = null; ui.renaming = false; ui.confirmDelete = false; ui.reorder = false; ui.filter = 'all';
     ui.deleting = false; ui.sel = new Set(); ui.menuOpen = false;
