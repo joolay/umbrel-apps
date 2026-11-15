@@ -8,12 +8,16 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Jolly Grocer">
 <title>Jolly Grocer</title>
+<link rel="stylesheet" href="glass.css">
 <style>
-:root{--bg:#EAF0EA;--surface:#fff;--surface-2:#F3F7F3;--ink:#14231A;--muted:#566B5D;--line:#D6E0D7;--line-strong:#B8C8BB;--accent:#1E7A4C;--accent-ink:#fff;--accent-text:#17653F;--accent-soft:#DCEFE3;--danger:#B3362E;--warn:#9A6200;--toast-bg:#14231A;--toast-fg:#F1F7F2}
-@media (prefers-color-scheme:dark){:root{--bg:#0E1611;--surface:#16211A;--surface-2:#1C2A21;--ink:#E6EFE8;--muted:#9AB0A0;--line:#27382C;--line-strong:#3A5242;--accent:#4FC083;--accent-ink:#06210F;--accent-text:#74D3A1;--accent-soft:#183323;--danger:#F28B82;--warn:#E8B04A;--toast-bg:#E6EFE8;--toast-fg:#0E1611}}
+:root{--accent:#1E7A4C;--accent-2:#4FC083;--accent-t:#fff}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--accent:#4FC083;--accent-2:#7FD6A6;--accent-t:#06210F}}
+:root[data-theme="dark"]{--accent:#4FC083;--accent-2:#7FD6A6;--accent-t:#06210F}
+:root{--surface:var(--glass);--surface-2:var(--chip);--ink:var(--text);--line-strong:var(--glass-line);--accent-ink:var(--accent-t);--accent-text:var(--accent);--accent-soft:color-mix(in srgb,var(--accent) 16%,transparent);--danger-ink:#fff;--toast-bg:var(--text);--toast-fg:var(--bg);--toast-accent:var(--accent);--font-body:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;--font-display:var(--font-body);--font-mono:ui-monospace,Menlo,Consolas,monospace}
+
 *,*::before,*::after{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%}
-body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
+body{margin:0;color:var(--ink);font:16px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
 .wrap{max-width:720px;margin:0 auto;padding:14px 14px 90px;display:grid;gap:12px}
 .acct{display:flex;gap:6px;justify-content:flex-end;margin-top:-6px}
 .top{display:flex;align-items:center;justify-content:space-between;gap:10px}
@@ -59,7 +63,7 @@ input:focus-visible,select:focus-visible,button:focus-visible{outline:2px solid 
 .swipe-bg{position:absolute;inset:0;background:var(--danger);display:flex;justify-content:flex-end}
 .swipe-del{width:88px;border:0;background:transparent;color:#fff;font:inherit;font-weight:700;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;cursor:pointer}
 .swipe-del svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-.item{position:relative;display:flex;align-items:center;gap:4px;min-height:52px;background:var(--surface);touch-action:pan-y;transition:transform .18s ease}
+.item{position:relative;display:flex;align-items:center;gap:4px;min-height:52px;background:var(--solid);touch-action:pan-y;transition:transform .18s ease}
 .item.drag{transition:none}
 .tick{flex:none;width:52px;height:52px;border:0;background:transparent;cursor:pointer;display:grid;place-items:center;color:var(--accent-text)}
 .tick i{width:24px;height:24px;border:2px solid var(--line-strong);border-radius:7px;display:grid;place-items:center}
@@ -90,6 +94,20 @@ textarea{width:100%;min-height:120px;border:1px solid var(--line-strong);border-
 .toast{background:var(--toast-bg);color:var(--toast-fg);padding:11px 16px;border-radius:12px;font-weight:600;font-size:14.5px;box-shadow:0 6px 20px rgba(0,0,0,.25);pointer-events:auto}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
 [hidden]{display:none!important}
+
+/* ---- Glass layer: shared look from glass.css ---- */
+.card,.group{background:var(--glass);border:1px solid var(--glass-line);border-radius:var(--r);box-shadow:var(--shadow);-webkit-backdrop-filter:blur(22px) saturate(170%);backdrop-filter:blur(22px) saturate(170%)}
+.btn{background:var(--glass-strong);border:1px solid var(--glass-line);border-radius:var(--r-sm);color:var(--text)}
+.btn:hover{background:var(--glass-strong);border-color:var(--accent)}
+.btn.primary{background:linear-gradient(145deg,var(--accent),var(--accent-2));border-color:transparent;color:var(--accent-t);box-shadow:0 6px 16px color-mix(in srgb,var(--accent) 35%,transparent);filter:none}
+.btn.quiet{background:transparent;border-color:transparent;box-shadow:none;color:var(--accent)}
+.btn.danger{background:var(--glass-strong);color:var(--danger);border-color:var(--glass-line)}
+input,select,textarea{background:var(--glass-strong);border:1px solid var(--glass-line);border-radius:var(--r-sm);color:var(--text)}
+.tabs{background:var(--glass);border:1px solid var(--glass-line);border-radius:14px;-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px)}
+.tabs button[aria-selected=true]{background:var(--glass-strong);color:var(--text);box-shadow:0 2px 8px rgba(31,42,68,.12)}
+.chip{border-radius:var(--r-pill);background:var(--glass-strong);border:1px solid var(--glass-line);color:var(--text)}
+.chip[aria-pressed=true]{background:linear-gradient(145deg,var(--accent),var(--accent-2));border-color:transparent;color:var(--accent-t)}
+.top{padding:6px 2px}
 </style></head>
 <body>
 <div class="wrap">
