@@ -2,8 +2,8 @@ manifestVersion: 1
 id: joolay-stremio
 category: media
 name: Stremio
-version: "1.0.1"
-tagline: Stremio Web and streaming server, behind your JoolzApp account
+version: "1.0.2"
+tagline: Stremio Web and streaming server
 description: >-
   Stremio all-in-one: the Stremio web interface and the Stremio streaming server bundled in one container.
 
@@ -13,7 +13,7 @@ description: >-
   (Settings > Streaming > Streaming server URL, e.g. http://umbrel.local:11470).
 
 
-  Sign in with your JoolzApp account (no separate Umbrel login). This app runs the community tsaridas/stremio-docker image unmodified behind a small sign-in gate. Stremio does not host any content, so only use addons and sources you are legally allowed to use.
+  This app runs the community tsaridas/stremio-docker image unmodified and is protected by your Umbrel login. Stremio does not host any content, so only use addons and sources you are legally allowed to use.
 developer: Stremio / tsaridas
 website: https://www.stremio.com
 dependencies: []
@@ -24,7 +24,7 @@ gallery: []
 path: ""
 defaultUsername: ""
 defaultPassword: ""
-releaseNotes: "Fixes Stremio restarting over and over: the sign-in gate now finds PocketBase automatically."
+releaseNotes: "Removed the JoolzApp sign-in gate and its PocketBase requirement; Stremio now opens directly behind your Umbrel login."
 submitter: joolay
 submission: https://github.com/joolay/umbrel-apps
 icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/stremio.svg
