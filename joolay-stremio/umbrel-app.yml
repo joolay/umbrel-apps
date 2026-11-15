@@ -1,0 +1,30 @@
+manifestVersion: 1
+id: joolay-stremio
+category: media
+name: Stremio
+version: "latest"
+tagline: Stremio Web and streaming server, all in one
+description: >-
+  Stremio all-in-one: the Stremio web interface and the Stremio streaming server bundled in one container.
+
+
+  Open the app from your Umbrel dashboard, sign in with your Stremio account and install your addons.
+  Streams are handled by the built-in streaming server, which is also exposed on port 11470 so the Stremio apps on your phone, TV or PC can use it
+  (Settings > Streaming > Streaming server URL, e.g. http://umbrel.local:11470).
+
+
+  This app runs the community tsaridas/stremio-docker image unmodified. Stremio does not host any content, so only use addons and sources you are legally allowed to use.
+developer: Stremio / tsaridas
+website: https://www.stremio.com
+dependencies: []
+repo: https://github.com/joolay/umbrel-apps
+support: https://github.com/tsaridas/stremio-docker/issues
+port: 3896
+gallery: []
+path: ""
+defaultUsername: ""
+defaultPassword: ""
+releaseNotes: ""
+submitter: joolay
+submission: https://github.com/joolay/umbrel-apps
+icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/stremio.svg
