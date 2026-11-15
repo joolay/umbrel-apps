@@ -13,6 +13,7 @@ html,body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.4 system-ui
 body{padding-bottom:calc(96px + env(safe-area-inset-bottom))}
 header{position:sticky;top:0;z-index:5;background:var(--bg);padding:calc(12px + env(safe-area-inset-top)) 16px 10px;display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--line)}
 header h1{font-size:19px;margin:0;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+button{touch-action:manipulation}
 .icon-btn{background:var(--card);color:var(--ink);width:40px;height:40px;border-radius:12px;font-size:19px;border:1px solid var(--line);flex:none}
 main{padding:14px 16px;max-width:640px;margin:0 auto}
 .card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:14px;margin-bottom:12px}
@@ -653,7 +654,8 @@ document.addEventListener('click', async e => {
     // Back to the JoolzApp dashboard (Portal Admin); it signs you in with the same account, so there is no second login.
     let t = ''; try { t = sessionStorage.getItem('gd.token') || localStorage.getItem('gd.token') || ''; } catch (e) {}
     const base = (me && me.portalUrl) || (location.protocol + '//' + location.hostname + ':3892/');
-    location.href = base + (t ? '#sso=' + encodeURIComponent(t) : ''); return;
+    toast('Opening dashboard…'); el.disabled = true;   // instant feedback: the dashboard is a full page load
+    setTimeout(() => { location.href = base + (t ? '#sso=' + encodeURIComponent(t) : ''); }, 50); return;
   }
   if (a === 'signout') { try { localStorage.removeItem('gd.token'); sessionStorage.removeItem('gd.token'); } catch (e) {} await fetch('api/account/logout', { method: 'POST' }).catch(() => {}); return location.reload(); }
   if (a === 'ai-save') {
