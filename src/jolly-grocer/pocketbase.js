@@ -13,25 +13,39 @@
 
 // Secrets can live in <data folder>/pocketbase.env (KEY=value lines) instead of the compose file.
 // That is how the Umbrel app is configured, since its compose file sits in a public GitHub repo.
-try {
-  const f = require("path").join(require("path").resolve(process.env.DATA_DIR || require("path").join(__dirname, "data")), "pocketbase.env");
-  for (const line of require("fs").readFileSync(f, "utf8").split(/\r?\n/)) {
-    const m = line.match(/^\s*(POCKETBASE_[A-Z_]+)\s*=\s*(.*?)\s*$/);
-    if (m && !process.env[m[1]]) process.env[m[1]] = m[2].replace(/^(["'])(.*)\1$/, "$2");
-  }
-} catch {}
+// Portal Admin writes that file after you sign in there once. It is re-read while accounts are still off (see reload()), so an app that
+// started before the file existed switches on by itself, with no restart.
+function loadEnvFile() {
+  try {
+    const f = require("path").join(require("path").resolve(process.env.DATA_DIR || require("path").join(__dirname, "data")), "pocketbase.env");
+    for (const line of require("fs").readFileSync(f, "utf8").split(/\r?\n/)) {
+      const m = line.match(/^\s*(POCKETBASE_[A-Z_]+)\s*=\s*(.*?)\s*$/);
+      if (m && !process.env[m[1]]) process.env[m[1]] = m[2].replace(/^(["'])(.*)\1$/, "$2");
+    }
+  } catch {}
+}
+loadEnvFile();
 
 // The PocketBase app on this Umbrel publishes port 5400; host.docker.internal reaches it from this container.
 const URL_BASE = (process.env.POCKETBASE_URL || "http://host.docker.internal:5400").replace(/\/+$/, "");
-const SU_EMAIL = process.env.POCKETBASE_SUPERUSER_EMAIL || "";
-const SU_PASS = process.env.POCKETBASE_SUPERUSER_PASSWORD || "";
+let SU_EMAIL = process.env.POCKETBASE_SUPERUSER_EMAIL || "";
+let SU_PASS = process.env.POCKETBASE_SUPERUSER_PASSWORD || "";
 const COLL = process.env.POCKETBASE_USERS_COLLECTION || "users";
 const APP = (process.env.POCKETBASE_APP_ID || "jolly-grocer").trim().toLowerCase();
 const ACCESS = process.env.POCKETBASE_ACCESS_COLLECTION || "app_access";
 
 const APP_NAME = (process.env.POCKETBASE_APP_NAME || (APP === "jolly-grocer" ? "Jolly Grocer" : APP)).trim();
 
-const enabled = !!(URL_BASE && SU_EMAIL && SU_PASS);
+const isEnabled = () => !!(URL_BASE && SU_EMAIL && SU_PASS);
+// While not connected, look for pocketbase.env again (at most every 2 s). Returns true once accounts are on.
+let lastLook = 0;
+function reload() {
+  if (isEnabled()) return true;
+  if (Date.now() - lastLook < 2000) return false;
+  lastLook = Date.now();
+  loadEnvFile(); SU_EMAIL = process.env.POCKETBASE_SUPERUSER_EMAIL || ""; SU_PASS = process.env.POCKETBASE_SUPERUSER_PASSWORD || "";
+  return isEnabled();
+}
 
 class PBError extends Error {
   constructor(status, message, data) { super(message); this.status = status; this.data = data; }
@@ -373,4 +387,4 @@ async function portalUrl() {
   })) || "";
 }
 async function setDob(id, dob) { await ensureSchema(); await asSuper("PATCH", rec("/" + encodeURIComponent(id)), { dob }); }
-module.exports = { setDob, portalUrl, requestPasswordReset, trialUsed, trialBump, setUserPrefs, portalAvailable, setPortalAccess, signupsOpen, enabled, PBError, login, verifyToken, createUser, listUsers, getUser, updateUser, updateAccess, deleteUser, countAdmins, findByEmail, firstAdmin, asSuper, superFetch, ensureSchema, collection: COLL, app: APP };
+module.exports = { setDob, portalUrl, requestPasswordReset, trialUsed, trialBump, setUserPrefs, portalAvailable, setPortalAccess, signupsOpen, get enabled() { return isEnabled(); }, reload, PBError, login, verifyToken, createUser, listUsers, getUser, updateUser, updateAccess, deleteUser, countAdmins, findByEmail, firstAdmin, asSuper, superFetch, ensureSchema, collection: COLL, app: APP };

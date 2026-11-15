@@ -507,15 +507,48 @@ async function syncSchemas(apps) {
   return applied;
 }
 
+/* ---------- First-time connect: sign in once, then the app gets its PocketBase login ---------- */
+// Nothing is remembered: the superuser login you type here is checked, written into each app's own data folder, and forgotten.
+const connectNeeded = (found) => found && found.available ? found.apps.filter((a) => /^joolay-/.test(a.id) && a.slug && a.env === 'missing') : [];
+const connectSkipped = new Set();
+function promptConnect(apps, force) {
+  const todo = apps.filter((a) => force || !connectSkipped.has(a.id));
+  if (!todo.length || document.getElementById('connectModal')) return;
+  const box = document.createElement('div'); box.id = 'connectModal';
+  box.style.cssText = 'position:fixed;inset:0;background:#0008;z-index:50;display:flex;align-items:center;justify-content:center;padding:16px';
+  box.innerHTML = `<form class="card" style="max-width:420px;width:100%;margin:0"><h2>Connect to PocketBase</h2>
+    <p class="muted small">${todo.map((a) => '<b>' + esc(a.name) + '</b>').join(', ')} ${todo.length > 1 ? 'are' : 'is'} new and not connected yet. Sign in with your PocketBase superuser login once. It is checked and passed on to ${todo.length > 1 ? 'those apps' : 'the app'}, and Portal Admin does not keep it.</p>
+    <input name="email" type="email" required value="${esc(state.actor || '')}" placeholder="Superuser email" autocomplete="username" style="width:100%;margin-top:8px">
+    <input name="password" type="password" required placeholder="Password" autocomplete="current-password" style="width:100%;margin-top:8px">
+    <div class="row" style="gap:8px;margin-top:12px;justify-content:flex-end"><button type="button" class="btn" id="cmLater">Later</button><button class="btn primary">Connect</button></div></form>`;
+  document.body.appendChild(box);
+  const close = () => box.remove();
+  box.querySelector('#cmLater').onclick = () => { todo.forEach((a) => connectSkipped.add(a.id)); close(); };
+  const f = box.querySelector('form'); f.email.focus();
+  f.onsubmit = guard(async (e) => {
+    e.preventDefault(); const btn = f.querySelector('button.primary'); btn.disabled = true;
+    try {
+      for (const a of todo) {
+        const r = await fetch('/connect-app', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: a.id, email: f.email.value.trim(), password: f.password.value }) });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.message || 'Could not connect ' + a.name);
+        await audit('app.connect', a.id, { email: f.email.value.trim() });
+      }
+      toast(todo.map((a) => a.name).join(', ') + ' connected. The app starts on its own within a few seconds.');
+      close(); if (location.hash.startsWith('#/apps')) route();
+    } finally { btn.disabled = false; f.password.value = ''; }
+  });
+}
 let detectTimer;
 function startDetecting() {
   clearInterval(detectTimer);
   if (state.role === 'user') return;
-  detectApps().then((r) => { if (r && (r.added.length || r.schemaApplied.length) && location.hash.startsWith('#/apps')) route(); });
+  const after = (r) => { if (!r) return; promptConnect(connectNeeded(r)); if ((r.added.length || r.schemaApplied.length) && location.hash.startsWith('#/apps')) route(); };
+  detectApps().then(after);
   detectTimer = setInterval(() => {
     if (!state.token || state.role === 'user' || document.hidden) return;
-    detectApps().then((r) => { if (r && (r.added.length || r.schemaApplied.length) && location.hash.startsWith('#/apps')) route(); });
-  }, 5 * 60 * 1000);
+    detectApps().then(after);
+  }, 30 * 1000);
 }
 
 async function viewApps(slug) {
@@ -542,33 +575,11 @@ async function appList() {
       <table><tbody>${schemaPending.map((pl, i) => `<tr><td><b>${esc(pl.app.name)}</b><div class="muted small">${esc(describeSteps(pl) || 'nothing to change')}</div>${pl.problems.map((x) => `<div class="small" style="color:#b3261e">${esc(x)}</div>`).join('')}</td>
         <td style="text-align:right">${pl.steps.length ? `<button class="btn primary" data-apply="${i}">Apply</button>` : ''}</td></tr>`).join('')}</tbody></table></div>`);
   }
-  const needConnect = found && found.available ? found.apps.filter((a) => /^joolay-/.test(a.id) && a.slug && a.env !== 'present') : [];
+  const needConnect = connectNeeded(found);
   if (needConnect.length) {
-    main().insertAdjacentHTML('beforeend', `<div class="card"><h2>Connect to PocketBase</h2><p class="muted small">These apps of yours have no PocketBase login yet, so they can't sign people in. Enter your PocketBase superuser login once; it is checked, then saved in the app's own data folder.</p>
-      ${needConnect.map((a) => `<form class="row" data-connect="${esc(a.id)}" style="gap:8px;margin-top:8px;flex-wrap:wrap;align-items:center"><b style="min-width:110px">${esc(a.name)}</b>
-        <input name="email" type="email" required value="${esc(state.actor || '')}" placeholder="Superuser email" autocomplete="username" style="flex:1;min-width:160px">
-        <input name="password" type="password" required placeholder="Password" autocomplete="current-password" style="flex:1;min-width:120px">
-        <button class="btn primary" ${a.env === 'no-data-dir' ? 'disabled title="Open the app once first"' : ''}>Connect</button></form>`).join('')}
-      <label class="small" style="display:flex;gap:8px;align-items:center;margin-top:12px"><input type="checkbox" id="autoConnect" checked> Connect my future JoolzApp apps automatically (keeps this login in Portal Admin's data folder)</label></div>`);
-    main().querySelectorAll('form[data-connect]').forEach((f) => f.onsubmit = guard(async (e) => {
-      e.preventDefault();
-      const a = needConnect.find((x) => x.id === f.dataset.connect), btn = f.querySelector('button'); btn.disabled = true;
-      try {
-        const r = await fetch('/connect-app', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: a.id, email: f.email.value.trim(), password: f.password.value, remember: !!(main().querySelector('#autoConnect') || {}).checked }) });
-        const d = await r.json().catch(() => ({}));
-        if (!r.ok) throw new Error(d.message || 'Could not connect');
-        await audit('app.connect', a.id, { email: f.email.value.trim() });
-        toast(a.name + ' connected. Restart the app once so it picks this up.'); route();
-      } finally { btn.disabled = false; f.password.value = ''; }
-    }));
+    main().insertAdjacentHTML('beforeend', `<div class="card"><h2>Connect to PocketBase</h2><p class="muted small">${needConnect.map((a) => esc(a.name)).join(', ')} can't sign people in until PocketBase is connected.</p><button class="btn primary" id="connectNow">Sign in to connect</button></div>`);
+    main().querySelector('#connectNow').onclick = () => promptConnect(needConnect, true);
   }
-  try {
-    const ac = await (await fetch('/auto-connect', { cache: 'no-store' })).json();
-    if (ac.enabled || (ac.last && ac.last.error)) {
-      main().insertAdjacentHTML('beforeend', `<div class="card"><h2>Automatic connecting</h2><p class="muted small">${ac.enabled ? 'On. New apps of yours that use JoolzApp accounts get their PocketBase login written within about 30 seconds of being installed (using ' + esc(ac.email) + '). Restart them once afterwards, unless the app restarts itself.' : 'Off.'}</p>${ac.last && ac.last.error ? `<p class="small" style="color:#b3261e">${esc(ac.last.error)}</p>` : ''}${ac.enabled ? '<button class="btn" id="autoOff">Turn off and forget the login</button>' : ''}</div>`);
-      const off = main().querySelector('#autoOff'); if (off) off.onclick = guard(async () => { await fetch('/auto-connect', { method: 'DELETE' }); toast('Automatic connecting is off'); route(); });
-    }
-  } catch {}
   if (found && !found.available) main().insertAdjacentHTML('beforeend', '<p class="muted small">Portal Admin can\'t see which apps are installed on this Umbrel (the app list isn\'t mounted), so new apps aren\'t detected automatically.</p>');
   main().onclick = guard(async (e) => {
     const ap = e.target.closest('[data-apply]');

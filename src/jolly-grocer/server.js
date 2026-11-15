@@ -248,7 +248,7 @@ function cleanReceipt(o) {
   return { store: typeof o.store === "string" && o.store.trim() ? o.store.trim().slice(0, 80) : null, date: typeof o.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(o.date) ? o.date : null, time: typeof o.time === "string" && /^\d{2}:\d{2}$/.test(o.time) ? o.time : null, total: num(o.total), lines };
 }
 const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css", ".svg": "image/svg+xml", ".png": "image/png", ".json": "application/json" };
-const SETUP = "<!doctype html><meta name=viewport content='width=device-width'><body style='font:16px system-ui;padding:2rem;max-width:34rem;margin:auto'><h1>Jolly Grocer isn't set up yet</h1><p>Accounts are required but PocketBase isn't connected. Add <code>pocketbase.env</code> to the app's data folder (POCKETBASE_SUPERUSER_EMAIL and POCKETBASE_SUPERUSER_PASSWORD), or open Portal Admin and connect PocketBase.</p></body>";
+const SETUP = "<!doctype html><meta name=viewport content='width=device-width'><meta http-equiv=refresh content=5><body style='font:16px system-ui;padding:2rem;max-width:34rem;margin:auto'><h1>Waiting for PocketBase</h1><p>Jolly Grocer isn't connected to PocketBase yet. Open Portal Admin and sign in when it asks; this page then starts on its own within a few seconds.</p></body>";
 
 const server = http.createServer(async (req, res) => {
   try {
@@ -260,6 +260,7 @@ const server = http.createServer(async (req, res) => {
     // Only signed-in people the admin has let in can open the app (Umbrel's own login is off, so this is the lock).
     let user = null;
     if (isPage || isData) {
+      pb.reload(); // picks up pocketbase.env as soon as Portal Admin writes it, with no restart
       if (!pb.enabled) {
         if (REQUIRE_ACCOUNTS) {
           if (isPage) { res.writeHead(503, { "content-type": "text/html; charset=utf-8" }); return res.end(SETUP); }
