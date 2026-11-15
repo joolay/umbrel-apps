@@ -1,0 +1,9 @@
+{
+  "name": "jolly-grocer",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Jolly Grocer: a grocery shopping companion that follows your JoolzApp account.",
+  "main": "server.js",
+  "scripts": { "start": "node server.js" },
+  "license": "MIT"
+}
