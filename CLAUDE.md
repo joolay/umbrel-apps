@@ -19,4 +19,4 @@ ShutterWorth (`src/shutterworth`) and Portal Admin (`src/portal-admin`) both fol
 Any `joolay-*` app that signs people in with the JoolzApp account declares `POCKETBASE_APP_ID=<slug>` in its compose file and reads
 `<app data>/data/pocketbase.env` (copy `src/shutterworth/pocketbase.js`). Portal Admin writes that file automatically (Connect once with
 "connect automatically" ticked; it checks for new apps every 30 s and never overwrites an existing file). Apps should fail closed
-without the file and exit non-zero when it appears so Umbrel restarts them (see `src/stremio/server.js`).
+without the file and exit non-zero when it appears so Umbrel restarts them.

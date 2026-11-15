@@ -1,8 +1,0 @@
-{
-  "name": "stremio-gate",
-  "version": "1.0.1",
-  "private": true,
-  "description": "JoolzApp sign-in gate in front of Stremio Web (tsaridas/stremio-docker)",
-  "main": "server.js",
-  "license": "MIT"
-}
