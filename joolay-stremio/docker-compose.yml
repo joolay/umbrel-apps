@@ -1,15 +1,30 @@
-# Stremio all-in-one runs here as an Umbrel app using the community image (https://github.com/tsaridas/stremio-docker), unmodified.
-# There is no src/stremio: nothing to build. The image bundles Stremio Web (port 8080) and the Stremio streaming server (port 11470).
-# Image tag is `latest` (upstream only publishes latest/nightly/vX.X.X); pin it to a vX.X.X tag and match `version` in umbrel-app.yml to freeze updates.
-# Config and cache live in this app's data folder and survive updates.
+# Stremio runs here as an Umbrel app: the community image (https://github.com/tsaridas/stremio-docker), unmodified, behind a small
+# JoolzApp sign-in gate (src/stremio, built by .github/workflows/build-images.yml). Keep the gate image tag equal to `version` in umbrel-app.yml.
+# `web` is the gate: it checks the person's JoolzApp account (and Portal Admin access) and then proxies to the `stremio` service.
+# Sign-in settings go in <app data>/data/pocketbase.env (POCKETBASE_URL, POCKETBASE_SUPERUSER_EMAIL, POCKETBASE_SUPERUSER_PASSWORD), never in this public repo.
+# Without them the gate refuses to serve anything (fails closed).
+# Stremio's own config and cache live in <app data>/stremio and survive updates.
 services:
   app_proxy:
     environment:
       APP_HOST: joolay-stremio_web_1
-      APP_PORT: 8080
-      # Stremio Web has no login of its own, so keep Umbrel's login in front of it (the default).
+      APP_PORT: 3897
+      # No Umbrel login for this app: it locks itself behind the JoolzApp account.
+      PROXY_AUTH_ADD: "false"
 
   web:
+    image: ghcr.io/joolay/stremio:1.0.0
+    restart: on-failure
+    depends_on:
+      - stremio
+    environment:
+      - POCKETBASE_APP_ID=stremio
+      - POCKETBASE_APP_NAME=Stremio
+      - UPSTREAM=http://stremio:8080
+    volumes:
+      - ${APP_DATA_DIR}/data:/data
+
+  stremio:
     image: tsaridas/stremio-docker:latest
     restart: on-failure
     environment:
@@ -19,7 +34,7 @@ services:
       # Avoids SSDP errors inside Docker.
       CASTING_DISABLED: "1"
     ports:
-      # Streaming server, so Stremio apps on your phone/TV/PC can use it (Settings > Streaming > server URL).
+      # Streaming server. NOT behind the sign-in gate (the browser and Stremio apps call it directly), so keep it on your home network only.
       - "11470:11470"
     volumes:
-      - ${APP_DATA_DIR}/data:/root/.stremio-server
+      - ${APP_DATA_DIR}/stremio:/root/.stremio-server
