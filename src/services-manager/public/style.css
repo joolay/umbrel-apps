@@ -102,3 +102,17 @@ html,body{background:radial-gradient(55vmax 45vmax at 10% 5%,#1b2c58,transparent
 dialog{background:rgba(28,34,50,.62);-webkit-backdrop-filter:blur(28px) saturate(170%);backdrop-filter:blur(28px) saturate(170%);border:1px solid rgba(255,255,255,.14);border-radius:24px;box-shadow:0 24px 60px rgba(0,0,0,.5)}
 dialog::backdrop{background:rgba(5,8,16,.55);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
 dialog input{background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.16);border-radius:12px}
+
+/* ---- Mobile / iPhone fit ---- */
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%;overflow-x:hidden}
+body{overflow-x:hidden;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
+main{min-width:0}
+@media (pointer:coarse),(max-width:760px){
+  input,select,textarea{font-size:16px}
+  .btn{min-height:40px}.btn.small{min-height:34px}
+}
+@media (max-width:560px){
+  .top{padding:12px 14px}
+  table{display:block;overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .toast{max-width:calc(100vw - 24px)}
+}
