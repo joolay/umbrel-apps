@@ -96,6 +96,9 @@ input[type="text"]::placeholder, textarea::placeholder { color: var(--muted); }
 .item { display: flex; align-items: center; gap: 2px; border-top: 1px solid var(--line); }
 .date-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: -6px; }
 .datechip { position: relative; display: inline-flex; align-items: center; gap: 6px; min-height: 44px; min-width: 44px; padding: 6px 11px; border-radius: 9px; border: 1px solid var(--line-strong); background: var(--surface); color: var(--accent-text); font-weight: 600; font-size: 13.5px; cursor: pointer; overflow: hidden; }
+.tagchip { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 8px 0 11px; border-radius: 9px; border: 1px solid var(--line-strong); background: var(--surface); color: var(--accent-text); }
+.tagchip svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+.tagchip input { border: 0; background: transparent; color: inherit; font: inherit; font-weight: 600; font-size: 16px; width: 11ch; min-width: 0; padding: 0; outline-offset: 4px; }
 .datechip.empty { color: var(--muted); border-style: dashed; }
 .datechip svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex: none; }
 .datechip:hover { background: var(--surface-2); }
@@ -152,6 +155,10 @@ button, label, .tab { touch-action: manipulation; -webkit-tap-highlight-color: t
 .menu-item .n { font: 500 12px var(--font-mono); opacity: .75; }
 .menu-item svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex: none; }
 .picker-btn .n { font: 500 12px var(--font-mono); opacity: .75; }
+.read-panel { border: 1px solid var(--line-strong); border-radius: 10px; padding: 12px; display: grid; gap: 10px; background: var(--surface-2); margin-top: 10px; }
+.read-panel .rp-row { display: flex; gap: 10px; align-items: center; min-height: 44px; }
+.read-panel .rp-row input { width: 22px; height: 22px; flex: none; }
+.read-panel .rp-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .delete-panel { border: 1px solid var(--danger); border-radius: 10px; padding: 12px; display: grid; gap: 10px; background: var(--surface-2); }
 .dp-title { font-weight: 600; }
 .dp-list { margin: 0; padding-left: 18px; max-height: 160px; overflow: auto; overflow-wrap: anywhere; }
@@ -206,8 +213,11 @@ button, label, .tab { touch-action: manipulation; -webkit-tap-highlight-color: t
       <form class="add" id="add-form">
         <label class="sr" for="add-input">Add an item</label>
         <input type="text" id="add-input" maxlength="300" placeholder="Add an item" autocomplete="off" enterkeyhint="done">
+        <button type="button" class="btn ico" id="photo-btn" data-icon="camera" aria-label="Add items from a photo" title="Add items from a photo"><span class="bt">Photo</span></button>
         <button type="submit" class="btn primary ico" data-icon="plus" aria-label="Add item" title="Add item"><span class="bt">Add</span></button>
       </form>
+      <input type="file" id="photo-input" accept="image/*" hidden>
+      <div class="read-panel" id="read-panel" hidden></div>
       <div class="toolbar">
         <div class="seg" id="filters" role="group" aria-label="Show items"></div>
         <div class="tools" id="tools"></div>
@@ -229,6 +239,7 @@ button, label, .tab { touch-action: manipulation; -webkit-tap-highlight-color: t
     </aside>
   </div>
 
+  <datalist id="tag-options"><option value="Groceries"><option value="Household"><option value="Pharmacy"><option value="Hardware"><option value="Gifts"><option value="Tasks"><option value="Other"></datalist>
   <p class="foot" id="foot"></p>
 </div>
 
@@ -280,6 +291,8 @@ button, label, .tab { touch-action: manipulation; -webkit-tap-highlight-color: t
     up: '<path d="M6 14l6-6 6 6"/>',
     down: '<path d="M6 10l6 6 6-6"/>',
     plus: '<path d="M12 5v14M5 12h14"/>',
+    tag: '<path d="M4 4h7l9 9-7 7-9-9z"/><circle cx="8.5" cy="8.5" r="1.2"/>',
+    camera: '<path d="M4 8h3l1.5-2h7L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.5"/>',
     check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
     x: '<path d="M6 6l12 12M18 6L6 18"/>',
     undo: '<path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-4"/>',
@@ -324,10 +337,12 @@ button, label, .tab { touch-action: manipulation; -webkit-tap-highlight-color: t
   }
 
   /* ---------- data ---------- */
+  const DEFAULT_TAG = 'Groceries';
+  const cleanTag = (v) => (typeof v === 'string' && v.trim() ? v.trim().slice(0, 30) : DEFAULT_TAG);
   const mkItem = (text, done) => ({ id: uid(), text: text, done: !!done });
 
   function seed() {
-    const mk = (name, items) => ({ id: uid(), name: name, sample: true, items: items.map((p) => mkItem(p[0], p[1])) });
+    const mk = (name, items) => ({ id: uid(), name: name, sample: true, tag: DEFAULT_TAG, items: items.map((p) => mkItem(p[0], p[1])) });
     const lists = [
       mk('Braai on Saturday', [
         ['Boerewors, 2 kg', true], ['Charcoal and firelighters', true], ['Mielies for the coals', false],
@@ -349,6 +364,7 @@ button, label, .tab { touch-action: manipulation; -webkit-tap-highlight-color: t
         id: String(l.id || uid()),
         name: l.name.slice(0, 60) || 'Untitled list',
         sample: !!l.sample,
+        tag: cleanTag(l.tag),
         date: typeof l.date === 'string' && DATE_RE.test(l.date) ? l.date : '',
         items: l.items
           .filter((i) => i && typeof i.text === 'string' && i.text.trim())
@@ -380,7 +396,7 @@ button, label, .tab { touch-action: manipulation; -webkit-tap-highlight-color: t
   const active = () => state.lists.find((l) => l.id === state.activeId) || state.lists[0];
 
   function ensureActive() {
-    if (!state.lists.length) state.lists.push({ id: uid(), name: 'My list', sample: false, items: [] });
+    if (!state.lists.length) state.lists.push({ id: uid(), name: 'My list', sample: false, tag: DEFAULT_TAG, items: [] });
     if (!state.lists.some((l) => l.id === state.activeId)) state.activeId = state.lists[0].id;
   }
 
@@ -628,6 +644,13 @@ button, label, .tab { touch-action: manipulation; -webkit-tap-highlight-color: t
       if (v !== (l.date || '')) mutate(function () { l.date = v; l.sample = false; });
     });
     box.appendChild(h('label', { class: 'datechip' + (l.date ? '' : ' empty') }, icon('calendar'), l.date ? h('span', { text: longDate(l.date) }) : null, input));
+    const tagIn = h('input', { type: 'text', list: 'tag-options', value: l.tag || DEFAULT_TAG, maxlength: '30', 'aria-label': 'List tag', autocomplete: 'off', enterkeyhint: 'done' });
+    tagIn.addEventListener('change', function () {
+      const v = cleanTag(tagIn.value);
+      tagIn.value = v;
+      if (v !== l.tag) mutate(function () { l.tag = v; l.sample = false; });
+    });
+    box.appendChild(h('label', { class: 'tagchip', title: 'Tag, used to group lists for analysis' }, icon('tag'), tagIn));
     if (l.date) {
       box.appendChild(h('button', { type: 'button', class: 'btn quiet sm ico', icon: 'x', label: 'Clear date', onclick: function () { mutate(function () { l.date = ''; }); } }, bt('Clear')));
     }
@@ -905,6 +928,60 @@ button, label, .tab { touch-action: manipulation; -webkit-tap-highlight-color: t
     input.focus();
   });
 
+  /* ---------- add items from a photo ---------- */
+  function downscale(file) {
+    return new Promise(function (ok, bad) {
+      const url = URL.createObjectURL(file), img = new Image();
+      img.onload = function () {
+        const s = Math.min(1, 1600 / Math.max(img.width, img.height)), c = document.createElement('canvas');
+        c.width = Math.round(img.width * s); c.height = Math.round(img.height * s);
+        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+        URL.revokeObjectURL(url);
+        ok({ type: 'image/jpeg', data: c.toDataURL('image/jpeg', 0.82).split(',')[1] });
+      };
+      img.onerror = function () { URL.revokeObjectURL(url); bad(new Error('Could not open that photo.')); };
+      img.src = url;
+    });
+  }
+  function closeReadPanel() { const rp = $('read-panel'); rp.hidden = true; rp.textContent = ''; }
+  function showReadResult(items) {
+    const rp = $('read-panel'); rp.textContent = ''; rp.hidden = false;
+    if (!items.length) {
+      rp.appendChild(h('p', { text: 'No list items found in that photo. Try a closer, well-lit shot.' }));
+      rp.appendChild(h('div', { class: 'rp-actions' }, h('button', { type: 'button', class: 'btn sm ico', icon: 'x', label: 'Close', onclick: closeReadPanel }, bt('Close'))));
+      return;
+    }
+    const boxes = [];
+    rp.appendChild(h('p', { text: 'Found ' + items.length + (items.length === 1 ? ' item' : ' items') + '. Untick any you do not want.' }));
+    items.forEach(function (txt, i) {
+      const cb = h('input', { type: 'checkbox', id: 'rp-' + i, checked: true });
+      cb.checked = true; boxes.push(cb);
+      rp.appendChild(h('label', { class: 'rp-row', for: 'rp-' + i }, cb, h('span', { text: txt })));
+    });
+    const addBtn = h('button', { type: 'button', class: 'btn primary sm ico', icon: 'check', label: 'Add selected items', onclick: function () {
+      const picked = items.filter(function (_, i) { return boxes[i].checked; });
+      closeReadPanel();
+      if (!picked.length) return;
+      const l = active();
+      if (ui.filter === 'done') ui.filter = 'all';
+      mutate(function () { picked.forEach(function (v) { l.items.push(mkItem(v, false)); }); });
+      showToast('Added ' + picked.length + (picked.length === 1 ? ' item' : ' items') + '.');
+    } }, bt('Add selected'));
+    rp.appendChild(h('div', { class: 'rp-actions' }, addBtn, h('button', { type: 'button', class: 'btn sm ico', icon: 'x', label: 'Cancel', onclick: closeReadPanel }, bt('Cancel'))));
+  }
+  $('photo-btn').addEventListener('click', function () {
+    if (!sync.on) { showToast('Reading a photo needs you to be signed in.'); return; }
+    $('photo-input').click();
+  });
+  $('photo-input').addEventListener('change', function () {
+    const f = this.files && this.files[0]; this.value = '';
+    if (!f) return;
+    const rp = $('read-panel'); rp.hidden = false; rp.textContent = 'Reading your photo…';
+    downscale(f).then(function (im) { return api('api/extract', { method: 'POST', body: JSON.stringify({ images: [im] }) }); })
+      .then(function (j) { showReadResult(j.items || []); })
+      .catch(function (e) { closeReadPanel(); showToast(e.message || 'Could not read that photo.'); });
+  });
+
   $('new-list-btn').addEventListener('click', function () {
     ui.menuOpen = false; renderTabs();
     $('new-list-form').hidden = false;
@@ -916,7 +993,7 @@ button, label, .tab { touch-action: manipulation; -webkit-tap-highlight-color: t
   $('new-list-form').addEventListener('submit', function (e) {
     e.preventDefault();
     const name = $('new-list-name').value.trim().slice(0, 60) || 'New list';
-    const l = { id: uid(), name: name, sample: false, date: todayKey(), items: [] };
+    const l = { id: uid(), name: name, sample: false, tag: DEFAULT_TAG, date: todayKey(), items: [] };
     closeNewList();
     ui.editingId = null; ui.renaming = false; ui.confirmDelete = false; ui.reorder = false; ui.filter = 'all';
     ui.deleting = false; ui.sel = new Set(); ui.menuOpen = false;

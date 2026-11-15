@@ -12,7 +12,8 @@ const DATA_DIR = path.resolve(process.env.DATA_DIR || path.join(__dirname, "data
 const PUBLIC_DIR = path.join(__dirname, "public");
 const USERS_DIR = path.join(DATA_DIR, "users");
 const REQUIRE_ACCOUNTS = /^(1|true|yes)$/i.test(process.env.REQUIRE_ACCOUNTS || "");
-const MAX_BODY = 5 * 1024 * 1024;
+const MAX_BODY = 15 * 1024 * 1024;
+const AI_FILE = path.join(DATA_DIR, "ai-config.json");
 fs.mkdirSync(USERS_DIR, { recursive: true });
 
 /* ---------- who may open the app ---------- */
@@ -115,6 +116,7 @@ function cleanState(d) {
   if (!d || !Array.isArray(d.lists)) return null;
   const lists = d.lists.slice(0, 100).filter(l => l && typeof l.name === "string" && Array.isArray(l.items)).map(l => ({
     id: String(l.id || "").slice(0, 40), name: l.name.slice(0, 60) || "Untitled list", sample: !!l.sample,
+    tag: typeof l.tag === "string" && l.tag.trim() ? l.tag.trim().slice(0, 30) : "Groceries",
     date: typeof l.date === "string" && DATE_RE.test(l.date) ? l.date : "",
     items: l.items.filter(i => i && typeof i.text === "string" && i.text.trim()).slice(0, 2000).map(i => ({ id: String(i.id || "").slice(0, 40), text: i.text.slice(0, 300), done: !!i.done }))
   })).filter(l => l.id);
@@ -122,6 +124,76 @@ function cleanState(d) {
   return { lists, activeId: lists.some(l => l.id === d.activeId) ? d.activeId : lists[0].id, at: Date.now() };
 }
 
+/* ---------- AI (reads a photo of a list) ---------- */
+// Same set-up as GrubToGo: a person's own provider/model/key from Portal Admin (My settings) wins; otherwise the shared key,
+// with TRIAL_LIMIT free reads for people without their own key (admins are not limited).
+const TRIAL_LIMIT = Math.max(0, parseInt(process.env.LISTIFY_TRIAL_LIMIT || "10", 10) || 0);
+const PRESETS = {
+  anthropic: { baseUrl: "https://api.anthropic.com", model: "claude-sonnet-5-5" },
+  gemini: { baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai/", model: "gemini-3.8-flash" },
+  openai: { baseUrl: "https://api.openai.com/v1", model: "" },
+  openrouter: { baseUrl: "https://openrouter.ai/api/v1", model: "" },
+  custom: { baseUrl: "", model: "" },
+};
+function loadAI() {
+  let c = {}; try { c = JSON.parse(fs.readFileSync(AI_FILE, "utf8")); } catch {}
+  const provider = c.provider || process.env.AI_PROVIDER || "anthropic";
+  const pre = PRESETS[provider] || PRESETS.openai;
+  return { provider, apiKey: c.apiKey ?? process.env.AI_API_KEY ?? "", baseUrl: c.baseUrl || process.env.AI_BASE_URL || pre.baseUrl, model: c.model || process.env.AI_MODEL || pre.model };
+}
+function userAI(user) {
+  const pr = (user && user.portal && user.portal.prefs) || {};
+  const key = typeof pr["ai.apiKey"] === "string" ? pr["ai.apiKey"].trim() : "";
+  if (!key) return null;
+  const provider = PRESETS[pr["ai.provider"]] ? pr["ai.provider"] : "gemini", pre = PRESETS[provider];
+  const model = (typeof pr["ai.model"] === "string" ? pr["ai.model"].trim() : "") || pre.model;
+  if (!model) return null;
+  const baseUrl = provider === "custom" ? String(pr["ai.baseUrl"] || "").trim() : pre.baseUrl;
+  return baseUrl ? { provider, apiKey: key, baseUrl, model, own: true } : null;
+}
+const aiFor = user => userAI(user) || loadAI();
+const aiReady = c => !!(c.model && (c.apiKey || c.provider === "openai"));
+class AIError extends Error { constructor(code, msg) { super(msg || code); this.code = code; } }
+async function trialInfo(user, c) {
+  if (!pb.enabled || !user || user.isAdmin || c.own || !aiReady(c)) return { on: false, over: false, used: 0 };
+  const t = await pb.trialUsed(user.id); if (t.noPortal) return { on: false, over: false, used: 0 };
+  return { on: true, used: t.used, over: t.used >= TRIAL_LIMIT };
+}
+async function readAI(r) {
+  const body = await r.text(); let j = {}; try { j = JSON.parse(body); } catch {}
+  if (r.status === 429 || r.status === 529) throw new AIError("rate_limited", "The AI service is busy. Try again in a moment.");
+  if (r.status === 401 || r.status === 403) throw new AIError("bad_key", "The AI service rejected the API key. Check it in Portal Admin (My settings) or ask the admin.");
+  if (!r.ok) throw new AIError("ai_error", (j.error?.message || body || "HTTP " + r.status).slice(0, 300));
+  return j;
+}
+async function callAI(prompt, images, user) {
+  const c = aiFor(user);
+  if (!aiReady(c)) throw new AIError("not_configured", "Photo reading isn't set up yet. Add your own AI key in Portal Admin (My settings), or ask an admin to add a shared one.");
+  let r, text;
+  if (c.provider === "anthropic") {
+    const content = images.map(im => ({ type: "image", source: { type: "base64", media_type: im.type || "image/jpeg", data: im.data } }));
+    content.push({ type: "text", text: prompt });
+    r = await fetch(c.baseUrl.replace(/\/+$/, "") + "/v1/messages", {
+      method: "POST", signal: AbortSignal.timeout(120000),
+      headers: { "content-type": "application/json", "x-api-key": c.apiKey, "anthropic-version": "2023-06-01" },
+      body: JSON.stringify({ model: c.model, max_tokens: 4000, messages: [{ role: "user", content }] }),
+    });
+    text = ((await readAI(r)).content || []).filter(b => b.type === "text").map(b => b.text).join("");
+  } else {
+    const content = [{ type: "text", text: prompt }, ...images.map(im => ({ type: "image_url", image_url: { url: `data:${im.type || "image/jpeg"};base64,${im.data}` } }))];
+    const headers = { "content-type": "application/json" }; if (c.apiKey) headers.authorization = "Bearer " + c.apiKey;
+    if (c.provider === "openrouter") headers["x-title"] = "Listify";
+    r = await fetch(c.baseUrl.replace(/\/+$/, "") + "/chat/completions", { method: "POST", headers, signal: AbortSignal.timeout(120000), body: JSON.stringify({ model: c.model, max_tokens: 4000, messages: [{ role: "user", content }] }) });
+    const j = await readAI(r); text = j.choices?.[0]?.message?.content || "";
+    if (Array.isArray(text)) text = text.map(p => p.text || "").join("");
+  }
+  const m = String(text).match(/\{[\s\S]*\}/);
+  if (!m) throw new AIError("bad_response", "Couldn't read a list from that photo.");
+  try { return JSON.parse(m[0]); } catch { throw new AIError("bad_response", "The AI reply wasn't valid JSON."); }
+}
+const PROMPT = `You read a photo of a written, printed or on-screen list (shopping list, to-do list, notes) into JSON. Reply with ONLY one JSON object, no prose, no code fences:
+{"items": [string]}
+Rules: one entry per list item, in the order shown; keep each item's own wording and language (fix obvious spelling only); keep quantities with the item (e.g. "Milk x2"); skip titles, dates, ticked-off/crossed-out items and anything that is not a list item; never invent items. If there is no list, return {"items": []}.`;
 const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css", ".svg": "image/svg+xml", ".png": "image/png", ".json": "application/json" };
 const SETUP = "<!doctype html><meta name=viewport content='width=device-width'><body style='font:16px system-ui;padding:2rem;max-width:34rem;margin:auto'><h1>Listify isn't set up yet</h1><p>Accounts are required but PocketBase isn't connected. Add <code>pocketbase.env</code> to the app's data folder (POCKETBASE_SUPERUSER_EMAIL and POCKETBASE_SUPERUSER_PASSWORD), or open Portal Admin and connect PocketBase.</p></body>";
 
@@ -130,7 +202,7 @@ const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, "http://x");
     const p = decodeURIComponent(url.pathname);
     const isPage = p === "/" || p === "/index.html";
-    const isData = p === "/api/state";
+    const isData = p === "/api/state" || p === "/api/extract" || p === "/api/ai/status";
 
     // Only signed-in people the admin has let in can open the app (Umbrel's own login is off, so this is the lock).
     let user = null;
@@ -160,6 +232,28 @@ const server = http.createServer(async (req, res) => {
       const s = cleanState(JSON.parse((await readBody(req)).toString() || "{}"));
       if (!s) return send(res, 400, { code: "bad_state", message: "That isn't a Listify save." });
       writeState(user, s); return send(res, 200, { ok: true, at: s.at });
+    }
+
+    if (p === "/api/ai/status") {
+      const c = aiFor(user), trial = await trialInfo(user, c);
+      return send(res, 200, { configured: aiReady(c) && !trial.over, own: !!c.own, trial: trial.on ? { limit: TRIAL_LIMIT, used: trial.used } : null, trialOver: trial.over });
+    }
+    if (p === "/api/extract" && req.method === "POST") {
+      if (throttled(req, "extract", 30, 3600e3)) return send(res, 429, { code: "slow_down", message: "That's a lot of photos in an hour. Try again later." });
+      const b = JSON.parse((await readBody(req)).toString() || "{}");
+      const images = Array.isArray(b.images) ? b.images.slice(0, 4).filter(i => i && typeof i.data === "string" && /^[A-Za-z0-9+/=]+$/.test(i.data)) : [];
+      if (!images.length) return send(res, 400, { code: "empty", message: "No photo to read." });
+      try {
+        const c = aiFor(user), trial = await trialInfo(user, c);
+        if (trial.over) return send(res, 402, { code: "trial_over", message: `You've used your ${TRIAL_LIMIT} free photo reads. Add your own AI key in Portal Admin (My settings) to keep going.` });
+        const out = await callAI(PROMPT, images, user);
+        if (trial.on) { try { await pb.trialBump(user.id); } catch {} }
+        const items = (Array.isArray(out.items) ? out.items : []).map(x => String(x == null ? "" : x).trim().slice(0, 300)).filter(Boolean).slice(0, 100);
+        return send(res, 200, { items });
+      } catch (e) {
+        if (e instanceof AIError) return send(res, e.code === "rate_limited" ? 429 : e.code === "not_configured" ? 400 : 502, { code: e.code, message: e.message });
+        throw e;
+      }
     }
 
     // static files

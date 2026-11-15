@@ -2,7 +2,7 @@ manifestVersion: 1
 id: joolay-listify
 category: files
 name: Listify
-version: "1.0.2"
+version: "1.0.3"
 tagline: Checklists that follow your JoolzApp account
 description: >-
   Listify keeps simple checklists: several lists, dates, progress, swipe to delete, reorder, and a one-tap copy of the
@@ -17,7 +17,7 @@ gallery: []
 path: ""
 defaultUsername: ""
 defaultPassword: ""
-releaseNotes: "Every button is now an icon, and tap targets are bigger and more spaced out so Listify is easier to use on a phone."
+releaseNotes: "Every list now has a tag (default Groceries) so lists can be grouped for later analysis: tap the tag beside the date to change it, pick a suggestion or type your own. Add items from a photo: tap the camera button, take or choose a picture of a written or printed list, check the items it finds and add them. Uses your own AI key from Portal Admin (My settings), or a few free reads. Every button is now an icon, and tap targets are bigger and more spaced out so Listify is easier to use on a phone."
 submitter: joolay
 submission: https://github.com/joolay/umbrel-apps
 icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-listify/icon.svg
