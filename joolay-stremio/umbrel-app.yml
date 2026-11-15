@@ -2,8 +2,8 @@ manifestVersion: 1
 id: joolay-stremio
 category: media
 name: Stremio
-version: "latest"
-tagline: Stremio Web and streaming server, all in one
+version: "1.0.0"
+tagline: Stremio Web and streaming server, behind your JoolzApp account
 description: >-
   Stremio all-in-one: the Stremio web interface and the Stremio streaming server bundled in one container.
 
@@ -13,7 +13,7 @@ description: >-
   (Settings > Streaming > Streaming server URL, e.g. http://umbrel.local:11470).
 
 
-  This app runs the community tsaridas/stremio-docker image unmodified. Stremio does not host any content, so only use addons and sources you are legally allowed to use.
+  Sign in with your JoolzApp account (no separate Umbrel login). This app runs the community tsaridas/stremio-docker image unmodified behind a small sign-in gate. Stremio does not host any content, so only use addons and sources you are legally allowed to use.
 developer: Stremio / tsaridas
 website: https://www.stremio.com
 dependencies: []
