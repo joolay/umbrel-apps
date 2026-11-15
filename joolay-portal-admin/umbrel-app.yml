@@ -2,7 +2,7 @@ manifestVersion: 1
 id: joolay-portal-admin
 category: developer
 name: Portal Admin
-version: "0.12.0"
+version: "0.12.1"
 tagline: One admin panel for all your custom PocketBase apps
 description: >-
   A central admin panel for your custom apps that use PocketBase. Register each app, then manage
@@ -21,7 +21,7 @@ gallery: []
 path: ""
 defaultUsername: ""
 defaultPassword: ""
-releaseNotes: "New apps of yours that use JoolzApp accounts can now be connected to PocketBase automatically."
+releaseNotes: "Fixes the x-pocketbase JSON error on the PocketBase changes card: apps can now list what they need in a pocketbase.json file. New apps of yours that use JoolzApp accounts can now be connected to PocketBase automatically."
 submitter: joolay
 submission: https://github.com/joolay/umbrel-apps
 icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-portal-admin/icon.svg
