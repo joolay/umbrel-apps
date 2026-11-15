@@ -21,7 +21,7 @@ gallery: []
 path: ""
 defaultUsername: ""
 defaultPassword: ""
-releaseNotes: "Now uses the shared Glass look and also follows light and dark mode."
+releaseNotes: "Now uses the shared Glass look and also follows light and dark mode and a new glass-style icon."
 submitter: joolay
 submission: https://github.com/joolay/umbrel-apps
 icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-services-manager/icon.svg

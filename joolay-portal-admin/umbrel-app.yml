@@ -21,7 +21,7 @@ gallery: []
 path: ""
 defaultUsername: ""
 defaultPassword: ""
-releaseNotes: "Now uses the shared Glass look, with the same style as your other apps."
+releaseNotes: "Now uses the shared Glass look, with the same style as your other apps and a new glass-style icon."
 submitter: joolay
 submission: https://github.com/joolay/umbrel-apps
 icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-portal-admin/icon.svg

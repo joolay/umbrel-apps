@@ -38,3 +38,8 @@ One look for every JoolzApp: soft gradient backdrop, frosted panels, rounded cor
 
 ## Changing the template
 Edit `templates/glass/glass.css`, bump the version in its header comment, then copy it into every app's `public/` and bump each app's version.
+
+## Icons
+Every app icon is a glass tile: brand gradient, soft highlight, frosted rounded panel, white glyph. `make-icons.py` builds them
+(`icon.svg`, `icon-180.png`, `icon-512.png`, `icon-maskable-512.png`, and the store icon in `joolay-<app>/`). Add a new app's glyph and
+two brand colours to the `icons` table in that script and run it from the repo root (needs `rsvg-convert` and ImageMagick).
