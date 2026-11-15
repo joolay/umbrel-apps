@@ -177,7 +177,8 @@ function installedApps() {
 
 // ---- Connect an app to PocketBase ------------------------------------------------------------------------------
 // Apps built on the JoolzApp account read a PocketBase superuser login from <their data folder>/pocketbase.env. This writes
-// that one file for an app of your own store (joolay-*), after checking the login really is a PocketBase superuser. It only
+// that one file for an app of your own store (joolay-*), after checking the login really is a PocketBase superuser. The login is typed
+// in by you each time and never kept by Portal Admin itself. It only
 // ever touches <app-data>/<app>/data/pocketbase.env, never creates folders, and refuses public traffic.
 let connectFails = [];
 const connectLocked = () => { const t = Date.now() - 10 * 60 * 1000; connectFails = connectFails.filter((x) => x > t); return connectFails.length >= 6; };
@@ -205,7 +206,7 @@ async function connectApp(req, res) {
   if (isPublicRequest(req)) return send(res, 403, { message: 'Only available from your home network or tailnet.' });
   if (connectLocked()) return send(res, 429, { message: 'Too many wrong attempts. Try again in a few minutes.' });
   let b; try { b = JSON.parse(await readBody(req)); } catch { return send(res, 400, { message: 'Invalid request.' }); }
-  const { id, email, password, remember } = b || {};
+  const { id, email, password } = b || {};
   if (![id, email, password].every((x) => typeof x === 'string' && x.length > 0 && x.length < 300)) return send(res, 400, { message: 'App, email and password are required.' });
   if (/[\r\n]/.test(email + password) || /^(["']).*\1$/.test(password) || password !== password.trim()) return send(res, 400, { message: "That password can't be stored in the file (line breaks, surrounding quotes or spaces)." });
   const app = installedApps().apps.find((a) => a.id === id);
@@ -214,34 +215,9 @@ async function connectApp(req, res) {
   let ok; try { ok = await verifySuperuser(email, password); } catch { return send(res, 502, { message: "Couldn't reach PocketBase." }); }
   if (!ok) { connectFails.push(Date.now()); return send(res, 401, { message: "PocketBase didn't accept that login. It has to be a superuser." }); }
   try { writeAppEnv(app.dir, email, password); } catch (e) { return send(res, 500, { message: String(e.message || e) }); }
-  if (remember === true) { try { saveAuto(email, password); } catch (e) { return send(res, 500, { message: "Connected, but couldn't save the login for automatic connecting: " + String(e.message || e) }); } setTimeout(autoConnect, 500); }
-  return send(res, 200, { ok: true, restart: true, auto: remember === true });
+  return send(res, 200, { ok: true });
 }
 
-// ---- Automatic connecting --------------------------------------------------------------------------------------
-// With "connect automatically" on, the verified superuser login is kept in <data>/auto-connect.json (mode 0600, this app's own
-// data folder, the same trust level as the pocketbase.env files it writes). Every 30 s, any app of yours (joolay-*) that
-// declares POCKETBASE_APP_ID and has a data folder but no pocketbase.env gets one written. Existing files are never overwritten.
-// If PocketBase stops accepting the login, automatic connecting switches itself off until you enter it again.
-const AUTO_FILE = path.join(process.env.DATA_DIR || '/data', 'auto-connect.json');
-function loadAuto() { try { const j = JSON.parse(fs.readFileSync(AUTO_FILE, 'utf8')); return j && j.email && j.password ? j : null; } catch { return null; } }
-function saveAuto(email, password) { fs.mkdirSync(path.dirname(AUTO_FILE), { recursive: true }); const tmp = AUTO_FILE + '.tmp'; fs.writeFileSync(tmp, JSON.stringify({ email, password }), { mode: 0o600 }); fs.renameSync(tmp, AUTO_FILE); }
-let autoBusy = false, autoLast = { at: 0, connected: [], error: '' };
-async function autoConnect() {
-  if (autoBusy) return; autoBusy = true;
-  try {
-    const cred = loadAuto(); if (!cred) return;
-    appsCache = { at: 0, v: null };
-    const todo = installedApps().apps.filter((a) => /^joolay-[a-z0-9-]{1,60}$/.test(a.dir) && a.slug && a.env === 'missing');
-    if (!todo.length) return;
-    let ok; try { ok = await verifySuperuser(cred.email, cred.password); } catch { autoLast.error = "Couldn't reach PocketBase; will retry."; return; }
-    if (!ok) { try { fs.unlinkSync(AUTO_FILE); } catch {} autoLast.error = 'PocketBase no longer accepts the saved login, so automatic connecting is off. Enter it again to turn it back on.'; return; }
-    for (const a of todo) { try { writeAppEnv(a.dir, cred.email, cred.password); autoLast.connected.push({ app: a.name, at: new Date().toISOString() }); console.log('Auto-connected ' + a.id); } catch (e) { autoLast.error = a.name + ': ' + String(e.message || e); } }
-    autoLast.connected = autoLast.connected.slice(-10); autoLast.error = autoLast.error && todo.length ? autoLast.error : '';
-  } finally { autoBusy = false; }
-}
-setInterval(() => autoConnect().catch(() => {}), 30000).unref();
-setTimeout(() => autoConnect().catch(() => {}), 5000).unref();
 
 function serveStatic(req, res, pathname) {
   let rel = pathname === '/' ? '/index.html' : pathname;
@@ -396,13 +372,6 @@ const handle = async (req, res) => {
       if (req.method !== 'GET') return send(res, 405, { message: 'Method not allowed' });
       if (isPublicRequest(req)) return send(res, 403, { message: 'Only available from your home network or tailnet.' });
       return send(res, 200, installedApps());
-    }
-
-    if (pathname === '/auto-connect') {
-      if (isPublicRequest(req)) return send(res, 403, { message: 'Only available from your home network or tailnet.' });
-      if (req.method === 'GET') return send(res, 200, { enabled: !!loadAuto(), email: (loadAuto() || {}).email || '', last: autoLast });
-      if (req.method === 'DELETE') { try { fs.unlinkSync(AUTO_FILE); } catch {} return send(res, 200, { enabled: false }); }
-      return send(res, 405, { message: 'Method not allowed' });
     }
 
     if (pathname === '/connect-app') {

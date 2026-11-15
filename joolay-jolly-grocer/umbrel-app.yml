@@ -2,7 +2,7 @@ manifestVersion: 1
 id: joolay-jolly-grocer
 category: files
 name: Jolly Grocer
-version: "1.0.0"
+version: "1.0.1"
 tagline: Your grocery shopping companion
 description: >-
   Jolly Grocer sorts your shopping list by shop and category, remembers short shop codes, and checks each shop out with a
@@ -19,7 +19,7 @@ gallery: []
 path: ""
 defaultUsername: ""
 defaultPassword: ""
-releaseNotes: "First release. Lists sorted by shop then category, two-capital-letter shop codes, swipe left to delete, per-shop checkout with a receipt photo, learned prices for regular items, suggestions for the next list, weekly and monthly spending analysis, personal or non-grocery items kept out of family totals, and a receipt archive in PocketBase with a rollover request after 1 to 10 years."
+releaseNotes: "Starts on its own once PocketBase is connected in Portal Admin, with no restart needed. The waiting page now refreshes itself."
 submitter: joolay
 submission: https://github.com/joolay/umbrel-apps
 icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-jolly-grocer/icon.svg

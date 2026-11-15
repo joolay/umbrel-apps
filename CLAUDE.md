@@ -17,6 +17,8 @@ ShutterWorth (`src/shutterworth`) and Portal Admin (`src/portal-admin`) both fol
 
 ## JoolzApp-account apps and pocketbase.env
 Any `joolay-*` app that signs people in with the JoolzApp account declares `POCKETBASE_APP_ID=<slug>` in its compose file and reads
-`<app data>/data/pocketbase.env` (copy `src/shutterworth/pocketbase.js`). Portal Admin writes that file automatically (Connect once with
-"connect automatically" ticked; it checks for new apps every 30 s and never overwrites an existing file). Apps should fail closed
-without the file and exit non-zero when it appears so Umbrel restarts them.
+`<app data>/data/pocketbase.env` (copy `src/jolly-grocer/pocketbase.js`, the newest version). Portal Admin writes that file, and only after
+you sign in there: it notices a new app with a data folder but no file (checks every 30 s, and the app must create its data folder on
+startup), opens a sign-in prompt, verifies the PocketBase superuser login, and writes the file for every waiting app. Nothing is stored
+by Portal Admin and an existing file is never overwritten. Apps must fail closed without the file, but must NOT need a restart: while
+accounts are off, call `pb.reload()` on each request (it re-reads the file, at most every 2 s) and make the waiting page refresh itself.
