@@ -1,0 +1,25 @@
+# Stremio all-in-one runs here as an Umbrel app using the community image (https://github.com/tsaridas/stremio-docker), unmodified.
+# There is no src/stremio: nothing to build. The image bundles Stremio Web (port 8080) and the Stremio streaming server (port 11470).
+# Image tag is `latest` (upstream only publishes latest/nightly/vX.X.X); pin it to a vX.X.X tag and match `version` in umbrel-app.yml to freeze updates.
+# Config and cache live in this app's data folder and survive updates.
+services:
+  app_proxy:
+    environment:
+      APP_HOST: joolay-stremio_web_1
+      APP_PORT: 8080
+      # Stremio Web has no login of its own, so keep Umbrel's login in front of it (the default).
+
+  web:
+    image: tsaridas/stremio-docker:latest
+    restart: on-failure
+    environment:
+      # Web UI derives the streaming server URL (host:11470) from the browser's address.
+      AUTO_SERVER_URL: "1"
+      NO_CORS: "1"
+      # Avoids SSDP errors inside Docker.
+      CASTING_DISABLED: "1"
+    ports:
+      # Streaming server, so Stremio apps on your phone/TV/PC can use it (Settings > Streaming > server URL).
+      - "11470:11470"
+    volumes:
+      - ${APP_DATA_DIR}/data:/root/.stremio-server
