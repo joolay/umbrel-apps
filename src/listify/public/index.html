@@ -59,17 +59,17 @@ button, input, textarea { font-family: inherit; color: inherit; }
 .card h2 { font: 600 22px/1.2 var(--font-display); letter-spacing: -0.01em; overflow-wrap: anywhere; text-wrap: balance; }
 .card-head { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; justify-content: space-between; }
 .title-slot { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1 1 200px; }
-.head-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.head-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .badge { font: 500 11px var(--font-mono); letter-spacing: .08em; text-transform: uppercase; padding: 2px 7px; border: 1px solid var(--line-strong); border-radius: 5px; color: var(--muted); flex: none; }
 .rename { display: flex; gap: 8px; flex-wrap: wrap; width: 100%; }
 .rename input { flex: 1 1 180px; }
 .confirm { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 14px; }
-.btn { font-weight: 600; font-size: 14px; line-height: 1.2; min-height: 40px; padding: 9px 14px; border-radius: 9px; border: 1px solid var(--line-strong); background: var(--surface); cursor: pointer; }
+.btn { font-weight: 600; font-size: 14px; line-height: 1.2; min-height: 48px; min-width: 48px; padding: 9px 14px; border-radius: 9px; border: 1px solid var(--line-strong); background: var(--surface); cursor: pointer; }
 .btn:hover { background: var(--surface-2); }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 .btn.primary:hover { filter: brightness(1.06); }
 .btn.danger { background: var(--danger); border-color: var(--danger); color: var(--danger-ink); }
-.btn.sm { min-height: 34px; padding: 6px 11px; font-size: 13.5px; }
+.btn.sm { min-height: 44px; padding: 6px 11px; font-size: 13.5px; }
 .btn.quiet { border-color: transparent; background: none; color: var(--accent-text); }
 .btn.quiet:hover { background: var(--accent-soft); }
 .btn.quiet[aria-pressed="true"] { background: var(--accent-soft); }
@@ -87,7 +87,7 @@ input[type="text"]::placeholder, textarea::placeholder { color: var(--muted); }
 .add { display: flex; gap: 8px; }
 .add input { flex: 1; min-width: 0; }
 .toolbar { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; justify-content: space-between; }
-.tools { display: flex; flex-wrap: wrap; gap: 2px; }
+.tools { display: flex; flex-wrap: wrap; gap: 6px; }
 .seg { display: flex; padding: 3px; gap: 2px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--surface-2); max-width: 100%; }
 .seg button { flex: 1; font-weight: 500; font-size: 13.5px; border: 0; background: none; color: var(--muted); padding: 7px 12px; border-radius: 7px; cursor: pointer; white-space: nowrap; }
 .seg button[aria-pressed="true"] { background: var(--surface); color: var(--accent-text); font-weight: 600; box-shadow: 0 0 0 1px var(--line-strong); }
@@ -95,7 +95,7 @@ input[type="text"]::placeholder, textarea::placeholder { color: var(--muted); }
 .items { list-style: none; margin: -8px 0 0; padding: 0; }
 .item { display: flex; align-items: center; gap: 2px; border-top: 1px solid var(--line); }
 .date-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: -6px; }
-.datechip { position: relative; display: inline-flex; align-items: center; gap: 6px; min-height: 34px; padding: 6px 11px; border-radius: 9px; border: 1px solid var(--line-strong); background: var(--surface); color: var(--accent-text); font-weight: 600; font-size: 13.5px; cursor: pointer; overflow: hidden; }
+.datechip { position: relative; display: inline-flex; align-items: center; gap: 6px; min-height: 44px; min-width: 44px; padding: 6px 11px; border-radius: 9px; border: 1px solid var(--line-strong); background: var(--surface); color: var(--accent-text); font-weight: 600; font-size: 13.5px; cursor: pointer; overflow: hidden; }
 .datechip.empty { color: var(--muted); border-style: dashed; }
 .datechip svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex: none; }
 .datechip:hover { background: var(--surface-2); }
@@ -105,39 +105,43 @@ input[type="text"]::placeholder, textarea::placeholder { color: var(--muted); }
 .swipe-fg { display: flex; align-items: center; gap: 2px; background: var(--surface); position: relative; touch-action: pan-y; transition: transform .2s ease; will-change: transform; }
 .swipe-fg.drag { transition: none; user-select: none; -webkit-user-select: none; }
 .swipe-act { position: absolute; top: 0; right: 0; bottom: 0; width: 88px; border: 0; padding: 0; display: flex; align-items: center; justify-content: center; gap: 6px; background: var(--danger); color: var(--danger-ink); font: 600 14px var(--font-body); cursor: pointer; }
-.swipe-act svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.swipe-act svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .menu-row { border-radius: 8px; }
 .menu-row .swipe-fg { border-radius: 8px; }
 .menu-row .menu-item { flex: 1; min-width: 0; }
-.row-main { flex: 1; min-width: 0; display: flex; align-items: flex-start; gap: 12px; padding: 11px 0; cursor: pointer; }
+.row-main { flex: 1; min-width: 0; display: flex; align-items: flex-start; gap: 12px; padding: 14px 0; min-height: 52px; cursor: pointer; }
 div.row-main { cursor: default; padding: 7px 0; align-items: center; }
 .txt { overflow-wrap: anywhere; padding-top: 1px; }
 .item.done .txt { color: var(--muted); text-decoration: line-through; text-decoration-thickness: 1.5px; text-decoration-color: var(--line-strong); }
-.chk { appearance: none; -webkit-appearance: none; flex: none; margin: 0; position: relative; cursor: pointer; width: 24px; height: 24px; border-radius: 7px; border: 2px solid var(--line-strong); background: var(--surface); display: grid; place-items: center; }
+.chk { appearance: none; -webkit-appearance: none; flex: none; margin: 0; position: relative; cursor: pointer; width: 28px; height: 28px; border-radius: 7px; border: 2px solid var(--line-strong); background: var(--surface); display: grid; place-items: center; }
 .chk::after { content: ""; width: 6px; height: 12px; margin-top: -2px; border: solid var(--accent-ink); border-width: 0 2.5px 2.5px 0; transform: rotate(45deg) scale(0); transition: transform .12s ease; }
 .chk:checked { background: var(--accent); border-color: var(--accent); }
 .chk:checked::after { transform: rotate(45deg) scale(1); }
 .chk.pop { animation: pop .24s ease; }
 @keyframes pop { 0% { transform: scale(.8); } 60% { transform: scale(1.14); } 100% { transform: scale(1); } }
-.ib { flex: none; width: 36px; height: 36px; display: grid; place-items: center; border: 0; background: none; color: var(--muted); border-radius: 8px; cursor: pointer; }
+.ib { flex: none; width: 48px; height: 48px; display: grid; place-items: center; border: 0; background: none; color: var(--muted); border-radius: 8px; cursor: pointer; }
 .ib:hover { background: var(--surface-2); color: var(--ink); }
 .ib:disabled { opacity: .3; cursor: default; background: none; color: var(--muted); }
-.ib svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.ib svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .empty { color: var(--muted); padding: 6px 0 2px; border-top: 1px solid var(--line); padding-top: 14px; }
 .actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .actions .meta { margin-left: auto; font-size: 12.5px; color: var(--muted); }
 .btn svg, .toast-btn svg, .seg button svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex: none; }
-.btn svg { width: 18px; height: 18px; }
+.btn svg { width: 22px; height: 22px; }
 .btn.ico { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-width: 40px; padding: 0 10px; }
 .btn.sm.ico { min-width: 34px; padding: 0 8px; }
 .btn .n { font: 600 13px var(--font-mono); font-variant-numeric: tabular-nums; }
 .btn .n:empty { display: none; }
 .toast-btn { display: inline-flex; align-items: center; gap: 6px; }
-.bt { white-space: nowrap; }
-@media (max-width: 420px) { .seg button svg { display: none; } .seg button { padding: 7px 10px; } }
+.bt { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+button, label, .tab { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+.add .btn { min-width: 56px; }
+#save-btn { min-height: 56px; min-width: 72px; }
+
 .toast-btn svg { width: 20px; height: 20px; }
 .seg button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
-.seg button svg { width: 16px; height: 16px; }
+.seg button svg { width: 20px; height: 20px; }
+.seg button { min-height: 44px; }
 .picker { position: relative; flex: 1; min-width: 0; }
 .picker-btn { width: 100%; display: flex; align-items: center; gap: 10px; text-align: left; font-size: 15px; min-height: 44px; }
 .picker-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
@@ -159,7 +163,7 @@ div.row-main { cursor: default; padding: 7px 0; align-items: center; }
 .lab { font: 500 11.5px var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
 .toast-wrap { position: fixed; left: 0; right: 0; bottom: 0; display: flex; justify-content: center; pointer-events: none; padding: 12px max(16px, env(safe-area-inset-right, 0px)) calc(12px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); }
 .toast { pointer-events: auto; display: flex; align-items: center; gap: 14px; background: var(--toast-bg); color: var(--toast-fg); padding: 10px 10px 10px 16px; border-radius: 10px; font-size: 14px; max-width: 460px; box-shadow: 0 6px 24px rgba(0,0,0,.25); }
-.toast-btn { border: 0; background: none; color: var(--toast-accent); font-weight: 700; font-size: 14px; padding: 6px 10px; border-radius: 7px; cursor: pointer; }
+.toast-btn { border: 0; background: none; color: var(--toast-accent); font-weight: 700; font-size: 14px; min-width: 44px; min-height: 44px; justify-content: center; padding: 6px 10px; border-radius: 7px; cursor: pointer; }
 @media (prefers-reduced-motion: reduce) { .chk.pop { animation: none; } .chk::after, .strip i, .bar b, .swipe-fg { transition: none; } }
 </style></head><body>
 
@@ -477,7 +481,7 @@ div.row-main { cursor: default; padding: 7px 0; align-items: center; }
     const act = h('button', {
       type: 'button', class: 'swipe-act', tabindex: '-1', 'aria-hidden': 'true', 'aria-label': label,
       onclick: function (e) { e.stopPropagation(); e.preventDefault(); closeSwipe(); onDelete(); }
-    }, icon('trash'), h('span', { text: 'Delete' }));
+    }, icon('trash'));
     host.insertBefore(act, fg);
     const s = { fg: fg, act: act };
 
@@ -623,7 +627,7 @@ div.row-main { cursor: default; padding: 7px 0; align-items: center; }
       const v = DATE_RE.test(input.value) ? input.value : '';
       if (v !== (l.date || '')) mutate(function () { l.date = v; l.sample = false; });
     });
-    box.appendChild(h('label', { class: 'datechip' + (l.date ? '' : ' empty') }, icon('calendar'), bt(l.date ? longDate(l.date) : 'Add date'), input));
+    box.appendChild(h('label', { class: 'datechip' + (l.date ? '' : ' empty') }, icon('calendar'), l.date ? h('span', { text: longDate(l.date) }) : null, input));
     if (l.date) {
       box.appendChild(h('button', { type: 'button', class: 'btn quiet sm ico', icon: 'x', label: 'Clear date', onclick: function () { mutate(function () { l.date = ''; }); } }, bt('Clear')));
     }
@@ -743,7 +747,7 @@ div.row-main { cursor: default; padding: 7px 0; align-items: center; }
           ui.deleting = false; ui.sel = new Set();
           mutate(function () { l.items = l.items.filter((i) => !ids.has(i.id)); }, 'Deleted ' + plural(ids.size, 'item'));
         }
-      }, bt(picked.length ? 'Delete ' + picked.length : 'Delete')),
+      }, h('span', { class: 'n', text: picked.length ? String(picked.length) : '' })),
       h('button', { type: 'button', class: 'btn sm ico', icon: 'x', label: 'Cancel', onclick: exitDelete }, bt('Cancel'))));
   }
 
@@ -925,10 +929,11 @@ div.row-main { cursor: default; padding: 7px 0; align-items: center; }
     const open = active().items.filter((i) => !i.done);
     if (!open.length) { showToast('No open items to copy'); return; }
     if (copyText(open.map((i) => i.text).join('\n'))) {
-      const b = $('save-btn').querySelector('.bt');
-      b.textContent = 'Copied ✓';
+      const btn = $('save-btn');
+      const old = btn.querySelector('svg');
+      if (old) old.replaceWith(icon('check'));
       clearTimeout(copiedTimer);
-      copiedTimer = setTimeout(function () { b.textContent = 'Copy for Reminders'; }, 3000);
+      copiedTimer = setTimeout(function () { const s = btn.querySelector('svg'); if (s) s.replaceWith(icon('copy')); }, 3000);
       showToast('Copied ' + plural(open.length, 'item') + '. Now run Save to Shopping.');
     } else {
       showToast('Could not copy automatically. Select the items and copy them yourself.');
