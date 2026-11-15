@@ -27,4 +27,4 @@ defaultPassword: ""
 releaseNotes: ""
 submitter: joolay
 submission: https://github.com/joolay/umbrel-apps
-icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-stremio/icon.svg
+icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/stremio.svg
