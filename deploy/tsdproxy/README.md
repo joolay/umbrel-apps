@@ -9,7 +9,7 @@ the store is what publishes it**. No per-app Tailscale steps.
 | `https://joolzapp.<tailnet>.ts.net` | Portal Admin: the Dashboard (user-only port) | 3892 |
 | `https://shutterworth.<tailnet>.ts.net` | ShutterWorth | 3882 |
 | `https://grubtogo.<tailnet>.ts.net` | GrubToGo | 3894 |
-| `https://listify.<tailnet>.ts.net` | Listify | 3896 |
+| `https://listify.<tailnet>.ts.net` | Listify | 3898 |
 
 ## One-time setup (Umbrel, over SSH)
 Needs (already done): HTTPS certificates on, `tag:public` with the `funnel` attribute in your policy, and a reusable auth key tagged `tag:public`.
