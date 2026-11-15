@@ -1,7 +1,7 @@
 # Stremio runs here as an Umbrel app: the community image (https://github.com/tsaridas/stremio-docker), unmodified, behind a small
 # JoolzApp sign-in gate (src/stremio, built by .github/workflows/build-images.yml). Keep the gate image tag equal to `version` in umbrel-app.yml.
 # `web` is the gate: it checks the person's JoolzApp account (and Portal Admin access) and then proxies to the `stremio` service.
-# Sign-in settings go in <app data>/data/pocketbase.env (POCKETBASE_URL, POCKETBASE_SUPERUSER_EMAIL, POCKETBASE_SUPERUSER_PASSWORD), never in this public repo.
+# Sign-in settings go in <app data>/data/pocketbase.env (POCKETBASE_SUPERUSER_EMAIL, POCKETBASE_SUPERUSER_PASSWORD; POCKETBASE_URL defaults to http://host.docker.internal:5400), never in this public repo.
 # Without them the gate refuses to serve anything (fails closed).
 # Stremio's own config and cache live in <app data>/stremio and survive updates.
 services:
@@ -13,10 +13,13 @@ services:
       PROXY_AUTH_ADD: "false"
 
   web:
-    image: ghcr.io/joolay/stremio:1.0.0
+    image: ghcr.io/joolay/stremio:1.0.1
     restart: on-failure
     depends_on:
       - stremio
+    # Lets the gate reach the PocketBase app (port 5400) published on this Umbrel.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       - POCKETBASE_APP_ID=stremio
       - POCKETBASE_APP_NAME=Stremio
