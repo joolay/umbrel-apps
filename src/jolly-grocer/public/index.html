@@ -1,0 +1,791 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Jolly Grocer">
+<title>Jolly Grocer</title>
+<style>
+:root{--bg:#EAF0EA;--surface:#fff;--surface-2:#F3F7F3;--ink:#14231A;--muted:#566B5D;--line:#D6E0D7;--line-strong:#B8C8BB;--accent:#1E7A4C;--accent-ink:#fff;--accent-text:#17653F;--accent-soft:#DCEFE3;--danger:#B3362E;--warn:#9A6200;--toast-bg:#14231A;--toast-fg:#F1F7F2}
+@media (prefers-color-scheme:dark){:root{--bg:#0E1611;--surface:#16211A;--surface-2:#1C2A21;--ink:#E6EFE8;--muted:#9AB0A0;--line:#27382C;--line-strong:#3A5242;--accent:#4FC083;--accent-ink:#06210F;--accent-text:#74D3A1;--accent-soft:#183323;--danger:#F28B82;--warn:#E8B04A;--toast-bg:#E6EFE8;--toast-fg:#0E1611}}
+*,*::before,*::after{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
+.wrap{max-width:720px;margin:0 auto;padding:14px 14px 90px;display:grid;gap:12px}
+.acct{display:flex;gap:6px;justify-content:flex-end;margin-top:-6px}
+.top{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.brand{display:flex;align-items:center;gap:9px;margin:0;font-size:22px;letter-spacing:-.01em}
+.brand b{color:var(--accent-text)}
+.mark{width:30px;height:30px;flex:none}
+.mark rect{fill:var(--accent)}.mark path{fill:none;stroke:var(--accent-ink);stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
+.mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px}
+.totals{margin:0;color:var(--muted);text-align:right}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px;display:grid;gap:12px}
+.card h2,.card h3{margin:0;font-size:17px}
+.card h3{font-size:15px}
+.muted{color:var(--muted);font-size:14px;margin:0}
+button,input,select{font:inherit;color:inherit}
+input,select{min-height:46px;border:1px solid var(--line-strong);background:var(--surface);border-radius:10px;padding:8px 11px;font-size:16px;min-width:0}
+input:focus-visible,select:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.btn{min-height:46px;min-width:46px;padding:8px 14px;border-radius:10px;border:1px solid var(--line-strong);background:var(--surface);font-weight:600;font-size:14.5px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:7px}
+.btn:hover{background:var(--surface-2)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.primary:hover{filter:brightness(1.07)}
+.btn.quiet{border-color:transparent;background:transparent;color:var(--accent-text)}
+.btn.danger{color:var(--danger);border-color:var(--danger)}
+.btn.sm{min-height:44px;padding:6px 11px;font-size:13.5px}
+.btn[disabled]{opacity:.5;cursor:default}
+.btn svg,.chipico svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.row.grow>input{flex:1 1 160px}
+.tabs{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;background:var(--surface-2);border:1px solid var(--line);border-radius:12px;padding:4px}
+.tabs button{border:0;background:transparent;min-height:44px;border-radius:9px;font-weight:600;font-size:14.5px;color:var(--muted);cursor:pointer}
+.tabs button[aria-selected=true]{background:var(--surface);color:var(--accent-text);box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{min-height:44px;padding:0 13px;border-radius:22px;border:1px solid var(--line-strong);background:var(--surface);font-weight:600;font-size:14px;cursor:pointer}
+.chip[aria-pressed=true]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.chip.sug{background:var(--accent-soft);border-color:transparent;color:var(--accent-text)}
+.title-in{flex:1 1 180px;font-size:19px;font-weight:700;border-color:transparent;background:transparent;padding-left:2px}
+.title-in:hover,.title-in:focus{border-color:var(--line-strong);background:var(--surface)}
+.group{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--surface)}
+.ghead{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 8px 8px 12px;background:var(--accent-soft);flex-wrap:wrap}
+.ghead b{font-size:16px}
+.ghead .n{color:var(--muted);font-size:13px}
+.cat{padding:7px 12px 2px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:700}
+.swipe{position:relative;overflow:hidden;border-top:1px solid var(--line)}
+.swipe-bg{position:absolute;inset:0;background:var(--danger);display:flex;justify-content:flex-end}
+.swipe-del{width:88px;border:0;background:transparent;color:#fff;font:inherit;font-weight:700;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;cursor:pointer}
+.swipe-del svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.item{position:relative;display:flex;align-items:center;gap:4px;min-height:52px;background:var(--surface);touch-action:pan-y;transition:transform .18s ease}
+.item.drag{transition:none}
+.tick{flex:none;width:52px;height:52px;border:0;background:transparent;cursor:pointer;display:grid;place-items:center;color:var(--accent-text)}
+.tick i{width:24px;height:24px;border:2px solid var(--line-strong);border-radius:7px;display:grid;place-items:center}
+.tick[aria-pressed=true] i{background:var(--accent);border-color:var(--accent)}
+.tick svg{width:16px;height:16px;fill:none;stroke:var(--accent-ink);stroke-width:3;stroke-linecap:round;stroke-linejoin:round;opacity:0}
+.tick[aria-pressed=true] svg{opacity:1}
+.itext{flex:1;min-width:0;text-align:left;background:transparent;border:0;padding:10px 8px 10px 0;cursor:pointer;font-size:16px;overflow-wrap:anywhere}
+.item.done .itext{text-decoration:line-through;color:var(--muted)}
+.edit{padding:10px 12px 12px;background:var(--surface-2);border-top:1px solid var(--line);display:grid;gap:8px}
+.edit .row>*{flex:1 1 130px}
+.bar{display:grid;grid-template-columns:minmax(80px,32%) 1fr auto;gap:8px;align-items:center;font-size:14px}
+.bar .t{height:12px;background:var(--surface-2);border-radius:6px;overflow:hidden}
+.bar .t i{display:block;height:100%;background:var(--accent);border-radius:6px}
+.big{font-size:30px;font-weight:800;letter-spacing:-.02em;margin:0}
+.delta{font-size:13.5px;color:var(--muted)}
+.line{display:grid;grid-template-columns:1fr 92px;gap:6px 8px;padding:8px 0;border-top:1px solid var(--line)}
+.line:first-child{border-top:0}
+.line .full{grid-column:1/-1}
+.line .row>*{flex:1 1 110px}
+.pur{border-top:1px solid var(--line);padding:10px 0;display:grid;gap:6px}
+.pur:first-of-type{border-top:0}
+.pur summary{cursor:pointer;display:flex;justify-content:space-between;gap:8px;min-height:36px;align-items:center}
+.pill{display:inline-block;padding:1px 8px;border-radius:10px;background:var(--accent-soft);color:var(--accent-text);font-size:12px;font-weight:700}
+.warn{color:var(--warn);font-size:14px}
+textarea{width:100%;min-height:120px;border:1px solid var(--line-strong);border-radius:10px;background:var(--surface);padding:8px;font:12px ui-monospace,Menlo,monospace}
+.foot{color:var(--muted);font-size:12.5px;text-align:center;margin:0}
+.toast-wrap{position:fixed;left:0;right:0;bottom:calc(14px + env(safe-area-inset-bottom));display:flex;justify-content:center;pointer-events:none;padding:0 14px}
+.toast{background:var(--toast-bg);color:var(--toast-fg);padding:11px 16px;border-radius:12px;font-weight:600;font-size:14.5px;box-shadow:0 6px 20px rgba(0,0,0,.25);pointer-events:auto}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+[hidden]{display:none!important}
+</style></head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <h1 class="brand"><svg class="mark" viewBox="0 0 30 30" aria-hidden="true"><rect x="1" y="1" width="28" height="28" rx="8"/><path d="M7 11h16l-1.8 9H8.8z"/><path d="M11 11l2-4M19 11l-2-4"/></svg><span>Jolly <b>Grocer</b></span></h1>
+    <p class="totals mono" id="totals"></p>
+  </header>
+  <div class="acct" id="acct" hidden><button type="button" class="btn quiet" id="dash-btn">JoolzApp dashboard</button><button type="button" class="btn quiet" id="out-btn">Sign out</button></div>
+  <nav class="tabs" id="tabs" role="tablist"></nav>
+  <main id="view"></main>
+  <p class="foot" id="foot"></p>
+</div>
+<div class="toast-wrap" id="toast-wrap" hidden><div class="toast" role="status" aria-live="polite" id="toast"></div></div>
+<input type="file" id="file-list" accept="image/*" hidden>
+<input type="file" id="file-receipt" accept="image/*" hidden>
+<script>
+(function () {
+  'use strict';
+  const KEY = 'jollygrocer.v2', CUR = 'R';
+  const CATS = ['Produce', 'Meat & Fish', 'Dairy & Eggs', 'Bakery', 'Pantry', 'Frozen', 'Drinks', 'Snacks', 'Household', 'Toiletries', 'Pharmacy', 'Other'];
+  const GUESS = [
+    ['Meat & Fish', /chicken|beef|mince|wors|lamb|pork|bacon|sausage|steak|fish|hake|tuna|chops|ribs|biltong|\bham\b/],
+    ['Dairy & Eggs', /milk|cheese|yoghurt|yogurt|butter|cream|\beggs?\b|margarine|custard/],
+    ['Bakery', /bread|\brolls?\b|\bbuns?\b|bagel|muffin|croissant|rusk|\bwraps?\b|pita|loaf/],
+    ['Frozen', /frozen|ice cream|ice-cream|fries|pizza|nuggets/],
+    ['Drinks', /juice|\bcola\b|\bcoke\b|\bwater\b|\btea\b|coffee|beer|wine|cider|soda|squash|milo|drink/],
+    ['Snacks', /chips|crisps|chocolate|sweets|biscuit|cookie|candy|nuts|popcorn|snack/],
+    ['Toiletries', /shampoo|toothpaste|deodorant|conditioner|razor|lotion|nappies|nappy|wipes|tampon|body wash/],
+    ['Household', /detergent|soap|bleach|toilet|tissue|foil|bin bag|sponge|dish|cleaner|washing|candle|batter|paper towel/],
+    ['Pharmacy', /panado|paracetamol|vitamin|plaster|medicine|tablet|syrup|ointment|ibuprofen/],
+    ['Produce', /apple|banana|orange|lemon|tomato|onion|potato|carrot|spinach|lettuce|cabbage|\bavo|pepper|cucumber|fruit|veg|garlic|mielie|butternut|grape|berr|herb|mango|melon|pumpkin|broccoli/],
+    ['Pantry', /rice|pasta|flour|sugar|\boil\b|salt|spice|sauce|\btins?\b|beans|lentil|cereal|oats|\bpap\b|maize|noodle|stock|\bjam\b|peanut|honey|mayo|vinegar|spread|baked/]
+  ];
+  const guessCat = (t) => { t = String(t).toLowerCase(); for (const g of GUESS) if (g[1].test(t)) return g[0]; return 'Other'; };
+  const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
+  const UNITS = /^(x|kg|g|l|ml|pk|pack|packs|each|ea)$/;
+  const norm = (s) => String(s || '').toLowerCase().replace(/[^a-z\s]/g, ' ').split(/\s+/).filter((w) => w && !UNITS.test(w)).join(' ').trim();
+  const money = (n) => CUR + ' ' + (Math.round((+n || 0) * 100) / 100).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  const num = (v) => { const n = parseFloat(String(v).replace(',', '.')); return isFinite(n) && n >= 0 ? n : 0; };
+  const pad = (n) => (n < 10 ? '0' : '') + n;
+  const dayKey = (d) => { d = new Date(d); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); };
+  const toLocalInput = (d) => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+  const fmtAt = (d) => new Date(d).toLocaleString(undefined, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  const $ = (id) => document.getElementById(id);
+
+  /* ---------- tiny DOM helpers ---------- */
+  function h(tag, a) {
+    const el = document.createElement(tag);
+    if (a) for (const k in a) {
+      const v = a[k]; if (v == null || v === false) continue;
+      if (k === 'class') el.className = v;
+      else if (k === 'text') el.textContent = v;
+      else if (k.slice(0, 2) === 'on') el.addEventListener(k.slice(2), v);
+      else if (k === 'value' || k === 'checked' || k === 'disabled' || k === 'selected') el[k] = v;
+      else el.setAttribute(k, v === true ? '' : v);
+    }
+    for (let i = 2; i < arguments.length; i++) { const c = arguments[i]; if (c == null || c === false) continue; el.appendChild(typeof c === 'string' ? document.createTextNode(c) : c); }
+    return el;
+  }
+  const NS = 'http://www.w3.org/2000/svg';
+  const ICON = {
+    plus: '<path d="M12 5v14M5 12h14"/>', camera: '<path d="M4 8h3l1.5-2h7L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.5"/>',
+    tag: '<path d="M4 4h7l9 9-7 7-9-9z"/><circle cx="8.5" cy="8.5" r="1.2"/>', cart: '<path d="M4 5h2l2 10h9l2-7H7"/><circle cx="10" cy="19" r="1.3"/><circle cx="17" cy="19" r="1.3"/>',
+    check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>', x: '<path d="M6 6l12 12M18 6L6 18"/>', copy: '<rect x="8" y="8" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/>',
+    trash: '<path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12"/>', next: '<path d="M9 6l6 6-6 6"/>', prev: '<path d="M15 6l-6 6 6 6"/>'
+  };
+  function icon(n) { const s = document.createElementNS(NS, 'svg'); s.setAttribute('viewBox', '0 0 24 24'); s.setAttribute('aria-hidden', 'true'); s.innerHTML = ICON[n]; return s; }
+  const btn = (cls, ic, label, fn, text) => h('button', { type: 'button', class: 'btn ' + cls, 'aria-label': label, title: label, onclick: fn }, ic ? icon(ic) : null, text ? h('span', { text: text }) : null);
+  function sel(opts, val, fn, label) {
+    const s = h('select', { 'aria-label': label || '' });
+    opts.forEach((o) => s.appendChild(h('option', { value: o[0], text: o[1] })));
+    s.value = val; s.addEventListener('change', () => fn(s.value)); return s;
+  }
+  let toastT = null;
+  function toast(msg, undo) {
+    const el = $('toast'); el.textContent = msg;
+    if (undo) el.appendChild(h('button', { type: 'button', style: 'margin-left:14px;background:transparent;border:0;color:inherit;font:inherit;font-weight:700;text-decoration:underline;cursor:pointer;min-height:44px;padding:0 4px', text: 'Undo', onclick: () => { clearTimeout(toastT); $('toast-wrap').hidden = true; undo(); } }));
+    $('toast-wrap').hidden = false; clearTimeout(toastT); toastT = setTimeout(() => { $('toast-wrap').hidden = true; }, undo ? 6000 : Math.max(2400, msg.length * 55));
+  }
+
+  /* ---------- data ----------
+     Shops: {id,name,codes[]}. Lists: {id,name,tag,date,items:[{id,text,done,shop,cat,pid}]}.
+     prefs: normalised item name -> {shop,cat}  (what the app has learned).
+     Purchases (the data a family-budget app will read): {id,at(ISO),shopId,shopName,listId,tag,total,receipt,
+       lines:[{name,item,price,cat,itemId}]}. */
+  const mkShop = (name, codes) => ({ id: uid(), name: name, codes: codes });
+  function seed() {
+    const shops = [mkShop('Checkers', ['C']), mkShop('Pick n Pay', ['PP']), mkShop('Woolworths', ['W']), mkShop('Dis-Chem', ['DC'])];
+    const S0 = { shops: shops, defaultShop: shops[0].id, lists: [], activeId: '', prefs: {}, purchases: [], receipts: [], settings: { retentionYears: 5 } };
+    const l = { id: uid(), name: 'Weekly shop', date: dayKey(new Date()), items: [] };
+    S0.lists.push(l); S0.activeId = l.id;
+    [['Milk, 2 L', 0], ['Eggs, 18', 0], ['Brown bread', 0], ['Chicken thighs', 1], ['Bananas', 1], ['Panado', 3]].forEach((p) => {
+      l.items.push({ id: uid(), text: p[0], done: false, shop: shops[p[1]].id, cat: guessCat(p[0]), tag: '', pid: '' });
+    });
+    return S0;
+  }
+  function fix(d) {
+    d.shops = Array.isArray(d.shops) ? d.shops.filter((s) => s && s.id && typeof s.name === 'string').map((s) => ({ id: String(s.id), name: s.name.slice(0, 40), codes: (s.codes || []).map(String).slice(0, 6) })) : [];
+    d.lists = d.lists.filter((l) => l && l.id && Array.isArray(l.items)).map((l) => ({ id: String(l.id), name: String(l.name || 'List').slice(0, 60), date: l.date || '', items: l.items.filter((i) => i && typeof i.text === 'string').map((i) => ({ id: String(i.id || uid()), text: i.text.slice(0, 300), done: !!i.done, shop: i.shop || '', cat: CATS.indexOf(i.cat) >= 0 ? i.cat : 'Other', tag: i.tag === 'personal' || i.tag === 'other' ? i.tag : '', pid: i.pid || '' })) }));
+    if (!d.shops.some((s) => s.id === d.defaultShop)) d.defaultShop = d.shops.length ? d.shops[0].id : '';
+    d.prefs = d.prefs && typeof d.prefs === 'object' ? d.prefs : {};
+    d.receipts = Array.isArray(d.receipts) ? d.receipts.filter((r) => r && r.id && r.at).map((r) => ({ id: String(r.id), pid: String(r.pid || ''), at: r.at, size: +r.size || 0 })) : [];
+    const ry = Math.round(+(d.settings && d.settings.retentionYears)); d.settings = { retentionYears: ry >= 1 && ry <= 10 ? ry : 5 };
+    d.purchases = Array.isArray(d.purchases) ? d.purchases.filter((p) => p && p.id && p.at && Array.isArray(p.lines)).map((p) => { p.lines.forEach((x) => { if (x.tag !== 'personal' && x.tag !== 'other') x.tag = ''; }); return p; }) : [];
+    if (!d.lists.length) { const l = { id: uid(), name: 'My list', date: dayKey(new Date()), items: [] }; d.lists.push(l); }
+    if (!d.lists.some((l) => l.id === d.activeId)) d.activeId = d.lists[0].id;
+    return d;
+  }
+  let storageOk = true;
+  let S;
+  try { const raw = localStorage.getItem(KEY); S = raw ? fix(JSON.parse(raw)) : seed(); } catch (e) { storageOk = false; S = seed(); }
+  const sync = { on: false, status: '', timer: null };
+  const tok = () => { try { return sessionStorage.getItem('gd.token') || localStorage.getItem('gd.token') || ''; } catch (e) { return ''; } };
+  function api(path, opts) {
+    opts = opts || {};
+    const hd = { 'content-type': 'application/json' }; if (tok()) hd['x-gd-token'] = tok();
+    return fetch(path, { method: opts.method || 'GET', headers: hd, body: opts.body, cache: 'no-store', credentials: 'same-origin' }).then(function (r) {
+      if (r.status === 401 || r.status === 403) { location.reload(); throw new Error('signed out'); }
+      return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok) { const e = new Error(j.message || 'Request failed'); e.code = j.code; throw e; } return j; });
+    });
+  }
+  function footText() {
+    if (!sync.on) return storageOk ? 'Saved in this browser only.' : 'Saving is switched off in this view, so changes are lost when the page closes.';
+    return sync.status === 'saving' ? 'Saving to your JoolzApp account\u2026' : sync.status === 'error' ? 'Could not reach your account. Changes are kept on this device and will save when it is back.' : 'Saved to your JoolzApp account. Your lists follow you to every device.';
+  }
+  function setSync(st) { sync.status = st; const f = document.getElementById('foot'); if (f) f.textContent = footText(); }
+  function pushNow() {
+    clearTimeout(sync.timer); sync.timer = null;
+    if (!sync.on) return Promise.resolve();
+    setSync('saving');
+    return api('api/state', { method: 'PUT', body: JSON.stringify(S) }).then(function () { setSync('saved'); }).catch(function () { setSync('error'); });
+  }
+  function save() {
+    try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { storageOk = false; }
+    if (sync.on) { clearTimeout(sync.timer); sync.timer = setTimeout(pushNow, 600); }
+  }
+  window.addEventListener('pagehide', function () { if (sync.on && sync.timer) pushNow(); });
+  const ui = { pidx: null, rcUrl: '', rcFor: '', rolloverSkip: false, confirmRoll: false, tab: 'lists', menu: false, edit: '', co: null, rv: null, confirm: '', per: { mode: 'month', off: 0 }, openPur: '', exportText: '', focusAdd: false, newList: false };
+  const active = () => S.lists.find((l) => l.id === S.activeId) || S.lists[0];
+  const shopById = (id) => S.shops.find((s) => s.id === id);
+  const shopByCode = (c) => S.shops.find((s) => s.codes.some((x) => x.toLowerCase() === String(c).toLowerCase()));
+
+  /* ---------- items, shop codes and learning ---------- */
+  // "PP milk", "W: bread", "DC - panado": a 1-2 letter code that belongs to a shop sorts the item to that shop.
+  const CODE_RE = /^([A-Za-z]{1,2})(?:\s*[.:)\-–]\s*|\s+)(\S.*)$/;
+  function parseCode(t) {
+    t = String(t).trim(); const m = t.match(CODE_RE); if (!m) return { rest: t, full: t };
+    const sh = shopByCode(m[1]);
+    if (sh) return { rest: m[2].trim(), full: t, shop: sh.id, code: m[1] };
+    // two capital letters (e.g. "XY milk", "XY: milk") look like a shop code the app has not met yet
+    if (/^[A-Z]{2}$/.test(m[1])) return { rest: m[2].trim(), full: t, unk: m[1] };
+    return { rest: t, full: t };
+  }
+  function learn(it) {
+    const k = norm(it.text); if (!k) return;
+    const old = S.prefs[k] || {};
+    S.prefs[k] = { shop: it.shop || old.shop || '', cat: it.cat || old.cat || 'Other', tag: it.tag || '' };
+  }
+  function addItem(l, text, o) {
+    o = o || {}; const p = parseCode(text); const t = (p.unk ? p.full : p.rest).slice(0, 300); if (!t) return null;
+    let shop = o.shop || p.shop || '', cat = o.cat || '';
+    const pref = S.prefs[norm(t)];
+    if (pref) { if (!shop && pref.shop) shop = pref.shop; if (!cat && pref.cat) cat = pref.cat; }
+    if (!shop) shop = S.defaultShop || '';   // no code and nothing learned: the default shop
+    if (shop && !shopById(shop)) shop = S.defaultShop || '';
+    const it = { id: uid(), text: t, done: false, shop: shop, cat: cat || guessCat(t), tag: o.tag != null ? o.tag : (pref && pref.tag) || '', pid: '' };
+    l.items.push(it); return it;
+  }
+  function addCode(shopId, code) {
+    const sh = shopById(shopId); if (!sh || !code) return;
+    if (!sh.codes.some((c) => c.toLowerCase() === code.toLowerCase()) && !shopByCode(code)) sh.codes.push(code.toUpperCase());
+  }
+
+  /* ---------- analysis ---------- */
+  function suggestions(l) {
+    const by = {}, ps = S.purchases.slice().sort((a, b) => new Date(a.at) - new Date(b.at));
+    ps.forEach((p) => p.lines.forEach((x) => {
+      if (x.tag) return;
+      const nm = x.item || x.name, k = norm(nm); if (!k) return;
+      const e = by[k] || (by[k] = { name: nm, days: new Set() });
+      e.days.add(dayKey(p.at)); e.cat = x.cat; e.shop = p.shopId; e.last = p.at; e.name = nm;
+    }));
+    const onList = new Set(l.items.filter((i) => !i.pid).map((i) => norm(i.text))), now = Date.now(), out = [];
+    Object.keys(by).forEach((k) => {
+      const e = by[k], days = Array.from(e.days).sort(); if (days.length < 2 || onList.has(k)) return;
+      let gaps = 0; for (let i = 1; i < days.length; i++) gaps += (new Date(days[i]) - new Date(days[i - 1])) / 864e5;
+      const avg = Math.max(1, gaps / (days.length - 1)), since = (now - new Date(e.last)) / 864e5, score = since / avg;
+      if (score >= 0.75) out.push({ name: e.name, cat: e.cat, shop: e.shop, avg: avg, since: since, score: score, n: days.length });
+    });
+    return out.sort((a, b) => b.score - a.score).slice(0, 12);
+  }
+  function range() {
+    const now = new Date(), p = ui.per; let s, e;
+    if (p.mode === 'month') { s = new Date(now.getFullYear(), now.getMonth() + p.off, 1); e = new Date(s.getFullYear(), s.getMonth() + 1, 1); }
+    else { const dow = (now.getDay() + 6) % 7; s = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dow + p.off * 7); e = new Date(s.getFullYear(), s.getMonth(), s.getDate() + 7); }
+    return { s: s, e: e };
+  }
+  const within = (p, s, e) => { const t = new Date(p.at).getTime(); return t >= s.getTime() && t < e.getTime(); };
+  // Family analysis leaves out lines tagged personal / not groceries. "Unplanned" = on the receipt but not on the list.
+  function agg(ps) {
+    const r = { est: 0, total: 0, fam: 0, excl: 0, shop: {}, cat: {}, unplanned: 0, unplannedItems: {}, planned: 0 };
+    ps.forEach((p) => {
+      let sum = 0, ex = 0;
+      p.lines.forEach((x) => {
+        const v = +x.price || 0; sum += v;
+        if (x.tag) { ex += v; return; }
+        if (x.est) r.est += v;
+        if (v) r.cat[x.cat] = (r.cat[x.cat] || 0) + v;
+        if (x.itemId) r.planned += v;
+        else { r.unplanned += v; const k = x.name.trim() || 'Unnamed'; const u = r.unplannedItems[k] || (r.unplannedItems[k] = { n: 0, amt: 0, cat: x.cat }); u.n++; u.amt += v; }
+      });
+      const rest = Math.max(0, p.total - sum), fam = Math.max(0, p.total - ex);
+      r.total += p.total; r.excl += Math.min(ex, p.total); r.fam += fam;
+      r.shop[p.shopName] = (r.shop[p.shopName] || 0) + fam;
+      if (rest > 0.005) r.cat['Not itemised'] = (r.cat['Not itemised'] || 0) + rest;
+    });
+    return r;
+  }
+  const monthSpend = () => { const n = new Date(), s = new Date(n.getFullYear(), n.getMonth(), 1), e = new Date(n.getFullYear(), n.getMonth() + 1, 1); return agg(S.purchases.filter((p) => within(p, s, e))).fam; };
+
+  /* ---------- photo helpers (Claude reads the picture) ---------- */
+  let sampleFn = null;   // true once the server can read photos (own AI key in Portal Admin, or free reads)
+  function toBlob(file) {
+    return new Promise((ok, bad) => {
+      const url = URL.createObjectURL(file), img = new Image();
+      img.onload = () => {
+        const sc = Math.min(1, 1800 / Math.max(img.width, img.height)), c = document.createElement('canvas');
+        c.width = Math.round(img.width * sc); c.height = Math.round(img.height * sc);
+        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(url);
+        c.toBlob((b) => (b ? ok(b) : bad(new Error('Could not use that photo.'))), 'image/jpeg', 0.85);
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); bad(new Error('Could not open that photo.')); };
+      img.src = url;
+    });
+  }
+  function readImage(file, kind) {
+    return toBlob(file).then((b) => new Promise((ok, bad) => { const fr = new FileReader(); fr.onload = () => ok(String(fr.result).split(',')[1] || ''); fr.onerror = () => bad(new Error('Could not use that photo.')); fr.readAsDataURL(b); }))
+      .then((data) => api('api/extract', { method: 'POST', body: JSON.stringify({ kind: kind, images: [{ type: 'image/jpeg', data: data }] }) }));
+  }
+
+  /* ---------- receipt archive: low-res images kept in PocketBase when signed in (this browser's IndexedDB otherwise) ---------- */
+  let dbp = null;
+  function idb() {
+    if (dbp) return dbp;
+    dbp = new Promise((ok, bad) => { try { const r = indexedDB.open('jollygrocer-receipts', 1); r.onupgradeneeded = () => r.result.createObjectStore('receipts', { keyPath: 'id' }); r.onsuccess = () => ok(r.result); r.onerror = () => bad(r.error); } catch (e) { bad(e); } });
+    return dbp;
+  }
+  function itx(mode, fn) { return idb().then((d) => new Promise((ok, bad) => { const tr = d.transaction('receipts', mode), rq = fn(tr.objectStore('receipts')); tr.oncomplete = () => ok(rq && rq.result); tr.onerror = () => bad(tr.error); tr.onabort = () => bad(tr.error); })); }
+  const rurl = (id) => 'api/receipt?id=' + encodeURIComponent(id);
+  const rhd = () => { const hd = {}; if (tok()) hd['x-gd-token'] = tok(); return hd; };
+  const arPut = (rec) => sync.on
+    ? fetch(rurl(rec.id), { method: 'PUT', headers: Object.assign({ 'content-type': 'image/jpeg' }, rhd()), body: rec.blob, credentials: 'same-origin' }).then((r) => { if (!r.ok) throw new Error('archive failed'); })
+    : itx('readwrite', (s) => s.put(rec));
+  const arGet = (id) => sync.on
+    ? fetch(rurl(id), { headers: rhd(), credentials: 'same-origin' }).then((r) => (r.ok ? r.blob().then((blob) => ({ id: id, blob: blob })) : null))
+    : itx('readonly', (s) => s.get(id));
+  const arDel = (id) => sync.on
+    ? fetch(rurl(id), { method: 'DELETE', headers: rhd(), credentials: 'same-origin' }).then((r) => { if (!r.ok && r.status !== 404) throw new Error('delete failed'); })
+    : itx('readwrite', (s) => s.delete(id));
+  // A web-sized copy: longest side 1400 px, JPEG quality 0.6 (roughly 100-250 KB).
+  function lowRes(file) {
+    return new Promise((ok, bad) => {
+      const url = URL.createObjectURL(file), img = new Image();
+      img.onload = () => {
+        const sc = Math.min(1, 1400 / Math.max(img.width, img.height)), c = document.createElement('canvas');
+        c.width = Math.round(img.width * sc); c.height = Math.round(img.height * sc);
+        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(url);
+        c.toBlob((b) => (b ? ok(b) : bad(new Error('Could not shrink that photo.'))), 'image/jpeg', 0.6);
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); bad(new Error('Could not open that photo.')); };
+      img.src = url;
+    });
+  }
+  const cutoff = () => { const d = new Date(); d.setFullYear(d.getFullYear() - S.settings.retentionYears); return d; };
+  const expiredReceipts = () => { const c = cutoff().getTime(); return S.receipts.filter((r) => new Date(r.at).getTime() < c); };
+  function rollOver() {
+    const ex = expiredReceipts(), ids = new Set(ex.map((r) => r.id));
+    Promise.all(ex.map((r) => arDel(r.id).catch(() => {}))).then(() => {
+      mutate(() => { S.receipts = S.receipts.filter((r) => !ids.has(r.id)); S.purchases.forEach((p) => { if (p.receiptId && ids.has(p.receiptId)) { p.receiptId = ''; p.receiptPurged = true; } }); ui.confirmRoll = false; });
+      toast('Rolled over ' + ex.length + (ex.length === 1 ? ' receipt image.' : ' receipt images.'));
+    });
+  }
+  function viewReceipt(p) {
+    arGet(p.receiptId).then((rec) => {
+      if (!rec || !rec.blob) { toast('That receipt image is not in the archive.'); return; }
+      if (ui.rcUrl) URL.revokeObjectURL(ui.rcUrl);
+      ui.rcUrl = URL.createObjectURL(rec.blob); ui.rcFor = p.id; ui.openPur = p.id; render();
+    }).catch(() => toast('Could not open the receipt archive here.'));
+  }
+
+  /* ---------- learned prices: what you usually pay, to fill in a purchase when no receipt was captured ---------- */
+  function priceIdx() {
+    if (ui.pidx) return ui.pidx;
+    const idx = {};
+    S.purchases.slice().sort((a, b) => new Date(b.at) - new Date(a.at)).forEach((p) => p.lines.forEach((x) => {
+      if (x.est || !(+x.price > 0)) return; const k = norm(x.item || x.name); if (!k) return;
+      (idx[k] = idx[k] || []).push({ shop: p.shopId, price: +x.price, at: p.at });
+    }));
+    ui.pidx = idx; return idx;
+  }
+  // the last known price at this shop; if that price is 3 months old or more, a newer price from another shop is used instead
+  function estimate(name, shopId) {
+    const r = priceIdx()[norm(name)]; if (!r || !r.length) return null;
+    const own = r.find((x) => x.shop === shopId), stale = new Date(); stale.setMonth(stale.getMonth() - 3);
+    const last = !own || (new Date(own.at) <= stale && new Date(r[0].at) > new Date(own.at)) ? r[0] : own;
+    return { price: Math.round(last.price * 100) / 100, n: 1 };
+  }
+
+  /* ---------- checkout ---------- */
+  function mkLine(it, shopId) { const e = estimate(it.text, shopId); return { id: uid(), name: it.text, price: e ? String(e.price) : '', est: !!e, cat: it.cat, tag: it.tag || '', itemId: it.id }; }
+  function openCheckout(shopId) {
+    const l = active(), its = l.items.filter((i) => !i.pid && i.shop === shopId), anyDone = its.some((i) => i.done);
+    ui.co = { shopId: shopId, listId: l.id, at: toLocalInput(new Date()), total: '', receipt: false, busy: false, receiptBlob: null, lines: its.filter((i) => i.done || !anyDone).map((i) => mkLine(i, shopId)) };
+    render(); window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+  const TAGS = [['', 'Family grocery'], ['personal', 'Personal (not family)'], ['other', 'Not a grocery']];
+  const tagLabel = (v) => (v === 'personal' ? 'Personal' : v === 'other' ? 'Not a grocery' : '');
+  const wordSet = (s) => new Set(norm(s).split(' ').filter(Boolean));
+  function matchScore(a, b) { const A = wordSet(a), B = wordSet(b); if (!A.size || !B.size) return 0; let n = 0; A.forEach((w) => { if (B.has(w)) n++; }); return n / Math.min(A.size, B.size); }
+  function applyReceipt(r) {
+    const co = ui.co, l = S.lists.find((x) => x.id === co.listId), cand = l.items.filter((i) => !i.pid), used = new Set();
+    co.lines = (r.lines || []).filter((x) => x && x.name).slice(0, 80).map((x) => {
+      let best = null, bs = 0;
+      cand.forEach((it) => { if (used.has(it.id)) return; let sc = matchScore(x.name, it.text); if (it.shop === co.shopId) sc += 0.05; if (sc > bs) { bs = sc; best = it; } });
+      if (best && bs >= 0.5) { used.add(best.id); return { id: uid(), name: String(x.name).slice(0, 80), price: String(num(x.price) || ''), cat: best.cat, tag: best.tag || '', itemId: best.id }; }
+      const pf = S.prefs[norm(x.name)];
+      return { id: uid(), name: String(x.name).slice(0, 80), price: String(num(x.price) || ''), cat: (pf && pf.cat) || guessCat(x.name), tag: (pf && pf.tag) || '', itemId: '' };
+    });
+    if (r.total != null && num(r.total)) co.total = String(num(r.total));
+    if (r.date && /^\d{4}-\d{2}-\d{2}$/.test(r.date)) { const d = new Date(r.date + 'T' + (/^\d{1,2}:\d{2}$/.test(r.time || '') ? (r.time.length === 4 ? '0' + r.time : r.time) : '12:00')); if (!isNaN(d)) co.at = toLocalInput(d); }
+    co.receipt = true;
+  }
+  function confirmCheckout() {
+    const co = ui.co, l = S.lists.find((x) => x.id === co.listId), sh = shopById(co.shopId); if (!co || !l || !sh) return;
+    const lines = co.lines.filter((x) => x.name.trim()); if (!lines.length && !num(co.total)) { toast('Add at least one line or a total.'); return; }
+    lines.forEach((x) => { if (!num(x.price)) { const it0 = x.itemId ? l.items.find((i) => i.id === x.itemId) : null, e = estimate(it0 ? it0.text : x.name, co.shopId); if (e) { x.price = String(e.price); x.est = true; } } });
+    const sum = lines.reduce((a, x) => a + num(x.price), 0), at = new Date(co.at), pid = uid();
+    const p = { id: pid, at: (isNaN(at) ? new Date() : at).toISOString(), shopId: sh.id, shopName: sh.name, listId: l.id, total: Math.round((num(co.total) || sum) * 100) / 100, receipt: !!co.receipt, receiptId: '', estimated: lines.some((x) => x.est && num(x.price)), lines: [] };
+    lines.forEach((x) => {
+      const it = x.itemId ? l.items.find((i) => i.id === x.itemId) : null;
+      p.lines.push({ name: x.name.trim().slice(0, 80), item: it ? it.text : '', price: Math.round(num(x.price) * 100) / 100, cat: x.cat, tag: x.tag || '', est: !!x.est && num(x.price) > 0, itemId: it ? it.id : '' });
+      if (it) { it.pid = pid; it.done = true; it.cat = x.cat; it.tag = x.tag || ''; if (!it.shop) it.shop = sh.id; learn(it); }
+      else S.prefs[norm(x.name)] = { shop: sh.id, cat: x.cat, tag: x.tag || '' };
+    });
+    const blob = co.receiptBlob; let rid = '';
+    if (blob) { rid = uid(); p.receiptId = rid; S.receipts.push({ id: rid, pid: pid, at: p.at, size: blob.size }); arPut({ id: rid, pid: pid, at: p.at, blob: blob, size: blob.size }).catch(() => { toast('The receipt image could not be archived here.'); mutate(() => { S.receipts = S.receipts.filter((r) => r.id !== rid); p.receiptId = ''; }); }); }
+    S.purchases.push(p); ui.co = null; save(); render();
+    toast('Checkout saved: ' + money(p.total) + ' at ' + sh.name + (p.estimated ? ' (includes estimated prices)' : ''));
+  }
+
+  /* ---------- views ---------- */
+  function render() {
+    ui.pidx = null;
+    const tabs = $('tabs'); tabs.textContent = '';
+    [['lists', 'Lists'], ['spend', 'Spend'], ['shops', 'Shops'], ['data', 'Data']].forEach((t) => tabs.appendChild(h('button', { type: 'button', role: 'tab', 'aria-selected': ui.tab === t[0] ? 'true' : 'false', onclick: () => { ui.tab = t[0]; ui.edit = ''; ui.confirm = ''; render(); }, text: t[1] })));
+    $('totals').textContent = money(monthSpend()) + ' groceries this month';
+    $('foot').textContent = footText();
+    const v = $('view'); v.textContent = '';
+    if (ui.tab === 'lists') viewLists(v); else if (ui.tab === 'spend') viewSpend(v); else if (ui.tab === 'shops') viewShops(v); else viewData(v);
+    if (ui.focusAdd) { ui.focusAdd = false; const a = $('add-input'); if (a) a.focus(); }
+  }
+  const mutate = (fn) => { fn(); save(); render(); };
+
+  function viewLists(v) {
+    if (ui.co) return viewCheckout(v);
+    const l = active();
+    const head = h('div', { class: 'card' });
+    const chips = h('div', { class: 'chips' });
+    S.lists.forEach((x) => chips.appendChild(h('button', { type: 'button', class: 'chip', 'aria-pressed': x.id === l.id ? 'true' : 'false', text: x.name, onclick: () => { S.activeId = x.id; ui.edit = ''; ui.rv = null; save(); render(); } })));
+    chips.appendChild(btn('sm', 'plus', 'New list', () => { ui.newList = true; render(); }, 'New'));
+    head.appendChild(chips);
+    if (ui.newList) {
+      const ni = h('input', { type: 'text', maxlength: '60', placeholder: 'Name your list', 'aria-label': 'New list name', value: 'Shop ' + new Date().toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) });
+      const go = () => { const nl = { id: uid(), name: ni.value.trim().slice(0, 60) || 'New list', date: dayKey(new Date()), items: [] }; ui.newList = false; mutate(() => { S.lists.push(nl); S.activeId = nl.id; }); };
+      ni.addEventListener('keydown', (e) => { if (e.key === 'Enter') go(); });
+      head.appendChild(h('div', { class: 'row grow' }, ni, btn('primary sm', 'check', 'Create list', go, 'Create'), btn('sm', 'x', 'Cancel', () => { ui.newList = false; render(); }, 'Cancel')));
+      setTimeout(() => ni.focus(), 0);
+    }
+    const title = h('input', { type: 'text', class: 'title-in', value: l.name, maxlength: '60', 'aria-label': 'List name' });
+    title.addEventListener('change', () => { const t = title.value.trim().slice(0, 60); if (t) mutate(() => { l.name = t; }); else title.value = l.name; });
+    const del = ui.confirm === 'list' ? h('span', { class: 'row' }, btn('danger sm', 'trash', 'Confirm delete list', () => { ui.confirm = ''; mutate(() => { S.lists = S.lists.filter((x) => x.id !== l.id); if (!S.lists.length) S.lists.push({ id: uid(), name: 'My list', date: dayKey(new Date()), items: [] }); S.activeId = S.lists[0].id; }); }, 'Delete?'), btn('sm', 'x', 'Keep list', () => { ui.confirm = ''; render(); }, 'Keep'))
+      : btn('quiet sm', 'trash', 'Delete list', () => { ui.confirm = 'list'; render(); });
+    head.appendChild(h('div', { class: 'row' }, title, del));
+    v.appendChild(head);
+
+    const form = h('form', { class: 'row grow', onsubmit: (e) => { e.preventDefault(); const i = $('add-input'), t = i.value.trim(); if (!t) return; ui.focusAdd = true; if (parseCode(t).unk) { startReview([t]); return; } mutate(() => { addItem(l, t); }); } });
+    form.appendChild(h('input', { type: 'text', id: 'add-input', maxlength: '300', placeholder: 'Add an item (2-letter shop code first, e.g. PP milk)', 'aria-label': 'Add an item', autocomplete: 'off', enterkeyhint: 'done' }));
+    if (sampleFn) form.appendChild(btn('', 'camera', 'Add items from a photo', () => $('file-list').click()));
+    form.appendChild(h('button', { type: 'submit', class: 'btn primary', 'aria-label': 'Add item', title: 'Add item' }, icon('plus')));
+    v.appendChild(form);
+    if (ui.rv) v.appendChild(viewReview(l));
+
+    if (!ui.rolloverSkip) { const exr = expiredReceipts(); if (exr.length) v.appendChild(rolloverBox(exr, false)); }
+    const sg = suggestions(l);
+    if (sg.length) {
+      const c = h('div', { class: 'card' }, h('h3', { text: 'Suggested: you usually buy these about now' }));
+      const ch = h('div', { class: 'chips' });
+      sg.forEach((x) => ch.appendChild(h('button', { type: 'button', class: 'chip sug', title: 'Every ~' + Math.round(x.avg) + ' days, last bought ' + Math.round(x.since) + ' days ago', onclick: () => { mutate(() => { addItem(l, x.name, { shop: x.shop, cat: x.cat }); }); }, text: '+ ' + x.name })));
+      c.appendChild(ch); c.appendChild(h('p', { class: 'muted', text: 'Based on how often you have bought each item at checkout.' })); v.appendChild(c);
+    }
+
+    const open = l.items.filter((i) => !i.pid), bought = l.items.filter((i) => i.pid);
+    if (!open.length && !bought.length) v.appendChild(h('p', { class: 'muted', text: 'Nothing on this list yet.' }));
+    const groups = S.shops.map((s) => ({ shop: s, items: open.filter((i) => i.shop === s.id) })).filter((g) => g.items.length);
+    const none = open.filter((i) => !i.shop || !shopById(i.shop));
+    if (none.length) groups.push({ shop: null, items: none });
+    groups.forEach((g) => v.appendChild(viewGroup(l, g)));
+    if (bought.length) {
+      const d = h('details', { class: 'card' }, h('summary', { text: 'Purchased (' + bought.length + ')' }));
+      bought.forEach((i) => { const p = S.purchases.find((x) => x.id === i.pid); d.appendChild(h('p', { class: 'muted', text: i.text + (p ? ' · ' + p.shopName + ', ' + fmtAt(p.at) : '') })); });
+      v.appendChild(d);
+    }
+    const left = open.length;
+    if (open.length || bought.length) v.appendChild(h('div', { class: 'row' }, btn('primary', 'next', 'Start a new list with the items not purchased', () => {
+      const nl = { id: uid(), name: 'Shop ' + new Date().toLocaleDateString(undefined, { day: 'numeric', month: 'short' }), date: dayKey(new Date()), items: open.map((i) => ({ id: uid(), text: i.text, done: false, shop: i.shop, cat: i.cat, tag: i.tag || '', pid: '' })) };
+      mutate(() => { S.lists.push(nl); S.activeId = nl.id; }); toast('New list started with ' + left + (left === 1 ? ' unbought item.' : ' unbought items.'));
+    }, 'New list from ' + left + ' unbought')));
+  }
+
+  const estSum = (g) => (g.shop ? g.items.reduce((a, i) => { const e = estimate(i.text, g.shop.id); return a + (e ? e.price : 0); }, 0) : 0);
+  function viewGroup(l, g) {
+    const box = h('section', { class: 'group' });
+    const inBasket = g.items.filter((i) => i.done).length;
+    const head = h('div', { class: 'ghead' }, h('span', null, h('b', { text: g.shop ? g.shop.name : 'No shop yet' }), h('span', { class: 'n', text: '  ' + g.items.length + (g.items.length === 1 ? ' item' : ' items') + (g.shop ? ' · ' + inBasket + ' in basket' + (estSum(g) ? ' · ≈ ' + money(estSum(g)) : '') : ' · tap an item to choose its shop') })));
+    if (g.shop) head.appendChild(btn('primary sm', 'cart', 'Checkout at ' + g.shop.name, () => openCheckout(g.shop.id), 'Checkout'));
+    box.appendChild(head);
+    CATS.forEach((c) => {
+      const its = g.items.filter((i) => i.cat === c); if (!its.length) return;
+      box.appendChild(h('div', { class: 'cat', text: c }));
+      its.forEach((it) => {
+        box.appendChild(swipeRow(l, it, h('div', { class: 'item' + (it.done ? ' done' : '') },
+          h('button', { type: 'button', class: 'tick', 'aria-pressed': it.done ? 'true' : 'false', 'aria-label': (it.done ? 'Untick ' : 'Tick ') + it.text, onclick: () => mutate(() => { it.done = !it.done; }) }, h('i', null, icon('check'))),
+          h('button', { type: 'button', class: 'itext', onclick: () => { ui.edit = ui.edit === it.id ? '' : it.id; render(); } }, it.text, it.tag ? h('span', { class: 'pill', style: 'margin-left:8px', text: tagLabel(it.tag) }) : null))));
+        if (ui.edit === it.id) box.appendChild(editPanel(l, it));
+      });
+    });
+    return box;
+  }
+  // Swipe an item left to reveal a Delete button (tap it to delete, with Undo). Swipe right or tap the row to close.
+  let closeOpenRow = null;
+  function swipeRow(l, it, row) {
+    const W = 88;
+    const del = h('button', { type: 'button', class: 'swipe-del', 'aria-label': 'Delete ' + it.text }, icon('trash'), h('span', { text: 'Delete' }));
+    const wrap = h('div', { class: 'swipe' }, h('div', { class: 'swipe-bg' }, del), row);
+    let x0 = 0, y0 = 0, dx = 0, drag = false, down = false, id = null, isOpen = false, justDragged = false;
+    const setX = (x, anim) => { row.classList.toggle('drag', !anim); row.style.transform = x ? 'translateX(' + x + 'px)' : ''; };
+    const close = () => { setX(0, true); isOpen = false; if (closeOpenRow === close) closeOpenRow = null; };
+    const open = () => { if (closeOpenRow && closeOpenRow !== close) closeOpenRow(); setX(-W, true); isOpen = true; closeOpenRow = close; };
+    row.addEventListener('pointerdown', (e) => { if (e.pointerType === 'mouse' && e.button !== 0) return; down = true; drag = false; x0 = e.clientX; y0 = e.clientY; id = e.pointerId; dx = isOpen ? -W : 0; });
+    row.addEventListener('pointermove', (e) => {
+      if (!down || e.pointerId !== id) return;
+      const mx = e.clientX - x0, my = e.clientY - y0;
+      if (!drag) { if (Math.abs(mx) > 10 && Math.abs(mx) > Math.abs(my) * 1.4 && (mx < 0 || isOpen)) { drag = true; if (closeOpenRow && closeOpenRow !== close) closeOpenRow(); try { row.setPointerCapture(id); } catch (err) { /* ignore */ } } else return; }
+      dx = Math.max(-W - 24, Math.min(0, (isOpen ? -W : 0) + mx)); setX(dx, false);
+    });
+    const end = (e) => {
+      if (!down || (e && e.pointerId !== id)) return; down = false;
+      if (drag) {
+        if (dx < -W / 2) open(); else close();
+        justDragged = true; setTimeout(() => { justDragged = false; }, 250);
+      }
+    };
+    row.addEventListener('pointerup', end); row.addEventListener('pointercancel', end);
+    // a tap on an open row closes it instead of doing anything else
+    row.addEventListener('click', (e) => { if (justDragged) { e.stopPropagation(); e.preventDefault(); return; } if (isOpen) { e.stopPropagation(); e.preventDefault(); close(); } }, true);
+    del.addEventListener('click', () => {
+      setX(-wrap.offsetWidth, true);
+      setTimeout(() => {
+        const idx = l.items.findIndex((x) => x.id === it.id), copy = it;
+        closeOpenRow = null;
+        mutate(() => { l.items = l.items.filter((x) => x.id !== it.id); });
+        toast('Deleted \u201c' + (copy.text.length > 26 ? copy.text.slice(0, 26) + '\u2026' : copy.text) + '\u201d', () => { mutate(() => { l.items.splice(Math.min(idx < 0 ? l.items.length : idx, l.items.length), 0, copy); }); });
+      }, 180);
+    });
+    return wrap;
+  }
+  function editPanel(l, it) {
+    const ti = h('input', { type: 'text', value: it.text, maxlength: '300', 'aria-label': 'Item name' });
+    const sh = sel([['', 'No shop']].concat(S.shops.map((s) => [s.id, s.name])), it.shop && shopById(it.shop) ? it.shop : '', (x) => { it.shop = x; }, 'Shop');
+    const ct = sel(CATS.map((c) => [c, c]), it.cat, (x) => { it.cat = x; }, 'Category');
+    const tg = sel(TAGS, it.tag || '', (x) => { it.tag = x; }, 'Tag');
+    const save1 = () => { const t = ti.value.trim().slice(0, 300); if (t) it.text = t; learn(it); ui.edit = ''; save(); render(); };
+    return h('div', { class: 'edit' }, ti, h('div', { class: 'row' }, sh, ct), h('div', { class: 'row' }, tg, h('span', { class: 'muted', text: 'Personal and not-a-grocery items are left out of the family analysis.' })),
+      h('div', { class: 'row' }, btn('primary sm', 'check', 'Save item', save1, 'Save'), btn('sm', 'x', 'Close', () => { ui.edit = ''; render(); }, 'Close'),
+        btn('danger sm', 'trash', 'Delete item', () => { ui.edit = ''; mutate(() => { l.items = l.items.filter((x) => x.id !== it.id); }); }, 'Delete')));
+  }
+
+  /* photo review: remembers shop codes and where items go */
+  function startReview(items) {
+    ui.rv = { rows: items.map((raw) => { const p = parseCode(raw); return { text: p.unk ? p.full : p.rest, full: p.full, rest: p.rest, unk: p.unk || '', shop: p.shop || '', cat: '', on: true, learn: false }; }) };
+    ui.rv.rows.forEach((r) => { const pf = S.prefs[norm(r.text)]; if (pf && !r.shop && pf.shop && shopById(pf.shop)) r.shop = pf.shop; else if (!r.shop && !r.unk) r.shop = S.defaultShop || ''; r.cat = (pf && pf.cat) || guessCat(r.text); });
+    render();
+  }
+  function viewReview(l) {
+    const rv = ui.rv, c = h('div', { class: 'card' });
+    if (!rv.rows.length) { c.appendChild(h('p', { text: 'No list items found in that photo. Try a closer, well-lit shot.' })); c.appendChild(btn('sm', 'x', 'Close', () => { ui.rv = null; render(); }, 'Close')); return c; }
+    c.appendChild(h('h3', { text: 'Found ' + rv.rows.length + (rv.rows.length === 1 ? ' item' : ' items') }));
+    c.appendChild(h('p', { class: 'muted', text: 'Items starting with a shop code (two capital letters) are sorted to that shop. For a new code, choose the shop once and it is remembered.' }));
+    rv.rows.forEach((r, i) => {
+      const label = h('span', { text: r.text });
+      const cb = h('input', { type: 'checkbox', checked: r.on, 'aria-label': 'Add ' + r.text, style: 'min-height:24px;width:24px' });
+      cb.addEventListener('change', () => { r.on = cb.checked; });
+      const shopSel = sel([['', r.unk ? 'Code ' + r.unk + ': which shop?' : 'No shop']].concat(S.shops.map((s) => [s.id, s.name])), r.shop, (x) => {
+        r.shop = x;
+        if (r.unk) { r.learn = !!x; r.text = x ? r.rest : r.full; label.textContent = r.text; }
+      }, 'Shop for ' + r.text);
+      c.appendChild(h('div', { class: 'line' }, h('label', { class: 'row', style: 'flex-wrap:nowrap' }, cb, label), h('span'), h('div', { class: 'row full' }, shopSel, sel(CATS.map((x) => [x, x]), r.cat, (x) => { r.cat = x; }, 'Category'))));
+    });
+    c.appendChild(h('div', { class: 'row' }, btn('primary sm', 'check', 'Add selected items', () => {
+      let n = 0;
+      mutate(() => { rv.rows.forEach((r) => { if (!r.on) return; if (r.learn && r.shop && r.unk) addCode(r.shop, r.unk); const it = addItem(l, r.learn || !r.unk ? r.text : r.full, { shop: r.shop, cat: r.cat }); if (it) { n++; if (r.shop) learn(it); } }); ui.rv = null; });
+      toast('Added ' + n + (n === 1 ? ' item.' : ' items.'));
+    }, 'Add selected'), btn('sm', 'x', 'Cancel', () => { ui.rv = null; render(); }, 'Cancel')));
+    return c;
+  }
+
+  function viewCheckout(v) {
+    const co = ui.co, l = S.lists.find((x) => x.id === co.listId), sh = shopById(co.shopId);
+    if (!l || !sh) { ui.co = null; return viewLists(v); }
+    const c = h('div', { class: 'card' });
+    c.appendChild(h('h2', { text: 'Checkout at ' + sh.name }));
+    const when = h('input', { type: 'datetime-local', value: co.at, 'aria-label': 'Date and time of purchase' });
+    when.addEventListener('change', () => { co.at = when.value; });
+    c.appendChild(h('div', { class: 'row' }, h('label', { class: 'muted', text: 'Date and time' }), when));
+    c.appendChild(h('div', { class: 'row' }, btn('sm', 'camera', sampleFn ? 'Read a receipt photo' : 'Attach a receipt photo', () => $('file-receipt').click(), co.busy ? 'Reading\u2026' : (sampleFn ? 'Read receipt photo' : 'Attach receipt photo')),
+      h('span', { class: 'muted', text: co.receiptBlob ? 'Receipt photo attached (' + Math.max(1, Math.round(co.receiptBlob.size / 1024)) + ' KB), archived when you complete checkout.' : (sampleFn ? 'Connects lines to your list and keeps a small copy in the archive.' : 'Kept in the archive. Reading it is not available here, so type the prices.') }),
+      co.receiptBlob ? btn('quiet sm', 'x', 'Remove receipt photo', () => { co.receiptBlob = null; render(); }, 'Remove') : null));
+    const totalEl = h('p', { class: 'muted' });
+    const upd = () => { const sum = co.lines.reduce((a, x) => a + num(x.price), 0), es = co.lines.reduce((a, x) => a + (x.est ? num(x.price) : 0), 0); totalEl.textContent = 'Lines add up to ' + money(sum) + (es ? ' (\u2248 ' + money(es) + ' estimated from the last known prices)' : ''); };
+    const taken = () => new Set(co.lines.map((x) => x.itemId).filter(Boolean));
+    const lines = h('div');
+    co.lines.forEach((x) => {
+      const used = taken();
+      const opts = [['', 'Not on my list']].concat(l.items.filter((i) => !i.pid && (i.id === x.itemId || !used.has(i.id))).map((i) => [i.id, 'List: ' + i.text]));
+      const nm = h('input', { type: 'text', value: x.name, maxlength: '80', 'aria-label': 'Line name' }); nm.addEventListener('input', () => { x.name = nm.value; }); nm.addEventListener('change', () => { if (!num(x.price)) { const e = estimate(x.name, co.shopId); if (e) { x.price = String(e.price); x.est = true; render(); } } });
+      const pr = h('input', { type: 'text', inputmode: 'decimal', value: x.price, placeholder: '0.00', 'aria-label': 'Price of ' + x.name + (x.est ? ' (estimated)' : ''), style: x.est ? 'font-style:italic;color:var(--muted)' : null }); pr.addEventListener('input', () => { x.price = pr.value; x.est = false; pr.style.fontStyle = ''; pr.style.color = ''; upd(); });
+      lines.appendChild(h('div', { class: 'line' }, nm, pr, h('div', { class: 'row full' },
+        sel(opts, x.itemId, (val) => { x.itemId = val; const it = l.items.find((i) => i.id === val); if (it) x.cat = it.cat; render(); }, 'Connect to list item'),
+        sel(CATS.map((k) => [k, k]), x.cat, (val) => { x.cat = val; }, 'Category'),
+        sel(TAGS, x.tag || '', (val) => { x.tag = val; }, 'Tag'),
+        btn('quiet sm', 'x', 'Remove line', () => { co.lines = co.lines.filter((y) => y.id !== x.id); render(); }))));
+    });
+    c.appendChild(lines);
+    const used2 = taken(), pend = l.items.filter((i) => !i.pid && !used2.has(i.id) && (i.shop === co.shopId));
+    if (pend.length) {
+      c.appendChild(h('h3', { text: 'Not in this purchase' }));
+      pend.forEach((i) => c.appendChild(h('div', { class: 'row' }, h('span', { text: i.text, style: 'flex:1' }), btn('sm', 'plus', 'Add ' + i.text + ' to this purchase', () => { co.lines.push(mkLine(i, co.shopId)); render(); }, 'Bought'))));
+      c.appendChild(h('p', { class: 'muted', text: 'These stay on the list and can start your next list.' }));
+    }
+    c.appendChild(btn('sm', 'plus', 'Add a line', () => { co.lines.push({ id: uid(), name: '', price: '', cat: 'Other', tag: '', itemId: '' }); render(); }, 'Add a line'));
+    const tot = h('input', { type: 'text', inputmode: 'decimal', value: co.total, placeholder: 'Total paid (optional)', 'aria-label': 'Total paid' }); tot.addEventListener('input', () => { co.total = tot.value; });
+    c.appendChild(h('div', { class: 'row' }, h('label', { class: 'muted', text: 'Total paid' }), tot)); upd(); c.appendChild(totalEl);
+    c.appendChild(h('div', { class: 'row' }, btn('primary', 'check', 'Complete checkout', confirmCheckout, 'Complete checkout'), btn('', 'x', 'Cancel checkout', () => { ui.co = null; render(); }, 'Cancel')));
+    v.appendChild(c);
+  }
+
+  function bars(map, total) {
+    const keys = Object.keys(map).sort((a, b) => map[b] - map[a]), box = h('div', { style: 'display:grid;gap:8px' });
+    if (!keys.length) box.appendChild(h('p', { class: 'muted', text: 'Nothing yet.' }));
+    keys.forEach((k) => box.appendChild(h('div', { class: 'bar' }, h('span', { text: k }), h('span', { class: 't' }, h('i', { style: 'width:' + Math.max(2, Math.round(map[k] / (total || 1) * 100)) + '%' })), h('span', { class: 'mono', text: money(map[k]) }))));
+    return box;
+  }
+  function viewSpend(v) {
+    const r = range(), mine = S.purchases.filter((p) => within(p, r.s, r.e)).sort((a, b) => new Date(b.at) - new Date(a.at)), a = agg(mine);
+    const pr = ui.per.mode === 'month' ? agg(S.purchases.filter((p) => within(p, new Date(r.s.getFullYear(), r.s.getMonth() - 1, 1), r.s))) : agg(S.purchases.filter((p) => within(p, new Date(r.s.getFullYear(), r.s.getMonth(), r.s.getDate() - 7), r.s)));
+    const label = ui.per.mode === 'month' ? r.s.toLocaleDateString(undefined, { month: 'long', year: 'numeric' }) : r.s.toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) + ' – ' + new Date(r.e - 864e5).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+    const c = h('div', { class: 'card' });
+    c.appendChild(h('div', { class: 'chips' }, h('button', { type: 'button', class: 'chip', 'aria-pressed': ui.per.mode === 'week' ? 'true' : 'false', text: 'Weekly', onclick: () => { ui.per = { mode: 'week', off: 0 }; render(); } }), h('button', { type: 'button', class: 'chip', 'aria-pressed': ui.per.mode === 'month' ? 'true' : 'false', text: 'Monthly', onclick: () => { ui.per = { mode: 'month', off: 0 }; render(); } })));
+    c.appendChild(h('div', { class: 'row', style: 'justify-content:space-between' }, btn('sm', 'prev', 'Earlier', () => { ui.per.off--; render(); }), h('b', { text: label }), btn('sm', 'next', 'Later', () => { ui.per.off++; render(); })));
+    c.appendChild(h('p', { class: 'big', text: money(a.fam) }));
+    c.appendChild(h('span', { class: 'delta', text: 'Family groceries' + (a.excl ? ' \u00b7 ' + money(a.excl) + ' personal / not groceries left out' : '') + (a.est ? ' \u00b7 \u2248 ' + money(a.est) + ' estimated from last known prices' : '') }));
+    const d = a.fam - pr.fam;
+    c.appendChild(h('span', { class: 'delta', text: mine.length + (mine.length === 1 ? ' purchase' : ' purchases') + (pr.fam ? ' · ' + (d >= 0 ? 'up ' : 'down ') + money(Math.abs(d)) + ' on the previous ' + ui.per.mode : '') }));
+    v.appendChild(c);
+    v.appendChild(h('div', { class: 'card' }, h('h3', { text: 'By category' }), bars(a.cat, a.fam)));
+    v.appendChild(h('div', { class: 'card' }, h('h3', { text: 'By shop' }), bars(a.shop, a.fam)));
+    const un = h('div', { class: 'card' }, h('h3', { text: 'Not on your list' }), h('p', { class: 'muted', text: 'Things on the receipt that you had not listed (family groceries only).' }));
+    const unKeys = Object.keys(a.unplannedItems).sort((x, y) => a.unplannedItems[y].amt - a.unplannedItems[x].amt);
+    if (!unKeys.length) un.appendChild(h('p', { class: 'muted', text: 'Nothing unplanned in this period.' }));
+    else {
+      const share = a.fam ? Math.round(a.unplanned / a.fam * 100) : 0;
+      un.appendChild(h('p', { class: 'big', style: 'font-size:24px', text: money(a.unplanned) }));
+      un.appendChild(h('span', { class: 'delta', text: share + '% of family spend \u00b7 planned items ' + money(a.planned) }));
+      unKeys.slice(0, 10).forEach((k) => { const u = a.unplannedItems[k]; un.appendChild(h('div', { class: 'bar', style: 'grid-template-columns:1fr auto auto' }, h('span', { text: k + (u.n > 1 ? ' \u00d7' + u.n : '') }), h('span', { class: 'pill', text: u.cat }), h('span', { class: 'mono', text: u.amt ? money(u.amt) : '' }))); });
+      un.appendChild(h('p', { class: 'muted', text: 'Items you buy again and again this way are offered as suggestions on your next list.' }));
+    }
+    v.appendChild(un);
+    if (ui.per.mode === 'month') {
+      const now = new Date(), m = {}; for (let i = 5; i >= 0; i--) { const s = new Date(now.getFullYear(), now.getMonth() - i, 1), e = new Date(s.getFullYear(), s.getMonth() + 1, 1); m[s.toLocaleDateString(undefined, { month: 'short', year: '2-digit' })] = agg(S.purchases.filter((p) => within(p, s, e))).fam; }
+      const mx = Math.max.apply(null, Object.keys(m).map((k) => m[k]).concat([1])), box = h('div', { style: 'display:grid;gap:8px' });
+      Object.keys(m).forEach((k) => box.appendChild(h('div', { class: 'bar' }, h('span', { text: k }), h('span', { class: 't' }, h('i', { style: 'width:' + (m[k] ? Math.max(2, Math.round(m[k] / mx * 100)) : 0) + '%' })), h('span', { class: 'mono', text: money(m[k]) }))));
+      v.appendChild(h('div', { class: 'card' }, h('h3', { text: 'Last 6 months' }), box));
+    }
+    const pc = h('div', { class: 'card' }, h('h3', { text: 'Purchases' }));
+    if (!mine.length) pc.appendChild(h('p', { class: 'muted', text: 'No purchases in this period. Use Checkout on a shop in your list.' }));
+    mine.forEach((p) => {
+      const d2 = h('details', { class: 'pur' }, h('summary', null, h('span', { text: fmtAt(p.at) + ' · ' + p.shopName }), h('b', { class: 'mono', text: money(p.total) })));
+      if (p.receipt) d2.appendChild(h('span', { class: 'pill', text: 'From receipt photo' }));
+      p.lines.forEach((x) => d2.appendChild(h('div', { class: 'bar', style: 'grid-template-columns:1fr auto auto' }, h('span', { text: x.name }), h('span', { class: 'pill', text: x.tag ? tagLabel(x.tag) : x.cat + (x.itemId ? '' : ' \u00b7 unplanned') }), h('span', { class: 'mono', text: x.price ? (x.est ? '\u2248 ' : '') + money(x.price) : '' }))));
+      if (p.receiptId) d2.appendChild(h('div', { class: 'row' }, btn('sm', 'camera', 'View receipt image', () => viewReceipt(p), 'View receipt')));
+      if (p.receiptPurged) d2.appendChild(h('span', { class: 'pill', text: 'Receipt image rolled over' }));
+      if (ui.rcFor === p.id && ui.rcUrl) d2.appendChild(h('div', { class: 'row' }, h('img', { src: ui.rcUrl, alt: 'Receipt', style: 'max-width:100%;border-radius:8px;border:1px solid var(--line)' }), btn('quiet sm', 'x', 'Close receipt', () => { URL.revokeObjectURL(ui.rcUrl); ui.rcUrl = ''; ui.rcFor = ''; render(); }, 'Close')));
+      d2.appendChild(ui.confirm === 'p' + p.id ? h('div', { class: 'row' }, btn('danger sm', 'trash', 'Confirm delete purchase', () => { ui.confirm = ''; if (p.receiptId) arDel(p.receiptId).catch(() => {}); mutate(() => { S.receipts = S.receipts.filter((r) => r.id !== p.receiptId); S.purchases = S.purchases.filter((x) => x.id !== p.id); S.lists.forEach((l) => l.items.forEach((i) => { if (i.pid === p.id) i.pid = ''; })); }); }, 'Delete?'), btn('sm', 'x', 'Keep', () => { ui.confirm = ''; render(); }, 'Keep'))
+        : btn('quiet sm', 'trash', 'Delete purchase', () => { ui.confirm = 'p' + p.id; ui.openPur = p.id; render(); }, 'Delete'));
+      if (ui.openPur === p.id) d2.open = true;
+      pc.appendChild(d2);
+    });
+    v.appendChild(pc);
+  }
+
+  function viewShops(v) {
+    const c = h('div', { class: 'card' }, h('h2', { text: 'Shops' }), h('p', { class: 'muted', text: 'Give each shop a 1–2 letter code. Writing the code first on a list line (like “PP milk”) sorts that item to the shop.' }));
+    c.appendChild(h('div', { class: 'row' }, h('label', { class: 'muted', text: 'Default shop for items without a code' }), sel(S.shops.map((s) => [s.id, s.name]), S.defaultShop, (x) => { mutate(() => { S.defaultShop = x; }); }, 'Default shop')));
+    S.shops.forEach((s) => {
+      const nm = h('input', { type: 'text', value: s.name, maxlength: '40', 'aria-label': 'Shop name' });
+      nm.addEventListener('change', () => { const t = nm.value.trim().slice(0, 40); if (t) mutate(() => { s.name = t; }); else nm.value = s.name; });
+      const cd = h('input', { type: 'text', value: s.codes.join(', '), placeholder: 'Codes, e.g. PP', 'aria-label': 'Codes for ' + s.name, style: 'width:9ch;flex:0 0 auto' });
+      cd.addEventListener('change', () => {
+        const codes = Array.from(new Set(cd.value.split(/[\s,;]+/).map((x) => x.trim().toUpperCase()).filter((x) => /^[A-Z]{1,2}$/.test(x))));
+        const clash = codes.find((x) => S.shops.some((o) => o.id !== s.id && o.codes.some((y) => y.toLowerCase() === x.toLowerCase())));
+        if (clash) { toast('Code ' + clash + ' already belongs to another shop.'); cd.value = s.codes.join(', '); return; }
+        mutate(() => { s.codes = codes.slice(0, 6); });
+      });
+      c.appendChild(h('div', { class: 'row', style: 'flex-wrap:nowrap' }, nm, cd, ui.confirm === 's' + s.id ? btn('danger sm', 'trash', 'Confirm delete shop', () => { ui.confirm = ''; mutate(() => { S.shops = S.shops.filter((x) => x.id !== s.id); if (S.defaultShop === s.id) S.defaultShop = S.shops.length ? S.shops[0].id : ''; S.lists.forEach((l) => l.items.forEach((i) => { if (i.shop === s.id) i.shop = ''; })); }); }) : btn('quiet sm', 'trash', 'Delete ' + s.name, () => { ui.confirm = 's' + s.id; render(); })));
+    });
+    const ni = h('input', { type: 'text', maxlength: '40', placeholder: 'New shop name', 'aria-label': 'New shop name' }), nc = h('input', { type: 'text', maxlength: '2', placeholder: 'Code', 'aria-label': 'New shop code', style: 'width:8ch;flex:0 0 auto' });
+    const go = () => { const n = ni.value.trim().slice(0, 40); if (!n) return; const code = nc.value.trim().toUpperCase(); const ok = /^[A-Z]{1,2}$/.test(code) && !shopByCode(code); mutate(() => { const ns = mkShop(n, ok ? [code] : []); S.shops.push(ns); if (!S.defaultShop) S.defaultShop = ns.id; }); if (code && !ok) toast('Shop added without that code (invalid or already used).'); };
+    c.appendChild(h('div', { class: 'row', style: 'flex-wrap:nowrap' }, ni, nc, btn('primary sm', 'plus', 'Add shop', go)));
+    v.appendChild(c);
+    const lc = Object.keys(S.prefs).length;
+    v.appendChild(h('div', { class: 'card' }, h('h3', { text: 'What the app has learned' }), h('p', { class: 'muted', text: lc + (lc === 1 ? ' item remembers' : ' items remember') + ' their shop and category, so new lines sort themselves.' }), lc ? btn('quiet sm', 'trash', 'Forget learned items', () => { mutate(() => { S.prefs = {}; }); toast('Learned items cleared.'); }, 'Forget learned items') : null));
+  }
+
+  function exportJSON() {
+    return JSON.stringify({ schema: 'jollygrocer.purchases.v1', currency: CUR, exportedAt: new Date().toISOString(), shops: S.shops.map((s) => ({ id: s.id, name: s.name })), purchases: S.purchases.map((p) => ({ id: p.id, at: p.at, shopId: p.shopId, shop: p.shopName, total: p.total, familyTotal: Math.round((p.total - p.lines.reduce((a, x) => a + (x.tag ? (+x.price || 0) : 0), 0)) * 100) / 100, receipt: !!p.receipt, receiptArchived: !!p.receiptId, estimated: !!p.estimated, lines: p.lines.map((x) => ({ name: x.name, item: x.item || null, category: x.cat, price: x.price, estimatedPrice: !!x.est, onList: !!x.itemId, excludeFromFamily: !!x.tag, tag: x.tag || null })) })) }, null, 2);
+  }
+  function viewData(v) {
+    const c = h('div', { class: 'card' }, h('h2', { text: 'Data for the family budget app' }), h('p', { class: 'muted', text: 'Every checkout is saved as one purchase with its shop, date and time, total and category lines. Lines marked personal or not-a-grocery are flagged so the family analysis can leave them out, and lines that were not on your list are flagged too. A future Family Budget app can pool this with other apps such as GrubToGo.' }));
+    c.appendChild(h('p', { text: S.purchases.length + (S.purchases.length === 1 ? ' purchase' : ' purchases') + ' recorded.' }));
+    c.appendChild(btn('sm', 'copy', 'Copy purchases as JSON', () => {
+      const t = exportJSON(); ui.exportText = t;
+      try { navigator.clipboard.writeText(t).then(() => toast('Copied.')).catch(() => render()); } catch (e) { render(); }
+      render();
+    }, 'Copy purchases as JSON'));
+    if (ui.exportText) { const ta = h('textarea', { readonly: true, 'aria-label': 'Exported data' }); ta.value = ui.exportText; c.appendChild(ta); }
+    v.appendChild(c);
+    const ar = h('div', { class: 'card' }, h('h2', { text: 'Receipt archive' }));
+    const bytes = S.receipts.reduce((a, r) => a + r.size, 0), ex = expiredReceipts();
+    ar.appendChild(h('p', { text: S.receipts.length + (S.receipts.length === 1 ? ' receipt image' : ' receipt images') + ' \u00b7 ' + (bytes / 1048576).toFixed(1) + ' MB' }));
+    ar.appendChild(h('p', { class: 'muted', text: 'Receipt photos are saved as small web images (longest side 1400 px). They are kept in your JoolzApp archive on PocketBase. Open a purchase on the Spend tab to view its receipt.' }));
+    ar.appendChild(h('div', { class: 'row' }, h('label', { class: 'muted', text: 'Keep receipt images for' }), sel([1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => [String(n), n + (n === 1 ? ' year' : ' years')]), String(S.settings.retentionYears), (x) => { mutate(() => { S.settings.retentionYears = +x; ui.rolloverSkip = false; }); }, 'Years to keep receipt images')));
+    ar.appendChild(h('p', { class: 'muted', text: 'The longest you can keep them is 10 years. Past the period the app asks before rolling the images over; your purchase records are always kept.' }));
+    ar.appendChild(rolloverBox(ex, true));
+    v.appendChild(ar);
+  }
+  function rolloverBox(ex, full) {
+    const b = h('div', { class: full ? '' : 'card' });
+    if (!ex.length) { if (full) b.appendChild(h('p', { class: 'muted', text: 'No receipt images are past the ' + S.settings.retentionYears + '-year period.' })); return b; }
+    b.appendChild(h('p', { class: 'warn', text: ex.length + (ex.length === 1 ? ' receipt image is' : ' receipt images are') + ' older than ' + S.settings.retentionYears + (S.settings.retentionYears === 1 ? ' year.' : ' years.') + ' Roll them over (delete the images, keep the purchase records)?' }));
+    b.appendChild(h('div', { class: 'row' }, ui.confirmRoll ? btn('danger sm', 'trash', 'Confirm roll over', rollOver, 'Delete ' + ex.length + ' images') : btn('primary sm', 'next', 'Roll over old receipts', () => { ui.confirmRoll = true; render(); }, 'Roll over now'), btn('sm', 'x', 'Not now', () => { ui.confirmRoll = false; ui.rolloverSkip = true; render(); }, 'Not now')));
+    return b;
+  }
+
+  /* ---------- file inputs ---------- */
+  $('file-list').addEventListener('change', function () {
+    const f = this.files && this.files[0]; this.value = ''; if (!f || !sampleFn) return;
+    toast('Reading your photo…');
+    readImage(f, 'list').then((j) => { startReview((Array.isArray(j.items) ? j.items : []).map((x) => String(x == null ? '' : x).trim().slice(0, 300)).filter(Boolean).slice(0, 100)); })
+      .catch((e) => toast(e && e.code === 'not_granted' ? 'Photo reading was not allowed.' : (e && e.message) || 'Could not read that photo.'));
+  });
+  $('file-receipt').addEventListener('change', function () {
+    const f = this.files && this.files[0]; this.value = ''; const co = ui.co; if (!f || !co) return;
+    co.busy = true; render();
+    const keep = lowRes(f).then((b) => { co.receiptBlob = b; }).catch(() => {});
+    const read = sampleFn ? readImage(f, 'receipt') : Promise.resolve(null);
+    Promise.all([keep, read]).then((r) => {
+      co.busy = false; if (r[1]) applyReceipt(r[1]);
+      if (ui.co === co) { render(); toast(r[1] ? 'Receipt read: check the lines, then complete checkout.' : 'Receipt photo attached.'); }
+    }).catch((e) => { co.busy = false; if (ui.co === co) render(); toast(e && e.code === 'not_granted' ? 'Photo reading was not allowed.' : (e && e.message) || 'Could not read that receipt.'); });
+  });
+
+  render();
+  function signOut() {
+    try { localStorage.removeItem('gd.token'); sessionStorage.removeItem('gd.token'); } catch (e) {}
+    fetch('api/account/logout', { method: 'POST' }).catch(function () {}).then(function () { location.reload(); });
+  }
+  fetch('api/app-config', { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (cfg) {
+    if (!cfg.accounts) return;     // no accounts: data stays in this browser
+    sync.on = true;
+    $('acct').hidden = false; $('out-btn').onclick = signOut;
+    $('dash-btn').onclick = function () {
+      const base = (cfg.portalUrl || (location.protocol + '//' + location.hostname + ':3892/')).replace(/\/+$/, '') + '/';
+      location.href = base + (tok() ? '#sso=' + encodeURIComponent(tok()) : '');
+    };
+    setSync('saving');
+    api('api/ai/status').then(function (a) { if (a && a.configured) { sampleFn = true; render(); } }).catch(function () {});
+    return api('api/state').then(function (j) {
+      if (j.state) { S = fix(j.state); try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} window.__jg.S = S; render(); setSync('saved'); }
+      else pushNow();          // first time on this account: keep this browser's data and save it
+    }).catch(function () { setSync('error'); });
+  }).catch(function () { /* offline: keep working from this browser */ });
+  window.__jg = { estimate: estimate, rollOver: rollOver, expiredReceipts: expiredReceipts, lowRes: lowRes, S: S, ui: ui, render: render, parseCode: parseCode, addItem: addItem, suggestions: suggestions, agg: agg, norm: norm, applyReceipt: applyReceipt, openCheckout: openCheckout, confirmCheckout: confirmCheckout, startReview: startReview, setSample: function (f) { sampleFn = f; render(); } };
+})();
+</script>
+</body></html>
