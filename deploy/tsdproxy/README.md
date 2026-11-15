@@ -8,7 +8,7 @@ the store is what publishes it**. No per-app Tailscale steps.
 |---|---|---|
 | `https://joolzapp.<tailnet>.ts.net` | Portal Admin: the Dashboard (user-only port) | 3892 |
 | `https://shutterworth.<tailnet>.ts.net` | ShutterWorth | 3882 |
-| `https://grubtogo.<tailnet>.ts.net` | GrubToGo | 3894 |
+| `https://diner-bell.<tailnet>.ts.net` | Diner Bell | 3894 |
 | `https://listify.<tailnet>.ts.net` | Listify | 3898 |
 
 ## One-time setup (Umbrel, over SSH)
@@ -19,7 +19,7 @@ Needs (already done): HTTPS certificates on, `tag:public` with the `funnel` attr
    cd ~/joolzapp-tunnel && sudo docker compose down
    ```
    Then in the Tailscale admin console, Machines, delete the old `joolzapp` and `shutterworth` machines. Otherwise the new ones get a `-1` added to the name.
-2. **Update the apps** in the Umbrel App Store (Portal Admin, ShutterWorth, GrubToGo). The update adds the labels and ports.
+2. **Update the apps** in the Umbrel App Store (Portal Admin, ShutterWorth, Diner Bell). The update adds the labels and ports.
 3. **Get this folder onto the Umbrel and run setup:**
    ```
    mkdir -p ~/tsdproxy && cd ~/tsdproxy
@@ -40,7 +40,7 @@ In that app's compose file, on the container that serves it, publish a host port
       tsdproxy.name: "myapp"
       tsdproxy.port.1: "443/https:3895/http, no_autodetect, tailscale_funnel"
 ```
-Publish it only if the app locks itself behind the JoolzApp account (as ShutterWorth and GrubToGo do), because Funnel makes it public.
+Publish it only if the app locks itself behind the JoolzApp account (as ShutterWorth and Diner Bell do), because Funnel makes it public.
 Never label an app that relies on Umbrel's own login (Portal Admin's normal address, Services Manager).
 Then register its address under Portal Admin > Apps > URL so it gets an Open button.
 

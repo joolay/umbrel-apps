@@ -42,6 +42,15 @@
         {
           "name": "versionByName",
           "type": "text"
+        },
+        {
+          "name": "wa",
+          "type": "text"
+        },
+        {
+          "name": "logo",
+          "type": "json",
+          "maxSize": 600000
         }
       ]
     },

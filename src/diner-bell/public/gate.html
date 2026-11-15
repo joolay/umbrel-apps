@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>GrubToGo</title>
+<title>Diner Bell</title>
 <meta name="theme-color" content="#d9480f">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -37,7 +37,7 @@ details.ai{margin:10px 0;font-size:14px}details.ai summary{cursor:pointer;color:
 <body>
 <main>
   <img class="logo" src="icon.svg" alt="">
-  <h1>GrubToGo</h1>
+  <h1>Diner Bell</h1>
   <p class="sub" id="sub">Sign in with your JoolzApp account</p>
   <div id="view"></div>
 </main>
@@ -88,12 +88,12 @@ details.ai{margin:10px 0;font-size:14px}details.ai summary{cursor:pointer;color:
     if (cfg.signups !== false) {
       // There is one JoolzApp sign-up page, in Portal Admin. It sends you back here when the account is made.
       var alt = el("button", "alt", "Create a JoolzApp account"); alt.type = "button";
-      alt.onclick = function () { if (cfg.portalUrl) location.href = cfg.portalUrl.replace(/\/+$/, "") + "/?signup=1&app=grubtogo"; else err.textContent = "Sign-up lives in Portal Admin, but its address isn't set yet. Ask the admin."; }; view.appendChild(alt);
+      alt.onclick = function () { if (cfg.portalUrl) location.href = cfg.portalUrl.replace(/\/+$/, "") + "/?signup=1&app=diner-bell"; else err.textContent = "Sign-up lives in Portal Admin, but its address isn't set yet. Ask the admin."; }; view.appendChild(alt);
     }
   }
   function waiting(u) {
     view.textContent = ""; sub.textContent = "Almost there";
-    view.appendChild(el("p", "note", "You're signed in as " + (u.name || u.email) + ". " + ((u.gate && u.gate.message) || "The admin hasn't opened GrubToGo to you yet. Ask them to give you access, then check again.")));
+    view.appendChild(el("p", "note", "You're signed in as " + (u.name || u.email) + ". " + ((u.gate && u.gate.message) || "The admin hasn't opened Diner Bell to you yet. Ask them to give you access, then check again.")));
     var row = el("div", "row"), again = el("button", "", "Check again"), out = el("button", "", "Sign out");
     again.onclick = function () { start(); }; out.onclick = signOut; row.append(again, out); view.appendChild(row);
     if (u.gate && u.gate.reason === "guardian_pending") {

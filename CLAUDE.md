@@ -32,3 +32,7 @@ existing apps move onto it one at a time. Every `index.html` head also carries: 
 ## Preview before pushing
 Before asking the owner to confirm a push, publish or update an artifact that previews the changed app in the Glass theme (light and dark, phone width).
 Only after he confirms: push and merge to `main` in one step.
+
+## Settings live on the account, and view-only users
+- Every app saves its user preferences (default tip, ordering of tiles, preferred branch, hidden items, theme...) on the person's JoolzApp account, never only on the device or in the app's data folder, so updates and reinstalls never reset them. Pattern: one `pref.<app>` row in `portal_settings` (scope user, app = the app id) written by the server with `setAppPref` (see `src/diner-bell/pocketbase.js`) and read back from `user.portal.prefs`. Copy any older local settings up the first time.
+- Portal Admin (Users > Access) can switch a person to view-only with `portal.readonly = true`. Any app with shared resources (menus, uploads, shared lists) must refuse changes to them for that person server-side (`user.portal.readonly`, admins excepted), while still letting them use the app and change their own data. Diner Bell enforces this on every write to the shared menu archive.
