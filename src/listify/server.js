@@ -194,7 +194,7 @@ async function callAI(prompt, images, user) {
 const PROMPT = `You read a photo of a written, printed or on-screen list (shopping list, to-do list, notes) into JSON. Reply with ONLY one JSON object, no prose, no code fences:
 {"items": [string]}
 Rules: one entry per list item, in the order shown; keep each item's own wording and language (fix obvious spelling only); keep quantities with the item (e.g. "Milk x2"); skip titles, dates, ticked-off/crossed-out items and anything that is not a list item; never invent items. If there is no list, return {"items": []}.`;
-const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css", ".svg": "image/svg+xml", ".png": "image/png", ".json": "application/json" };
+const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css", ".svg": "image/svg+xml", ".png": "image/png", ".json": "application/json", ".webmanifest": "application/manifest+json" };
 const SETUP = "<!doctype html><meta name=viewport content='width=device-width'><body style='font:16px system-ui;padding:2rem;max-width:34rem;margin:auto'><h1>Listify isn't set up yet</h1><p>Accounts are required but PocketBase isn't connected. Add <code>pocketbase.env</code> to the app's data folder (POCKETBASE_SUPERUSER_EMAIL and POCKETBASE_SUPERUSER_PASSWORD), or open Portal Admin and connect PocketBase.</p></body>";
 
 const server = http.createServer(async (req, res) => {

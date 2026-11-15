@@ -2,7 +2,7 @@ manifestVersion: 1
 id: joolay-jolly-grocer
 category: files
 name: Jolly Grocer
-version: "1.0.1"
+version: "1.0.2"
 tagline: Your grocery shopping companion
 description: >-
   Jolly Grocer sorts your shopping list by shop and category, remembers short shop codes, and checks each shop out with a
@@ -19,7 +19,7 @@ gallery: []
 path: ""
 defaultUsername: ""
 defaultPassword: ""
-releaseNotes: "Starts on its own once PocketBase is connected in Portal Admin, with no restart needed. The waiting page now refreshes itself."
+releaseNotes: "Can now be added to the Home Screen as a fullscreen app, with its own icon."
 submitter: joolay
 submission: https://github.com/joolay/umbrel-apps
 icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-jolly-grocer/icon.svg

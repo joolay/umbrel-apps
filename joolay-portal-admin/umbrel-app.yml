@@ -2,7 +2,7 @@ manifestVersion: 1
 id: joolay-portal-admin
 category: developer
 name: Portal Admin
-version: "0.13.0"
+version: "0.14.0"
 tagline: One admin panel for all your custom PocketBase apps
 description: >-
   A central admin panel for your custom apps that use PocketBase. Register each app, then manage
@@ -21,7 +21,7 @@ gallery: []
 path: ""
 defaultUsername: ""
 defaultPassword: ""
-releaseNotes: "Automatic connecting is removed. When a new app of yours needs PocketBase, Portal Admin now asks you to sign in once with your superuser login, connects every waiting app with it, and does not keep the login."
+releaseNotes: "Optimised for iPhone: no more zoom when tapping a field, the page fits the screen, and the menu scrolls sideways. Can be added to the Home Screen as a fullscreen app."
 submitter: joolay
 submission: https://github.com/joolay/umbrel-apps
 icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-portal-admin/icon.svg

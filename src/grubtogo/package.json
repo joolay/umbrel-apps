@@ -1,6 +1,6 @@
 {
   "name": "grubtogo",
-  "version": "1.3.4",
+  "version": "1.3.5",
   "private": true,
   "description": "GrubToGo: read a restaurant menu, order from several restaurants, add a tip and split the bill, then tap to call.",
   "main": "server.js",

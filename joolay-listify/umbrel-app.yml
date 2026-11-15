@@ -2,7 +2,7 @@ manifestVersion: 1
 id: joolay-listify
 category: files
 name: Listify
-version: "1.0.4"
+version: "1.0.5"
 tagline: Checklists that follow your JoolzApp account
 description: >-
   Listify keeps simple checklists: several lists, dates, progress, swipe to delete, reorder, and a one-tap copy of the
@@ -17,7 +17,7 @@ gallery: []
 path: ""
 defaultUsername: ""
 defaultPassword: ""
-releaseNotes: "Fixes a port clash that made the Stremio app open Listify. Listify now publishes its public address on port 3898 instead of 3896."
+releaseNotes: "Can now be added to the Home Screen as a fullscreen app, with a proper icon."
 submitter: joolay
 submission: https://github.com/joolay/umbrel-apps
 icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-listify/icon.svg
