@@ -9,34 +9,17 @@
 <meta name="apple-mobile-web-app-title" content="Listify">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <title>Listify</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@500;600;700&family=Instrument+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="glass.css">
 <style>
-:root {
-  --font-display: "Familjen Grotesk", "Segoe UI", system-ui, sans-serif;
-  --font-body: "Instrument Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  --bg: #E8EDF1; --surface: #FFFFFF; --surface-2: #F2F5F8; --ink: #12202B; --muted: #546775;
-  --line: #D5DDE4; --line-strong: #B9C6D0; --accent: #0A6C8F; --accent-ink: #FFFFFF; --accent-text: #0A6C8F;
-  --accent-soft: #D8EDF5; --danger: #B3362E; --danger-ink: #FFFFFF; --toast-bg: #12202B; --toast-fg: #F1F5F8; --toast-accent: #7FD0EE;
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --bg: #0D151B; --surface: #141E26; --surface-2: #1A2630; --ink: #E5EDF2; --muted: #94A6B3;
-    --line: #263540; --line-strong: #38495A; --accent: #4DB6DD; --accent-ink: #04222E; --accent-text: #6CC7E8;
-    --accent-soft: #16313E; --danger: #F28B82; --danger-ink: #2B0B09; --toast-bg: #E5EDF2; --toast-fg: #0D151B; --toast-accent: #0A6C8F;
-    color-scheme: dark;
-  }
-}
-:root[data-theme="dark"] {
-  --bg: #0D151B; --surface: #141E26; --surface-2: #1A2630; --ink: #E5EDF2; --muted: #94A6B3;
-  --line: #263540; --line-strong: #38495A; --accent: #4DB6DD; --accent-ink: #04222E; --accent-text: #6CC7E8;
-  --accent-soft: #16313E; --danger: #F28B82; --danger-ink: #2B0B09; --toast-bg: #E5EDF2; --toast-fg: #0D151B; --toast-accent: #0A6C8F;
-  color-scheme: dark;
-}
+:root{--accent:#0A6C8F;--accent-2:#3FB0D6;--accent-t:#fff}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--accent:#4DB6DD;--accent-2:#7FD0EE;--accent-t:#04222E}}
+:root[data-theme="dark"]{--accent:#4DB6DD;--accent-2:#7FD0EE;--accent-t:#04222E}
+:root{--surface:var(--glass);--surface-2:var(--chip);--ink:var(--text);--line-strong:var(--glass-line);--accent-ink:var(--accent-t);--accent-text:var(--accent);--accent-soft:color-mix(in srgb,var(--accent) 16%,transparent);--danger-ink:#fff;--toast-bg:var(--text);--toast-fg:var(--bg);--toast-accent:var(--accent);--font-body:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;--font-display:var(--font-body);--font-mono:ui-monospace,Menlo,Consolas,monospace}
+
 *, *::before, *::after { box-sizing: border-box; }
 [hidden] { display: none !important; }
 body {
-  margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 var(--font-body);
+  margin: 0;  color: var(--ink); font: 15px/1.5 var(--font-body);
   padding-block: calc(20px + env(safe-area-inset-top, 0px)) calc(64px + env(safe-area-inset-bottom, 0px));
   padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
 }
@@ -111,7 +94,7 @@ input[type="text"]::placeholder, textarea::placeholder { color: var(--muted); }
 .date-in { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; font-size: 16px; border: 0; padding: 0; margin: 0; }
 .swipe { position: relative; overflow: hidden; }
 .item.swipe { display: block; }
-.swipe-fg { display: flex; align-items: center; gap: 2px; background: var(--surface); position: relative; touch-action: pan-y; transition: transform .2s ease; will-change: transform; }
+.swipe-fg { display: flex; align-items: center; gap: 2px; background: var(--solid); position: relative; touch-action: pan-y; transition: transform .2s ease; will-change: transform; }
 .swipe-fg.drag { transition: none; user-select: none; -webkit-user-select: none; }
 .swipe-act { position: absolute; top: 0; right: 0; bottom: 0; width: 88px; border: 0; padding: 0; display: flex; align-items: center; justify-content: center; gap: 6px; background: var(--danger); color: var(--danger-ink); font: 600 14px var(--font-body); cursor: pointer; }
 .swipe-act svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
@@ -178,6 +161,20 @@ button, label, .tab { touch-action: manipulation; -webkit-tap-highlight-color: t
 .toast { pointer-events: auto; display: flex; align-items: center; gap: 14px; background: var(--toast-bg); color: var(--toast-fg); padding: 10px 10px 10px 16px; border-radius: 10px; font-size: 14px; max-width: 460px; box-shadow: 0 6px 24px rgba(0,0,0,.25); }
 .toast-btn { border: 0; background: none; color: var(--toast-accent); font-weight: 700; font-size: 14px; min-width: 44px; min-height: 44px; justify-content: center; padding: 6px 10px; border-radius: 7px; cursor: pointer; }
 @media (prefers-reduced-motion: reduce) { .chk.pop { animation: none; } .chk::after, .strip i, .bar b, .swipe-fg { transition: none; } }
+
+/* ---- Glass layer: shared look from glass.css ---- */
+.card,.group{background:var(--glass);border:1px solid var(--glass-line);border-radius:var(--r);box-shadow:var(--shadow);-webkit-backdrop-filter:blur(22px) saturate(170%);backdrop-filter:blur(22px) saturate(170%)}
+.btn{background:var(--glass-strong);border:1px solid var(--glass-line);border-radius:var(--r-sm);color:var(--text)}
+.btn:hover{background:var(--glass-strong);border-color:var(--accent)}
+.btn.primary{background:linear-gradient(145deg,var(--accent),var(--accent-2));border-color:transparent;color:var(--accent-t);box-shadow:0 6px 16px color-mix(in srgb,var(--accent) 35%,transparent);filter:none}
+.btn.quiet{background:transparent;border-color:transparent;box-shadow:none;color:var(--accent)}
+.btn.danger{background:var(--glass-strong);color:var(--danger);border-color:var(--glass-line)}
+input,select,textarea{background:var(--glass-strong);border:1px solid var(--glass-line);border-radius:var(--r-sm);color:var(--text)}
+.tabs{background:var(--glass);border:1px solid var(--glass-line);border-radius:14px;-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px)}
+.tabs button[aria-selected=true]{background:var(--glass-strong);color:var(--text);box-shadow:0 2px 8px rgba(31,42,68,.12)}
+.chip{border-radius:var(--r-pill);background:var(--glass-strong);border:1px solid var(--glass-line);color:var(--text)}
+.chip[aria-pressed=true]{background:linear-gradient(145deg,var(--accent),var(--accent-2));border-color:transparent;color:var(--accent-t)}
+.top{padding:6px 2px}
 </style></head><body>
 
 <div class="wrap">
