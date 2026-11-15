@@ -26,10 +26,10 @@ const URL_BASE = (process.env.POCKETBASE_URL || "http://host.docker.internal:540
 const SU_EMAIL = process.env.POCKETBASE_SUPERUSER_EMAIL || "";
 const SU_PASS = process.env.POCKETBASE_SUPERUSER_PASSWORD || "";
 const COLL = process.env.POCKETBASE_USERS_COLLECTION || "users";
-const APP = (process.env.POCKETBASE_APP_ID || "grubtogo").trim().toLowerCase();
+const APP = (process.env.POCKETBASE_APP_ID || "diner-bell").trim().toLowerCase();
 const ACCESS = process.env.POCKETBASE_ACCESS_COLLECTION || "app_access";
 
-const APP_NAME = (process.env.POCKETBASE_APP_NAME || (APP === "grubtogo" ? "GrubToGo" : APP)).trim();
+const APP_NAME = (process.env.POCKETBASE_APP_NAME || (APP === "diner-bell" ? "Diner Bell" : APP)).trim();
 
 const enabled = !!(URL_BASE && SU_EMAIL && SU_PASS);
 
@@ -171,10 +171,10 @@ function resolvePortal(rows, userId) {
   const mine = rows.filter(r => r.scope === "global" || (r.scope === "app" && r.app === APP) || (r.scope === "user" && r.user === userId && (r.app === "" || r.app === APP))).sort((a, b) => rank(a) - rank(b));
   const eff = {}; for (const r of mine) eff[r.key] = r.value;
   const prefs = {}; for (const [k, v] of Object.entries(eff)) if (k.startsWith("pref.")) prefs[k.slice(5)] = v;
-  return { access: eff["portal.access"] !== false, prefs };
+  return { access: eff["portal.access"] !== false, readonly: eff["portal.readonly"] === true, prefs };
 }
 async function portalRowsFor(userId) {
-  const f = `(key = 'portal.access' || key ~ 'pref.') && (scope = 'global' || (scope = 'app' && app = '${esc(APP)}') || (scope = 'user' && user = '${esc(userId)}'))`;
+  const f = `(key = 'portal.access' || key = 'portal.readonly' || key ~ 'pref.') && (scope = 'global' || (scope = 'app' && app = '${esc(APP)}') || (scope = 'user' && user = '${esc(userId)}'))`;
   const j = await asSuper("GET", `/api/collections/portal_settings/records?page=1&perPage=200&filter=${q(f)}`);
   return j.items || [];
 }
@@ -215,7 +215,7 @@ async function setPortalAccess(userId, allowed) {
   if (allowed) {
     try {
       const r = await asSuper("GET", `/api/collections/portal_requests/records?page=1&perPage=50&filter=${q(`user = '${esc(userId)}' && app = '${esc(APP)}' && status = 'pending'`)}`);
-      for (const x of r.items || []) await asSuper("PATCH", `/api/collections/portal_requests/records/${x.id}`, { status: "approved", decided_by: "GrubToGo admin" });
+      for (const x of r.items || []) await asSuper("PATCH", `/api/collections/portal_requests/records/${x.id}`, { status: "approved", decided_by: "Diner Bell admin" });
     } catch (e) { if (e.status !== 404) throw e; }
   }
   portalClear();
@@ -364,6 +364,17 @@ async function setUserPrefs(userId, prefs) {
   portalCache.delete("u:" + userId);
 }
 
+// This app's own settings (default tip, restaurant order, preferred branches...) are kept on the person's account as one
+// "pref.diner" row, so they follow the person across devices and are never reset by an update or a reinstall.
+const PREF_KEY = "pref.diner";
+async function setAppPref(userId, value) {
+  const f = `scope = 'user' && user = '${esc(userId)}' && app = '${esc(APP)}' && key = '${PREF_KEY}'`;
+  const ex = ((await asSuper("GET", `/api/collections/portal_settings/records?page=1&perPage=1&filter=${q(f)}`)).items || [])[0];
+  if (ex) await asSuper("PATCH", `/api/collections/portal_settings/records/${ex.id}`, { value });
+  else await asSuper("POST", "/api/collections/portal_settings/records", { scope: "user", user: userId, app: APP, key: PREF_KEY, value, secret: false });
+  portalCache.delete("u:" + userId);
+}
+
 // Address of the JoolzApp dashboard (Portal Admin), from the global "portal.url" setting. Empty means "work it out from the browser".
 async function portalUrl() {
   return (await cached("purl", 30000, async () => {
@@ -373,4 +384,4 @@ async function portalUrl() {
   })) || "";
 }
 async function setDob(id, dob) { await ensureSchema(); await asSuper("PATCH", rec("/" + encodeURIComponent(id)), { dob }); }
-module.exports = { setDob, portalUrl, requestPasswordReset, trialUsed, trialBump, setUserPrefs, portalAvailable, setPortalAccess, signupsOpen, enabled, PBError, login, verifyToken, createUser, listUsers, getUser, updateUser, updateAccess, deleteUser, countAdmins, findByEmail, firstAdmin, asSuper, superFetch, ensureSchema, collection: COLL, app: APP };
+module.exports = { setAppPref, setDob, portalUrl, requestPasswordReset, trialUsed, trialBump, setUserPrefs, portalAvailable, setPortalAccess, signupsOpen, enabled, PBError, login, verifyToken, createUser, listUsers, getUser, updateUser, updateAccess, deleteUser, countAdmins, findByEmail, firstAdmin, asSuper, superFetch, ensureSchema, collection: COLL, app: APP };

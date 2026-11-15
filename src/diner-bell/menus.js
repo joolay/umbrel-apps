@@ -18,7 +18,7 @@ async function addMissing(path, wanted) {
   await pb.asSuper("PATCH", path, { [key]: [...have, ...missing.map(mk)] });
 }
 const MENU_FIELDS = [["owner", "text", true], ["ownerName", "text"], ["name", "text", true], ["phone", "text"], ["currency", "text"],
-  ["categories", "json", false, { maxSize: 5000000 }], ["branches", "json", false, { maxSize: 200000 }], ["version", "text"], ["versionByName", "text"]];
+  ["categories", "json", false, { maxSize: 5000000 }], ["branches", "json", false, { maxSize: 200000 }], ["version", "text"], ["versionByName", "text"], ["wa", "text"], ["logo", "json", false, { maxSize: 600000 }]];
 const ARCH_FIELDS = [["menuId", "text", true], ["version", "text"], ["byName", "text"], ["data", "json", false, { maxSize: 5000000 }]];
 
 let ready = null;
@@ -59,7 +59,7 @@ function cleanCategories(cats) {
 // Franchises: a menu can list several branches, each with its own phone number.
 function cleanBranches(b) {
   if (!Array.isArray(b)) return null;
-  return b.slice(0, 40).map(x => ({ name: str(x && x.name, 80), phone: str(x && x.phone, 40) })).filter(x => x.name || x.phone);
+  return b.slice(0, 40).map(x => ({ name: str(x && x.name, 80), phone: str(x && x.phone, 40), wa: str(x && x.wa, 40) })).filter(x => x.name || x.phone);
 }
 // A whole new menu. Returns null when there's nothing usable in it.
 function cleanMenu(x) {
@@ -70,7 +70,7 @@ function cleanMenu(x) {
 }
 
 const canEdit = (user, rec) => !!(user && (user.isAdmin || user.id === rec.owner));
-const shape = (rec, user) => ({ id: rec.id, name: rec.name || "", phone: rec.phone || "", branches: Array.isArray(rec.branches) ? rec.branches : [], currency: rec.currency || "R", categories: Array.isArray(rec.categories) ? rec.categories : [],
+const shape = (rec, user) => ({ id: rec.id, name: rec.name || "", phone: rec.phone || "", wa: rec.wa || "", logo: typeof rec.logo === "string" ? rec.logo : "", branches: Array.isArray(rec.branches) ? rec.branches : [], currency: rec.currency || "R", categories: Array.isArray(rec.categories) ? rec.categories : [],
   owner: rec.owner, ownerName: rec.ownerName || "", canEdit: canEdit(user, rec), updated: rec.updated || "",
   version: rec.version || rec.created || "", versionByName: rec.versionByName || rec.ownerName || "" });
 
@@ -142,13 +142,13 @@ async function addBranch(user, id, body) {
   let rec;
   try { rec = await pb.asSuper("GET", `${base}/records/${encodeURIComponent(id)}`); }
   catch (e) { if (e.status === 404) return { status: 404, message: "That menu no longer exists." }; throw e; }
-  const name = str(body.name, 80), phone = str(body.phone, 40);
+  const name = str(body.name, 80), phone = str(body.phone, 40), wa = str(body.wa, 40);
   if (!phone) return { status: 400, message: "Enter the branch's phone number." };
   const list = Array.isArray(rec.branches) ? rec.branches : [];
   const digits = s => String(s || "").replace(/\D/g, "");
   if (list.some(b => digits(b.phone) === digits(phone))) return { status: 400, message: "That number is already listed." };
   if (list.length >= 40) return { status: 400, message: "This restaurant has too many branches listed." };
-  const out = await pb.asSuper("PATCH", `${base}/records/${encodeURIComponent(id)}`, { branches: [...list, { name, phone }] });
+  const out = await pb.asSuper("PATCH", `${base}/records/${encodeURIComponent(id)}`, { branches: [...list, { name, phone, wa }] });
   return { menu: shape(out, user) };
 }
 async function versions(user, id) {
@@ -182,11 +182,25 @@ async function update(user, id, body) {
   const patch = {};
   if (body.name !== undefined) { const n = str(body.name, 120); if (n) patch.name = n; }
   if (body.phone !== undefined) patch.phone = str(body.phone, 40);
+  if (body.wa !== undefined) patch.wa = str(body.wa, 40);
   if (body.branches !== undefined) { const b = cleanBranches(body.branches); if (b) patch.branches = b; }
   if (body.currency !== undefined) patch.currency = str(body.currency, 8) || "R";
   if (body.categories !== undefined) { const c = cleanCategories(body.categories); if (!c) return { status: 400, message: "A menu needs at least one item." }; patch.categories = c; }
   const rec = Object.keys(patch).length ? await pb.asSuper("PATCH", `${base}/records/${encodeURIComponent(id)}`, patch) : g.rec;
   return { menu: shape(rec, user) };
+}
+// Anyone signed in (and not view-only) may set a restaurant's display picture. Pass "" to clear it. The picture is a small
+// image the app has already shrunk, sent as a data URL.
+async function setLogo(user, id, logo) {
+  await ensure();
+  let rec;
+  try { rec = await pb.asSuper("GET", `${base}/records/${encodeURIComponent(id)}`); }
+  catch (e) { if (e.status === 404) return { status: 404, message: "That menu no longer exists." }; throw e; }
+  const v = typeof logo === "string" ? logo : "";
+  if (v && !/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(v)) return { status: 400, message: "That isn't a usable picture." };
+  if (v.length > 400000) return { status: 400, message: "That picture is too big." };
+  const out = await pb.asSuper("PATCH", `${base}/records/${encodeURIComponent(id)}`, { logo: v });
+  return { menu: shape(out, user) };
 }
 async function remove(user, id) {
   const g = await guarded(user, id); if (g.status) return g;
@@ -194,4 +208,4 @@ async function remove(user, id) {
   return { ok: true };
 }
 
-module.exports = { list, create, update, remove, cleanMenu, editItem, addBranch, versions, restore };
+module.exports = { setLogo, list, create, update, remove, cleanMenu, editItem, addBranch, versions, restore };

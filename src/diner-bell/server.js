@@ -1,4 +1,4 @@
-// GrubToGo server: JoolzApp sign-in (shared PocketBase account), per-person saved menus and carts, and menu reading
+// Diner Bell server: JoolzApp sign-in (shared PocketBase account), per-person saved menus and carts, and menu reading
 // through an AI service. No npm dependencies — runs on plain Node 20+.
 "use strict";
 const http = require("http");
@@ -72,7 +72,7 @@ async function callAI(prompt, images = [], user = null) {
   } else {
     const content = [{ type: "text", text: prompt }, ...images.map(im => ({ type: "image_url", image_url: { url: `data:${im.type || "image/jpeg"};base64,${im.data}` } }))];
     const headers = { "content-type": "application/json" }; if (c.apiKey) headers.authorization = "Bearer " + c.apiKey;
-    if (c.provider === "openrouter") { headers["x-title"] = "GrubToGo"; }
+    if (c.provider === "openrouter") { headers["x-title"] = "Diner Bell"; }
     r = await fetch(c.baseUrl.replace(/\/+$/, "") + "/chat/completions", { method: "POST", headers, signal: AbortSignal.timeout(120000), body: JSON.stringify({ model: c.model, max_tokens: 8000, messages: [{ role: "user", content }] }) });
     const j = await readAI(r); text = j.choices?.[0]?.message?.content || "";
     if (Array.isArray(text)) text = text.map(p => p.text || "").join("");
@@ -101,7 +101,7 @@ async function fetchPage(raw) {
   const priv = a => /^(127\.|10\.|0\.|169\.254\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.)/.test(a) || /^(::1?$|fc|fd|fe80)/i.test(a);
   if (addrs.some(a => priv(a.address))) throw new AIError("bad_url", "That address isn't allowed.");
   let r;
-  try { r = await fetch(u, { redirect: "follow", signal: AbortSignal.timeout(15000), headers: { "user-agent": "Mozilla/5.0 (compatible; GrubToGo/1.0)", accept: "text/html,*/*" } }); }
+  try { r = await fetch(u, { redirect: "follow", signal: AbortSignal.timeout(15000), headers: { "user-agent": "Mozilla/5.0 (compatible; Diner Bell/1.0)", accept: "text/html,*/*" } }); }
   catch { throw new AIError("bad_url", "Couldn't open that page."); }
   if (!r.ok) throw new AIError("bad_url", "That page answered with an error (" + r.status + ").");
   const html = (await r.text()).slice(0, 2e6);
@@ -116,14 +116,14 @@ async function fetchPage(raw) {
 function gateOf(u) {
   if (u.isAdmin) return { ok: true };
   if (u.guard && u.guard.minor && !u.guard.approved) return { ok: false, reason: "guardian_pending", message: "Waiting for a parent or guardian to approve your account. Ask them to approve you on the JoolzApp dashboard (Portal Admin). Then check again here." };
-  if (!u.portal) return u.access ? { ok: true } : { ok: false, reason: "no_access", message: "The admin hasn't opened GrubToGo to you yet. Ask them to give you access, then check again." };
+  if (!u.portal) return u.access ? { ok: true } : { ok: false, reason: "no_access", message: "The admin hasn't opened Diner Bell to you yet. Ask them to give you access, then check again." };
   const a = u.portal.app;
-  if (a && a.enabled === false) return { ok: false, reason: "disabled", message: "GrubToGo is switched off right now." };
-  if (a && a.maintenance) return { ok: false, reason: "maintenance", message: a.message || "GrubToGo is under maintenance. Try again soon." };
-  if (!u.portal.access) return { ok: false, reason: "no_access", message: "You need approval to use GrubToGo. Open Portal Admin, request access to GrubToGo, then check again here." };
+  if (a && a.enabled === false) return { ok: false, reason: "disabled", message: "Diner Bell is switched off right now." };
+  if (a && a.maintenance) return { ok: false, reason: "maintenance", message: a.message || "Diner Bell is under maintenance. Try again soon." };
+  if (!u.portal.access) return { ok: false, reason: "no_access", message: "You need approval to use Diner Bell. Open Portal Admin, request access to Diner Bell, then check again here." };
   return { ok: true };
 }
-const publicUser = u => ({ id: u.id, email: u.email || "", name: u.name || "", isAdmin: !!u.isAdmin, dob: u.dob || "", age: guardians.ageOf(u.dob), minor: !!(u.guard ? u.guard.minor : guardians.isMinor(u)), canOpen: gateOf(u).ok, gate: gateOf(u), prefs: Object.fromEntries(Object.entries((u.portal && u.portal.prefs) || {}).filter(([k]) => k !== "ai.apiKey")) });
+const publicUser = u => ({ id: u.id, email: u.email || "", name: u.name || "", isAdmin: !!u.isAdmin, dob: u.dob || "", age: guardians.ageOf(u.dob), minor: !!(u.guard ? u.guard.minor : guardians.isMinor(u)), canOpen: gateOf(u).ok, readonly: !!(u.portal && u.portal.readonly && !u.isAdmin), gate: gateOf(u), prefs: Object.fromEntries(Object.entries((u.portal && u.portal.prefs) || {}).filter(([k]) => k !== "ai.apiKey")) });
 
 const tokenCache = new Map();
 function tokenOf(req) {
@@ -210,6 +210,11 @@ const histFile = u => path.join(USERS_DIR, ownerKey(u) + ".history.json");
 function readHistory(u) { try { const a = JSON.parse(fs.readFileSync(histFile(u), "utf8")); return Array.isArray(a) ? a : []; } catch { return []; } }
 function writeHistory(u, a) { const f = histFile(u), t = f + ".tmp"; fs.writeFileSync(t, JSON.stringify(a)); fs.renameSync(t, f); }
 // A placed order is kept as a snapshot, so later menu changes never rewrite what was ordered or paid.
+// The date of an order can be set to an earlier day (to log a past meal); never in the future, never more than 5 years back.
+function orderAt(v) {
+  const d = new Date(v), now = Date.now();
+  return v && isFinite(d) && d.getTime() <= now + 3600e3 && d.getTime() > now - 5 * 365 * 86400e3 ? d.toISOString() : new Date().toISOString();
+}
 function cleanOrder(o) {
   if (!o || typeof o !== "object") return null;
   const t = (v, n) => String(v == null ? "" : v).slice(0, n);
@@ -218,7 +223,7 @@ function cleanOrder(o) {
     itemId: t(l && l.itemId, 60), name: t(l && l.name, 160), qty: Math.min(99, Math.max(1, Math.floor(+(l && l.qty)) || 1)),
     price: l && typeof l.price === "number" && isFinite(l.price) && l.price >= 0 ? l.price : null, note: t(l && l.note, 300) })).filter(l => l.name);
   if (!lines.length) return null;
-  return { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7), at: new Date().toISOString(), restId: t(o.restId, 40).replace(/[^A-Za-z0-9]/g, ""),
+  return { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7), at: orderAt(o.at), type: ["collection", "delivery", "sit"].includes(o.type) ? o.type : "", fee: num(o.fee), driverTip: num(o.driverTip), restId: t(o.restId, 40).replace(/[^A-Za-z0-9]/g, ""),
     restName: t(o.restName, 120) || "Restaurant", branch: t(o.branch, 80), phone: t(o.phone, 40), currency: t(o.currency, 8) || "R",
     lines, instructions: t(o.instructions, 500), sub: num(o.sub), tip: num(o.tip), pct: num(o.pct), total: num(o.total),
     // When the bill was split: the whole bill, and who it was split with. (sub/tip/total above are then this person's own share.)
@@ -236,15 +241,15 @@ function readBody(req) {
   });
 }
 const send = (res, code, obj) => { res.writeHead(code, { "content-type": "application/json", "cache-control": "no-store" }); res.end(JSON.stringify(obj)); };
-const SETUP = "<!doctype html><meta name=viewport content='width=device-width'><body style='font:16px system-ui;padding:2rem;max-width:34rem;margin:auto'><h1>GrubToGo isn't set up yet</h1><p>Accounts are required but PocketBase isn't connected. Add <code>pocketbase.env</code> to the app's data folder and restart the app.</p>";
+const SETUP = "<!doctype html><meta name=viewport content='width=device-width'><body style='font:16px system-ui;padding:2rem;max-width:34rem;margin:auto'><h1>Diner Bell isn't set up yet</h1><p>Accounts are required but PocketBase isn't connected. Add <code>pocketbase.env</code> to the app's data folder and restart the app.</p>";
 
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, "http://x");
     const p = decodeURIComponent(url.pathname);
     const isPage = p === "/" || p === "/index.html";
-    const isMenus = /^\/api\/menus(\/[A-Za-z0-9]{1,40}(\/(item|branch|versions|restore))?)?$/.test(p);
-    const isData = isMenus || p === "/api/state" || p === "/api/guardians" || /^\/api\/family(\/orders(\/[A-Za-z0-9]{1,20})?)?$/.test(p) || /^\/api\/history(\/[A-Za-z0-9]{1,20})?$/.test(p) || p === "/api/extract" || p === "/api/ai/status" || p === "/api/ai/config";
+    const isMenus = /^\/api\/menus(\/[A-Za-z0-9]{1,40}(\/(item|branch|versions|restore|logo))?)?$/.test(p);
+    const isData = isMenus || p === "/api/state" || p === "/api/prefs" || p === "/api/guardians" || /^\/api\/family(\/orders(\/[A-Za-z0-9]{1,20})?)?$/.test(p) || /^\/api\/history(\/[A-Za-z0-9]{1,20})?$/.test(p) || p === "/api/extract" || p === "/api/ai/status" || p === "/api/ai/config";
 
     // The app and its data are only for signed-in people the admin has let in (admins always can).
     // Umbrel's own login is off for this app, so this is the lock: with REQUIRE_ACCOUNTS set it fails closed.
@@ -272,8 +277,11 @@ const server = http.createServer(async (req, res) => {
 
     if (isMenus) {
       if (!user) return send(res, 503, { code: "accounts_unavailable", message: "The shared menu archive needs accounts. Connect PocketBase first." });
-      const mm = p.match(/^\/api\/menus\/([A-Za-z0-9]+)(?:\/(item|branch|versions|restore))?$/), id = mm && mm[1], sub = mm && mm[2];
+      const mm = p.match(/^\/api\/menus\/([A-Za-z0-9]+)(?:\/(item|branch|versions|restore|logo))?$/), id = mm && mm[1], sub = mm && mm[2];
       const out = r => r.status ? send(res, r.status, { code: "menu_denied", message: r.message }) : send(res, 200, r);
+      // An admin can make a person view-only: they can still order, but can't change anything shared (uploads, items, branches, pictures).
+      if (req.method !== "GET" && user.portal && user.portal.readonly && !user.isAdmin) return send(res, 403, { code: "view_only", message: "An admin has made your account view-only for shared menus." });
+      if (id && sub === "logo" && req.method === "POST") return out(await menus.setLogo(user, id, JSON.parse((await readBody(req)).toString() || "{}").logo));
       if (id && sub === "item" && req.method === "POST") return out(await menus.editItem(user, id, JSON.parse((await readBody(req)).toString() || "{}")));
       if (id && sub === "branch" && req.method === "POST") return out(await menus.addBranch(user, id, JSON.parse((await readBody(req)).toString() || "{}")));
       if (id && sub === "versions" && req.method === "GET") return out(await menus.versions(user, id));
@@ -334,10 +342,21 @@ const server = http.createServer(async (req, res) => {
     }
     const hm = p.match(/^\/api\/history\/([A-Za-z0-9]{1,20})$/);
     if (hm && req.method === "DELETE") { writeHistory(user, readHistory(user).filter(x => x.id !== hm[1])); return send(res, 200, { ok: true }); }
+    if (p === "/api/prefs" && req.method === "PUT") {
+      if (!user) return send(res, 503, { code: "accounts_unavailable", message: "Settings are saved to your account. Connect PocketBase first." });
+      const b = JSON.parse((await readBody(req)).toString() || "{}"), ids = a => Array.isArray(a) ? [...new Set(a.filter(x => typeof x === "string" && /^[A-Za-z0-9]{1,40}$/.test(x)))].slice(0, 3000) : undefined;
+      const prev = (user.portal && user.portal.prefs && user.portal.prefs.diner) || {}, next = { ...prev };
+      if (typeof b.tip === "number" && b.tip >= 0 && b.tip <= 100) next.tip = b.tip;
+      for (const k of ["order", "hidden", "seen"]) if (b[k] !== undefined && ids(b[k]) !== undefined) next[k] = ids(b[k]);
+      if (b.branch && typeof b.branch === "object") { next.branch = {}; for (const [k, x] of Object.entries(b.branch).slice(0, 500)) if (/^[A-Za-z0-9]{1,40}$/.test(k)) next.branch[k] = String(x).slice(0, 80); }
+      if (b.view === "light" || b.view === "dark" || b.view === "auto") next.view = b.view;
+      await pb.setAppPref(user.id, next); tokenCache.clear();
+      return send(res, 200, { ok: true });
+    }
     if (p === "/api/state" && req.method === "GET") return send(res, 200, { state: readState(user) });
     if (p === "/api/state" && req.method === "PUT") {
       const s = cleanState(JSON.parse((await readBody(req)).toString() || "{}"));
-      if (!s) return send(res, 400, { code: "bad_state", message: "That isn't a GrubToGo save." });
+      if (!s) return send(res, 400, { code: "bad_state", message: "That isn't a Diner Bell save." });
       writeState(user, s); return send(res, 200, { ok: true, at: s.at });
     }
 
@@ -385,4 +404,4 @@ const server = http.createServer(async (req, res) => {
     if (!res.headersSent) send(res, 500, { code: "server_error", message: e.message }); else res.end();
   }
 });
-server.listen(PORT, () => console.log(`GrubToGo running on http://0.0.0.0:${PORT}`));
+server.listen(PORT, () => console.log(`Diner Bell running on http://0.0.0.0:${PORT}`));
