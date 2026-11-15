@@ -144,6 +144,13 @@ function xPocketbase(compose) {
   }
   return { error: 'x-pocketbase is not closed' };
 }
+// Preferred: the declaration lives in <app>/pocketbase.json (Umbrel copies it untouched; it can re-write docker-compose.yml on install,
+// which breaks the inline JSON). The compose `x-pocketbase:` key is still read as a fallback.
+function xPocketbaseFile(dir) {
+  let txt; try { txt = fs.readFileSync(path.join(dir, 'pocketbase.json'), 'utf8'); } catch { return null; }
+  try { const v = JSON.parse(txt); return v && typeof v === 'object' && !Array.isArray(v) ? v : { error: 'pocketbase.json must be a JSON object' }; }
+  catch { return { error: "pocketbase.json isn't valid JSON" }; }
+}
 function installedApps() {
   if (appsCache.v && Date.now() - appsCache.at < 15000) return appsCache.v;
   let out;
@@ -159,7 +166,7 @@ function installedApps() {
       const dataDir = path.join(APPS_DIR, dir, 'data');
       let env = 'no-data-dir';
       try { if (fs.statSync(dataDir).isDirectory()) env = fs.existsSync(path.join(dataDir, 'pocketbase.env')) ? 'present' : 'missing'; } catch {}
-      apps.push({ dir, env, id, name: yamlKey(yml, 'name') || id, version: yamlKey(yml, 'version'), tagline: yamlKey(yml, 'tagline'), category: yamlKey(yml, 'category'), port: Number(yamlKey(yml, 'port')) || 0, funnel: ((compose.match(/tsdproxy\.name["']?\s*[=:]\s*["']?([a-z0-9-]{1,63})/i) || [])[1] || '').toLowerCase(), slug, pbName, pocketbase: xPocketbase(compose) });
+      apps.push({ dir, env, id, name: yamlKey(yml, 'name') || id, version: yamlKey(yml, 'version'), tagline: yamlKey(yml, 'tagline'), category: yamlKey(yml, 'category'), port: Number(yamlKey(yml, 'port')) || 0, funnel: ((compose.match(/tsdproxy\.name["']?\s*[=:]\s*["']?([a-z0-9-]{1,63})/i) || [])[1] || '').toLowerCase(), slug, pbName, pocketbase: xPocketbaseFile(path.join(APPS_DIR, dir)) || xPocketbase(compose) });
     }
     out = { available: true, apps: apps.sort((a, b) => a.name.localeCompare(b.name)) };
   } catch { out = { available: false, apps: [] }; }
