@@ -19,5 +19,8 @@ services:
     ports:
       # Streaming server. NOT behind Umbrel's login (the browser and Stremio apps call it directly), so keep it on your home network only.
       - "11470:11470"
+    # Intel iGPU passthrough so the streaming server can offer hardware (VAAPI) transcode profiles.
+    devices:
+      - /dev/dri:/dev/dri
     volumes:
       - ${APP_DATA_DIR}/stremio:/root/.stremio-server
