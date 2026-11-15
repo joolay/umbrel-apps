@@ -130,4 +130,10 @@ server.on("upgrade", async (req, socket, head) => {
   } catch { socket.destroy(); }
 });
 
+// Locked because there's no pocketbase.env yet? Portal Admin's automatic connecting writes it; exit when it shows up so Umbrel restarts us with it.
+if (!pb.enabled) {
+  const f = require("path").join(require("path").resolve(process.env.DATA_DIR || "/data"), "pocketbase.env");
+  setInterval(() => { if (require("fs").existsSync(f)) { console.log("pocketbase.env found, restarting"); process.exit(1); } }, 5000).unref();
+}
+
 server.listen(PORT, () => console.log(`Stremio gate on :${PORT} -> ${UP.origin} (accounts ${pb.enabled ? "on" : "NOT configured: locked"})`));

@@ -548,12 +548,13 @@ async function appList() {
       ${needConnect.map((a) => `<form class="row" data-connect="${esc(a.id)}" style="gap:8px;margin-top:8px;flex-wrap:wrap;align-items:center"><b style="min-width:110px">${esc(a.name)}</b>
         <input name="email" type="email" required value="${esc(state.actor || '')}" placeholder="Superuser email" autocomplete="username" style="flex:1;min-width:160px">
         <input name="password" type="password" required placeholder="Password" autocomplete="current-password" style="flex:1;min-width:120px">
-        <button class="btn primary" ${a.env === 'no-data-dir' ? 'disabled title="Open the app once first"' : ''}>Connect</button></form>`).join('')}</div>`);
+        <button class="btn primary" ${a.env === 'no-data-dir' ? 'disabled title="Open the app once first"' : ''}>Connect</button></form>`).join('')}
+      <label class="small" style="display:flex;gap:8px;align-items:center;margin-top:12px"><input type="checkbox" id="autoConnect" checked> Connect my future JoolzApp apps automatically (keeps this login in Portal Admin's data folder)</label></div>`);
     main().querySelectorAll('form[data-connect]').forEach((f) => f.onsubmit = guard(async (e) => {
       e.preventDefault();
       const a = needConnect.find((x) => x.id === f.dataset.connect), btn = f.querySelector('button'); btn.disabled = true;
       try {
-        const r = await fetch('/connect-app', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: a.id, email: f.email.value.trim(), password: f.password.value }) });
+        const r = await fetch('/connect-app', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: a.id, email: f.email.value.trim(), password: f.password.value, remember: !!(main().querySelector('#autoConnect') || {}).checked }) });
         const d = await r.json().catch(() => ({}));
         if (!r.ok) throw new Error(d.message || 'Could not connect');
         await audit('app.connect', a.id, { email: f.email.value.trim() });
@@ -561,6 +562,13 @@ async function appList() {
       } finally { btn.disabled = false; f.password.value = ''; }
     }));
   }
+  try {
+    const ac = await (await fetch('/auto-connect', { cache: 'no-store' })).json();
+    if (ac.enabled || (ac.last && ac.last.error)) {
+      main().insertAdjacentHTML('beforeend', `<div class="card"><h2>Automatic connecting</h2><p class="muted small">${ac.enabled ? 'On. New apps of yours that use JoolzApp accounts get their PocketBase login written within about 30 seconds of being installed (using ' + esc(ac.email) + '). Restart them once afterwards, unless the app restarts itself.' : 'Off.'}</p>${ac.last && ac.last.error ? `<p class="small" style="color:#b3261e">${esc(ac.last.error)}</p>` : ''}${ac.enabled ? '<button class="btn" id="autoOff">Turn off and forget the login</button>' : ''}</div>`);
+      const off = main().querySelector('#autoOff'); if (off) off.onclick = guard(async () => { await fetch('/auto-connect', { method: 'DELETE' }); toast('Automatic connecting is off'); route(); });
+    }
+  } catch {}
   if (found && !found.available) main().insertAdjacentHTML('beforeend', '<p class="muted small">Portal Admin can\'t see which apps are installed on this Umbrel (the app list isn\'t mounted), so new apps aren\'t detected automatically.</p>');
   main().onclick = guard(async (e) => {
     const ap = e.target.closest('[data-apply]');
