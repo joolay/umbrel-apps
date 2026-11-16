@@ -31,10 +31,17 @@ module.exports = function makeChanges({ pbx, installedApps, APPS_DIR, DATA_DIR }
       fs.writeFileSync(tmp, [...keep, ...Object.entries(kv).map(([k, v]) => k + '=' + v), ''].join('\n'), { mode: 0o600 });
       fs.renameSync(tmp, file);
     },
+    // PocketBase's own rate limiter (if it is on) allows very few sign-ins per few seconds, so wait and retry when it says 429.
     async loginWorks(collection, email, password) {
       if (!email || !password) return false;
-      try { await pbx.raw('POST', `/api/collections/${encodeURIComponent(collection)}/auth-with-password`, { body: { identity: email, password } }); return true; }
-      catch (e) { if (e.status === 400 || e.status === 401 || e.status === 404) return false; throw e; }
+      for (let i = 0; ; i++) {
+        try { await pbx.raw('POST', `/api/collections/${encodeURIComponent(collection)}/auth-with-password`, { body: { identity: email, password } }); return true; }
+        catch (e) {
+          if (e.status === 429 && i < 4) { await new Promise((r) => setTimeout(r, 3500)); continue; }
+          if (e.status === 400 || e.status === 401 || e.status === 404) return false;
+          throw e;
+        }
+      }
     },
     password: () => crypto.randomBytes(24).toString('base64url'),
     esc: (s) => String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'"),
