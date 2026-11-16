@@ -142,6 +142,29 @@ body.in-list .mark{display:none}
   .f label{display:none}
   .acts{grid-column:auto;grid-row:auto;gap:0}
 }
+
+#optsDlg{width:min(92vw,520px)}
+#optsDlg .osec{display:flex;flex-direction:column;gap:8px;padding-top:6px;border-top:1px solid var(--line)}
+#optsDlg .osec:first-of-type{border-top:0}
+#optsDlg h3{margin:0;font-family:var(--display);font-stretch:90%;font-size:1rem}
+#optsDlg .osub{margin:0;color:var(--muted);font-size:.82rem}
+#optsDlg .shrow{display:flex;gap:8px;flex-wrap:wrap}
+#optsDlg .shrow .tin{flex:1 1 180px;min-width:0;font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+#optsDlg select{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+#optsDlg .oerr{color:var(--bad,#b3261e);font-size:.82rem;min-height:0}
+#optsDlg .mem{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:6px 0;border-top:1px solid var(--line)}
+#optsDlg .mem .who{flex:1 1 140px;min-width:0;overflow-wrap:anywhere}
+#optsDlg .mem .who small{display:block;color:var(--muted)}
+#optsDlg .st{font-size:.72rem;font-weight:700;border-radius:999px;padding:2px 8px;background:var(--bg);border:1px solid var(--line);color:var(--muted)}
+#optsDlg .st.ok{color:var(--forest,#145f4f)}
+.badge{display:inline-block;font-size:.7rem;font-weight:700;border-radius:999px;padding:1px 8px;background:var(--bg);border:1px solid var(--line);color:var(--muted)}
+.invite{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--paper);border:1px solid var(--gold,#d9ab55);border-radius:12px;padding:10px 12px;margin-bottom:8px}
+.invite span{flex:1 1 200px;min-width:0}
+.row.locked{opacity:.62}
+.row.locked .del,.row.locked .est,.row.locked .recalc,.row.locked .mv,.row.locked .thumb,.row.locked .info{pointer-events:none}
+.lktag{grid-column:1/-1;font-size:.75rem;font-weight:600;color:var(--gold-d,#8a6a1f);padding:0 2px 4px}
+body.ro #snapBtn,body.ro #pickBtn,body.ro #manualBtn,body.ro .row .del,body.ro .row .est,body.ro .row .recalc,body.ro .row .mv{display:none!important}
+body.ro .row .thumb.none{pointer-events:none}
 dialog{border:0;border-radius:14px;padding:0;background:var(--paper);color:var(--ink);max-width:min(92vw,820px);width:auto}
 dialog::backdrop{background:rgba(5,10,14,.75)}
 dialog img{display:block;max-width:100%;max-height:75vh;margin:0 auto}
@@ -375,6 +398,7 @@ body.in-list .tot b{font-size:.9rem}
         <label class="search big"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><input id="hq" type="search" placeholder="Search lists and items, or type a new list name" aria-label="Search lists, or name a new list" maxlength="80"></label>
         <button class="btn primary" id="newListBtn" type="submit" disabled aria-label="Create a list with this name" title="Create a list with this name"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
       </form>
+      <div id="invites"></div>
       <div class="sechead" id="listsHead" hidden>Your lists</div>
       <div class="list" id="lists"></div>
     </section>
@@ -383,11 +407,11 @@ body.in-list .tot b{font-size:.9rem}
       <div class="list" id="binList"></div>
     </section>
     <section id="setView" hidden>
-      <div class="panel">
-        <h2>Depreciation rates</h2>
-        <p>Yearly rate per category, applied on a reducing balance. Items follow their category's rate unless you set their own rate in the item's details.</p>
-        <div class="rates" id="rates"></div>
-        <div class="prow"><button class="pbtn accent" id="ratesSave" type="button" disabled>Apply rates</button><button class="pbtn" id="ratesReset" type="button">Reset to defaults</button><span class="count" id="ratesNote"></span></div>
+      <div class="panel" id="defRatesPanel">
+        <h2>Preferred depreciation rates</h2>
+        <p>New lists start with these yearly rates. You can still change the rates on any one list from its options menu; changing these later doesn't alter lists you've already made.</p>
+        <div class="rates" id="dRates"></div>
+        <div class="prow"><button class="pbtn accent" id="dRatesSave" type="button" disabled>Save</button><button class="pbtn" id="dRatesReset" type="button">Reset to defaults</button><span class="rnote" id="dRatesNote"></span></div>
       </div>
       <div class="panel">
         <h2>Backups</h2>
@@ -402,6 +426,7 @@ body.in-list .tot b{font-size:.9rem}
     <div class="capture">
       <button class="btn primary" id="snapBtn" type="button" disabled aria-label="Take photo" title="Take photo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg></button>
       <button class="btn" id="pickBtn" type="button" disabled aria-label="Upload photos" title="Upload photos"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m3 16 5-5 4 4 3-3 6 6"/></svg></button>
+      <button class="btn" id="optsBtn" type="button" hidden aria-label="Share and list options" title="Share and list options"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-5.5 6-5.5s6 2.2 6 5.5M16.5 5.2a3.2 3.2 0 0 1 0 5.6M18 14.8c1.8.7 3 2.4 3 5.2"/></svg></button>
       <div class="xwrap" id="xwrap" hidden><button class="btn" id="exportBtn" type="button" aria-label="Export list" title="Export" aria-haspopup="true" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m-5-5 5 5 5-5M5 20h14"/></svg></button>
         <div class="xmenu" id="xmenu" role="menu" hidden>
           <button type="button" role="menuitem" data-fmt="xlsx">Excel <small>.xlsx</small></button>
@@ -423,6 +448,26 @@ body.in-list .tot b{font-size:.9rem}
     </section>
   </div>
 </main>
+
+<dialog id="optsDlg">
+  <div class="dlg" id="optsBody">
+    <div class="cap"><span id="optsTitle">List options</span><button class="btn" id="optsClose" type="button" aria-label="Close" title="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
+    <div id="optsShare" class="osec">
+      <h3>Share this list</h3>
+      <p class="osub">Invite someone with a JoolzApp account. They get to accept first. <b>View only</b> lets them look; <b>Can edit</b> lets them add, change and delete items.</p>
+      <form id="shareForm" class="shrow" autocomplete="off"><input class="tin" id="shareEmail" type="email" inputmode="email" placeholder="Their email" required><select id="shareRole" aria-label="Access"><option value="view">View only</option><option value="edit">Can edit</option></select><button class="pbtn accent" type="submit" id="shareGo">Share</button></form>
+      <div class="oerr" id="shareErr" role="alert"></div>
+      <div id="shareList"></div>
+    </div>
+    <div id="optsMember" class="osec" hidden></div>
+    <div id="optsRates" class="osec">
+      <h3>Depreciation rates</h3>
+      <p class="osub">Yearly rate per category for this list, applied on a reducing balance. Items follow their category's rate unless you set their own rate in the item's details.</p>
+      <div class="rates" id="rates"></div>
+      <div class="prow"><button class="pbtn accent" id="ratesSave" type="button" disabled>Apply rates</button><button class="pbtn" id="ratesReset" type="button">Reset to defaults</button><span class="note" id="ratesNote"></span></div>
+    </div>
+  </div>
+</dialog>
 
 <dialog id="addDlg">
   <form class="dlg" id="addForm" method="dialog" autocomplete="off">
@@ -513,8 +558,14 @@ const SYN = {appliance:"Appliances",sport:"Sport & Outdoor",sports:"Sport & Outd
 const ABBR = {"Electronics":"Elec","Appliances":"Appl","Furniture":"Furn","Kitchen":"Kitch","Tools":"Tools","Clothing":"Cloth","Jewellery":"Jewel","Sport & Outdoor":"Sport","Decor":"Decor","Books & Media":"Books","Other":"Other","Sorting…":"…"};
 const normCat = c => { const t = String(c||"").trim().toLowerCase(); if(!t) return null; return CATS.find(x=>x.toLowerCase()===t) || SYN[t] || null; };
 let settings = {rates:{}, autoBackup:true};
-const rateFor = cat => { const c = normCat(cat) || "Other"; const r = settings.rates?.[c]; return typeof r==="number" ? r : DEFAULT_RATES[c]; };
-const itemRate = it => it.rateCustom && typeof it.rate==="number" ? it.rate : rateFor(it.category);
+// Each list has its own rates (list.rates). Lists made before that use the account-wide rates saved earlier, then the defaults.
+const rateFor = (cat, listId) => { const c = normCat(cat) || "Other"; const l = rawLists.find(x=>x.id===(listId===undefined ? currentListId : listId)); const r = l?.rates?.[c] ?? settings.rates?.[c]; return typeof r==="number" ? r : DEFAULT_RATES[c]; };
+const listById = id => rawLists.find(l=>l.id===id) || null;
+const roleOfList = id => { const l = listById(id); return l ? (l.shared ? l.shared.role : "owner") : "owner"; };
+const isRO = id => roleOfList(id) === "view";
+let sharedIds = new Set(), accountsOn = false, sharesMap = new Map(), invitesAll = [];
+window.__swList = () => currentListId;
+const itemRate = it => it.rateCustom && typeof it.rate==="number" ? it.rate : rateFor(it.category, it.listId);
 const pct = r => Math.round(r*1000)/10;
 let db = null, assets = null, sample = null, downloadsCap = null, col = null, canIdentify = false;
 let items = [];            // items of the open list
@@ -681,7 +732,67 @@ function render(){
   if(viewerId) fillViewer();
   renderRail(gorder);
   renderTotals();
+  applyRO();
 }
+// People who can only view a shared list get no way to edit it here (the server refuses their changes too).
+function applyRO(){
+  const ro = !!currentListId && isRO(currentListId);
+  listEl.querySelectorAll("input,select,textarea").forEach(x=>{ if(x.dataset.lk) return; if(ro){ x.dataset.ro="1"; if(x.tagName==="SELECT") x.disabled=true; else x.readOnly=true; } else if(x.dataset.ro){ delete x.dataset.ro; x.disabled=false; x.readOnly=false; } });
+  applyLocks();
+}
+
+/* ---------- live collaboration: items someone else is editing are locked until they finish ---------- */
+const LK = () => window.__swLocks || (window.__swLocks = new Map());
+const lockedBy = id => { const l = LK().get(id); return l ? l.by : ""; };
+function applyLocks(){
+  const ro = !!currentListId && isRO(currentListId);
+  listEl.querySelectorAll(".row").forEach(row=>{
+    const by = lockedBy(row.dataset.id); row.classList.toggle("locked", !!by);
+    let tag = row.querySelector(".lktag");
+    if(by){ if(!tag){ tag = document.createElement("div"); tag.className = "lktag"; row.prepend(tag); } tag.textContent = by + " is editing…"; } else if(tag) tag.remove();
+    if(ro) return;
+    row.querySelectorAll("input,select,textarea").forEach(x=>{
+      if(by){ x.dataset.lk = "1"; if(x.tagName==="SELECT") x.disabled = true; else x.readOnly = true; }
+      else if(x.dataset.lk){ delete x.dataset.lk; x.disabled = false; x.readOnly = false; }
+    });
+  });
+  if(viewerId && $("viewer").open) fillViewer();
+}
+window.addEventListener("sw-locks", applyLocks);
+let heldId = null, hbTimer = null, relTimer = null; const unsharedUntil = new Map();
+async function lockReq(id, release){
+  try{ const r = await fetch("api/share/lock", {method:"POST", headers:{"content-type":"application/json"}, body:JSON.stringify({itemId:id, release:!!release})}); return {status:r.status, j: await r.json().catch(()=>({}))}; }
+  catch(e){ return {status:0, j:{}}; }
+}
+async function holdItem(id){
+  clearTimeout(relTimer);
+  if(!id || heldId===id) return true;
+  if(heldId) releaseItem();
+  if((unsharedUntil.get(id)||0) > Date.now()) return true;
+  const {status, j} = await lockReq(id, false);
+  if(status===423){ showMsg(`${j.by||"Someone"} is editing this item. You can edit it once they're done.`, true); return false; }
+  if(j.shared===false){ unsharedUntil.set(id, Date.now()+60000); return true; }
+  heldId = id; clearInterval(hbTimer); hbTimer = setInterval(()=>lockReq(heldId,false), 10000);
+  return true;
+}
+function releaseItem(){ if(!heldId) return; const id = heldId; heldId = null; clearInterval(hbTimer); lockReq(id, true); }
+function releaseSoon(){   // after their save has gone out and they've moved on to something else
+  clearTimeout(relTimer);
+  relTimer = setTimeout(()=>{
+    const a = document.activeElement, row = a && a.closest ? a.closest(".row") : null;
+    if(row && row.dataset.id===heldId) return;
+    if($("viewer").open && viewerId===heldId) return;
+    releaseItem();
+  }, 1200);
+}
+listEl.addEventListener("focusin", e => {
+  const row = e.target.closest && e.target.closest(".row"); if(!row || isRO(currentListId) || lockedBy(row.dataset.id)) return;
+  holdItem(row.dataset.id).then(ok => { if(!ok && document.activeElement===e.target) e.target.blur(); });
+});
+listEl.addEventListener("focusout", releaseSoon);
+$("viewer").addEventListener("close", releaseSoon);
+$("viewer").addEventListener("focusin", () => { if(viewerId && !isRO(currentListId) && !lockedBy(viewerId)) holdItem(viewerId); });
+window.addEventListener("pagehide", () => { if(heldId) navigator.sendBeacon("api/share/lock", new Blob([JSON.stringify({itemId:heldId, release:true})], {type:"application/json"})); });
 
 const qtyOf = i => Math.max(1, Math.round(num(i.qty ?? 1)) || 1);
 const sumQty = arr => arr.reduce((s,i)=>s+qtyOf(i),0);
@@ -689,9 +800,9 @@ const sumNew = arr => arr.reduce((s,i)=>s+qtyOf(i)*num(i.newCost),0);
 const sumDep = arr => arr.reduce((s,i)=>s+qtyOf(i)*num(i.depreciated),0);
 function renderTotals(){
   const home = !currentListId;
-  const arr = home ? allItems : items;
+  const arr = home ? allItems.filter(i=>!sharedIds.has(i.listId)) : items;
   $("tListsBox").hidden = !home;
-  $("tLists").textContent = lists.length;
+  $("tLists").textContent = lists.filter(l=>!l.shared).length;
   $("tCount").textContent = sumQty(arr);
   $("tNewLbl").textContent = home ? "New cost, all lists" : "New cost";
   $("tDepLbl").textContent = home ? "Total value, all lists" : "Total value";
@@ -702,6 +813,7 @@ function renderTotals(){
 /* ---------- lists (home) ---------- */
 function renderHome(){
   const box = $("lists"); box.textContent = "";
+  renderInvites();
   $("listsHead").hidden = !lists.length;
   if(listsLoaded && !lists.length){
     const e=document.createElement("div"); e.className="empty";
@@ -719,6 +831,7 @@ function renderHome(){
     c.innerHTML = `<button class="lopen" type="button"><b></b><span class="lmeta"><span><b>${sumQty(its)}</b> item${sumQty(its)===1?"":"s"}</span><span>New <b>${fmtR(sumNew(its))}</b></span><span class="dv">Value <b>${fmtR(sumDep(its))}</b></span></span></button>
       <span class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg></span><button class="del" type="button" aria-label="Delete list" title="Delete list"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6"/></svg></button>`;
     c.querySelector(".lopen b").textContent = l.name || "Untitled list";
+    if(l.shared){ const bd=document.createElement("span"); bd.className="badge"; bd.textContent = `Shared by ${l.shared.ownerName || "someone"} · ${roleLabel(l.shared.role)}`; c.querySelector(".lopen").appendChild(bd); }
     if(hits.length){ const m=document.createElement("span"); m.className="lmeta"; m.textContent = "Matches: " + hits.slice(0,3).map(i=>i.name).join(", ") + (hits.length>3?` +${hits.length-3} more`:""); c.querySelector(".lopen").appendChild(m); }
     c.querySelector(".lopen").onclick = () => { openList(l.id); if(hq && hits.length){ $("q").value = $("hq").value.trim(); render(); } };
     const del = c.querySelector(".del"); let t=null;
@@ -726,7 +839,7 @@ function renderHome(){
       if(!del.classList.contains("confirm")){ del.classList.add("confirm"); del.innerHTML=CHECK_SVG; del.setAttribute("aria-label", its.length ? `Tap again to move the list and its ${its.length} items to the recycle bin` : "Tap again to delete"); del.title=del.getAttribute("aria-label"); clearTimeout(t); t=setTimeout(()=>{del.classList.remove("confirm");del.innerHTML=TRASH_SVG;del.setAttribute("aria-label","Delete list");del.title="Delete list";},3500); return; }
       deleteList(l.id);
     };
-    attachSwipeDelete(c, () => deleteList(l.id));
+    if(l.shared){ del.remove(); } else attachSwipeDelete(c, () => deleteList(l.id));
     box.appendChild(c);
   }
   if(hq && !any){
@@ -741,6 +854,7 @@ function renderHome(){
 function derive(){
   const deadLists = new Set(rawLists.filter(l=>l.deletedAt).map(l=>l.id));
   lists = rawLists.filter(l=>!l.deletedAt);
+  sharedIds = new Set(rawLists.filter(l=>l.shared).map(l=>l.id));
   allItems = rawItems.filter(i=>!i.deletedAt && !deadLists.has(i.listId));
 }
 function showView(){
@@ -755,7 +869,9 @@ function showView(){
   document.body.classList.toggle("in-list", listOpen);
   if(!listOpen){ $("rail").hidden = true; document.body.classList.remove("has-rail"); railKey = ""; }
   if(side){ renderTotals(); return; }
-  if(open){ const l = lists.find(x=>x.id===currentListId); if(document.activeElement!==$("listName")) $("listName").value = l?.name||""; }
+  if(open){ const l = lists.find(x=>x.id===currentListId); if(document.activeElement!==$("listName")) $("listName").value = l?.name||""; $("listName").readOnly = !!l?.shared; }
+  $("optsBtn").hidden = !listOpen;
+  document.body.classList.toggle("ro", listOpen && isRO(currentListId));
   items = currentListId ? allItems.filter(i=>i.listId===currentListId) : [];
   if(open) render(); else renderHome();
 }
@@ -771,7 +887,7 @@ $("listName").addEventListener("change", e => { const v=e.target.value.trim()||"
 $("newListForm").addEventListener("submit", async e => {
   e.preventDefault(); const inp=$("hq"); const name=inp.value.trim(); if(!name){ inp.focus(); showMsg("Type a name in the bar, then tap + to create the list."); return; }
   $("newListBtn").disabled = true;
-  try{ const ref = db.collection("lists").doc(); await ref.set({name, createdAt:Date.now()}); inp.value=""; showMsg(""); openList(ref.id); }
+  try{ const ref = db.collection("lists").doc(); await ref.set({name, createdAt:Date.now(), rates:startRates()}); inp.value=""; showMsg(""); openList(ref.id); }
   catch(err){ showMsg("Couldn't create the list: "+(err.message||err.code), true); }
   finally{ $("newListBtn").disabled = false; }
 });
@@ -851,7 +967,7 @@ async function migrateLoose(){
   if(!loose.length || migrating || !listsLoaded) return;
   migrating = true;
   try{
-    const ref = db.collection("lists").doc(); await ref.set({name:"My inventory", createdAt:Date.now()-1});
+    const ref = db.collection("lists").doc(); await ref.set({name:"My inventory", createdAt:Date.now()-1, rates:startRates()});
     for(const it of loose) await col.doc(it.id).update({listId: ref.id});
   }catch(e){} finally{ migrating = false; }
 }
@@ -959,7 +1075,7 @@ Respond with JSON only, exactly this shape:
     const cur = items.find(x=>x.id===id); if(!cur) return;
     const newCost = Math.round(num(ai.newCost)); if(!newCost) throw new Error("no price returned");
     const category = normCat(ai.category) || normCat(cur.category) || "Other";
-    const rate = cur.rateCustom ? itemRate(cur) : rateFor(category);
+    const rate = cur.rateCustom ? itemRate(cur) : rateFor(category, cur.listId);
     const age = cur.ageYears ?? DEFAULT_AGE;
     await save(id, {
       newCost, rate, depreciated: depCalc(newCost, age, rate), manualDep:false,
@@ -1032,7 +1148,7 @@ function fillViewer(){
   if(document.activeElement!==$("viewerDesc")) $("viewerDesc").value = it.description||"";
   $("viewerCat").value = normCat(it.category) || "Other";
   fillListPicker(it);
-  const r = itemRate(it), cr = rateFor(it.category);
+  const r = itemRate(it), cr = rateFor(it.category, it.listId);
   if(document.activeElement!==$("viewerRate")) $("viewerRate").value = pct(r);
   $("viewerPrev").textContent = `→ ${fmtR(num(it.depreciated))} each after ${num(it.ageYears)} yrs`;
   $("viewerRateNote").innerHTML = it.rateCustom ? `Own rate. ${normCat(it.category)||"Other"} default is ${pct(cr)}%. <button type="button" id="useCatRate">Use category rate</button>` : `Following the ${normCat(it.category)||"Other"} rate. Change it to give this item its own rate.`;
@@ -1049,6 +1165,9 @@ function fillViewer(){
   $("vPhoto").hidden = !assets;
   const i = viewOrder.indexOf(viewerId);
   $("vPrev").hidden = i <= 0; $("vNext").hidden = i < 0 || i >= viewOrder.length-1;
+  { const l = listById(it.listId), ro = (!!l?.shared && l.shared.role==="view") || !!lockedBy(it.id);   // view-only: look but don't touch; shared lists can't hand items to other people's lists
+    $("viewer").querySelectorAll("input,select,textarea,.pbtn").forEach(x=>{ if(x.id==="viewerClose") return; x.disabled = ro; });
+    if(l?.shared) $("viewerList").disabled = true; }
 }
 function openViewer(id){
   viewerId = id; $("viewer").classList.remove("editing","bare"); resetVDel(); fillViewer();
@@ -1056,7 +1175,7 @@ function openViewer(id){
 }
 function setItemRate(id, rate){
   const it = items.find(x=>x.id===id); if(!it) return;
-  const custom = rate !== null; const r = custom ? rate : rateFor(it.category);
+  const custom = rate !== null; const r = custom ? rate : rateFor(it.category, it.listId);
   const patch = {rate:r, rateCustom:custom};
   if(!it.manualDep) patch.depreciated = depCalc(num(it.newCost), num(it.ageYears), r);
   save(id, patch);
@@ -1065,7 +1184,7 @@ $("viewerDesc").addEventListener("change", e => { if(viewerId) save(viewerId, {d
 $("viewerCat").addEventListener("change", e => {
   const it = items.find(x=>x.id===viewerId); if(!it) return;
   const patch = {category: e.target.value};
-  if(!it.rateCustom){ patch.rate = rateFor(e.target.value); if(!it.manualDep) patch.depreciated = depCalc(num(it.newCost), num(it.ageYears), patch.rate); }
+  if(!it.rateCustom){ patch.rate = rateFor(e.target.value, it.listId); if(!it.manualDep) patch.depreciated = depCalc(num(it.newCost), num(it.ageYears), patch.rate); }
   save(viewerId, patch);
 });
 $("viewerRate").addEventListener("change", e => { const v = num(e.target.value); if(!(v>=0 && v<=100)) { showMsg("Enter a rate between 0 and 100%.", true); return; } setItemRate(viewerId, Math.round(v*10)/1000); });
@@ -1095,7 +1214,7 @@ async function moveToNewList(){
   const name = $("viewerNewList").value.trim(); if(!name){ $("viewerNewList").focus(); return; }
   const id = viewerId; if(!id) return;
   $("viewerNewListGo").disabled = true;
-  try{ const ref = db.collection("lists").doc(); await ref.set({name, createdAt:Date.now()}); $("newListRow").hidden = true; await moveItem(id, ref.id, name); }
+  try{ const ref = db.collection("lists").doc(); await ref.set({name, createdAt:Date.now(), rates:startRates()}); $("newListRow").hidden = true; await moveItem(id, ref.id, name); }
   catch(e){ showMsg("Couldn't create the list: "+(e.message||e.code), true); }
   finally{ $("viewerNewListGo").disabled = false; }
 }
@@ -1210,10 +1329,11 @@ function markRail(){
 let railTick = false;
 window.addEventListener("scroll", () => { if(railTick) return; railTick = true; requestAnimationFrame(() => { railTick = false; markRail(); }); }, {passive:true});
 
-/* ---------- settings: rates ---------- */
+/* ---------- list options: rates (per list) and sharing ---------- */
 let rateDraft = null;
-function renderSettings(){
-  if(!rateDraft) rateDraft = Object.fromEntries(CATS.map(c=>[c, pct(rateFor(c))]));
+function renderSettings(){ $("autoBk").checked = settings.autoBackup !== false; renderDefRates(); }
+function renderRates(){
+  if(!rateDraft) rateDraft = Object.fromEntries(CATS.map(c=>[c, pct(rateFor(c, currentListId))]));
   const box = $("rates");
   if(!box.childElementCount){
     box.innerHTML = CATS.map((c,k)=>`<label class="rate" data-c="${k}"><span></span><span class="in"><input id="rate-${k}" inputmode="decimal">%</span></label>`).join("");
@@ -1221,52 +1341,141 @@ function renderSettings(){
   }
   CATS.forEach((c,k)=>{ const inp = $("rate-"+k); if(document.activeElement!==inp) inp.value = rateDraft[c]; });
   markRates();
-  $("autoBk").checked = settings.autoBackup !== false;
 }
 function markRates(){
-  let n=0; CATS.forEach((c,k)=>{ const ch = num(rateDraft[c]) !== pct(rateFor(c)); if(ch) n++; $("rate-"+k).closest(".rate").classList.toggle("changed", ch); });
+  let n=0; CATS.forEach((c,k)=>{ const ch = num(rateDraft[c]) !== pct(rateFor(c, currentListId)); if(ch) n++; $("rate-"+k).closest(".rate").classList.toggle("changed", ch); });
   $("ratesSave").disabled = !n; $("ratesNote").textContent = n ? `${n} changed` : "";
 }
 $("ratesReset").onclick = () => { rateDraft = Object.fromEntries(CATS.map(c=>[c, pct(DEFAULT_RATES[c])])); CATS.forEach((c,k)=>$("rate-"+k).value = rateDraft[c]); markRates(); };
 $("ratesSave").onclick = async () => {
+  const listId = currentListId; if(!listId || roleOfList(listId)!=="owner") return;
   const rates = {};
   for(const c of CATS){ const v = num(rateDraft[c]); if(!(v>=0 && v<=100)){ showMsg(`Rate for ${c} must be between 0 and 100%.`, true); return; } rates[c] = Math.round(v*10)/1000; }
   $("ratesSave").disabled = true; $("ratesNote").textContent = "Applying…";
   try{
-    await saveSettings({rates});
+    await db.collection("lists").doc(listId).update({rates});
+    const l = rawLists.find(x=>x.id===listId); if(l) l.rates = rates;   // so the recalculation below already uses them
     let n = 0;
     for(const it of rawItems){
-      if(it.rateCustom) continue;
-      const r = rateFor(it.category); if(it.rate === r) continue;
+      if(it.listId!==listId || it.rateCustom) continue;
+      const r = rateFor(it.category, listId); if(it.rate === r) continue;
       const patch = {rate:r}; if(!it.manualDep) patch.depreciated = depCalc(num(it.newCost), num(it.ageYears ?? DEFAULT_AGE), r);
       await col.doc(it.id).update(patch); n++;
     }
-    rateDraft = null; renderSettings();
-    showMsg(`Rates saved. ${n} item${n===1?"":"s"} recalculated.`);
+    rateDraft = null; renderRates();
+    showMsg(`Rates saved for this list. ${n} item${n===1?"":"s"} recalculated.`);
   }catch(e){ showMsg("Couldn't save rates: "+(e.message||e.code), true); markRates(); }
 };
+
+/* ---------- sharing ---------- */
+async function shareApi(path, body){
+  const r = await fetch("api/share/"+path, {method:"POST", headers:{"content-type":"application/json"}, body:JSON.stringify(body)});
+  const j = await r.json().catch(()=>({}));
+  if(!r.ok) throw new Error(j.message || "That didn't work.");
+  return j;
+}
+const roleLabel = r => r==="edit" ? "Can edit" : "View only";
+function optsRender(){
+  const l = listById(currentListId), dlg = $("optsDlg"); if(!l) return;
+  const owner = !l.shared;
+  $("optsTitle").textContent = l.name || "List options";
+  $("optsShare").hidden = !owner || !accountsOn; $("optsRates").hidden = !owner;
+  const mb = $("optsMember"); mb.hidden = owner;
+  if(!owner){
+    mb.innerHTML = `<h3>Shared with you</h3><p class="osub"></p><div class="prow"><button class="pbtn" id="leaveBtn" type="button">Leave this list</button></div>`;
+    mb.querySelector(".osub").textContent = `${l.shared.ownerName || "Someone"} shared this list with you. You ${l.shared.role==="edit" ? "can add, change and delete items" : "can look at it but not change it"}. Photos you add go into their inventory.`;
+    $("leaveBtn").onclick = async () => {
+      if(!confirm("Leave this list? You will stop seeing it. The owner can share it with you again.")) return;
+      try{ await shareApi("leave", {key:`${l.shared.ownerId}_${l.id}`}); dlg.close(); currentListId=null; showView(); }catch(e){ showMsg(e.message, true); }
+    };
+  }
+  if(owner && accountsOn){
+    const members = (sharesMap.get(l.id)?.members) || [], box = $("shareList"); box.textContent = "";
+    if(!members.length){ const p=document.createElement("p"); p.className="osub"; p.textContent="Not shared with anyone yet."; box.appendChild(p); }
+    for(const m of members){
+      const row = document.createElement("div"); row.className="mem";
+      row.innerHTML = `<span class="who"><b></b><small></small></span><span class="st"></span><select aria-label="Access"><option value="view">View only</option><option value="edit">Can edit</option></select><button class="pbtn" type="button">Remove</button>`;
+      row.querySelector("b").textContent = m.name || m.email; row.querySelector("small").textContent = m.name ? m.email : "";
+      const st = row.querySelector(".st"); st.textContent = m.status==="accepted" ? "Joined" : m.status==="declined" ? "Declined" : "Invited"; st.classList.toggle("ok", m.status==="accepted");
+      const sel = row.querySelector("select"); sel.value = m.role;
+      sel.onchange = async () => { try{ await shareApi("role", {listId:l.id, memberId:m.id, role:sel.value}); }catch(e){ $("shareErr").textContent = e.message; sel.value = m.role; } };
+      row.querySelector("button").onclick = async () => { if(!confirm(`Stop sharing with ${m.name || m.email}?`)) return; try{ await shareApi("remove", {listId:l.id, memberId:m.id}); }catch(e){ $("shareErr").textContent = e.message; } };
+      box.appendChild(row);
+    }
+  }
+  if(owner){ renderRates(); }
+}
+$("optsBtn").onclick = () => { if(!currentListId) return; rateDraft = null; $("shareErr").textContent = ""; optsRender(); $("optsDlg").showModal(); };
+$("optsClose").onclick = () => $("optsDlg").close();
+$("shareForm").addEventListener("submit", async e => {
+  e.preventDefault(); const l = listById(currentListId); if(!l || l.shared) return;
+  $("shareErr").textContent = ""; $("shareGo").disabled = true;
+  try{ await shareApi("add", {listId:l.id, email:$("shareEmail").value, role:$("shareRole").value}); $("shareEmail").value = ""; }
+  catch(err){ $("shareErr").textContent = err.message; }
+  finally{ $("shareGo").disabled = false; }
+});
+function renderInvites(){
+  const box = $("invites"); box.textContent = "";
+  for(const inv of invitesAll.filter(i=>i.status==="pending")){
+    const d = document.createElement("div"); d.className="invite";
+    d.innerHTML = `<span></span><button class="pbtn accent" type="button" data-a="1">Accept</button><button class="pbtn" type="button" data-a="0">Decline</button>`;
+    d.firstChild.textContent = `${inv.ownerName || "Someone"} shared "${inv.listName || "a list"}" with you (${roleLabel(inv.role).toLowerCase()}).`;
+    d.querySelectorAll("button").forEach(b => b.onclick = async () => {
+      d.querySelectorAll("button").forEach(x=>x.disabled=true);
+      try{ await shareApi("respond", {key:inv.id, accept:b.dataset.a==="1"}); }catch(e){ showMsg(e.message, true); d.querySelectorAll("button").forEach(x=>x.disabled=false); }
+    });
+    box.appendChild(d);
+  }
+}
 $("autoBk").onchange = e => saveSettings({autoBackup: e.target.checked}).catch(()=>{});
 async function saveSettings(patch){
   settings = {...settings, ...patch};
   await db.doc("settings/main").set(settings);
 }
 
+/* ---------- preferred rates (account-wide starting point for new lists) ---------- */
+const startRates = () => Object.fromEntries(CATS.map(c => [c, typeof settings.rates?.[c]==="number" ? settings.rates[c] : DEFAULT_RATES[c]]));
+let dDraft = null;
+const dPct = c => pct(startRates()[c]);
+function renderDefRates(){
+  if(!dDraft) dDraft = Object.fromEntries(CATS.map(c=>[c, dPct(c)]));
+  const box = $("dRates");
+  if(!box.childElementCount){
+    box.innerHTML = CATS.map((c,k)=>`<label class="rate" data-c="${k}"><span></span><span class="in"><input id="drate-${k}" inputmode="decimal">%</span></label>`).join("");
+    CATS.forEach((c,k)=>{ const lab = box.querySelector(`[data-c="${k}"]`); lab.firstChild.textContent = c; lab.querySelector("input").addEventListener("input", e => { dDraft[c] = e.target.value; markDef(); }); });
+  }
+  CATS.forEach((c,k)=>{ const inp = $("drate-"+k); if(document.activeElement!==inp) inp.value = dDraft[c]; });
+  markDef();
+}
+function markDef(){
+  let n=0; CATS.forEach((c,k)=>{ const ch = num(dDraft[c]) !== dPct(c); if(ch) n++; $("drate-"+k).closest(".rate").classList.toggle("changed", ch); });
+  $("dRatesSave").disabled = !n; $("dRatesNote").textContent = n ? `${n} changed` : "";
+}
+$("dRatesReset").onclick = () => { dDraft = Object.fromEntries(CATS.map(c=>[c, pct(DEFAULT_RATES[c])])); renderDefRates(); };
+$("dRatesSave").onclick = async () => {
+  const rates = {};
+  for(const c of CATS){ const v = num(dDraft[c]); if(!(v>=0 && v<=100)){ showMsg(`Rate for ${c} must be between 0 and 100%.`, true); return; } rates[c] = Math.round(v*10)/1000; }
+  try{ await saveSettings({rates}); dDraft = null; renderDefRates(); showMsg("Preferred rates saved. New lists will start with them."); }
+  catch(e){ showMsg("Couldn't save rates: "+(e.message||e.code), true); }
+};
+
 /* ---------- auto-categorise old and new items ---------- */
 const catBusy = new Set(), catTried = new Set(); let catRunning = false;
+const mineItems = () => rawItems.filter(i=>!sharedIds.has(i.listId));
 async function autoCategorise(){
   if(catRunning || !db || !itemsLoaded) return;
   catRunning = true;
   try{
     // 1. tidy categories that only need renaming (e.g. "Appliance" -> "Appliances")
     if(!settingsLoaded) return;
-    for(const it of rawItems){
+    for(const it of mineItems()){
       const n = normCat(it.category); if(!n) continue;
-      const needRate = !it.rateCustom && it.rate !== rateFor(n);
-      if(n !== it.category || needRate){ const patch = {category:n}; if(!it.rateCustom){ patch.rate = rateFor(n); if(!it.manualDep) patch.depreciated = depCalc(num(it.newCost), num(it.ageYears ?? DEFAULT_AGE), patch.rate); } await col.doc(it.id).update(patch).catch(()=>{}); }
+      const needRate = !it.rateCustom && it.rate !== rateFor(n, it.listId);
+      if(n !== it.category || needRate){ const patch = {category:n}; if(!it.rateCustom){ patch.rate = rateFor(n, it.listId); if(!it.manualDep) patch.depreciated = depCalc(num(it.newCost), num(it.ageYears ?? DEFAULT_AGE), patch.rate); } await col.doc(it.id).update(patch).catch(()=>{}); }
     }
     // 2. ask the AI for items with no usable category
     if(!sample) return;
-    const todo = rawItems.filter(i => !i.deletedAt && !normCat(i.category) && !catTried.has(i.id) && i.name && i.name!=="New item" && i.name!=="Unidentified item");
+    const todo = mineItems().filter(i => !i.deletedAt && !normCat(i.category) && !catTried.has(i.id) && i.name && i.name!=="New item" && i.name!=="Unidentified item");
     for(let k=0; k<todo.length; k+=40){
       const batch = todo.slice(k, k+40);
       batch.forEach(i=>{ catTried.add(i.id); catBusy.add(i.id); }); if(currentListId) render();
@@ -1279,9 +1488,9 @@ Respond with JSON only: an object mapping each id to its category, e.g. {"abc":"
       for(const it of batch){
         catBusy.delete(it.id);
         const n = normCat(map[it.id]); if(!n) continue;
-        const cur = rawItems.find(x=>x.id===it.id) || it;
+        const cur = mineItems().find(x=>x.id===it.id) || it;
         const patch = {category:n};
-        if(!cur.rateCustom){ patch.rate = rateFor(n); if(!cur.manualDep) patch.depreciated = depCalc(num(cur.newCost), num(cur.ageYears ?? DEFAULT_AGE), patch.rate); }
+        if(!cur.rateCustom){ patch.rate = rateFor(n, cur.listId); if(!cur.manualDep) patch.depreciated = depCalc(num(cur.newCost), num(cur.ageYears ?? DEFAULT_AGE), patch.rate); }
         await col.doc(it.id).update(patch).catch(()=>{});
       }
       if(currentListId) render();
@@ -1292,7 +1501,7 @@ Respond with JSON only: an object mapping each id to its category, e.g. {"abc":"
 /* ---------- backups ---------- */
 const CHUNK = 180000, KEEP_AUTO = 10;
 let backups = [], bkChecked = false, bkBusy = false;
-function snapshotData(){ return {v:1, app:"shutterworth", createdAt:Date.now(), settings, lists: rawLists, items: rawItems}; }
+function snapshotData(){ return {v:1, app:"shutterworth", createdAt:Date.now(), settings, lists: rawLists.filter(l=>!l.shared), items: rawItems.filter(i=>!sharedIds.has(i.listId))}; }   // lists other people shared with you stay in their inventory
 function sig(o){ const t = JSON.stringify({l:o.lists, i:o.items, s:o.settings}); let h=0; for(let k=0;k<t.length;k++){ h=(h*31 + t.charCodeAt(k))|0; } return h.toString(36)+"_"+t.length; }
 async function loadBackups(){
   try{ const snap = await db.collection("backups").orderBy("createdAt","desc").limit(50).get(); backups = snap.docs.map(d=>({id:d.id, ...d.data()})); }catch(e){ backups = []; }
@@ -1339,8 +1548,8 @@ async function restoreData(data){
     await col.doc(id).set(rest);
   }
   // anything added since the backup goes to the recycle bin, not deleted
-  for(const l of rawLists) if(!keepL.has(l.id) && !l.deletedAt) await db.collection("lists").doc(l.id).update({deletedAt:now});
-  for(const i of rawItems) if(!keepI.has(i.id) && !i.deletedAt) await col.doc(i.id).update({deletedAt:now});
+  for(const l of rawLists) if(!keepL.has(l.id) && !l.deletedAt && !l.shared) await db.collection("lists").doc(l.id).update({deletedAt:now});
+  for(const i of rawItems) if(!keepI.has(i.id) && !i.deletedAt && !sharedIds.has(i.listId)) await col.doc(i.id).update({deletedAt:now});
   if(data.settings) await saveSettings({rates: data.settings.rates||{}, autoBackup: data.settings.autoBackup !== false});
 }
 const KIND = {auto:"Automatic", manual:"Manual", "before-restore":"Before restore"};
@@ -1545,6 +1754,9 @@ $("addForm").addEventListener("submit", async e => {
     if(d.exists){ const v = d.data(); settings = {rates: v.rates||{}, autoBackup: v.autoBackup !== false}; }
     settingsLoaded = true; rateDraft = null; showView(); autoBackup(); autoCategorise();
   }, () => { settingsLoaded = true; });
+  fetch("api/app-config",{cache:"no-store"}).then(r=>r.json()).then(c=>{ accountsOn = !!c.accounts; }).catch(()=>{});
+  db.collection("shares").onSnapshot(snap => { sharesMap = new Map(snap.docs.map(d=>[d.id, d.data()])); if($("optsDlg").open) optsRender(); }, ()=>{});
+  db.collection("invites").onSnapshot(snap => { invitesAll = snap.docs.map(d=>({id:d.id, ...d.data()})); if(!currentListId) renderInvites(); }, ()=>{});
   const lost = e => showMsg("Lost connection to your inventory ("+e.code+"). Reload the page.", true);
   db.collection("lists").orderBy("createdAt","desc").onSnapshot(snap => {
     rawLists = snap.docs.map(d => ({id:d.id, ...d.data()})); listsLoaded = true; derive();

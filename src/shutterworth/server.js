@@ -331,6 +331,7 @@ function authorised(req) {
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
+const sharing = pb.enabled ? require("./sharing")({ store, pb, clients, readBody, send, StoreError }) : null;
 const server = http.createServer(async (req, res) => {
   { // renew the sign-in cookie when this request proved who the person is
     const wh = res.writeHead;
@@ -351,7 +352,7 @@ const server = http.createServer(async (req, res) => {
     // Umbrel's own login is switched off for this app, so this is the only lock: with REQUIRE_ACCOUNTS set it fails closed.
     let user = null;
     const isPage = p === "/" || p === "/index.html";
-    const isData = p === "/api/events" || p === "/api/docs" || p === "/api/write" || p === "/api/ai/status" || p.startsWith("/api/assets") || p.startsWith("/_blob/");
+    const isData = p === "/api/events" || p === "/api/docs" || p === "/api/write" || p.startsWith("/api/share/") || p === "/api/ai/status" || p.startsWith("/api/assets") || p.startsWith("/_blob/");
     if (isPage || isData) {
       if (!pb.enabled) {
         if (REQUIRE_ACCOUNTS) {
@@ -376,30 +377,31 @@ const server = http.createServer(async (req, res) => {
       clients.set(res, store.ownerKey(user)); req.on("close", () => clients.delete(res));
       return;
     }
-    if (p === "/api/docs" && req.method === "GET") return send(res, 200, { docs: await store.docs(user) });
+    if (p === "/api/docs" && req.method === "GET") return send(res, 200, sharing ? { docs: await sharing.docsFor(user), locks: await sharing.locksFor(user) } : { docs: await store.docs(user) });
     if (p === "/api/app-config") return send(res, 200, { googleClientId: process.env.GOOGLE_CLIENT_ID || "", accounts: pb.enabled, ...(pb.enabled ? { trialLimit: loadSettings().trialLimit, signups: loadSettings().signups && await pb.signupsOpen(), portalUrl: await pb.portalUrl().catch(() => "") } : {}) });
     if (await accountRoutes(req, res, p, url)) return;
+    if (sharing && user && await sharing.handle(req, res, p, user)) return;
 
     if (p === "/api/write" && req.method === "POST") {
       // { origin, ops: [{op:"set"|"update"|"delete", path, data}] }
       const { ops = [], origin } = JSON.parse((await readBody(req)).toString() || "{}");
-      const changes = await store.write(user, ops);
-      broadcast(store.ownerKey(user), changes, origin);
+      if (sharing) await sharing.write(user, ops, origin);   // also applies writes to lists shared with this person and tells everyone involved
+      else { const changes = await store.write(user, ops); broadcast(store.ownerKey(user), changes, origin); }
       return send(res, 200, { ok: true });
     }
 
     if (p === "/api/assets" && req.method === "POST") {
       const buf = await readBody(req);
       if (!buf.length) return send(res, 400, { code: "empty" });
-      const id = await store.putPhoto(user, buf);
+      const id = sharing ? await sharing.photos.put(user, buf, req.headers["x-sw-list"]) : await store.putPhoto(user, buf);
       return send(res, 200, { id, url: "/_blob/" + id });
     }
     let m;
     if ((m = p.match(/^\/api\/assets\/([a-f0-9]{16,64})$/)) && req.method === "DELETE") {
-      await store.delPhoto(user, m[1]); return send(res, 200, { ok: true });
+      if (sharing) await sharing.photos.del(user, m[1]); else await store.delPhoto(user, m[1]); return send(res, 200, { ok: true });
     }
     if ((m = p.match(/^\/_blob\/([a-f0-9]{16,64})$/))) {
-      const buf = await store.getPhoto(user, m[1]);
+      const buf = sharing ? await sharing.photos.get(user, m[1]) : await store.getPhoto(user, m[1]);
       if (!buf) { res.writeHead(404); return res.end(); }
       res.writeHead(200, { "content-type": "image/jpeg", "content-length": buf.length, "cache-control": "private, max-age=31536000, immutable" });
       return res.end(buf);
