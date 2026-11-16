@@ -91,7 +91,7 @@
         const m = el("div", "meter"), i = el("i"); i.style.width = Math.min(100, Math.round(100 * user.trial.used / user.trial.limit)) + "%"; m.appendChild(i); p.appendChild(m);
       }
       const row = el("div", "prow"), out = el("button", "pbtn", "Sign out"); out.type = "button";
-      out.onclick = () => { setToken("", false); fetch("api/account/logout", { method: "POST" }).catch(() => {}).then(() => location.reload()); };
+      out.onclick = () => { setToken("", false); try { localStorage.removeItem("sw_prefs"); } catch (e) {} fetch("api/account/logout", { method: "POST" }).catch(() => {}).then(() => location.reload()); };
       row.appendChild(out); p.appendChild(row);
       return;
     }
@@ -278,10 +278,6 @@
     // the trial count changes as photos are identified, so refresh it whenever Settings opens
     new MutationObserver(() => { if (!$("setView").hidden) { refreshMe(); if (user && user.isAdmin) loadUsers(); } }).observe($("setView"), { attributes: true, attributeFilter: ["hidden"] });
   }
-  // Sign out sits in the top bar (shown only when accounts are on).
-  const signOut = () => { setToken("", false); try { localStorage.removeItem("sw_prefs"); } catch (e) {} fetch("api/account/logout", { method: "POST" }).catch(() => {}).then(() => location.reload()); };
-  const showOut = () => nativeFetch("api/app-config", { cache: "no-store" }).then(r => r.json()).then(c => {
-    const b = document.getElementById("outBtn"); if (c.accounts && b) { b.hidden = false; b.onclick = signOut; }
-  }).catch(() => {});
-  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", () => { showOut(); start(); }); else { showOut(); start(); }
+  // Sign out lives in Settings (see the Sign out button in the account card).
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", () => { start(); }); else { start(); }
 })();
