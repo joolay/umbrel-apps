@@ -1,0 +1,8 @@
+#!/bin/bash
+# umbrelOS rewrites this app's docker-compose.yml from the store on every start and drops the
+# `devices:` block, so the Intel iGPU never reaches the container. Re-add it here (idempotent).
+# Gives the Stremio streaming server /dev/dri so VAAPI transcode profiles show in Settings > Streaming.
+f="$(dirname "$0")/../docker-compose.yml"
+[ -f "$f" ] || exit 0
+grep -q '/dev/dri' "$f" || sed -i '/container_name: joolay-stremio_stremio_1/a\    devices:\n      - /dev/dri:/dev/dri' "$f"
+exit 0
