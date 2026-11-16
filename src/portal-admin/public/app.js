@@ -166,7 +166,7 @@ async function boot() {
     }
   }
   // Keep people signed in until 90 days after they last opened the dashboard: ask PocketBase for a fresh token each time it opens.
-  if (state.token && state.role === 'user') { try { const r = await api('POST', `/api/collections/${state.usersColl}/auth-refresh`); if (r.token) { state.token = r.token; saveSession(!!store.lget('pa.token')); } if (store.lget('pa.seen') !== new Date().toISOString().slice(0, 10)) { await api('PATCH', `/api/collections/${state.usersColl}/records/${state.uid}`, { lastActive: new Date().toISOString().replace('T', ' ') }); store.lset('pa.seen', new Date().toISOString().slice(0, 10)); } } catch {} }
+  if (state.token && state.role === 'user') { try { const r = await api('POST', `/api/collections/${state.usersColl}/auth-refresh`); if (r.token) { state.token = r.token; saveSession(!!store.lget('pa.token')); } if (store.lget('pa.seen') !== new Date().toISOString().slice(0, 10)) { await acctFetch('/api/active', {}); store.lset('pa.seen', new Date().toISOString().slice(0, 10)); } } catch {} }
   if (state.token) { try { await api('GET', '/api/collections/portal_apps/records?perPage=1').catch((e) => { if (e.status !== 404) throw e; }); return showShell(); } catch {} }
   showLogin();
 }
@@ -870,9 +870,10 @@ async function findCleanup() {
     reqs.filter((r) => (usersKnown && !userIds.has(r.user)) || (r.app !== DEL_REQ && r.app !== CHILD_REQ && r.app !== SPOUSE_REQ && !slugs.has(r.app))).map((r) => rec('portal_requests', r, (r.email || r.user) + ' → ' + (r.app === DEL_REQ ? 'account deletion' : r.app), r.status || '')));
   // Accounts nobody has used for a year (the last-active date is kept by Portal Admin > Changes > "Track when people were last active").
   { const cut = Date.now() - 365 * 86400e3, ms = (v) => { const t = Date.parse(String(v || '').replace(' ', 'T')); return Number.isFinite(t) ? t : 0; };
-    add('inactive', 'Accounts unused for a year', 'Marked for deletion. Nothing is removed until you tick the person and confirm. "Keep" restarts their year.',
+    add('inactive', 'Accounts unused for a year', 'Marked for deletion. Email them a deletion notice first: if they sign in to any app within 30 days they come off this list and their year restarts. Nothing is removed until you tick the person and confirm.',
       users.filter((u) => u.lastActive && !u.isAdmin && u.id !== state.uid && ms(u.lastActive) && ms(u.lastActive) < cut)
-        .map((u) => ({ key: 'inactive:' + u.id, kind: 'user', coll: state.usersColl, id: u.id, label: u.name || u.email, sub: (u.email || '') + ' · last active ' + String(u.lastActive).slice(0, 10) })), { keepResets: true }); }
+        .map((u) => { const na = ms(u.deletionNoticeAt), left = na ? Math.ceil((na + 30 * 86400e3 - Date.now()) / 86400e3) : 0, fmt = (v) => String(v).slice(8, 10) + '/' + String(v).slice(5, 7) + '/' + String(v).slice(0, 4);
+          return { key: 'inactive:' + u.id, kind: 'user', coll: state.usersColl, id: u.id, noticeAt: na, label: u.name || u.email, sub: (u.email || '') + ' · last active ' + fmt(u.lastActive) + ' · ' + (na ? 'notice sent ' + fmt(u.deletionNoticeAt) + (left > 0 ? ' (' + left + ' day' + (left === 1 ? '' : 's') + ' left)' : ' (30 days passed)') : 'no notice sent') }; }), { keepResets: true, notice: true }); }
   if (installed) {
     const gone = apps.filter((a) => !installed.slugs.has(a.slug));
     add('uninstalled', 'Apps no longer installed on this Umbrel', 'Removing one also removes its settings and per-user overrides.',
@@ -913,13 +914,37 @@ async function viewCleanup() {
     ${notes.map((n) => `<p class="muted small">${esc(n)}</p>`).join('')}
     ${groups.map((g) => `<div class="card" data-g="${esc(g.id)}"><h2>${esc(g.title)} <span class="chip">${g.items.length}</span></h2><p class="muted small">${esc(g.help)}</p>
       <table><tbody>${g.items.map(row).join('')}</tbody></table>
-      <div class="row" style="margin-top:10px;gap:8px"><button class="btn danger" data-do="delete">Delete selected</button> <button class="btn" data-do="keep">${g.keepResets ? 'Keep (restart their year)' : 'Keep (hide)'}</button></div></div>`).join('') || '<div class="card"><p class="muted">Nothing to clean up. 🎉</p></div>'}`;
+      <div class="row" style="margin-top:10px;gap:8px">${g.notice ? '<button class="btn primary" data-do="notice">Email deletion notice</button> ' : ''}<button class="btn danger" data-do="delete">Delete selected</button> <button class="btn" data-do="keep">${g.keepResets ? 'Keep (restart their year)' : 'Keep (hide)'}</button></div></div>`).join('') || '<div class="card"><p class="muted">Nothing to clean up. 🎉</p></div>'}`;
   main().onclick = guard(async (e) => {
     const b = e.target.closest('[data-do]'); if (!b) return;
     const card = b.closest('[data-g]'), g = groups.find((x) => x.id === card.dataset.g);
     const keys = [...card.querySelectorAll('input[data-k]:checked')].map((i) => i.dataset.k);
     if (!keys.length) return toast('Tick at least one item first', true);
-    if (b.dataset.do === 'keep' && g.keepResets) { const now = new Date().toISOString().replace('T', ' '); for (const k of keys) await api('PATCH', `/api/collections/${state.usersColl}/records/${k.replace(/^inactive:/, '')}`, { lastActive: now }); toast(keys.length + ' kept'); return route(); }
+    const sendNotices = async (list) => {
+      b.disabled = true;
+      try {
+        const r = await acctFetch('/admin/inactive/notice', { ids: list.map((i) => i.id) }), okN = r.results.filter((x) => x.ok), bad = r.results.filter((x) => !x.ok);
+        for (const x of okN) await audit('user.deletion-notice', x.id, { email: x.email, deleteOn: x.deleteOn });
+        toast(okN.length ? `Notice emailed to ${okN.length} ${okN.length === 1 ? 'person' : 'people'}` + (bad.length ? `, ${bad.length} failed: ${bad[0].message}` : '') : (bad[0] ? bad[0].message : 'Nothing was sent'), !okN.length);
+      } finally { b.disabled = false; }
+      route();
+    };
+    if (b.dataset.do === 'notice') {
+      const list = keys.map((k) => g.items.find((i) => i.key === k)).filter(Boolean);
+      if (!list.length) return;
+      if (!confirm(`Email a deletion notice to ${list.length} ${list.length === 1 ? 'person' : 'people'}? It tells them the account will be deleted in 30 days unless they sign in.`)) return;
+      return sendNotices(list);
+    }
+    if (b.dataset.do === 'delete' && g.notice) {
+      const list = keys.map((k) => g.items.find((i) => i.key === k)).filter(Boolean), none = list.filter((i) => !i.noticeAt), early = list.filter((i) => i.noticeAt && Date.now() - i.noticeAt < 30 * 86400e3);
+      if (none.length) {
+        const who = none.slice(0, 3).map((i) => i.label).join(', ') + (none.length > 3 ? ' and ' + (none.length - 3) + ' more' : '');
+        if (confirm(`${who} ${none.length === 1 ? 'has' : 'have'} not been sent a deletion notice.\n\nOK = email ${none.length === 1 ? 'them' : 'the notice'} instead (nothing is deleted).\nCancel = carry on to delete without a notice.`)) return sendNotices(none);
+        if (!confirm(`Delete ${none.length === 1 ? who : none.length + ' accounts'} WITHOUT a deletion notice? This cannot be undone.`)) return;
+      }
+      if (early.length && !confirm(`${early.length} of these ${early.length === 1 ? 'was' : 'were'} sent a notice less than 30 days ago, so ${early.length === 1 ? 'they still have' : 'they still have'} time to sign in. Delete anyway?`)) return;
+    }
+    if (b.dataset.do === 'keep' && g.keepResets) { const now = new Date().toISOString().replace('T', ' '); for (const k of keys) await api('PATCH', `/api/collections/${state.usersColl}/records/${k.replace(/^inactive:/, '')}`, { lastActive: now, deletionNoticeAt: '' }); toast(keys.length + ' kept'); return route(); }
     if (b.dataset.do === 'keep') { localStorage.setItem('pa.keptCleanup', JSON.stringify([...keptCleanup(), ...keys])); return route(); }
     if (g.single && keys.length > 1) return toast('Collections are deleted one at a time', true);
     if (g.single) { const name = keys[0].replace(/^collection:/, ''); if (prompt(`Type "${name}" to permanently delete this collection and its data.`) !== name) return; }

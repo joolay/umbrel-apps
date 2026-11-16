@@ -418,6 +418,7 @@ async function signup(req, res) {
 }
 
 const appapi = makeAppApi({ pbx, DATA_DIR: pbx.dataDir, readBody, send });
+const notices = require('./notices')({ pbx, forgetTouch: appapi.forgetTouch });
 const changes = makeChanges({ pbx, installedApps, APPS_DIR, DATA_DIR: pbx.dataDir, appKeys: appapi.keys });
 const handle = async (req, res) => {
   try {
@@ -442,6 +443,20 @@ const handle = async (req, res) => {
         const b = JSON.parse(await readBody(req)); const me = await pbx.userForSuperuser(tok).catch(() => null);
         return send(res, 200, await paywall.adminAction(b, me));
       } catch (e) { return send(res, e.status || 500, { message: String(e.message || e) }); }
+    }
+    // The dashboard says "this person just opened me" (the apps do the same through Portal API). Their own sign-in is the proof; it can't be set to any other date.
+    if (pathname === '/api/active' && req.method === 'POST') {
+      const tok = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+      const me = tok ? await pbx.userFromToken(tok).catch(() => null) : null;
+      if (!me) return send(res, 401, { message: 'Sign in first.' });
+      await appapi.touchActive(me.id).catch(() => {}); return send(res, 200, { ok: true });
+    }
+    if (pathname === '/admin/inactive/notice') {
+      if (isPublicRequest(req)) return send(res, 403, { message: 'Only available from your home network or tailnet.' });
+      const tok = String(req.headers.authorization || '');
+      if (!tok || !(await pbx.isSuperuser(tok))) return send(res, 401, { message: 'Admin only.' });
+      if (req.method !== 'POST') return send(res, 405, { message: 'Method not allowed' });
+      try { const b = JSON.parse(await readBody(req)); return send(res, 200, await notices.send(b.ids)); } catch (e) { return send(res, e.status || 500, { message: String(e.message || e) }); }
     }
     if (pathname === '/admin/changes' || pathname === '/admin/changes/apply') {
       if (isPublicRequest(req)) return send(res, 403, { message: 'Only available from your home network or tailnet.' });

@@ -43,13 +43,14 @@ module.exports = function makeAppApi({ pbx, DATA_DIR, readBody, send }) {
 
   // Apps say "this person just used me"; Portal Admin keeps one date per person so accounts unused for a year can be reviewed (Cleanup page).
   const lastTouch = new Map();
+  const forgetTouch = (id) => lastTouch.delete(String(id));   // after a deletion notice, the very next use must clear it
   async function touchActive(id) {
     id = String(id || '');
     if (!/^[a-z0-9]{15}$/.test(id)) return null;
     const now = Date.now();
     if (now - (lastTouch.get(id) || 0) < 12 * 3600e3) return null;
     lastTouch.set(id, now); if (lastTouch.size > 5000) lastTouch.clear();
-    try { await pbx.asSuper('PATCH', '/api/collections/' + (process.env.POCKETBASE_USERS_COLLECTION || 'users') + '/records/' + id, { lastActive: new Date(now).toISOString().replace('T', ' ') }); }
+    try { await pbx.asSuper('PATCH', '/api/collections/' + (process.env.POCKETBASE_USERS_COLLECTION || 'users') + '/records/' + id, { lastActive: new Date(now).toISOString().replace('T', ' '), deletionNoticeAt: '' }); }
     catch (e) { lastTouch.delete(id); if (e.status !== 404) throw e; }
     return null;
   }
@@ -70,5 +71,5 @@ module.exports = function makeAppApi({ pbx, DATA_DIR, readBody, send }) {
     try { const args = Array.isArray(b.args) ? b.args : [], r = fn === 'touchActive' ? await touchActive(args[0]) : fn.startsWith('guardians.') ? await guardians[fn.slice(10)](...args) : await client(app)[fn](...args); return send(res, 200, { ok: true, result: r === undefined ? null : r }); }
     catch (e) { return send(res, 200, { ok: false, status: Number(e.status) || 500, message: String(e.message || e), data: e.data || undefined }); }
   }
-  return { handle, keys, allowed: [...ALLOWED] };
+  return { handle, keys, allowed: [...ALLOWED], touchActive, forgetTouch };
 };
