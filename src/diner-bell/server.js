@@ -90,7 +90,36 @@ async function readAI(r) {
 }
 const PROMPT = `You extract restaurant menus into JSON. Reply with ONLY one JSON object, no prose, no code fences:
 {"name": string, "phone": string|null, "currency": string, "categories": [{"name": string, "items": [{"name": string, "description": string, "price": number|null}]}]}
-Rules: include every dish and drink actually on the menu; never invent items or prices. "phone" is the restaurant's telephone number exactly as printed anywhere in the source, else null. "currency" is the symbol used for prices (e.g. "R", "$", "€"; default "R" if unclear). "price" is a plain number without symbol (use the base price if sizes vary). Keep the menu's own language. If the source contains no readable menu, reply {"error":"reason"}.`;
+Rules: include every dish and drink actually on the menu; never invent items or prices. "phone" is the restaurant's telephone number exactly as printed anywhere in the source, else null. "currency" is the symbol used for prices (e.g. "R", "$", "€"; default "R" if unclear). "price" is the amount printed on the menu for that item, as a JSON number in the menu\'s own units, without symbol: 89.90 for "R89,90", 1250 for "R1 250", never multiplied or divided. Copy each price from the same line or box as its dish; do not shift prices between neighbouring dishes. Ignore item numbers, calorie counts, weights, phone numbers and dates. If a dish lists several sizes or options, use the first (smallest) price; if no price is printed, use null. Keep the menu's own language. Menus often use stylised, condensed, handwritten, all-capital or reversed (light text on a coloured background) lettering: read slowly, look at every price digit, and prefer null over a guess when a price or word is not clear. If the source contains no readable menu, reply {"error":"reason"}.`;
+
+// Second look for photos and PDFs: stylised menu lettering (Nando's, say) is easy to misread, so the AI checks its own first reading
+// against the pictures. Falls back to the first reading if the check fails or loses too many dishes.
+const VERIFY = `Below is a menu that a first pass extracted from the attached image(s). Stylised lettering may have been misread. Check every dish name and every price against the image(s): fix wrong or shifted prices (each price belongs to the dish on its own line or box), fix misspelt names, add dishes that were missed, and set price to null where it cannot be read with confidence. Keep the same JSON shape and reply with ONLY the corrected JSON object.\n\nFIRST READING:\n`;
+const countItems = m => (m && Array.isArray(m.categories) ? m.categories : []).reduce((a, c) => a + (c && Array.isArray(c.items) ? c.items.length : 0), 0);
+async function verifyMenu(menu, images, user) {
+  try {
+    const fixed = await callAI(VERIFY + JSON.stringify(menu).slice(0, 60000), images, user);
+    if (fixed && !fixed.error && countItems(fixed) >= Math.ceil(countItems(menu) * 0.7)) return { ...menu, ...fixed, name: fixed.name || menu.name, phone: fixed.phone ?? menu.phone, currency: fixed.currency || menu.currency };
+  } catch (e) {}
+  return menu;
+}
+
+// Reads a menu from photos, text or a link with the CURRENT instructions (PROMPT) and model. Used for new uploads and for
+// re-rendering an archived menu from its saved original.
+async function extractFor(user, b) {
+  let prompt, images = [];
+  if (b.url) prompt = PROMPT + "\n\nMENU TEXT (from " + String(b.url).slice(0, 200) + "):\n" + await fetchPage(String(b.url));
+  else if (Array.isArray(b.images) && b.images.length) { images = b.images.slice(0, 6).filter(i => i && typeof i.data === "string"); prompt = PROMPT + "\n\nThe menu is in the attached image(s)."; }
+  else if (typeof b.text === "string" && b.text.trim()) prompt = PROMPT + "\n\nMENU TEXT:\n" + b.text.slice(0, 40000);
+  else throw new AIError("empty", "Nothing to read.");
+  const c = aiFor(user), trial = await trialInfo(user, c);
+  if (trial.over) throw new AIError("trial_over", `You've used your ${TRIAL_LIMIT} free menu reads. Add your own AI key in Portal Admin (My settings) to keep going.`);
+  let menu = await callAI(prompt, images, user);
+  if (images.length && menu && !menu.error) menu = await verifyMenu(menu, images, user);
+  if (trial.on) { try { await pb.trialBump(user.id); } catch {} }
+  return menu;
+}
+const aiFail = (res, e) => send(res, e.code === "rate_limited" ? 429 : e.code === "trial_over" ? 402 : e.code === "empty" || e.code === "bad_url" || e.code === "not_configured" ? 400 : 502, { code: e.code, message: e.message });
 
 // Fetches a menu page for the person. Refuses addresses inside the home network.
 async function fetchPage(raw) {
@@ -123,7 +152,7 @@ function gateOf(u) {
   if (!u.portal.access) return { ok: false, reason: "no_access", message: "You need approval to use Diner Bell. Open Portal Admin, request access to Diner Bell, then check again here." };
   return { ok: true };
 }
-const publicUser = u => ({ id: u.id, email: u.email || "", name: u.name || "", isAdmin: !!u.isAdmin, dob: u.dob || "", age: guardians.ageOf(u.dob), minor: !!(u.guard ? u.guard.minor : guardians.isMinor(u)), canOpen: gateOf(u).ok, readonly: !!(u.portal && u.portal.readonly && !u.isAdmin), gate: gateOf(u), prefs: Object.fromEntries(Object.entries((u.portal && u.portal.prefs) || {}).filter(([k]) => k !== "ai.apiKey")) });
+const publicUser = u => ({ id: u.id, email: u.email || "", name: u.name || "", isAdmin: !!u.isAdmin, dob: u.dob || "", age: guardians.ageOf(u.dob), minor: !!(u.guard ? u.guard.minor : guardians.isMinor(u)), canOpen: gateOf(u).ok, readonly: !!(u.portal && u.portal.readonly && !u.isAdmin), role: u.isAdmin ? "admin" : u.portal && u.portal.readonly ? "viewonly" : u.portal && u.portal.editor ? "editor" : "member", gate: gateOf(u), prefs: Object.fromEntries(Object.entries((u.portal && u.portal.prefs) || {}).filter(([k]) => k !== "ai.apiKey")) });
 
 const tokenCache = new Map();
 function tokenOf(req) {
@@ -248,7 +277,7 @@ const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, "http://x");
     const p = decodeURIComponent(url.pathname);
     const isPage = p === "/" || p === "/index.html";
-    const isMenus = /^\/api\/menus(\/[A-Za-z0-9]{1,40}(\/(item|branch|versions|restore|logo))?)?$/.test(p);
+    const isMenus = /^\/api\/menus(\/[A-Za-z0-9]{1,40}(\/(item|branch|versions|restore|logo|rerender|rerender-request|confirm|sources(\/[A-Za-z0-9]{1,40})?))?)?$/.test(p);
     const isData = isMenus || p === "/api/state" || p === "/api/prefs" || p === "/api/guardians" || /^\/api\/family(\/orders(\/[A-Za-z0-9]{1,20})?)?$/.test(p) || /^\/api\/history(\/[A-Za-z0-9]{1,20})?$/.test(p) || p === "/api/extract" || p === "/api/ai/status" || p === "/api/ai/config";
 
     // The app and its data are only for signed-in people the admin has let in (admins always can).
@@ -277,10 +306,15 @@ const server = http.createServer(async (req, res) => {
 
     if (isMenus) {
       if (!user) return send(res, 503, { code: "accounts_unavailable", message: "The shared menu archive needs accounts. Connect PocketBase first." });
-      const mm = p.match(/^\/api\/menus\/([A-Za-z0-9]+)(?:\/(item|branch|versions|restore|logo))?$/), id = mm && mm[1], sub = mm && mm[2];
+      const mm = p.match(/^\/api\/menus\/([A-Za-z0-9]+)(?:\/(item|branch|versions|restore|logo|rerender|rerender-request|confirm|sources)(?:\/([A-Za-z0-9]{1,40}))?)?$/), id = mm && mm[1], sub = mm && mm[2], sid = mm && mm[3];
       const out = r => r.status ? send(res, r.status, { code: "menu_denied", message: r.message }) : send(res, 200, r);
       // An admin can make a person view-only: they can still order, but can't change anything shared (uploads, items, branches, pictures).
-      if (req.method !== "GET" && user.portal && user.portal.readonly && !user.isAdmin) return send(res, 403, { code: "view_only", message: "An admin has made your account view-only for shared menus." });
+      if (req.method !== "GET" && sub !== "rerender-request" && user.portal && user.portal.readonly && !user.isAdmin) return send(res, 403, { code: "view_only", message: "An admin has made your account view-only for shared menus." });
+      if (id && sub === "confirm" && req.method === "POST") { const b = JSON.parse((await readBody(req)).toString() || "{}"); return out(await menus.confirmEdits(user, id, typeof b.itemId === "string" ? b.itemId : "")); }
+      if (id && sub === "rerender-request" && req.method === "POST") return out(await menus.requestRerender(user, id));
+      if (id && sub === "rerender" && req.method === "POST") { try { return out(await menus.rerender(user, id, b => extractFor(user, b))); } catch (e) { if (e instanceof AIError) return aiFail(res, e); throw e; } }
+      if (id && sub === "sources" && req.method === "GET") return out(sid ? await menus.getSource(user, id, sid) : await menus.listSources(user, id));
+      if (id && sub === "sources" && req.method === "POST") return out(await menus.addSources(user, id, JSON.parse((await readBody(req)).toString() || "{}").items));
       if (id && sub === "logo" && req.method === "POST") return out(await menus.setLogo(user, id, JSON.parse((await readBody(req)).toString() || "{}").logo));
       if (id && sub === "item" && req.method === "POST") return out(await menus.editItem(user, id, JSON.parse((await readBody(req)).toString() || "{}")));
       if (id && sub === "branch" && req.method === "POST") return out(await menus.addBranch(user, id, JSON.parse((await readBody(req)).toString() || "{}")));
@@ -375,21 +409,8 @@ const server = http.createServer(async (req, res) => {
     if (p === "/api/extract" && req.method === "POST") {
       if (throttled(req, "extract", 30, 3600e3)) return send(res, 429, { code: "slow_down", message: "That's a lot of menus in an hour. Try again later." });
       const b = JSON.parse((await readBody(req)).toString() || "{}");
-      try {
-        let prompt, images = [];
-        if (b.url) prompt = PROMPT + "\n\nMENU TEXT (from " + String(b.url).slice(0, 200) + "):\n" + await fetchPage(String(b.url));
-        else if (Array.isArray(b.images) && b.images.length) { images = b.images.slice(0, 6).filter(i => i && typeof i.data === "string"); prompt = PROMPT + "\n\nThe menu is in the attached image(s)."; }
-        else if (typeof b.text === "string" && b.text.trim()) prompt = PROMPT + "\n\nMENU TEXT:\n" + b.text.slice(0, 40000);
-        else return send(res, 400, { code: "empty", message: "Nothing to read." });
-        const c = aiFor(user), trial = await trialInfo(user, c);
-        if (trial.over) return send(res, 402, { code: "trial_over", message: `You've used your ${TRIAL_LIMIT} free menu reads. Add your own AI key in Portal Admin (My settings) to keep going.` });
-        const menu = await callAI(prompt, images, user);
-        if (trial.on) { try { await pb.trialBump(user.id); } catch {} }
-        return send(res, 200, { menu });
-      } catch (e) {
-        if (e instanceof AIError) return send(res, e.code === "rate_limited" ? 429 : e.code === "bad_url" || e.code === "not_configured" ? 400 : 502, { code: e.code, message: e.message });
-        throw e;
-      }
+      try { return send(res, 200, { menu: await extractFor(user, b) }); }
+      catch (e) { if (e instanceof AIError) return aiFail(res, e); throw e; }
     }
 
     // static files

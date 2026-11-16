@@ -293,7 +293,7 @@ function bill(r) {
 function go(v, id) { view = v; if (id !== undefined) curId = id; error = ''; query = ''; openCat = null; editMode = false; restEdit = false; instrOpen = false; render(); window.scrollTo(0, 0); }
 function keepTop() { render(); window.scrollTo(0, 0); }
 function keepScroll() { const y = scrollY; render(); scrollTo(0, y); }
-let tt; function toast(m) { const t = $('#toast'); t.textContent = m; t.hidden = false; clearTimeout(tt); tt = setTimeout(() => t.hidden = true, 2800); }
+let tt; function toast(m) { const t = $('#toast'); t.textContent = m; t.hidden = false; clearTimeout(tt); tt = setTimeout(() => t.hidden = true, 2200 + m.length * 45); }
 
 /* ---------- render ---------- */
 function render() {
@@ -351,7 +351,7 @@ function settingsHTML() {
       <input class="search" id="q" type="text" placeholder="Search restaurants…" value="${esc(query)}">
       ${S.restaurants.filter(r => !query.trim() || r.name.toLowerCase().includes(query.trim().toLowerCase())).map(r => `<label class="row" style="gap:10px;padding:8px 0;border-top:1px solid #0001;cursor:pointer"><input type="checkbox" data-rest="${r.id}" ${isShown(r) ? 'checked' : ''} style="width:auto"><span class="grow"><b>${esc(r.name)}</b> ${isNew(r) ? '<span class="pill new">NEW</span>' : ''}<span class="mute" style="display:block;font-size:13px">${itemsOf(r).length} items${r.ownerName ? ' · by ' + esc(r.ownerName) : ''}</span></span></label>`).join('') || '<p class="mute">No menus in the archive yet.</p>'}
     </div>
-    ${me ? `<div class="row" style="justify-content:flex-end">${ibtn('out', 'Sign out ' + (me.email || ''), 'data-a="signout"', 'btn sec ic')}</div>` : ''}`;
+    ${me ? `<div class="row" style="justify-content:space-between"><span class="mute">Role: <b>${esc({ admin: 'Admin', editor: 'Editor', member: 'Member', viewonly: 'View-only' }[me.role] || 'Member')}</b></span>${ibtn('out', 'Sign out ' + (me.email || ''), 'data-a="signout"', 'btn sec ic')}</div>` : ''}`;
 }
 
 function aiNote() {
@@ -378,11 +378,13 @@ function homeHTML() {
   const sq = query.trim().toLowerCase(), all = visibleRests(), shown = all.filter(r => !sq || r.name.toLowerCase().includes(sq));
   const gp = (S.guard && S.guard.pending || []).length, go2 = ibtn('user', 'Review in Portal Admin', 'data-a="dashboard"', 'btn ic');
   const invBanner = gp ? `<div class="card" style="background:var(--accent2)">👪 ${gp} request${gp > 1 ? 's' : ''} waiting for your approval.<div style="height:8px"></div>${go2}</div>` : ((S.family && S.family.invites) || []).length ? `<div class="card" style="background:var(--accent2)">👨‍👩‍👧 You've been invited to join a family on JoolzApp.<div style="height:8px"></div>${go2}</div>` : '';
+  const rq = all.filter(r => r.canEdit && (r.rerenderReq || []).length);
+  const rqBanner = rq.length ? `<div class="card" style="background:var(--accent2)">${ic('repeat', 16)} ${rq.map(r => `<b>${esc(r.name)}</b> (${esc(r.rerenderReq.map(x => x.byName).join(', '))})`).join(', ')} ${rq.length > 1 ? 'have' : 'has'} a re-render request. Open it, tap the pencil, then the re-render icon.</div>` : '';
   const canAdd = !(me && me.readonly) && !sq;
   const tiles = shown.map(tileHTML).join('') + (canAdd ? `<button class="rt add" data-a="add" title="Add a restaurant" aria-label="Add a restaurant">${ic('plus', 26)}<span>Add a restaurant</span></button>` : '');
   const empty = sq && !shown.length ? `<div class="card" style="text-align:center">No restaurant matches “${esc(query)}”.</div>` : '';
   const none = !all.length ? `<div class="card" style="text-align:center;padding:24px 16px"><h2 style="margin:6px 0">${S.restaurants.length ? 'No restaurants showing' : 'No menus yet'}</h2><p class="mute">${S.restaurants.length ? 'Every restaurant is hidden. Bring some back in Settings, or tap the empty tile to add one.' : 'Tap the empty tile to add a restaurant from a photo, PDF or link of its menu.'}</p></div>` : '';
-  return `${invBanner}${aiNote()}<div class="sbar"><input class="search" id="q" type="text" placeholder="Search restaurants" aria-label="Search restaurants" autocomplete="off" value="${esc(query)}">${ibtn(editMode ? 'check' : 'pencil', editMode ? 'Done' : 'Edit tiles', 'data-a="edit-tiles"')}</div>
+  return `${invBanner}${rqBanner}${aiNote()}<div class="sbar"><input class="search" id="q" type="text" placeholder="Search restaurants" aria-label="Search restaurants" autocomplete="off" value="${esc(query)}">${ibtn(editMode ? 'check' : 'pencil', editMode ? 'Done' : 'Edit tiles', 'data-a="edit-tiles"')}</div>
     ${editMode ? '' : ''}${empty}${none}<div id="grid" class="grid3 ${editMode ? 'edit' : ''}">${tiles}</div><input id="f-logo" type="file" accept="image/*" hidden>`;
 }
 
@@ -421,6 +423,10 @@ function detailsHTML(r) {
     <input id="phone" type="tel" value="${esc(r.phone || '')}" placeholder="${r.canEdit ? 'Main phone number' : 'No phone number'}"${r.canEdit ? '' : ' readonly'}>
     ${r.canEdit ? `<input id="rwa" type="tel" value="${esc(r.wa || '')}" placeholder="WhatsApp order number (optional)" style="margin-top:8px">` : ''}
     <div class="mute" style="margin:10px 0 2px">Branches${r.canEdit ? '' : ' · anyone can add one'}</div>${branchRows}
+    <div class="row" style="margin-top:12px;gap:8px"><button class="btn sec ic" data-a="sources" data-id="${r.id}" title="Original menu (photos, PDF or link)" aria-label="Original menu">${ic('receipt')}</button><span class="mute grow">Original menu the items were read from</span></div>
+    ${r.canEdit
+      ? `<div class="row" style="margin-top:10px;gap:8px"><button class="btn sec ic" data-a="rerender" data-id="${r.id}" title="Re-render this menu from its original with the latest AI rules" aria-label="Re-render menu from original">${ic('repeat')}</button><span class="mute grow">Re-read the original with the latest AI rules${(r.rerenderReq || []).length ? `<br><b>Requested by ${esc(r.rerenderReq.map(x => x.byName).join(', '))}</b>` : ''}</span></div>`
+      : `<div class="row" style="margin-top:10px;gap:8px"><button class="btn sec ic" data-a="rerender-req" data-id="${r.id}" ${r.iRequested ? 'disabled' : ''} title="Ask the uploader or an admin to re-render this menu" aria-label="Ask for a re-render">${ic('chat')}</button><span class="mute grow">${r.iRequested ? 'You asked for a re-render. The uploader or an admin will see it.' : 'Prices wrong? Ask the uploader or an admin to re-render it'}</span></div>`}
     ${ro ? '' : `<div class="row" style="margin-top:12px;gap:8px"><button class="btn sec ic" data-a="logo-pick" title="Change display picture" aria-label="Change display picture">${ic('img')}</button>${r.logo ? `<button class="btn sec ic" data-a="logo-clear" title="Remove display picture" aria-label="Remove display picture">${ic('trash')}</button>` : ''}<span class="mute grow">Display picture for the tile</span></div><input id="f-logo-m" type="file" accept="image/*" hidden>`}</div>`;
 }
 function menuHTML(r) {
@@ -443,11 +449,13 @@ function menuHTML(r) {
       if (!items.length) continue;
       out += `<div class="cat">${esc(cat.name)}</div><div class="card" style="padding:2px 14px">` + items.map(i => {
         const qty = c.items[i.id]?.qty || 0;
-      return `<div class="item" data-item="${esc(i.id)}"><div class="grow"><h3>${esc(i.name)}${i.edit ? ' <span class="pill ed" title="Edited by ' + esc(i.edit.byName) + '">✎ edited</span>' : ''}</h3>${i.description ? `<p>${esc(i.description)}</p>` : ''}${i.price != null ? `<div class="price" style="margin-top:4px">${money(r, i.price)}</div>` : ''}</div>
+      return `<div class="item" data-item="${esc(i.id)}"><div class="grow"><h3>${esc(i.name)}</h3>${i.description ? `<p>${esc(i.description)}</p>` : ''}${i.price != null ? `<div class="price" style="margin-top:4px">${money(r, i.price)}</div>` : ''}${i.edit ? `<div class="mute" style="font-size:12px;margin-top:3px">✎ Edited by ${esc(i.edit.byName || 'someone')}${i.edit.at ? ' · ' + esc(new Date(i.edit.at).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })) : ''}${i.edit.was && i.edit.was.price != null && i.edit.was.price !== i.price ? ' · was ' + money(r, i.edit.was.price) : ''}${r.canEdit ? ` <button class="link" data-a="confirm-edit" data-id="${i.id}" style="font-size:12px" title="Confirm this edit and clear the tag" aria-label="Confirm this edit">${ic('check', 13)} Confirm</button>` : ''}</div>` : ''}</div>
         ${qty ? `<div class="step"><button data-a="dec" data-id="${i.id}" aria-label="One less">−</button><span>${qty}</span><button data-a="inc" data-id="${i.id}" aria-label="One more">+</button></div>` : `<button class="add" data-a="inc" data-id="${i.id}" title="Add" aria-label="Add ${esc(i.name)}">${ic('plus', 18)}</button>`}</div>`;
       }).join('') + `</div>`;
     }
   }
+  const nEdits = r.categories.reduce((a, c) => a + c.items.filter(i => i.edit).length, 0);
+  if (restEdit && r.canEdit && nEdits) out += `<div class="row" style="margin-top:12px;gap:8px"><button class="btn sec ic" data-a="confirm-edit" data-id="" title="Confirm all edits" aria-label="Confirm all ${nEdits} edits">${ic('check')}</button><span class="mute grow">${nEdits} edited item${nEdits > 1 ? 's' : ''}. Confirm them all and clear the tags.</span></div>`;
   if (restEdit) out += `<p class="mute" style="text-align:center;margin:14px 0 4px">Hold an item to edit it. Anyone can fix a price or a name; your name is shown on the item.</p>
     <div class="card"><div class="mute">Version ${esc(fmtDate(r.version))}${r.versionByName ? ' · uploaded by ' + esc(r.versionByName) : ''}</div>
       <button class="link" data-a="versions" data-id="${r.id}">Previous versions</button><div id="vers"></div></div>`;
@@ -789,6 +797,41 @@ document.addEventListener('click', async e => {
   }
   if (a === 'tile-pic') { const f = $('#f-logo'); if (f) { f.dataset.id = id; f.value = ''; f.click(); } return; }
   if (a === 'rest-edit') { restEdit = !restEdit; return keepScroll(); }
+  if (a === 'confirm-edit') {
+    try { const res = await api('api/menus/' + curId + '/confirm', { method: 'POST', body: JSON.stringify({ itemId: id || '' }) }); const ix = S.restaurants.findIndex(x => x.id === curId); S.restaurants[ix] = res.menu; keepScroll(); toast(res.cleared > 1 ? res.cleared + ' edits confirmed' : 'Edit confirmed'); } catch (err) { toast(err.message || 'Could not confirm that.'); }
+    return;
+  }
+  if (a === 'rerender') {
+    const r = S.restaurants.find(x => x.id === id);
+    if (!r || !confirm('Re-render ' + r.name + ' from its original?\nIt is read again with the latest AI rules. The current version is saved in Previous versions, but hand edits to items are replaced.')) return;
+    const m = document.createElement('div'); m.className = 'modal'; m.innerHTML = '<div class="sheet" style="text-align:center"><h2 style="margin:0 0 8px">Re-reading the menu…</h2><p class="mute">This can take a minute or two.</p></div>'; document.body.appendChild(m);
+    try { const res = await api('api/menus/' + id + '/rerender', { method: 'POST', body: '{}' }); const ix = S.restaurants.findIndex(x => x.id === id); S.restaurants[ix] = res.menu; S.carts[id] = {}; save(); m.remove(); render(); toast('Menu re-rendered. Check the prices (previous version is kept).'); }
+    catch (err) { m.remove(); toast(err.message || 'Could not re-render that menu.'); }
+    return;
+  }
+  if (a === 'rerender-req') {
+    try { const res = await api('api/menus/' + id + '/rerender-request', { method: 'POST', body: '{}' }); const ix = S.restaurants.findIndex(x => x.id === id); S.restaurants[ix] = res.menu; render(); toast('Asked the uploader and admins to re-render it'); } catch (err) { toast(err.message || 'Could not send the request.'); }
+    return;
+  }
+  if (a === 'sources') {
+    try {
+      const list = (await api('api/menus/' + id + '/sources')).sources || [];
+      if (!list.length) return toast('No original was kept for this menu. Menus added from now on keep theirs.');
+      const m = document.createElement('div'); m.className = 'modal'; m.style.overflow = 'auto';
+      m.innerHTML = `<div class="sheet" style="max-height:92vh;overflow:auto"><div class="row" style="justify-content:space-between"><h2 style="margin:0">Original menu</h2>${ibtn('x', 'Close', 'data-x="cancel"', 'btn sec ic')}</div><div id="srcbox"><p class="mute">Loading…</p></div></div>`;
+      document.body.appendChild(m);
+      m.addEventListener('click', ev => { if (ev.target === m || (ev.target.closest('[data-x]') && ev.target.closest('[data-x]').dataset.x === 'cancel')) m.remove(); });
+      const box = m.querySelector('#srcbox'); box.innerHTML = '';
+      for (const s of list) {
+        const one = (await api('api/menus/' + id + '/sources/' + s.id)).source, d = document.createElement('div'); d.style.margin = '10px 0';
+        if (one.kind === 'image') { const im = new Image(); im.src = 'data:' + (one.mime || 'image/jpeg') + ';base64,' + one.data; im.alt = one.name || 'Menu photo'; im.style.cssText = 'width:100%;border-radius:12px'; d.appendChild(im); }
+        else if (one.kind === 'url') { d.innerHTML = `<div class="mute">Link</div><a href="${esc(one.data)}" target="_blank" rel="noopener">${esc(one.data)}</a>`; }
+        else { d.innerHTML = `<div class="mute">${esc(one.name || 'Text')}</div><pre style="white-space:pre-wrap;font:13px/1.4 ui-monospace,monospace;max-height:40vh;overflow:auto">${esc(one.data)}</pre>`; }
+        box.appendChild(d);
+      }
+    } catch (err) { toast(err.message || 'Could not open the original.'); }
+    return;
+  }
   if (a === 'logo-pick') { const f = $('#f-logo-m'); if (f) { f.value = ''; f.click(); } return; }
   if (a === 'logo-clear') { try { const res = await api('api/menus/' + curId + '/logo', { method: 'POST', body: JSON.stringify({ logo: '' }) }); const ix = S.restaurants.findIndex(x => x.id === curId); S.restaurants[ix] = res.menu; render(); toast('Picture removed'); } catch (err) { toast(err.message); } return; }
   if (a === 'instr-open') { instrOpen = true; return keepScroll(); }
@@ -992,7 +1035,7 @@ async function ingest(src) {
     } else if (src.url) body = { url: src.url };
     else body = { text: src.text };
 
-    busy = 'Reading the menu…'; render();
+    busy = body.images ? 'Reading the menu, then checking it…' : 'Reading the menu…'; render();
     const j = (await api('api/extract', { method: 'POST', body: JSON.stringify(body) })).menu;
     try { ai = await api('api/ai/status'); } catch (e) {}
     if (!j) throw new Error('Could not read a menu from that.');
@@ -1002,11 +1045,13 @@ async function ingest(src) {
     cats.forEach(c => n += c.items.length);
     if (!n) throw new Error('No menu items were found.');
     busy = 'Saving to the shared archive…'; render();
+    const keep = body.images ? body.images.map((im, k) => ({ kind: 'image', type: im.type, data: im.data, name: (src.pdf ? 'Page ' : 'Photo ') + (k + 1) })) : body.url ? [{ kind: 'url', url: body.url }] : body.text ? [{ kind: 'text', text: body.text, name: src.pdf ? 'Text from the PDF' : 'Pasted text' }] : [];
     const res = await api('api/menus', { method: 'POST', body: JSON.stringify({ name: j.name || 'Restaurant', phone: j.phone || '', currency: j.currency || 'R', categories: cats }) });
     const r = res.menu, ix = S.restaurants.findIndex(x => x.id === r.id);
+    if (keep.length) api('api/menus/' + r.id + '/sources', { method: 'POST', body: JSON.stringify({ items: keep }) }).catch(() => {});   // the original material is archived with the menu
     if (ix >= 0) { S.restaurants[ix] = r; S.carts[r.id] = {}; S.hidden = (S.hidden || []).filter(x => x !== r.id); } else S.restaurants.unshift(r);
     markSeen(r.id); busy = null; go('menu', r.id);
-    toast(res.merged ? `${r.name} is already in the archive, so this is now its latest version` : 'Menu added to the shared archive');
+    toast(res.merged ? `${r.name} is already in the archive, so this is now its latest version` : body.images ? 'Menu added. Check the prices: stylised fonts can be misread (hold an item to fix it).' : 'Menu added to the shared archive');
   } catch (e) {
     busy = null; error = (e && e.message) || (e && e.code === 'not_granted' ? 'Permission to read menus was not granted.' : 'Something went wrong.'); render();
   }
@@ -1014,10 +1059,10 @@ async function ingest(src) {
 const b64 = blob => new Promise((res, rej) => { const f = new FileReader(); f.onload = () => res({ type: 'image/jpeg', data: String(f.result).split(',')[1] }); f.onerror = rej; f.readAsDataURL(blob); });
 async function shrink(file) {
   const bmp = await createImageBitmap(file);
-  const k = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
+  const k = Math.min(1, 2400 / Math.max(bmp.width, bmp.height));
   const cv = document.createElement('canvas'); cv.width = Math.round(bmp.width * k); cv.height = Math.round(bmp.height * k);
   cv.getContext('2d').drawImage(bmp, 0, 0, cv.width, cv.height);
-  return new Promise(r => cv.toBlob(r, 'image/jpeg', 0.85));
+  return new Promise(r => cv.toBlob(r, 'image/jpeg', 0.9));
 }
 function loadScript(src) { return new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error('Could not load the PDF reader.')); document.head.appendChild(s); }); }
 async function readPdf(file) {
@@ -1029,7 +1074,7 @@ async function readPdf(file) {
   if (text.length <= 300) {
     for (let p = 1; p <= pages; p++) {
       const pg = await pdf.getPage(p); const vp0 = pg.getViewport({ scale: 1 });
-      const vp = pg.getViewport({ scale: Math.min(2, 1600 / Math.max(vp0.width, vp0.height)) });
+      const vp = pg.getViewport({ scale: Math.min(3, 2400 / Math.max(vp0.width, vp0.height)) });
       const cv = document.createElement('canvas'); cv.width = vp.width; cv.height = vp.height;
       await pg.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise;
       images.push(await new Promise(r => cv.toBlob(r, 'image/jpeg', 0.85)));

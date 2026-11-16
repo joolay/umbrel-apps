@@ -2,7 +2,7 @@ manifestVersion: 1
 id: joolay-diner-bell
 category: files
 name: Diner Bell
-version: "2.0.0"
+version: "2.0.1"
 tagline: Tile your favourite restaurants, order by phone or WhatsApp, split the bill
 description: >-
   Diner Bell reads a restaurant menu from a photo, PDF, link or pasted text, lets you build an order from one or more
@@ -18,7 +18,7 @@ gallery: []
 path: ""
 defaultUsername: ""
 defaultPassword: ""
-releaseNotes: "GrubToGo is now Diner Bell. Restaurants are picture tiles you can search, reorder and edit; choose Collection, Delivery or Sit Down; call or send the order on WhatsApp; backdate orders; and your settings now live on your JoolzApp account. Install this as a new app and remove the old GrubToGo."
+releaseNotes: "Menus are read at higher quality with a second check, so stylised fonts and prices are misread less. The original photos or text are kept with each menu; admins, editors and uploaders can re-render from them, and others can ask. Edits show who made them and can be confirmed. New Editor role."
 submitter: joolay
 submission: https://github.com/joolay/umbrel-apps
 icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-diner-bell/icon.svg
