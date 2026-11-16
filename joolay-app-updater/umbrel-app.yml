@@ -1,0 +1,27 @@
+manifestVersion: 1
+id: joolay-app-updater
+category: developer
+name: App Updater
+version: "1.0.0"
+tagline: Update the Umbrel apps you choose automatically, nightly or the moment a new version appears
+description: >-
+  Umbrel never updates apps by itself. App Updater does it for the apps you pick, including Portal Admin.
+  For each app choose Off, Nightly (once a night in a window you set) or Immediately (as soon as umbrelOS lists a new version).
+  Optional quiet hours hold Immediately updates until morning, and every update is logged with dd/mm/yyyy times.
+  It is a separate, tiny app with no database and no dependencies, so updating Portal Admin or any other app never affects it.
+  Click Connect and enter your umbrelOS password; with Stay connected on, the password is kept in this app's private data folder so it can sign in again by itself.
+  App Updater cannot update itself: update it by hand from the App Store.
+developer: joolay
+website: https://github.com/joolay/umbrel-apps/tree/main/src/app-updater
+dependencies: []
+repo: https://github.com/joolay/umbrel-apps
+support: https://github.com/joolay/umbrel-apps/issues
+port: 3898
+gallery: []
+path: ""
+defaultUsername: ""
+defaultPassword: ""
+releaseNotes: "First release: per-app Off / Nightly / Immediately auto-updates, quiet hours, activity log."
+submitter: joolay
+submission: https://github.com/joolay/umbrel-apps
+icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-app-updater/icon.svg

@@ -1,0 +1,55 @@
+:root{--accent:#c2347a;--accent-2:#ff6fae;--accent-t:#fff}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--accent:#ff6fae;--accent-2:#ffa0cb;--accent-t:#2a0716}}
+:root[data-theme="dark"]{--accent:#ff6fae;--accent-2:#ffa0cb;--accent-t:#2a0716}
+
+.brand{display:flex;align-items:center;gap:10px;color:var(--accent)}
+.brand h1{margin:0;font-size:18px;color:var(--text);font-weight:650}
+.conn{display:flex;align-items:center;gap:10px}
+main{max-width:980px;margin:0 auto;padding:20px}
+.sub{color:var(--muted);font-size:12.5px}
+.muted{color:var(--muted);font-size:13px}
+.err{color:var(--danger);font-size:13.5px;margin:10px 0 0}
+.note{color:var(--muted);font-size:12.5px;margin:12px 0 0}
+.foot{color:var(--muted);font-size:12.5px;text-align:center;margin-top:18px}
+
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:16px}
+.banner{background:color-mix(in srgb,var(--warn) 12%,transparent);border:1px solid color-mix(in srgb,var(--warn) 40%,transparent);border-radius:var(--r);padding:10px 14px;margin-bottom:14px;font-size:14px}
+.banner.bad{background:color-mix(in srgb,var(--danger) 12%,transparent);border-color:color-mix(in srgb,var(--danger) 40%,transparent)}
+
+.fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-top:14px}
+.fields label{display:flex;flex-direction:column;gap:5px;font-size:12.5px;color:var(--muted)}
+.quiet{margin-top:14px;font-size:14px}
+.quiet input[type=time]{width:auto}
+
+.list{display:grid;gap:10px;margin-bottom:16px}
+.app{padding:12px 14px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.app .id{flex:1 1 220px;min-width:0}
+.app .name{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.app .ctl{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.seg{display:inline-flex;border:1px solid var(--glass-line);border-radius:var(--r-pill);overflow:hidden}
+.seg button{background:transparent;color:var(--muted);border:0;padding:7px 12px;font:inherit;font-size:13px;cursor:pointer}
+.seg button.on{background:linear-gradient(145deg,var(--accent),var(--accent-2));color:var(--accent-t);font-weight:600}
+.seg button:disabled{opacity:.45;cursor:not-allowed}
+.empty{color:var(--muted);text-align:center;padding:40px 10px}
+
+.switch{position:relative;width:44px;height:24px;flex:none}
+.switch input{opacity:0;width:100%;height:100%;position:absolute;margin:0;cursor:pointer;z-index:1}
+.switch span{position:absolute;inset:0;background:rgba(127,127,127,.35);border-radius:999px;transition:background .15s}
+.switch span::after{content:"";position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;transition:transform .15s}
+.switch input:checked+span{background:var(--ok)}
+.switch input:checked+span::after{transform:translateX(20px)}
+
+.log{display:grid;gap:6px;margin-top:12px;max-height:340px;overflow:auto}
+.log div{font-size:13px;display:flex;gap:10px}
+.log time{color:var(--muted);flex:none;font-variant-numeric:tabular-nums}
+.log .error{color:var(--danger)}.log .ok{color:var(--ok)}
+.diag{white-space:pre-wrap;font-size:12px;background:rgba(127,127,127,.12);border-radius:10px;padding:10px;margin:12px 0 0;overflow:auto}
+
+dialog{width:min(420px,92vw)}
+dialog h2{margin:0 0 6px;font-size:18px}
+dialog label{display:block;margin-top:12px;font-size:13.5px}
+dialog input[type=password],dialog input[type=text]{display:block;width:100%;margin-top:5px}
+dialog input[inputmode]{display:block;width:100%;margin-top:5px}
+dialog label.check{display:flex;gap:8px;align-items:center}
+.actions{display:flex;justify-content:flex-end;gap:10px;margin-top:18px}
+@media (max-width:560px){main{padding:14px}.app .ctl{width:100%;justify-content:space-between}}
