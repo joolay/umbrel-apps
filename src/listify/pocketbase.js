@@ -25,6 +25,9 @@ try {
 const URL_BASE = (process.env.POCKETBASE_URL || "http://host.docker.internal:5400").replace(/\/+$/, "");
 const SU_EMAIL = process.env.POCKETBASE_SUPERUSER_EMAIL || "";
 const SU_PASS = process.env.POCKETBASE_SUPERUSER_PASSWORD || "";
+// Limited login for this app only (created by Portal Admin > Changes). It can read and write this app's access rows and nothing else.
+const SV_EMAIL = process.env.POCKETBASE_SERVICE_EMAIL || "";
+const SV_PASS = process.env.POCKETBASE_SERVICE_PASSWORD || "";
 const COLL = process.env.POCKETBASE_USERS_COLLECTION || "users";
 const APP = (process.env.POCKETBASE_APP_ID || "listify").trim().toLowerCase();
 const ACCESS = process.env.POCKETBASE_ACCESS_COLLECTION || "app_access";
@@ -76,6 +79,31 @@ async function asSuper(method, path, body) {
   try { return await raw(method, path, { token: await superToken(), body }); }
   catch (e) {
     if (e.status === 401 || e.status === 403) return raw(method, path, { token: await superToken(true), body });
+    throw e;
+  }
+}
+
+/* ---------- this app's own limited login (service account) ---------- */
+// Used for the busy path: reading and updating a person's trial / access row. Until the login exists (or if PocketBase refuses it)
+// this quietly falls back to the superuser, so a half-finished rollout never takes the app down. It says so once in the log.
+let svToken = "", svUntil = 0, svLogin = null, svOffUntil = 0, svWarned = false;
+const svWarn = msg => { if (!svWarned) { svWarned = true; console.warn("[pocketbase] service login not used: " + msg + " (falling back to the superuser login)"); } };
+async function serviceToken(force) {
+  if (!force && svToken && Date.now() < svUntil) return svToken;
+  if (svLogin) return svLogin;
+  svLogin = (async () => {
+    const j = await raw("POST", "/api/collections/app_service/auth-with-password", { body: { identity: SV_EMAIL, password: SV_PASS } });
+    svToken = j.token; svUntil = Date.now() + 20 * 60 * 1000; return svToken;
+  })();
+  try { return await svLogin; } finally { svLogin = null; }
+}
+async function asApp(method, path, body) {
+  if (!(SV_EMAIL && SV_PASS) || Date.now() < svOffUntil) return asSuper(method, path, body);
+  try {
+    try { return await raw(method, path, { token: await serviceToken(), body }); }
+    catch (e) { if (e.status === 401) return await raw(method, path, { token: await serviceToken(true), body }); throw e; }
+  } catch (e) {
+    if (e.status === 400 || e.status === 403 || e.status === 404) { svOffUntil = Date.now() + 5 * 60 * 1000; svWarn(e.status + " " + e.message); return asSuper(method, path, body); }
     throw e;
   }
 }
@@ -142,10 +170,10 @@ function merge(u, a) {
 }
 async function getAccess(userId, create) {
   const f = `user = '${esc(userId)}' && app = '${esc(APP)}'`;
-  const find = async () => ((await asSuper("GET", accPath(`?page=1&perPage=1&filter=${q(f)}`))).items || [])[0] || null;
+  const find = async () => ((await asApp("GET", accPath(`?page=1&perPage=1&filter=${q(f)}`))).items || [])[0] || null;
   let a = await find();
   if (!a && create) {
-    try { a = await asSuper("POST", accPath(), { user: userId, app: APP, trialUsed: 0, trialLimit: 0, unlimited: false }); }
+    try { a = await asApp("POST", accPath(), { user: userId, app: APP, trialUsed: 0, trialLimit: 0, unlimited: false }); }
     catch (e) { if (e.status !== 400) throw e; a = await find(); } // lost a race with another request
   }
   return a;
@@ -293,7 +321,7 @@ async function getUser(id) {
 async function updateAccess(id, data) {
   await ensureSchema();
   const a = await getAccess(id, true);
-  return asSuper("PATCH", accPath("/" + encodeURIComponent(a.id)), data);
+  return asApp("PATCH", accPath("/" + encodeURIComponent(a.id)), data);
 }
 async function updateUser(id, data) {
   await ensureSchema();
