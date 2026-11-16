@@ -14,7 +14,7 @@ const guardians = require('./guardians');
 const family = require('./family');
 const events = require('./events');
 const paywall = require('./paywall');
-const CHILD_REQ = '__child_account__';
+const CHILD_REQ = '__child_account__', SPOUSE_REQ = '__spouse_account__';
 
 const PORT = Number(process.env.PORT || 3000);
 const PUBLIC_DIR = path.join(__dirname, 'public');
@@ -284,6 +284,26 @@ async function accountRoutes(req, res, pathname) {
       if (req.method !== 'POST') return send(res, 405, { message: 'Method not allowed' });
       const minor = guardians.isMinor(user);
       if (b.action === 'create') return minor ? out({ status: 403, message: 'A parent or guardian creates the family. They can invite you.' }) : out(await family.create(user, b.name));
+      if (b.action === 'unlinkSpouse') return out(await family.unlinkSpouse(user));
+      if (b.action === 'inviteSpouse') { if (minor) return out({ status: 403, message: 'Spouse links are for adults.' }); return out(await family.invite(user, b.email, 'family', 'Spouse', true)); }
+      if (b.action === 'createSpouse') {   // a household member makes their spouse's account; it is linked straight away and held until an admin approves it
+        if (minor) return out({ status: 403, message: 'Spouse accounts are for adults.' });
+        const bad = await family.spouseCheck(user); if (bad) return out(bad);
+        const email = String(b.email || '').trim().toLowerCase(), password = String(b.password || ''), name = String(b.name || '').trim().slice(0, 80), dob = String(b.dob || '').trim(), username = pbx.cleanUsername(b.username);
+        if (!/\S\s+\S/.test(name)) return out({ status: 400, message: "Enter your spouse's name and surname." });
+        if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return out({ status: 400, message: "Enter a valid email for your spouse's account." });
+        if (password.length < 8 || password.length > 200) return out({ status: 400, message: 'Use a password of at least 8 characters.' });
+        if (!guardians.validDob(dob) || guardians.ageOf(dob) < 18) return out({ status: 400, message: "Enter your spouse's date of birth. A spouse must be 18 or older." });
+        if (pbx.usernameError(username)) return out({ status: 400, message: pbx.usernameError(username) });
+        if (await pbx.findByUsername(username)) return out({ status: 400, message: 'That username is taken. Try another.' });
+        let sp;
+        try { sp = await pbx.createUser({ email, password, name, dob, username }); }
+        catch (e) { if (e instanceof pbx.PBError && e.status === 400) return out({ status: 400, message: e.data && e.data.email ? 'That email is already registered. Use "Link an existing account" instead.' : 'Those details were not accepted.' }); throw e; }
+        await guardians.createdSpouse(sp, user);
+        const linked = await family.linkCreatedSpouse(user, sp); if (linked.status) return out(linked);
+        await pbx.asSuper('POST', '/api/collections/portal_requests/records', { user: sp.id, email, app: SPOUSE_REQ, message: `${name}, spouse account created by ${user.name || user.email}`, status: 'pending' }).catch(() => {});
+        return send(res, 200, { ...linked, notice: `${name}'s account is created and linked as your spouse. It can be used once an admin approves it.` });
+      }
       if (b.action === 'invite') return out(await family.invite(user, b.email, b.tier, b.relation));
       if (b.action === 'createChild') {   // a parent makes a child's account; it is held until an admin approves it
         if (minor) return out({ status: 403, message: 'Only a parent or guardian can create an account for a child.' });

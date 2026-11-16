@@ -865,7 +865,7 @@ async function findCleanup() {
   add('apps', 'Settings of apps that are no longer registered', 'The app they belong to is not in your Apps list.',
     settings.filter((r) => r.app && !slugs.has(r.app) && !used.has('portal_settings:' + r.id)).map((r) => rec('portal_settings', r, r.key, r.app + (r.scope === 'user' ? ' · user ' + r.user : ''))));
   add('reqs', 'Access requests that can no longer be answered', 'The person was deleted or the app is no longer registered.',
-    reqs.filter((r) => (usersKnown && !userIds.has(r.user)) || (r.app !== DEL_REQ && r.app !== CHILD_REQ && !slugs.has(r.app))).map((r) => rec('portal_requests', r, (r.email || r.user) + ' → ' + (r.app === DEL_REQ ? 'account deletion' : r.app), r.status || '')));
+    reqs.filter((r) => (usersKnown && !userIds.has(r.user)) || (r.app !== DEL_REQ && r.app !== CHILD_REQ && r.app !== SPOUSE_REQ && !slugs.has(r.app))).map((r) => rec('portal_requests', r, (r.email || r.user) + ' → ' + (r.app === DEL_REQ ? 'account deletion' : r.app), r.status || '')));
   if (installed) {
     const gone = apps.filter((a) => !installed.slugs.has(a.slug));
     add('uninstalled', 'Apps no longer installed on this Umbrel', 'Removing one also removes its settings and per-user overrides.',
@@ -923,7 +923,7 @@ async function viewCleanup() {
 async function viewRequests() {
   if (await needSetup()) return;
   const [reqs, apps] = await Promise.all([listAll('portal_requests', { sort: '-created', max: 500 }), listAll('portal_apps')]);
-  const appName = (slug) => slug === DEL_REQ ? 'Account deletion' : slug === CHILD_REQ ? "Child's account (created by a parent)" : (apps.find((a) => a.slug === slug) || {}).name || slug;
+  const appName = (slug) => slug === DEL_REQ ? 'Account deletion' : slug === CHILD_REQ ? "Child's account (created by a parent)" : slug === SPOUSE_REQ ? "Spouse's account (created by their spouse)" : (apps.find((a) => a.slug === slug) || {}).name || slug;
   const pending = reqs.filter((r) => r.status === 'pending'), done = reqs.filter((r) => r.status !== 'pending');
   main().innerHTML = `<h1>Access requests</h1><p class="sub">Users asking for access to individual Joolzapp apps, and account deletion requests. Approving access sets <code>portal.access = true</code> for that user and app; confirming a deletion permanently removes the user and their settings.</p>
     <div class="card"><h2>Pending (${pending.length})</h2><table><tbody>${pending.map((r) => `<tr><td><b>${esc(r.email || r.user)}</b><div class="muted small">${esc(fmtDate(r.created))}</div></td>
@@ -939,7 +939,7 @@ async function viewRequests() {
       for (const x of await listAll('portal_settings', { filter: `scope = "user" && user = ${fq(r.user)}` })) await api('DELETE', `/api/collections/portal_settings/records/${x.id}`);
       await api('DELETE', `/api/collections/${state.usersColl}/records/${r.user}`);
       await audit('user.delete', r.user, { email: r.email, via: 'deletion request' });
-    } else if (r.app === CHILD_REQ) {
+    } else if (r.app === CHILD_REQ || r.app === SPOUSE_REQ) {
       for (const x of await listAll('joolz_guardians', { filter: `childId = ${fq(r.user)} && kind = "admin"` })) await api('PATCH', `/api/collections/joolz_guardians/records/${x.id}`, { status: approve ? 'approved' : 'declined', decidedAt: new Date().toISOString() });
     } else if (approve) {
       const ex = (await listAll('portal_settings', { filter: `scope = "user" && user = ${fq(r.user)} && app = ${fq(r.app)} && key = "portal.access"` }))[0];
@@ -1104,7 +1104,7 @@ async function seedRegional() {
 // Sign-up is "open" when this rule exists. It can never be met from a browser: accounts are created only by this app's server (POST /signup),
 // which checks date of birth and parent approval, so there is a single sign-up path for every JoolzApp app.
 const SIGNUP_RULE = '@request.body.email:isset = false && @request.body.email:isset = true';
-const DEL_REQ = '__account_deletion__', CHILD_REQ = '__child_account__';
+const DEL_REQ = '__account_deletion__', CHILD_REQ = '__child_account__', SPOUSE_REQ = '__spouse_account__';
 const PREFS = [
   ['language', 'Language', [['en', 'English'], ['af', 'Afrikaans'], ['zu', 'isiZulu'], ['xh', 'isiXhosa'], ['st', 'Sesotho'], ['tn', 'Setswana'], ['fr', 'Français'], ['es', 'Español'], ['pt', 'Português'], ['ar', 'العربية']]],
   ['currency', 'Currency', [['ZAR', 'ZAR – South African rand'], ['USD', 'USD – US dollar'], ['EUR', 'EUR – Euro'], ['GBP', 'GBP – Pound sterling'], ['AUD', 'AUD – Australian dollar'], ['CAD', 'CAD – Canadian dollar'], ['AED', 'AED – UAE dirham'], ['INR', 'INR – Indian rupee']]],
@@ -1303,10 +1303,10 @@ async function familyPane(uid) {
   let data; try { data = await acctFetch('/family'); } catch (e) { box.innerHTML = `<div class="card"><p class="muted">Families couldn't load: ${esc(e.message)}</p></div>`; return; }
   const f = data.family, inv = data.invites || [], extIn = data.extendedIn || [];
   const taken = f ? new Set([...f.members, ...(f.extended || []), ...f.invited].flatMap((m) => [m.id, (m.email || '').toLowerCase()])) : new Set();
-  const people = f && f.canManage ? (await acctFetch('/family/users').catch(() => ({ users: [] }))).users.filter((u) => !taken.has(u.id) && !taken.has(u.email.toLowerCase())) : [];
+  const people = f ? (await acctFetch('/family/users').catch(() => ({ users: [] }))).users.filter((u) => !taken.has(u.id) && !taken.has(u.email.toLowerCase())) : [];
   const act = async (body) => { try { const j = await acctFetch('/family', body); if (j.notice) toast(j.notice); familyPane(uid); } catch (e) { toast(e.message, true); } };
   const relTxt = (r) => (r ? ' · ' + esc(r) : '');
-  let h = inv.map((i) => `<div class="card"><b>${esc(i.ownerName || 'Someone')}</b> invited you ${i.tier === 'extended' ? `as <b>extended family</b>${i.relation ? ' (' + esc(i.relation) + ')' : ''} of` : 'to join the household of'} the <b>${esc(i.name)}</b> family.${i.tier === 'extended' ? '<div class="muted small">You keep your own household. You can be extended family of as many families as you like.</div>' : ''}<div class="row" style="gap:8px;margin-top:8px"><button class="btn primary small" data-fa="yes" data-id="${esc(i.id)}">Join</button><button class="btn small" data-fa="no" data-id="${esc(i.id)}">Decline</button></div></div>`).join('');
+  let h = inv.map((i) => `<div class="card"><b>${esc(i.ownerName || 'Someone')}</b> ${i.spouse ? 'asked to link you as their <b>spouse</b> in' : 'invited you'} ${i.spouse ? 'the household of' : i.tier === 'extended' ? `as <b>extended family</b>${i.relation ? ' (' + esc(i.relation) + ')' : ''} of` : 'to join the household of'} the <b>${esc(i.name)}</b> family.${i.tier === 'extended' ? '<div class="muted small">You keep your own household. You can be extended family of as many families as you like.</div>' : ''}<div class="row" style="gap:8px;margin-top:8px"><button class="btn primary small" data-fa="yes" data-id="${esc(i.id)}">Join</button><button class="btn small" data-fa="no" data-id="${esc(i.id)}">Decline</button></div></div>`).join('');
   if (!f) h += `<div class="card"><h2>Your household</h2><p class="muted small">A family on JoolzApp is one <b>household</b>: the people who live together and share family expenses. Create yours here, then invite the people who live with you. Relatives who live elsewhere, such as grandparents, are linked as <b>extended family</b> instead.</p>
     <form id="fam-new" class="row" style="gap:6px"><input name="name" placeholder="Family name (e.g. The Joolays)" maxlength="60" required><button class="btn primary">Create</button></form></div>`;
   else {
@@ -1326,16 +1326,26 @@ async function familyPane(uid) {
         <label>Password (min 8)<input name="pw" type="password" minlength="8" required autocomplete="new-password"></label>
         <label>Date of birth<input name="dob" type="date" min="${new Date(Date.now() - 18 * 365.25 * 864e5).toISOString().slice(0, 10)}" max="${new Date().toISOString().slice(0, 10)}" required></label>
         <label>Relationship (optional)<input name="relation" maxlength="40" placeholder="son, daughter…"></label><div><button class="btn primary small">Create account</button></div></form></details>` : ''}
+      ${data.minor ? '' : f.spouse ? `<h3>Spouse</h3><div class="row spread"><span>${esc(f.spouse)} <span class="chip">spouse</span></span><button class="btn small" data-fa="unspouse">Unlink</button></div>` : f.invited.some((m) => m.spouseOf === uid) ? '<h3>Spouse</h3><p class="muted small">Your spouse request is waiting for them to accept. Cancel it from the household list above.</p>' : `<h3>Spouse</h3><p class="muted small">Link your spouse so you are connected as spouses. You can have one at a time.</p>
+        <details><summary><b>Link an existing account</b></summary><form id="fam-sp-inv" class="kv" style="margin-top:8px"><label>Registered JoolzApp users<select name="pick"><option value="">Choose them…</option>${people.map((u) => `<option value="${esc(u.email)}">${esc(u.name)} (${esc(u.email)})</option>`).join('')}</select></label><label>Or their email<input name="email" type="email"></label><p class="muted small">They get a request and must accept it before you are linked.</p><div><button class="btn primary small">Send spouse request</button></div></form></details>
+        <details style="margin-top:6px"><summary><b>Create a new account for your spouse</b></summary><form id="fam-sp-new" class="kv" style="margin-top:8px"><p class="muted small">You are linked straight away. An admin has to approve the new account before it can be used.</p>
+        <label>Name and surname<input name="name" maxlength="80" required pattern=".*\\S\\s+\\S.*" title="Enter a name and surname"></label><label>Email (their sign-in)<input name="email" type="email" required autocomplete="off"></label>
+        <label>Username<input name="username" minlength="3" maxlength="30" pattern="[A-Za-z0-9][A-Za-z0-9._\\-]{2,29}" autocapitalize="none" autocorrect="off" spellcheck="false" required></label>
+        <label>Password (min 8)<input name="pw" type="password" minlength="8" required autocomplete="new-password"></label>
+        <label>Date of birth<input name="dob" type="date" max="${new Date(Date.now() - 18 * 365.25 * 864e5).toISOString().slice(0, 10)}" required></label><div><button class="btn primary small">Create spouse account</button></div></form></details>`}
       <p><button class="btn small" data-fa="leave">Leave this household</button></p></div>`;
   }
   if (extIn.length) h += `<div class="card"><h2>Extended family of</h2><p class="muted small">Families you are linked to as a relative. You can be linked to as many as you like, and you don't share their expenses.</p>${extIn.map((x) => `<div class="row spread" style="padding:6px 0;border-top:1px solid var(--line,#0002)"><span><b>${esc(x.name)}</b>${x.relation ? ' · you are ' + esc(x.relation) : ''}${x.ownerName ? ' <span class="muted small">(' + esc(x.ownerName) + ')</span>' : ''}</span><button class="btn small" data-fa="extleave" data-id="${esc(x.id)}">Leave</button></div>`).join('')}</div>`;
   box.innerHTML = h;
   if ($('#fam-new')) $('#fam-new').onsubmit = (e) => { e.preventDefault(); act({ action: 'create', name: e.target.name.value }); };
   if ($('#fam-inv')) $('#fam-inv').onsubmit = (e) => { e.preventDefault(); const f2 = e.target.elements; const em = (f2.pick.value || f2.email.value).trim(); if (!em) return toast('Choose someone or enter an email.', true); act({ action: 'invite', email: em, tier: f2.tier.value, relation: f2.relation.value }); };
+  if ($('#fam-sp-inv')) $('#fam-sp-inv').onsubmit = (e) => { e.preventDefault(); const c = e.target.elements, em = (c.pick.value || c.email.value).trim(); if (!em) return toast('Choose someone or enter an email.', true); act({ action: 'inviteSpouse', email: em }); };
+  if ($('#fam-sp-new')) $('#fam-sp-new').onsubmit = (e) => { e.preventDefault(); const c = e.target.elements; act({ action: 'createSpouse', name: c.name.value, email: c.email.value, username: c.username.value, password: c.pw.value, dob: c.dob.value }); };
   if ($('#fam-child')) $('#fam-child').onsubmit = (e) => { e.preventDefault(); const c = e.target.elements; act({ action: 'createChild', name: c.name.value, email: c.email.value, password: c.pw.value, dob: c.dob.value, relation: c.relation.value }); };
   box.onclick = (e) => {
     const b = e.target.closest('button[data-fa]'); if (!b) return; const a = b.dataset.fa, id = b.dataset.id, v = b.dataset.v;
     if (a === 'yes' || a === 'no') return act({ action: 'respond', familyId: id, accept: a === 'yes' });
+    if (a === 'unspouse' && confirm('Unlink your spouse? You both stay in the household.')) return act({ action: 'unlinkSpouse' });
     if (a === 'mgr') return act({ action: 'manager', memberId: id, on: !!v });
     if (a === 'tier') return act({ action: 'tier', memberId: id, tier: v });
     if (a === 'rm') return act({ action: 'remove', memberId: id });
@@ -1672,7 +1682,7 @@ async function viewHome() {
   const banner = isAdmin ? '' : userRow && userRow.value === false ? 'Your account access has been turned off. Contact the admin.' : (globalBlock && !userRow ? 'The admin approves access to each app separately. Tap an app with a lock to request access.' : '');
   const famInv = fam && fam.invites && fam.invites.length ? `<div class="card"><b>You've been invited to a family.</b> <a href="#/family">Open Family</a> to join or decline.</div>` : '';
   const guardCard = (!g ? '' : [
-    g.minor && g.adminPending ? `<div class="card"><b>Your account is waiting for an admin to approve it.</b> Once they do, you can use the apps.</div>` : '',
+    g.adminPending ? `<div class="card"><b>Your account is waiting for an admin to approve it.</b> Once they do, you can use the apps.</div>` : '',
     g.minor && g.parents.length && !g.adminPending ? `<div class="card"><b>Your account needs a parent's approval.</b> ${g.parents.map((p) => `${esc(p.name)}: ${p.status === 'approved' ? 'approved' : p.status === 'pending' ? 'waiting' : 'declined'}`).join(' · ')}</div>` : '',
     g.pending.length ? `<div class="card"><h2>Needs your approval</h2>${g.pending.map((x) => `<div class="row spread" style="padding:6px 0"><span>${esc(x.label)}</span><span><button class="btn primary small" data-gact="yes" data-id="${esc(x.id)}">Approve</button> <button class="btn small" data-gact="no" data-id="${esc(x.id)}">Decline</button></span></div>`).join('')}</div>` : '',
     g.kids.length ? `<div class="card"><h2>Kids you look after</h2>${g.kids.map((k) => `<div class="row spread" style="padding:6px 0"><span>${esc(k.childName)}</span><button class="btn small" data-gact="revoke" data-id="${esc(k.childId)}">Withdraw approval</button></div>`).join('')}</div>` : '',

@@ -68,3 +68,12 @@ Admin > Paid apps locks an app behind a Yoco payment. It reuses the `portal.acce
 - The webhook needs the public (Funnel) address. Set it under Paid apps > Yoco, then Register webhook. Without it the admin can still unlock people by hand.
 - An hourly sweep expires passes and keeps household passes in step with the household's members.
 - Config lives in `portal_settings` (global): `yoco.secretKey`, `yoco.webhookSecret` (both secret) and `yoco.publicUrl`.
+
+## Spouse links
+
+Spouse is a special, one-at-a-time link between two adults in the same household (Family > Spouse). Stored on the household's member records
+(`spouse: <other id>`; the pending request carries `spouseOf`). Two ways in:
+- **Link an existing account** (`inviteSpouse`): a request the other person accepts under Family. Refused if either already has a spouse.
+- **Create a new account** (`createSpouse`): the creator is linked straight away; the new adult account is held for admin approval
+  (`joolz_guardians` row `kind=admin`, plus a `portal_requests` row `__spouse_account__`). `guardians.statusOf` reports `adminPending` for adults too.
+`unlinkSpouse` clears both sides. A linked spouse can't be moved out of the household until unlinked.
