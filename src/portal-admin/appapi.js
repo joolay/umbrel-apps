@@ -39,7 +39,21 @@ module.exports = function makeAppApi({ pbx, DATA_DIR, readBody, send }) {
     const cl = makeClient({ url: pbx.url(), email: c.email, pass: c.pass, app });
     clients.set(app, { sig, cl }); return cl;
   }
-  const ALLOWED = new Set([...Object.entries(makeClient({ url: '', email: '', pass: '', app: 'x' })).filter(([k, v]) => typeof v === 'function' && !RAW.has(k)).map(([k]) => k), ...GUARD.map((n) => 'guardians.' + n)]);
+  const ALLOWED = new Set([...Object.entries(makeClient({ url: '', email: '', pass: '', app: 'x' })).filter(([k, v]) => typeof v === 'function' && !RAW.has(k)).map(([k]) => k), ...GUARD.map((n) => 'guardians.' + n), 'touchActive']);
+
+  // Apps say "this person just used me"; Portal Admin keeps one date per person so accounts unused for a year can be reviewed (Cleanup page).
+  const lastTouch = new Map();
+  const forgetTouch = (id) => lastTouch.delete(String(id));   // after a deletion notice, the very next use must clear it
+  async function touchActive(id) {
+    id = String(id || '');
+    if (!/^[a-z0-9]{15}$/.test(id)) return null;
+    const now = Date.now();
+    if (now - (lastTouch.get(id) || 0) < 12 * 3600e3) return null;
+    lastTouch.set(id, now); if (lastTouch.size > 5000) lastTouch.clear();
+    try { await pbx.asSuper('PATCH', '/api/collections/' + (process.env.POCKETBASE_USERS_COLLECTION || 'users') + '/records/' + id, { lastActive: new Date(now).toISOString().replace('T', ' '), deletionNoticeAt: '' }); }
+    catch (e) { lastTouch.delete(id); if (e.status !== 404) throw e; }
+    return null;
+  }
 
   const bad = new Map();   // failed key attempts per caller: 20 per 10 minutes
   const fails = (ip) => { const n = Date.now(), a = (bad.get(ip) || []).filter((t) => n - t < 600e3); bad.set(ip, a); return a; };
@@ -54,8 +68,8 @@ module.exports = function makeAppApi({ pbx, DATA_DIR, readBody, send }) {
     let b; try { b = JSON.parse(await readBody(req, 256 * 1024)); } catch { return send(res, 400, { message: 'Invalid request.' }); }
     const fn = String(b.fn || '');
     if (!ALLOWED.has(fn)) return send(res, 200, { ok: false, status: 404, message: 'Unknown function: ' + fn });
-    try { const args = Array.isArray(b.args) ? b.args : [], r = fn.startsWith('guardians.') ? await guardians[fn.slice(10)](...args) : await client(app)[fn](...args); return send(res, 200, { ok: true, result: r === undefined ? null : r }); }
+    try { const args = Array.isArray(b.args) ? b.args : [], r = fn === 'touchActive' ? await touchActive(args[0]) : fn.startsWith('guardians.') ? await guardians[fn.slice(10)](...args) : await client(app)[fn](...args); return send(res, 200, { ok: true, result: r === undefined ? null : r }); }
     catch (e) { return send(res, 200, { ok: false, status: Number(e.status) || 500, message: String(e.message || e), data: e.data || undefined }); }
   }
-  return { handle, keys, allowed: [...ALLOWED] };
+  return { handle, keys, allowed: [...ALLOWED], touchActive, forgetTouch };
 };

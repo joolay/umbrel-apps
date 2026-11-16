@@ -16,7 +16,7 @@ const pb = require("./pocketbase");
 const PORT = +process.env.PORT || 3897;
 const UP = new URL(process.env.UPSTREAM || "http://stremio:8080");
 const COOKIE = "jz_token";
-const MAX_AGE = 14 * 24 * 3600;
+const MAX_AGE = 90 * 24 * 3600;   // signed in until 90 days after the app was last used (the cookie is renewed with a fresh token, see /_jz/state)
 const PB_TIMEOUT = 3000;
 const SYNC_JS = fs.readFileSync(path.join(__dirname, "sync.js"));
 const TAG = '<script src="/_jz/sync.js" defer></script>';
@@ -42,16 +42,19 @@ function throttled(req) {
 }
 
 /* ---------- who is this (only used by /_jz/*, never by the proxy) ---------- */
+const activity = require("./activity");
 const cache = new Map();
 async function userFor(token) {
   if (!token) return null;
   const c = cache.get(token);
   if (c && Date.now() - c.at < 60e3) return c.u;
   let u = null;
-  try { u = (await within(PB_TIMEOUT, pb.verifyToken(token))).record; }
+  let fresh = "";
+  try { const j = await within(PB_TIMEOUT, pb.verifyToken(token)); u = j.record; fresh = j.token || ""; }
   catch (e) { if (!(e instanceof pb.PBError) || ![400, 401, 403, 404].includes(e.status)) throw e; }
   if (cache.size > 500) cache.clear();
-  cache.set(token, { u, at: Date.now() });
+  cache.set(token, { u, at: Date.now(), fresh });
+  if (u) activity.touch(u.id);
   return u;
 }
 const mayUse = u => !!u && (u.isAdmin || !u.portal || u.portal.access !== false);
@@ -64,6 +67,7 @@ async function jz(req, res, p) {
     const token = readCookie(req);
     if (p === "/_jz/state") {
       let u; try { u = await userFor(token); } catch { return json(res, 200, { enabled: true, store: false }); }   // PocketBase unreachable: try again later
+      { const c = cache.get(token); if (u && c && c.fresh && Date.now() - (c.renewedAt || 0) > 3600e3) { c.renewedAt = Date.now(); setCookie(req, res, c.fresh); } }   // slide the 90 days forward
       return json(res, 200, { enabled: true, store: true, signedIn: mayUse(u), name: u ? (u.name || u.email || "") : "" });
     }
     if (p === "/_jz/login" && req.method === "POST") {
