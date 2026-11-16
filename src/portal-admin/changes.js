@@ -45,7 +45,7 @@ module.exports = function makeChanges({ pbx, installedApps, APPS_DIR, DATA_DIR, 
     },
     password: () => crypto.randomBytes(24).toString('base64url'),
     appKeys,
-    portalApiUrl: process.env.PORTAL_API_HOST_URL || 'http://host.docker.internal:3893',
+    portalApiUrl: process.env.PORTAL_API_HOST_URL || 'http://host.docker.internal:3899',
     esc: (s) => String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'"),
   };
 
