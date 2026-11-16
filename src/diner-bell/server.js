@@ -172,6 +172,7 @@ function setSessionCookie(req, res, token, remember) {
 const clearSessionCookie = res => res.setHeader("set-cookie", ["gd_token=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0", "gd_rem=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0"]);
 // Adds whether a parent has approved (for under-18s) to the user record.
 async function withGuard(u) { if (u) u.guard = await guardians.statusOf(u).catch(() => ({ minor: guardians.isMinor(u), approved: !guardians.isMinor(u) })); return u; }
+const activity = require("./activity");
 // "Signed in for 90 days since you last used the app": every time PocketBase checks a token it hands back a fresh one, and the cookie is renewed
 // with it (at most once an hour). PocketBase's own token lifetime for the users collection is set to 90 days by Portal Admin > Changes.
 const tokenOf = req => tokensOf(req)[0] || "";
@@ -183,6 +184,7 @@ async function currentUser(req) {
     try {
       const j = await pb.verifyToken(t);
       await withGuard(j.record);
+      activity.touch(j.record.id);
       const e = { user: j.record, at: Date.now(), fresh: j.token, renewedAt: c && c.renewedAt || 0 };
       tokenCache.set(t, e); req._renew = e;
       if (tokenCache.size > 200) tokenCache.delete(tokenCache.keys().next().value);

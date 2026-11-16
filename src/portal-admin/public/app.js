@@ -166,7 +166,7 @@ async function boot() {
     }
   }
   // Keep people signed in until 90 days after they last opened the dashboard: ask PocketBase for a fresh token each time it opens.
-  if (state.token && state.role === 'user') { try { const r = await api('POST', `/api/collections/${state.usersColl}/auth-refresh`); if (r.token) { state.token = r.token; saveSession(!!store.lget('pa.token')); } } catch {} }
+  if (state.token && state.role === 'user') { try { const r = await api('POST', `/api/collections/${state.usersColl}/auth-refresh`); if (r.token) { state.token = r.token; saveSession(!!store.lget('pa.token')); } if (store.lget('pa.seen') !== new Date().toISOString().slice(0, 10)) { await api('PATCH', `/api/collections/${state.usersColl}/records/${state.uid}`, { lastActive: new Date().toISOString().replace('T', ' ') }); store.lset('pa.seen', new Date().toISOString().slice(0, 10)); } } catch {} }
   if (state.token) { try { await api('GET', '/api/collections/portal_apps/records?perPage=1').catch((e) => { if (e.status !== 404) throw e; }); return showShell(); } catch {} }
   showLogin();
 }
@@ -868,6 +868,11 @@ async function findCleanup() {
     settings.filter((r) => r.app && !slugs.has(r.app) && !used.has('portal_settings:' + r.id)).map((r) => rec('portal_settings', r, r.key, r.app + (r.scope === 'user' ? ' · user ' + r.user : ''))));
   add('reqs', 'Access requests that can no longer be answered', 'The person was deleted or the app is no longer registered.',
     reqs.filter((r) => (usersKnown && !userIds.has(r.user)) || (r.app !== DEL_REQ && r.app !== CHILD_REQ && r.app !== SPOUSE_REQ && !slugs.has(r.app))).map((r) => rec('portal_requests', r, (r.email || r.user) + ' → ' + (r.app === DEL_REQ ? 'account deletion' : r.app), r.status || '')));
+  // Accounts nobody has used for a year (the last-active date is kept by Portal Admin > Changes > "Track when people were last active").
+  { const cut = Date.now() - 365 * 86400e3, ms = (v) => { const t = Date.parse(String(v || '').replace(' ', 'T')); return Number.isFinite(t) ? t : 0; };
+    add('inactive', 'Accounts unused for a year', 'Marked for deletion. Nothing is removed until you tick the person and confirm. "Keep" restarts their year.',
+      users.filter((u) => u.lastActive && !u.isAdmin && u.id !== state.uid && ms(u.lastActive) && ms(u.lastActive) < cut)
+        .map((u) => ({ key: 'inactive:' + u.id, kind: 'user', coll: state.usersColl, id: u.id, label: u.name || u.email, sub: (u.email || '') + ' · last active ' + String(u.lastActive).slice(0, 10) })), { keepResets: true }); }
   if (installed) {
     const gone = apps.filter((a) => !installed.slugs.has(a.slug));
     add('uninstalled', 'Apps no longer installed on this Umbrel', 'Removing one also removes its settings and per-user overrides.',
@@ -890,7 +895,11 @@ async function findCleanup() {
 }
 async function deleteCleanupItem(it) {
   if (it.kind === 'collection') await api('DELETE', '/api/collections/' + it.coll);
-  else {
+  else if (it.kind === 'user') {
+    for (const r of await listAll('portal_settings', { filter: `scope = "user" && user = ${fq(it.id)}` })) await api('DELETE', `/api/collections/portal_settings/records/${r.id}`);
+    await api('DELETE', `/api/collections/${state.usersColl}/records/${it.id}`);
+    await audit('user.delete', it.id, { email: it.sub.split(' · ')[0], reason: 'unused for a year' }); return;
+  } else {
     if (it.kind === 'app') for (const r of await listAll('portal_settings', { filter: `app = ${fq(it.slug)}` })) await api('DELETE', `/api/collections/portal_settings/records/${r.id}`);
     await api('DELETE', `/api/collections/${it.coll}/records/${it.id}`);
   }
@@ -904,12 +913,13 @@ async function viewCleanup() {
     ${notes.map((n) => `<p class="muted small">${esc(n)}</p>`).join('')}
     ${groups.map((g) => `<div class="card" data-g="${esc(g.id)}"><h2>${esc(g.title)} <span class="chip">${g.items.length}</span></h2><p class="muted small">${esc(g.help)}</p>
       <table><tbody>${g.items.map(row).join('')}</tbody></table>
-      <div class="row" style="margin-top:10px;gap:8px"><button class="btn danger" data-do="delete">Delete selected</button> <button class="btn" data-do="keep">Keep (hide)</button></div></div>`).join('') || '<div class="card"><p class="muted">Nothing to clean up. 🎉</p></div>'}`;
+      <div class="row" style="margin-top:10px;gap:8px"><button class="btn danger" data-do="delete">Delete selected</button> <button class="btn" data-do="keep">${g.keepResets ? 'Keep (restart their year)' : 'Keep (hide)'}</button></div></div>`).join('') || '<div class="card"><p class="muted">Nothing to clean up. 🎉</p></div>'}`;
   main().onclick = guard(async (e) => {
     const b = e.target.closest('[data-do]'); if (!b) return;
     const card = b.closest('[data-g]'), g = groups.find((x) => x.id === card.dataset.g);
     const keys = [...card.querySelectorAll('input[data-k]:checked')].map((i) => i.dataset.k);
     if (!keys.length) return toast('Tick at least one item first', true);
+    if (b.dataset.do === 'keep' && g.keepResets) { const now = new Date().toISOString().replace('T', ' '); for (const k of keys) await api('PATCH', `/api/collections/${state.usersColl}/records/${k.replace(/^inactive:/, '')}`, { lastActive: now }); toast(keys.length + ' kept'); return route(); }
     if (b.dataset.do === 'keep') { localStorage.setItem('pa.keptCleanup', JSON.stringify([...keptCleanup(), ...keys])); return route(); }
     if (g.single && keys.length > 1) return toast('Collections are deleted one at a time', true);
     if (g.single) { const name = keys[0].replace(/^collection:/, ''); if (prompt(`Type "${name}" to permanently delete this collection and its data.`) !== name) return; }

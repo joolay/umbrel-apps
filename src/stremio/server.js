@@ -42,6 +42,7 @@ function throttled(req) {
 }
 
 /* ---------- who is this (only used by /_jz/*, never by the proxy) ---------- */
+const activity = require("./activity");
 const cache = new Map();
 async function userFor(token) {
   if (!token) return null;
@@ -53,6 +54,7 @@ async function userFor(token) {
   catch (e) { if (!(e instanceof pb.PBError) || ![400, 401, 403, 404].includes(e.status)) throw e; }
   if (cache.size > 500) cache.clear();
   cache.set(token, { u, at: Date.now(), fresh });
+  if (u) activity.touch(u.id);
   return u;
 }
 const mayUse = u => !!u && (u.isAdmin || !u.portal || u.portal.access !== false);
