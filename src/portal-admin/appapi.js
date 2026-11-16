@@ -6,8 +6,12 @@
 const fs = require('fs'), path = require('path'), crypto = require('crypto');
 const makeClient = require('./appclient');
 const guardians = require('./guardians');
+const family = require('./family');
 // Guardian approvals (under-18s) run here, in one place for every app: call them as 'guardians.<name>'.
 const GUARD = ['createdSpouse', 'createdByParent', 'adminDecide', 'statusOf', 'checkParents', 'requestApproval', 'requestFamily', 'inbox', 'decide', 'revoke'];
+
+// Family (households, shared family orders) also runs here: call as 'family.<name>'. Managing a family stays on the dashboard itself.
+const FAMILY = ['mine', 'linkedIds', 'addOrder', 'listOrders', 'removeOrder'];
 
 const RAW = new Set(['asSuper', 'superFetch', 'ensureSchema', 'enabled', 'PBError', 'collection', 'app']);   // never callable through the API
 
@@ -39,7 +43,7 @@ module.exports = function makeAppApi({ pbx, DATA_DIR, readBody, send }) {
     const cl = makeClient({ url: pbx.url(), email: c.email, pass: c.pass, app });
     clients.set(app, { sig, cl }); return cl;
   }
-  const ALLOWED = new Set([...Object.entries(makeClient({ url: '', email: '', pass: '', app: 'x' })).filter(([k, v]) => typeof v === 'function' && !RAW.has(k)).map(([k]) => k), ...GUARD.map((n) => 'guardians.' + n), 'touchActive']);
+  const ALLOWED = new Set([...Object.entries(makeClient({ url: '', email: '', pass: '', app: 'x' })).filter(([k, v]) => typeof v === 'function' && !RAW.has(k)).map(([k]) => k), ...GUARD.map((n) => 'guardians.' + n), ...FAMILY.map((n) => 'family.' + n), 'touchActive']);
 
   // Apps say "this person just used me"; Portal Admin keeps one date per person so accounts unused for a year can be reviewed (Cleanup page).
   const lastTouch = new Map();
@@ -55,6 +59,7 @@ module.exports = function makeAppApi({ pbx, DATA_DIR, readBody, send }) {
     return null;
   }
 
+  const plain = (v) => (v instanceof Set ? [...v] : v);   // JSON can't carry a Set
   const bad = new Map();   // failed key attempts per caller: 20 per 10 minutes
   const fails = (ip) => { const n = Date.now(), a = (bad.get(ip) || []).filter((t) => n - t < 600e3); bad.set(ip, a); return a; };
 
@@ -68,7 +73,7 @@ module.exports = function makeAppApi({ pbx, DATA_DIR, readBody, send }) {
     let b; try { b = JSON.parse(await readBody(req, 256 * 1024)); } catch { return send(res, 400, { message: 'Invalid request.' }); }
     const fn = String(b.fn || '');
     if (!ALLOWED.has(fn)) return send(res, 200, { ok: false, status: 404, message: 'Unknown function: ' + fn });
-    try { const args = Array.isArray(b.args) ? b.args : [], r = fn === 'touchActive' ? await touchActive(args[0]) : fn.startsWith('guardians.') ? await guardians[fn.slice(10)](...args) : await client(app)[fn](...args); return send(res, 200, { ok: true, result: r === undefined ? null : r }); }
+    try { const args = Array.isArray(b.args) ? b.args : [], r = fn === 'touchActive' ? await touchActive(args[0]) : fn.startsWith('guardians.') ? await guardians[fn.slice(10)](...args) : fn.startsWith('family.') ? plain(await family[fn.slice(7)](...args)) : await client(app)[fn](...args); return send(res, 200, { ok: true, result: r === undefined ? null : r }); }
     catch (e) { return send(res, 200, { ok: false, status: Number(e.status) || 500, message: String(e.message || e), data: e.data || undefined }); }
   }
   return { handle, keys, allowed: [...ALLOWED], touchActive, forgetTouch };

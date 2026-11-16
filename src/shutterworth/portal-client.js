@@ -1,7 +1,9 @@
 "use strict";
 // Talks to Portal API (inside Portal Admin) instead of PocketBase. The app needs only POCKETBASE_PORTAL_URL and POCKETBASE_PORTAL_KEY,
 // both written into its data folder by Portal Admin > Changes. Same functions and errors as pocketbase.js, so the app code doesn't change.
-const FNS = ["portalUrl", "requestPasswordReset", "setUserPrefs", "portalAvailable", "setPortalAccess", "signupsOpen", "login", "verifyToken", "createUser", "listUsers", "getUser", "updateUser", "updateAccess", "deleteUser", "countAdmins", "findByEmail", "firstAdmin"];
+// This file is the same in every JoolzApp app.
+const FNS = ["portalUrl", "requestPasswordReset", "setUserPrefs", "portalAvailable", "setPortalAccess", "signupsOpen", "login", "verifyToken", "createUser", "listUsers", "getUser", "updateUser", "updateAccess", "deleteUser", "countAdmins", "findByEmail", "firstAdmin",
+  "trialUsed", "trialBump", "setDob", "getAppPref", "setAppPref", "clearAppPref"];
 module.exports = function portalClient(PBError) {
   const URL_BASE = (process.env.POCKETBASE_PORTAL_URL || "").replace(/\/+$/, ""), KEY = process.env.POCKETBASE_PORTAL_KEY || "";
   async function call(fn, args) {
@@ -10,8 +12,10 @@ module.exports = function portalClient(PBError) {
     catch (e) { throw new PBError(0, "Can't reach Portal Admin at " + URL_BASE + " (" + (e.cause?.code || e.message) + ")"); }
     const j = await r.json().catch(() => ({}));
     if (!r.ok) throw Object.assign(new PBError(r.status, j.message || "Portal API error " + r.status), { portalDenied: r.status === 401 });
-    if (!j.ok) throw new PBError(j.status || 500, j.message || "Portal API error", j.data);
+    // An older Portal Admin doesn't know newer functions yet: the caller can fall back to its own copy until Portal Admin is updated.
+    if (!j.ok) throw Object.assign(new PBError(j.status || 500, j.message || "Portal API error", j.data), { portalUnknown: j.status === 404 && /^Unknown function/.test(j.message || "") });
     return j.result;
   }
   return { call, fns: Object.fromEntries(FNS.map((fn) => [fn, (...args) => call(fn, args)])) };
 };
+module.exports.FNS = FNS;
