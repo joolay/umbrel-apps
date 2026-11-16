@@ -2,8 +2,8 @@ manifestVersion: 1
 id: joolay-stremio
 category: media
 name: Stremio
-version: "1.0.5"
-tagline: Stremio Web and streaming server
+version: "1.1.0"
+tagline: Stremio Web and streaming server, with your login kept safe
 description: >-
   Stremio all-in-one: the Stremio web interface and the Stremio streaming server bundled in one container.
 
@@ -24,7 +24,7 @@ gallery: []
 path: ""
 defaultUsername: ""
 defaultPassword: ""
-releaseNotes: "GPU passthrough now works: a pre-start hook re-adds /dev/dri after umbrelOS regenerates the compose file, so the streaming server can offer hardware transcode profiles (VAAPI)."
+releaseNotes: "Stremio now remembers your login: it is saved on your JoolzApp account and restored if the browser forgets it. Sync never blocks Stremio, which still opens behind your Umbrel login. Includes the GPU (VAAPI) hook."
 submitter: joolay
 submission: https://github.com/joolay/umbrel-apps
 icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/stremio.svg
