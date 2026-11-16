@@ -14,6 +14,7 @@ const guardians = require('./guardians');
 const family = require('./family');
 const events = require('./events');
 const paywall = require('./paywall');
+const makeChanges = require('./changes');
 const CHILD_REQ = '__child_account__', SPOUSE_REQ = '__spouse_account__';
 
 const PORT = Number(process.env.PORT || 3000);
@@ -57,12 +58,14 @@ function readBody(req, limit = 64 * 1024) {
   });
 }
 
-function proxy(req, res, pbUrl, subPath) {
+function proxy(req, res, pbUrl, subPath, opt = {}) {
   const target = new URL(pbUrl + subPath);
   const lib = target.protocol === 'https:' ? https : http;
   const headers = { ...req.headers, host: target.host };
   delete headers.origin; delete headers.referer; delete headers.cookie; delete headers['accept-encoding'];
+  if (opt.body !== undefined) headers['content-length'] = Buffer.byteLength(opt.body);
   const up = lib.request(target, { method: req.method, headers, timeout: 30000 }, (r) => {
+    if (opt.onStatus) opt.onStatus(r.statusCode || 502);
     const h = { ...r.headers, 'cache-control': 'no-store' };
     delete h['set-cookie'];
     res.writeHead(r.statusCode || 502, h);
@@ -70,7 +73,7 @@ function proxy(req, res, pbUrl, subPath) {
   });
   up.on('timeout', () => up.destroy(new Error('timeout')));
   up.on('error', (e) => { if (!res.headersSent) send(res, 502, { message: 'Cannot reach PocketBase: ' + e.message }); else res.destroy(); });
-  req.pipe(up);
+  if (opt.body !== undefined) up.end(opt.body); else req.pipe(up);
 }
 
 
@@ -232,10 +235,26 @@ function serveStatic(req, res, pathname) {
 }
 
 
+
+// ---- Who is calling, and sign-in guessing ---------------------------------------------------------------------
+// The caller is the right-most public address in X-Forwarded-For (what the first proxy that saw the internet appended, so a client
+// can't fake it by adding its own values on the left). On the home network there is no public hop, so the last address is used.
+function clientIp(req) {
+  const xs = String(req.headers['x-forwarded-for'] || '').split(',').map((x) => x.trim()).filter(Boolean);
+  for (let i = xs.length - 1; i >= 0; i--) if (!isPrivateAddr(xs[i])) return xs[i];
+  return xs.length ? xs[xs.length - 1] : String(req.socket.remoteAddress || '');
+}
+// Failed password sign-ins that pass through /pb: 10 per address and 20 per account name in a 10 minute window, then 429.
+const authFails = new Map();
+const failList = (k) => { const now = Date.now(), a = (authFails.get(k) || []).filter((t) => now - t < 600e3); if (a.length) authFails.set(k, a); else authFails.delete(k); return a; };
+const authBlocked = (ip, id) => failList('ip:' + ip).length >= 10 || (id && failList('id:' + id).length >= 20);
+function authFailed(ip, id) { for (const k of ['ip:' + ip, id && 'id:' + id]) if (k) authFails.set(k, [...failList(k), Date.now()]); if (authFails.size > 5000) authFails.clear(); }
+const authOk = (ip) => authFails.delete('ip:' + ip);
+
 // ---- The one JoolzApp sign-up. Every app sends people here, so a change to this page or these rules applies to all of them. ----
 const signupHits = new Map();
 function signupThrottled(req) {
-  const ip = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim(), now = Date.now();
+  const ip = clientIp(req), now = Date.now();
   const a = (signupHits.get(ip) || []).filter((t) => now - t < 3600e3); a.push(now); signupHits.set(ip, a);
   if (signupHits.size > 2000) signupHits.clear();
   return a.length > 10;
@@ -397,6 +416,7 @@ async function signup(req, res) {
   } catch (e) { return send(res, e instanceof pbx.PBError && e.status === 503 ? 503 : 500, { message: String(e.message || e) }); }
 }
 
+const changes = makeChanges({ pbx, installedApps, APPS_DIR, DATA_DIR: pbx.dataDir });
 const handle = async (req, res) => {
   try {
     const { pathname, search } = new URL(req.url, 'http://x');
@@ -419,6 +439,16 @@ const handle = async (req, res) => {
         if (req.method !== 'POST') return send(res, 405, { message: 'Method not allowed' });
         const b = JSON.parse(await readBody(req)); const me = await pbx.userForSuperuser(tok).catch(() => null);
         return send(res, 200, await paywall.adminAction(b, me));
+      } catch (e) { return send(res, e.status || 500, { message: String(e.message || e) }); }
+    }
+    if (pathname === '/admin/changes' || pathname === '/admin/changes/apply') {
+      if (isPublicRequest(req)) return send(res, 403, { message: 'Only available from your home network or tailnet.' });
+      const tok = String(req.headers.authorization || '');
+      if (!tok || !(await pbx.isSuperuser(tok))) return send(res, 401, { message: 'Admin only.' });
+      try {
+        if (pathname === '/admin/changes') return req.method === 'GET' ? send(res, 200, await changes.list()) : send(res, 405, { message: 'Method not allowed' });
+        if (req.method !== 'POST') return send(res, 405, { message: 'Method not allowed' });
+        const b = JSON.parse(await readBody(req)); return send(res, 200, await changes.apply(String(b.id || '')));
       } catch (e) { return send(res, e.status || 500, { message: String(e.message || e) }); }
     }
     if (pathname === '/forgot') {
@@ -450,6 +480,12 @@ const handle = async (req, res) => {
       const sub = pathname.slice(3) || '/';
       if (!sub.startsWith('/api/')) return send(res, 403, { message: 'Only /api/ is proxied.' });
       if (isPublicRequest(req)) { const why = publicBlockReason(req, sub); if (why) return send(res, 403, { message: why }); }
+      if (req.method === 'POST' && /^\/api\/collections\/[^/]+\/auth-with-password\/?$/.test(sub)) {
+        const ip = clientIp(req); let raw; try { raw = await readBody(req, 16 * 1024); } catch { return send(res, 413, { message: 'Request too large.' }); }
+        let who = ''; try { who = String(JSON.parse(raw).identity || '').trim().toLowerCase().slice(0, 200); } catch {}
+        if (authBlocked(ip, who)) return send(res, 429, { message: 'Too many sign-in attempts. Try again in a few minutes.' });
+        return proxy(req, res, pb, sub + (search || ''), { body: raw, onStatus: (st) => { if (st === 200) authOk(ip); else if (st >= 400 && st < 500 && st !== 429) authFailed(ip, who); } });
+      }
       return proxy(req, res, pb, sub + (search || ''));
     }
 

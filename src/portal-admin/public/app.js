@@ -303,7 +303,7 @@ window.addEventListener('hashchange', () => { if (resetToken()) return showReset
 function route() {
   let [, view = 'home', arg] = location.hash.split('/');
   if (state.role === 'user') view = (view === 'me' || view === 'family' || view === 'paid') ? view : 'home';
-  const v = { home: viewHome, overview: viewOverview, global: viewGlobal, apps: viewApps, users: viewUsers, requests: viewRequests, cleanup: viewCleanup, audit: viewAudit, setup: viewSetup, me: viewMe, family: viewFamily, paywall: viewPaywall, paid: viewPaid }[view] || viewHome;
+  const v = { home: viewHome, overview: viewOverview, global: viewGlobal, apps: viewApps, users: viewUsers, requests: viewRequests, cleanup: viewCleanup, audit: viewAudit, changes: viewChanges, setup: viewSetup, me: viewMe, family: viewFamily, paywall: viewPaywall, paid: viewPaid }[view] || viewHome;
   if (!v || v === viewHome) view = 'home';
   setBar(view); $('#acct').open && $('#acct').close(); $('#sheet').open && $('#sheet').close();
   main().innerHTML = '<p class="muted">Loading…</p>';
@@ -1389,6 +1389,7 @@ const GL = {
   users: '<circle cx="12" cy="8.5" r="3.5"/><path d="M5 20c.5-4 3.2-6 7-6s6.5 2 7 6"/>',
   requests: '<path d="M4 13l2.5-7.5h11L20 13v5.5H4z"/><path d="M4 13h4.5l1 2.5h5l1-2.5H20"/>',
   cleanup: '<path d="M5 7h14M10 7V4.5h4V7M7 7l1 12.5h8L17 7"/>',
+  changes: '<path d="M5 8h10M12 5l3 3-3 3M19 16H9M12 13l-3 3 3 3"/>',
   audit: '<rect x="5" y="3.5" width="14" height="17" rx="2.5"/><path d="M8.5 8.5h7M8.5 12h7M8.5 15.5h4"/>',
   setup: '<path d="M14.5 5a4 4 0 0 0-4.7 5.2L4 16l4 4 5.8-5.8A4 4 0 0 0 19 9.5l-2.6 2.6-2.6-.7-.7-2.6z"/>',
 };
@@ -1401,9 +1402,9 @@ const ICON_WARN = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 7v6M
 const ADMIN_TOOLS = [
   ['overview', 'Overview', ['#5b8cff', '#7c5cf0']], ['global', 'Global settings', ['#94a3b8', '#475569']], ['apps', 'Apps', ['#a855f7', '#6366f1']],
   ['users', 'Users', ['#10b981', '#0ea5e9']], ['requests', 'Access requests', ['#f43f5e', '#fb923c']], ['cleanup', 'Cleanup', ['#14b8a6', '#22c55e']],
-  ['paywall', 'Paid apps', ['#22c55e', '#0ea5e9']], ['audit', 'Audit log', ['#eab308', '#f97316']], ['setup', 'Setup', ['#0ea5e9', '#6366f1']],
+  ['paywall', 'Paid apps', ['#22c55e', '#0ea5e9']], ['audit', 'Audit log', ['#eab308', '#f97316']], ['changes', 'Changes', ['#8b5cf6', '#ec4899']], ['setup', 'Setup', ['#0ea5e9', '#6366f1']],
 ];
-const VIEW_TITLES = { overview: 'Overview', global: 'Global settings', apps: 'Apps', users: 'Users', requests: 'Access requests', cleanup: 'Cleanup', audit: 'Audit log', setup: 'Setup & integration', me: 'My settings', family: 'Family', paywall: 'Paid apps', paid: 'Payment' };
+const VIEW_TITLES = { overview: 'Overview', global: 'Global settings', apps: 'Apps', users: 'Users', requests: 'Access requests', cleanup: 'Cleanup', audit: 'Audit log', changes: 'PocketBase changes', setup: 'Setup & integration', me: 'My settings', family: 'Family', paywall: 'Paid apps', paid: 'Payment' };
 const PROTECTED = new Set(['sys:me', 'sys:admin']);
 const canFolder = (id) => !PROTECTED.has(id) && !String(id).startsWith('folder:');   // folders hold apps and Family, never nest, never hide the way back to Settings/Admin   // can't be hidden, so nobody loses the way back to their settings
 
@@ -1798,6 +1799,24 @@ async function viewHome() {
     const r = await fetch('/guardians', { method: 'POST', headers: { authorization: state.token, 'content-type': 'application/json' }, body: JSON.stringify(body) });
     if (!r.ok) throw new Error((await r.json().catch(() => ({}))).message || 'That did not work.');
     toast('Done'); return route();
+  });
+}
+
+let chgNotes = { id: '', notes: [] };
+async function viewChanges() {
+  const r = await acctFetch('/admin/changes');
+  const chip = (c) => c.status === 'done' ? '<span class="chip ok">up to date</span>' : c.status === 'error' ? '<span class="chip bad">problem</span>' : `<span class="chip warn">${c.plan.length} to do</span>`;
+  main().innerHTML = `<h1>PocketBase changes</h1><p class="sub">Changes that ship with Portal Admin. Each one shows exactly what it will do to PocketBase. Nothing happens until you press Apply, and applying twice is harmless.</p>
+    ${r.changes.map((c) => `<div class="card" data-id="${esc(c.id)}"><div class="row spread"><h2>${esc(c.title)}</h2>${chip(c)}</div><p class="muted small">${esc(c.summary)}</p>
+      ${c.error ? `<p class="error">${esc(c.error)}</p>` : c.plan.length ? `<ul>${c.plan.map((t) => `<li>${esc(t)}</li>`).join('')}</ul><button class="btn primary" data-apply>Apply ${c.plan.length} change${c.plan.length === 1 ? '' : 's'}</button>` : '<p class="muted small">Nothing to do.</p>'}
+      <div class="chg-out">${chgNotes.id === c.id ? chgNotes.notes.map((n) => `<p class="muted small">${esc(n)}</p>`).join('') : ''}</div></div>`).join('') || '<p class="muted">No changes are waiting.</p>'}
+    ${r.history.length ? `<div class="card"><h2>Recent</h2><table><tbody>${r.history.map((h) => `<tr><td class="small">${esc(fmtDay(h.at))}</td><td><code>${esc(h.id)}</code></td><td>${h.ok ? '<span class="chip ok">done</span>' : '<span class="chip warn">partly</span>'}</td></tr>`).join('')}</tbody></table></div>` : ''}`;
+  main().onclick = guard(async (e) => {
+    const b = e.target.closest('[data-apply]'); if (!b) return; const card = b.closest('.card'); b.disabled = true; b.textContent = 'Applying…';
+    const j = await acctFetch('/admin/changes/apply', { id: card.dataset.id });
+    await audit('pocketbase.change', card.dataset.id, { did: j.did, left: j.left });
+    toast(j.ok ? 'Applied' : 'Applied, but some items are still pending', !j.ok);
+    chgNotes = { id: card.dataset.id, notes: j.notes || [] }; await viewChanges();
   });
 }
 
