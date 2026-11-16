@@ -12,7 +12,9 @@ const { URL } = require('url');
 const pbx = require('./pocketbase');
 const guardians = require('./guardians');
 const family = require('./family');
-const CHILD_REQ = '__child_account__';
+const events = require('./events');
+const paywall = require('./paywall');
+const CHILD_REQ = '__child_account__', SPOUSE_REQ = '__spouse_account__';
 
 const PORT = Number(process.env.PORT || 3000);
 const PUBLIC_DIR = path.join(__dirname, 'public');
@@ -242,7 +244,7 @@ const validEmail = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(e) && e.length <=
 // Parents approve their kids' accounts here (and the kids' settings, such as joining a family).
 async function guardiansRoute(req, res) {
   const tok = String(req.headers.authorization || '');
-  const user = tok ? await pbx.userFromToken(tok).catch(() => null) : null;
+  const user = tok ? await personFromToken(tok) : null;
   if (!user) return send(res, 401, { message: 'Sign in to continue.' });
   try {
     if (req.method === 'GET') { const st = await guardians.statusOf(user), ib = await guardians.inbox(user); return send(res, 200, { minor: st.minor, adminPending: !!st.adminPending, parents: st.parents || [], ...ib }); }
@@ -256,26 +258,59 @@ async function guardiansRoute(req, res) {
 }
 
 // ---- Family and account details. These are managed here once for every JoolzApp app (the apps only link to this page). ----
+// Who is signed in, as a JoolzApp person: their own account token, or a PocketBase superuser token mapped to the account with the same email.
+// So the admin uses Family, Settings, events and everything else exactly as everyone else does.
+async function personFromToken(tok) {
+  const u = await pbx.userFromToken(tok).catch(() => null);
+  return u || (await pbx.userForSuperuser(tok).catch(() => null));
+}
 async function accountRoutes(req, res, pathname) {
   const tok = String(req.headers.authorization || '');
-  const user = tok ? await pbx.userFromToken(tok).catch(() => null) : null;
+  let user = tok ? await personFromToken(tok) : null;
   if (!user) return send(res, 401, { message: 'Sign in to continue.' });
   const out = (r) => (r.status ? send(res, r.status, { message: r.message }) : send(res, 200, r));
   try {
     let b = {}; if (req.method === 'POST') { try { b = JSON.parse(await readBody(req)); } catch { return send(res, 400, { message: 'Invalid request.' }); } }
+    if (pathname === '/paywall' && req.method === 'GET') return send(res, 200, await paywall.forPerson(user));
+    if (pathname === '/pay' && req.method === 'POST') { try { return send(res, 200, await paywall.startPayment(user, b.slug, b.scope)); } catch (e) { return send(res, e.status || 500, { message: String(e.message || e) }); } }
+    if (pathname === '/pay/status' && req.method === 'GET') return send(res, 200, await paywall.status(user, new URL(req.url, 'http://x').searchParams.get('slug')));
+    if (pathname === '/events' && req.method === 'GET') {
+      const sp = new URL(req.url, 'http://x').searchParams, days = Math.min(120, Math.max(1, parseInt(sp.get('days'), 10) || 60));
+      return send(res, 200, { events: await events.upcoming(user, sp.get('today'), days) });
+    }
     if (pathname === '/family/users' && req.method === 'GET') return send(res, 200, { users: (await pbx.listUsers()).filter((u) => u.id !== user.id) });
     if (pathname === '/family') {
       if (req.method === 'GET') return out(await family.mine(user));
       if (req.method !== 'POST') return send(res, 405, { message: 'Method not allowed' });
       const minor = guardians.isMinor(user);
       if (b.action === 'create') return minor ? out({ status: 403, message: 'A parent or guardian creates the family. They can invite you.' }) : out(await family.create(user, b.name));
+      if (b.action === 'unlinkSpouse') return out(await family.unlinkSpouse(user));
+      if (b.action === 'inviteSpouse') { if (minor) return out({ status: 403, message: 'Spouse links are for adults.' }); return out(await family.invite(user, b.email, 'family', 'Spouse', true)); }
+      if (b.action === 'createSpouse') {   // a household member makes their spouse's account; it is linked straight away and held until an admin approves it
+        if (minor) return out({ status: 403, message: 'Spouse accounts are for adults.' });
+        const bad = await family.spouseCheck(user); if (bad) return out(bad);
+        const email = String(b.email || '').trim().toLowerCase(), password = String(b.password || ''), name = String(b.name || '').trim().slice(0, 80), dob = String(b.dob || '').trim(), username = pbx.cleanUsername(b.username);
+        if (!/\S\s+\S/.test(name)) return out({ status: 400, message: "Enter your spouse's name and surname." });
+        if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return out({ status: 400, message: "Enter a valid email for your spouse's account." });
+        if (password.length < 8 || password.length > 200) return out({ status: 400, message: 'Use a password of at least 8 characters.' });
+        if (!guardians.validDob(dob) || guardians.ageOf(dob) < 18) return out({ status: 400, message: "Enter your spouse's date of birth. A spouse must be 18 or older." });
+        if (pbx.usernameError(username)) return out({ status: 400, message: pbx.usernameError(username) });
+        if (await pbx.findByUsername(username)) return out({ status: 400, message: 'That username is taken. Try another.' });
+        let sp;
+        try { sp = await pbx.createUser({ email, password, name, dob, username }); }
+        catch (e) { if (e instanceof pbx.PBError && e.status === 400) return out({ status: 400, message: e.data && e.data.email ? 'That email is already registered. Use "Link an existing account" instead.' : 'Those details were not accepted.' }); throw e; }
+        await guardians.createdSpouse(sp, user);
+        const linked = await family.linkCreatedSpouse(user, sp); if (linked.status) return out(linked);
+        await pbx.asSuper('POST', '/api/collections/portal_requests/records', { user: sp.id, email, app: SPOUSE_REQ, message: `${name}, spouse account created by ${user.name || user.email}`, status: 'pending' }).catch(() => {});
+        return send(res, 200, { ...linked, notice: `${name}'s account is created and linked as your spouse. It can be used once an admin approves it.` });
+      }
       if (b.action === 'invite') return out(await family.invite(user, b.email, b.tier, b.relation));
       if (b.action === 'createChild') {   // a parent makes a child's account; it is held until an admin approves it
         if (minor) return out({ status: 403, message: 'Only a parent or guardian can create an account for a child.' });
         const mineF = (await family.mine(user)).family;
         if (!mineF || !mineF.canManage) return out({ status: 400, message: 'Create a family first, or ask its creator to make you a manager.' });
         const email = String(b.email || '').trim().toLowerCase(), password = String(b.password || ''), name = String(b.name || '').trim().slice(0, 80), dob = String(b.dob || '').trim(), username = pbx.cleanUsername(b.username);
-        if (!name) return out({ status: 400, message: "Enter the child's name." });
+        if (!/\S\s+\S/.test(name)) return out({ status: 400, message: "Enter the child's name and surname." });
         if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return out({ status: 400, message: "Enter a valid email for the child's account." });
         if (password.length < 8 || password.length > 200) return out({ status: 400, message: 'Use a password of at least 8 characters.' });
         if (!guardians.validDob(dob) || guardians.ageOf(dob) >= 18) return out({ status: 400, message: "Enter the child's date of birth. This page is for under-18s; adults sign up themselves." });
@@ -339,6 +374,7 @@ async function signup(req, res) {
   try {
     if (!(await pbx.usersSchema())) return send(res, 403, { message: 'Sign-ups are currently closed. Ask the admin for an account.' });
     const email = String(b.email || '').trim().toLowerCase(), password = String(b.password || ''), name = String(b.name || '').trim().slice(0, 80), dob = String(b.dob || '').trim();
+    if (!/\S\s+\S/.test(name)) return send(res, 400, { message: 'Enter your name and surname.' });
     if (!validEmail(email)) return send(res, 400, { message: 'Enter a valid email address.' });
     if (password.length < 8 || password.length > 200) return send(res, 400, { message: 'Use a password of at least 8 characters.' });
     if (!guardians.validDob(dob)) return send(res, 400, { message: 'Enter your date of birth.' });
@@ -368,7 +404,23 @@ const handle = async (req, res) => {
 
     if (pathname === '/signup-config') { if (req.method !== 'GET') return send(res, 405, { message: 'Method not allowed' }); return signupConfig(req, res); }
     if (pathname === '/guardians') return guardiansRoute(req, res);
-    if (pathname === '/family' || pathname === '/family/users' || pathname === '/account/dob' || pathname === '/account/username' || pathname === '/account/guardian') return accountRoutes(req, res, pathname);
+    if (pathname === '/family' || pathname === '/events' || pathname === '/paywall' || pathname === '/pay' || pathname === '/pay/status' || pathname === '/family/users' || pathname === '/account/dob' || pathname === '/account/username' || pathname === '/account/guardian') return accountRoutes(req, res, pathname);
+    if (pathname === '/yoco/webhook') {
+      if (req.method !== 'POST') return send(res, 405, { message: 'Method not allowed' });
+      const raw = await readBody(req); const r = await paywall.handleWebhook(req.headers, raw);
+      return send(res, r.status, { ok: r.status === 200 });
+    }
+    if (pathname === '/admin/paywall') {
+      if (isPublicRequest(req)) return send(res, 403, { message: 'Only available from your home network or tailnet.' });
+      const tok = String(req.headers.authorization || '');
+      if (!tok || !(await pbx.isSuperuser(tok))) return send(res, 401, { message: 'Admin only.' });
+      try {
+        if (req.method === 'GET') return send(res, 200, await paywall.adminView());
+        if (req.method !== 'POST') return send(res, 405, { message: 'Method not allowed' });
+        const b = JSON.parse(await readBody(req)); const me = await pbx.userForSuperuser(tok).catch(() => null);
+        return send(res, 200, await paywall.adminAction(b, me));
+      } catch (e) { return send(res, e.status || 500, { message: String(e.message || e) }); }
+    }
     if (pathname === '/forgot') {
       if (req.method !== 'POST') return send(res, 405, { message: 'Method not allowed' });
       if (signupThrottled(req)) return send(res, 429, { message: 'Too many attempts. Try again later.' });
@@ -413,6 +465,8 @@ const handle = async (req, res) => {
 // PocketBase admin APIs stay refused no matter how the tunnel forwards or labels traffic. Set PUBLIC_PORT=0 to turn it off.
 const PUBLIC_PORT = Number(process.env.PUBLIC_PORT === undefined ? 3001 : process.env.PUBLIC_PORT);
 const server = http.createServer(handle);
+setInterval(() => paywall.sweep().catch((e) => console.error('paywall sweep:', e.message)), 3600e3).unref();
+setTimeout(() => paywall.sweep().catch(() => {}), 20e3).unref();
 server.listen(PORT, '0.0.0.0', () => console.log(`Portal Admin listening on :${PORT}`));
 let pubServer = null;
 if (PUBLIC_PORT && PUBLIC_PORT !== PORT) {

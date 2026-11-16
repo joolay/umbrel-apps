@@ -44,3 +44,42 @@ People who sign in (not admins) land on the **Dashboard**: every app registered 
 address (signed in already where the app supports it); apps they aren't approved for show a request form. Admins have a
 **Dashboard** link in the sidebar to preview exactly what users see. On the public address the page is branded JoolzApp.
 **My settings** has three tabs: Preferences, AI and Account (account deletion request).
+
+
+## Events and the Organiser
+
+The home screen has an **Upcoming** ticker in the top bar (tap it for the full list). It reads `GET /events?days=60&today=YYYY-MM-DD` with the person's own token, served by `events.js`.
+Each event is `{ id, kind, title, sub, date, time?, allDay, source, link? }`; `kind` picks the icon (`birthday`, `pickup`, `notice`, anything else = calendar).
+
+Providers today:
+- **Birthdays** (built in): everyone in the person's circle: their household, its extended relatives, and the households they are extended family of. Only the day, month and the age they turn leave the server. A PocketBase superuser sees the ticker too, as the JoolzApp person with the same email address (if none exists, there is nothing to show).
+- **Organiser hook**: the planned Organiser app (family events, notices, school pick-up schedules) writes rows to a PocketBase collection `portal_events` and they appear with no change here.
+  Fields: `title`, `start` (`YYYY-MM-DD` or `YYYY-MM-DD HH:MM`), `kind`, `sub`, `link`, `source`, `familyId` (a `joolz_families` id: shown to that family's circle) and/or `userIds` (comma-wrapped ids, e.g. `,u1,u2,`: shown to those people). A row with neither is shown to everyone. If the collection does not exist yet, nothing breaks.
+
+## Paid apps (Yoco)
+
+Admin > Paid apps locks an app behind a Yoco payment. It reuses the `portal.access` rows, so no other app needs changing: a locked app has an app-level
+`portal.access=false`, and each person who pays (or is chosen by the admin) gets a user-level `portal.access=true` plus a `portal.entitlement` row
+(`{until, via: yoco|admin|household, paymentId, payerId, familyId, amount}`). The admin always keeps access.
+
+- Per app (`app.paywall`, app scope): `{mode: once|period, days, price, householdPrice}` in cents. Yoco takes ZAR only, minimum R2.
+- Pay: `POST /pay {slug, scope: person|household}` creates a Yoco checkout and returns `redirectUrl`; the person returns to `#/paid/<slug>`, which polls `/pay/status`.
+- Unlock: Yoco calls `POST /yoco/webhook` (public listener, Standard Webhooks signature, `payment.succeeded`, our `metadata.kind = joolzapp-access`, amount must match). The redirect alone never unlocks.
+- The webhook needs the public (Funnel) address. Set it under Paid apps > Yoco, then Register webhook. Without it the admin can still unlock people by hand.
+- An hourly sweep expires passes and keeps household passes in step with the household's members.
+- Config lives in `portal_settings` (global): `yoco.secretKey`, `yoco.webhookSecret` (both secret) and `yoco.publicUrl`.
+
+## Spouse links
+
+Spouse is a special, one-at-a-time link between two adults in the same household (Family > Spouse). Stored on the household's member records
+(`spouse: <other id>`; the pending request carries `spouseOf`). Two ways in:
+- **Link an existing account** (`inviteSpouse`): a request the other person accepts under Family. Refused if either already has a spouse.
+- **Create a new account** (`createSpouse`): the creator is linked straight away; the new adult account is held for admin approval
+  (`joolz_guardians` row `kind=admin`, plus a `portal_requests` row `__spouse_account__`). `guardians.statusOf` reports `adminPending` for adults too.
+`unlinkSpouse` clears both sides. A linked spouse can't be moved out of the household until unlinked.
+
+## Home screen: folders, dock and background
+
+- **Folders:** in rearrange mode, hold one icon over another (or press New folder) to make a folder; hold an icon over a folder to add it. Folders can sit on the grid or in the dock, never nest, and can't hold Settings/Admin. Stored in the same `pref.home.layout` row: `folders: { <id>: { name, items: [ids] } }`; the grid/dock list them as `folder:<id>`.
+- **Dock:** icons grow as the mouse approaches (mouse only).
+- **Background:** an animated, Umbrel-style colour-glow backdrop (`#bg`). Chosen in My settings > Preferences: `pref.background` (aurora, sunset, ocean, forest, violet, plain) and `pref.backgroundMotion` (animated, still). Reduced-motion devices never animate.

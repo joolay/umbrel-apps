@@ -74,11 +74,12 @@ async function save(rec, members, invited, owner, extended) {
   if (owner) { patch.owner = owner.id; patch.ownerName = owner.name; }
   return pb.asSuper("PATCH", `${famBase}/records/${encodeURIComponent(rec.id)}`, patch);
 }
-const norm = m => ({ id: m.id, name: m.name || "", tier: tierOf(m), relation: str(m.relation, 40), manager: !!m.manager, ...(m.email ? { email: m.email } : {}) });
+const norm = m => ({ id: m.id, name: m.name || "", tier: tierOf(m), relation: str(m.relation, 40), manager: !!m.manager, ...(m.email ? { email: m.email } : {}), ...(m.spouse ? { spouse: m.spouse } : {}), ...(m.spouseOf ? { spouseOf: m.spouseOf } : {}) });
 const normExt = m => ({ id: m.id, name: m.name || "", relation: str(m.relation, 40) });
 const canManage = (rec, userId) => rec.owner === userId || !!(rec.members || []).find(m => m.id === userId && m.manager);
 const shapeFam = (rec, user) => { if (!rec) return null; const members = (rec.members || []).map(norm), me = members.find(m => m.id === user.id);
   return { id: rec.id, name: rec.name, owner: rec.owner, ownerName: rec.ownerName || "", isOwner: rec.owner === user.id, canManage: canManage(rec, user.id), myTier: "family",
+    spouse: me && me.spouse ? ((members.find(m => m.id === me.spouse) || {}).name || "") : "", spouseId: me && me.spouse ? me.spouse : "",
     members, extended: (rec.extended || []).map(normExt), invited: canManage(rec, user.id) ? (rec.invited || []).map(norm) : [] }; };
 // Only the household shares family expenses (extended relatives are not in `members`).
 async function immediate(user) {
@@ -95,7 +96,7 @@ async function mine(user) {
   const inviteFor = r => (r.invited || []).find(m => m.id === user.id || (m.email && m.email === em)) || {};
   return { family: shapeFam(fam, user),
     extendedIn: ext.filter(r => !fam || r.id !== fam.id).map(r => ({ id: r.id, name: r.name, ownerName: r.ownerName || "", relation: str(((r.extended || []).find(e => e.id === user.id) || {}).relation, 40) })),
-    invites: (j.items || []).map(r => { const i = inviteFor(r); return { id: r.id, name: r.name, ownerName: r.ownerName || "", tier: tierOf(i), relation: str(i.relation, 40) }; }) };
+    invites: (j.items || []).map(r => { const i = inviteFor(r); return { id: r.id, name: r.name, ownerName: r.ownerName || "", tier: tierOf(i), relation: str(i.relation, 40), spouse: !!i.spouseOf }; }) };
 }
 const fail = (status, message) => ({ status, message });
 
@@ -107,10 +108,16 @@ async function create(user, name) {
   await pb.asSuper("POST", famBase + "/records", { name, owner: me.id, ownerName: me.name, members: [me], invited: [], memberIds: tag([me.id]), invitedIds: tag([]) });
   return mine(user);
 }
-async function invite(user, email, tier, relation) {
+async function invite(user, email, tier, relation, spouse) {
   await ensure();
   const fam = await familyOf(user.id); if (!fam) return fail(400, "Create a family first.");
-  if (!canManage(fam, user.id)) return fail(403, "Only the creator or a manager can invite.");
+  const self = (fam.members || []).find(m => m.id === user.id);
+  if (spouse) {   // a spouse is a one-at-a-time link between two people in the same household; any member can ask for their own
+    if (!self) return fail(403, "Join the household first.");
+    if (self.spouse) return fail(400, "You already have a spouse linked. Unlink them first.");
+    if ((fam.invited || []).some(i => i.spouseOf === user.id)) return fail(400, "You already have a spouse request waiting. Cancel it first.");
+    tier = "family"; relation = "Spouse";
+  } else if (!canManage(fam, user.id)) return fail(403, "Only the creator or a manager can invite.");
   email = str(email, 200).toLowerCase(); if (!/^\S+@\S+\.\S+$/.test(email)) return fail(400, "Enter their JoolzApp email address.");
   const t = await pb.findByEmail(email);
   const members = fam.members || [], invited = fam.invited || [];
@@ -118,7 +125,7 @@ async function invite(user, email, tier, relation) {
     if (invited.some(m => m.email === email)) return fail(400, "They've already been invited.");
     if (members.length + invited.length >= MAX_MEMBERS) return fail(400, "That family is full.");
     tier = TIERS.includes(tier) ? tier : "family";
-    await save(fam, members, [...invited, { id: "em" + require("crypto").createHash("sha1").update(email).digest("hex").slice(0, 12), email, name: email, tier, relation: str(relation, 40) }]);
+    await save(fam, members, [...invited, { id: "em" + require("crypto").createHash("sha1").update(email).digest("hex").slice(0, 12), email, name: email, tier, relation: str(relation, 40), ...(spouse ? { spouseOf: user.id } : {}) }]);
     return { ...(await mine(user)), notice: "They don't have a JoolzApp account yet. The invitation will be waiting when they sign up with " + email + "." };
   }
   if (members.some(m => m.id === t.id)) return fail(400, "They're already in your household.");
@@ -130,7 +137,7 @@ async function invite(user, email, tier, relation) {
     const other = await familyOf(t.id);
     if (other && other.id !== fam.id) return fail(400, "They already belong to another household. Link them as extended family instead (they can be extended family of any number of families).");
   }
-  await save(fam, members, [...invited, { id: t.id, name: nameOf(t), tier, relation: str(relation, 40) }]);
+  await save(fam, members, [...invited, { id: t.id, name: nameOf(t), tier, relation: str(relation, 40), ...(spouse ? { spouseOf: user.id } : {}) }]);
   return mine(user);
 }
 async function respond(user, familyId, accept) {
@@ -146,9 +153,16 @@ async function respond(user, familyId, accept) {
     await save(fam, fam.members || [], rest, null, extended);
     return mine(user);
   }
+  let members = fam.members || [];
+  if (mine_.spouseOf) {
+    const asker = members.find(m => m.id === mine_.spouseOf);
+    if (!asker) return fail(400, "The person who asked is no longer in this household.");
+    if (asker.spouse) return fail(400, "They already have a spouse linked.");
+    members = members.map(m => m.id === asker.id ? { ...m, spouse: user.id } : m);
+  }
   const cur = await familyOf(user.id);
   if (cur && cur.id !== fam.id) return fail(400, "You already live in another household. Leave it first to join this one, or ask to be linked as extended family.");
-  await save(fam, [...(fam.members || []), { id: user.id, name: nameOf(user), tier: "family", relation: mine_.relation || "" }], rest, null, (fam.extended || []).filter(e => e.id !== user.id));
+  await save(fam, [...members, { id: user.id, name: nameOf(user), tier: "family", relation: mine_.relation || "", ...(mine_.spouseOf ? { spouse: mine_.spouseOf } : {}) }], rest, null, (fam.extended || []).filter(e => e.id !== user.id));
   return mine(user);
 }
 // Leaving (or the owner removing someone). The owner role passes on if the owner leaves; an empty family is deleted.
@@ -167,9 +181,39 @@ async function drop(user, memberId) {
     if (memberId === fam.owner) return fail(403, "The creator can't be removed.");
     if (target && target.manager && fam.owner !== user.id) return fail(403, "Only the creator can remove a manager.");
   }
-  const members = (fam.members || []).filter(m => m.id !== memberId), invited = (fam.invited || []).filter(m => m.id !== memberId);
+  const members = (fam.members || []).filter(m => m.id !== memberId).map(m => { if (m.spouse !== memberId) return m; const { spouse, ...rest } = m; return { ...rest, relation: m.relation === "Spouse" ? "" : m.relation }; }), invited = (fam.invited || []).filter(m => m.id !== memberId && m.spouseOf !== memberId);
   if (!members.length) { await pb.asSuper("DELETE", `${famBase}/records/${encodeURIComponent(fam.id)}`); return mine(user); }
   await save(fam, members, invited, fam.owner === memberId ? members[0] : null);
+  return mine(user);
+}
+
+// Spouse accounts: a new account made by a household member is linked straight away (the creator asked for it); an existing account is invited (see invite).
+async function linkCreatedSpouse(user, spouseUser) {
+  await ensure();
+  const fam = await familyOf(user.id); if (!fam) return fail(400, "Create a family first.");
+  const self = (fam.members || []).find(m => m.id === user.id);
+  if (!self) return fail(403, "Join the household first.");
+  if (self.spouse) return fail(400, "You already have a spouse linked.");
+  if ((fam.members || []).length + (fam.invited || []).length >= MAX_MEMBERS) return fail(400, "That household is full.");
+  const members = (fam.members || []).map(m => m.id === user.id ? { ...m, spouse: spouseUser.id } : m);
+  await save(fam, [...members, { id: spouseUser.id, name: nameOf(spouseUser), tier: "family", relation: "Spouse", spouse: user.id }], fam.invited || [], null, (fam.extended || []).filter(e => e.id !== spouseUser.id));
+  return mine(user);
+}
+async function spouseCheck(user) {   // can this person still add a spouse?
+  const fam = await familyOf(user.id); if (!fam) return fail(400, "Create a family first.");
+  const self = (fam.members || []).find(m => m.id === user.id);
+  if (!self) return fail(403, "Join the household first.");
+  if (self.spouse) return fail(400, "You already have a spouse linked. Unlink them first.");
+  if ((fam.members || []).length + (fam.invited || []).length >= MAX_MEMBERS) return fail(400, "That household is full.");
+  return null;
+}
+async function unlinkSpouse(user) {
+  await ensure();
+  const fam = await familyOf(user.id); if (!fam) return fail(400, "You are not in a family.");
+  const self = (fam.members || []).find(m => m.id === user.id);
+  if (!self || !self.spouse) return fail(400, "No spouse is linked.");
+  const other = self.spouse;
+  await save(fam, (fam.members || []).map(m => { if (m.id !== user.id && m.id !== other) return m; const { spouse, ...rest } = m; return { ...rest, relation: m.relation === "Spouse" ? "" : m.relation }; }), fam.invited || []);
   return mine(user);
 }
 
@@ -201,6 +245,7 @@ async function setTier(user, memberId, tier, relation) {
   const inHome = members.find(m => m.id === memberId), inExt = extended.find(m => m.id === memberId);
   if (!inHome && !inExt) return fail(404, "They aren't in the family.");
   const rel = str(relation !== undefined ? relation : (inHome || inExt).relation, 40);
+  if (tier === "extended" && inHome && inHome.spouse) return fail(400, "Unlink their spouse link before moving them out of the household.");
   tier = TIERS.includes(tier) ? tier : (inHome ? "family" : "extended");
   if (inHome && tier === "extended") {   // moved out of the household
     if (members.length <= 1) return fail(400, "The household needs at least one member.");
@@ -248,4 +293,19 @@ async function linkedIds(user) {
   const fam = await familyOf(user.id);
   return new Set(fam ? (fam.members || []).map(m => m.id).filter(id => id !== user.id) : []);
 }
-module.exports = { leaveExtended, setManager, linkedIds, mine, create, invite, respond, drop, setTier, addOrder, listOrders, removeOrder };
+// Everyone this person shares events with: their household and its extended relatives, plus the households they are extended family of.
+async function circleIds(user) {
+  await ensure();
+  const out = new Set([user.id]);
+  const fam = await familyOf(user.id);
+  if (fam) { (fam.members || []).forEach(m => out.add(m.id)); (fam.extended || []).forEach(m => out.add(m.id)); }
+  for (const f of await extendedOf(user.id)) (f.members || []).forEach(m => out.add(m.id));
+  return { householdId: fam ? fam.id : "", ids: out, familyIds: [...(fam ? [fam.id] : []), ...(await extendedOf(user.id)).map(f => f.id)] };
+}
+// Current household member ids of one family record (used to keep a household's paid access in step with who lives there).
+async function memberIdsOf(familyId) {
+  await ensure();
+  try { const r = await pb.asSuper("GET", `${famBase}/records/${encodeURIComponent(clean(familyId))}`); return (await fixup(r)).members.map(m => m.id); }
+  catch (e) { if (e.status === 404) return []; throw e; }
+}
+module.exports = { linkCreatedSpouse, spouseCheck, unlinkSpouse, memberIdsOf, circleIds, leaveExtended, setManager, linkedIds, mine, create, invite, respond, drop, setTier, addOrder, listOrders, removeOrder };

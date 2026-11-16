@@ -9,7 +9,7 @@ const store = {
   lset: (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch {} },
 };
 const sess = (k) => store.get('pa.' + k) || store.lget('pa.' + k);
-const state = { token: sess('token'), actor: sess('actor'), role: sess('role') || 'admin', uid: sess('uid'), usersColl: store.lget('pa.usersColl', 'users') };
+const state = { token: sess('token'), actor: sess('actor'), role: sess('role') || 'admin', uid: sess('uid'), pid: sess('pid') || '', usersColl: store.lget('pa.usersColl', 'users') };
 const SLUG = /^[a-z0-9][a-z0-9_-]{0,47}$/;
 const RESERVED = [
   ['portal.access', 'boolean', 'false blocks a user (all apps, or one app) from using the app'],
@@ -201,6 +201,7 @@ $('#signup-form').onsubmit = async (e) => {
     const r = await fetch('/signup', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email, password, username: $('#signup-username').value.trim(), name: $('#signup-name').value.trim(), dob: $('#signup-dob').value, parentEmails: kidMode() ? [$('#signup-parent').value] : [] }) });
     const j = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(j.message || 'Could not create that account.');
+    state.pid = ''; state.pidTried = false;
     Object.assign(state, await signIn(email, password));
     state.usernameOk = true;
     saveSession(false);
@@ -235,16 +236,26 @@ $('#reset-form').onsubmit = async (e) => {
 // and on the public address (the server tells us which one we are on through /config).
 function setBrand(name) { document.querySelectorAll('.brand span').forEach((n) => { n.textContent = name; }); document.title = name; }
 fetch('/config').then((r) => r.json()).then((c) => { state.public = !!c.public; if (state.public) setBrand('JoolzApp'); }).catch(() => {});
-function showShell() {
+async function showShell() {
+  await resolvePid();
   setBrand(state.role === 'user' || state.public ? 'JoolzApp' : 'Portal Admin');
   $('#login').classList.add('hidden'); $('#shell').classList.remove('hidden');
   $('#who').textContent = state.actor; route(); startDetecting();
   homeModel().then((m) => { if (!HM) HM = m; renderDock(); }).catch(() => {});   // so the dock is there on every page
-  if (state.role === 'user' && state.uid) seedRegional().catch(() => {});
+  if (selfId()) { seedRegional().then(loadDatePref).catch(loadDatePref); loadAppearance(); }
+  loadEvents();
 }
-const SESSION_KEYS = ['token', 'actor', 'role', 'uid'];
+const SESSION_KEYS = ['token', 'actor', 'role', 'uid', 'pid'];
+// The JoolzApp person behind this sign-in. A regular user is themselves; the PocketBase superuser is the account with the same email (if any),
+// so the admin gets Family, Settings, events, layout and everything else just like everyone else.
+const selfId = () => (state.role === 'user' ? state.uid : state.pid) || '';
+async function resolvePid() {
+  if (state.role === 'user' || state.pid || state.pidTried || !state.token) return;
+  state.pidTried = true;
+  try { const r = await api('GET', `/api/collections/${state.usersColl}/records?perPage=1&filter=${q('email = ' + fq(String(state.actor || '').toLowerCase()))}`); state.pid = (r.items[0] && r.items[0].id) || ''; saveSession(!!store.lget('pa.remember')); } catch { /* no linked account */ }
+}
 function saveSession(remember) { SESSION_KEYS.forEach((k) => { store.set('pa.' + k, state[k]); store.lset('pa.' + k, remember ? state[k] : null); }); }
-function logout() { SESSION_KEYS.forEach((k) => { state[k] = ''; store.set('pa.' + k, null); store.lset('pa.' + k, null); }); state.role = 'admin'; showLogin(); }
+function logout() { SESSION_KEYS.forEach((k) => { state[k] = ''; store.set('pa.' + k, null); store.lset('pa.' + k, null); }); state.role = 'admin'; state.pidTried = false; showLogin(); }
 async function signIn(identity, password) {
   identity = String(identity || '').trim(); if (!identity.includes('@')) identity = identity.toLowerCase();   // usernames are saved in lower case
   let adminBlocked = false;
@@ -265,6 +276,7 @@ $('#login-form').onsubmit = async (e) => {
   e.preventDefault(); $('#login-err').textContent = '';
   try {
     const email = $('#login-email').value.trim();
+    state.pid = ''; state.pidTried = false;
     Object.assign(state, await signIn(email, $('#login-pass').value));
     const remember = $('#login-remember').checked;
     saveSession(remember);
@@ -290,8 +302,8 @@ $('#login-forgot').onclick = async (e) => {
 window.addEventListener('hashchange', () => { if (resetToken()) return showReset(); state.token && route(); });
 function route() {
   let [, view = 'home', arg] = location.hash.split('/');
-  if (state.role === 'user') view = (view === 'me' || view === 'family') ? view : 'home';
-  const v = { home: viewHome, overview: viewOverview, global: viewGlobal, apps: viewApps, users: viewUsers, requests: viewRequests, cleanup: viewCleanup, audit: viewAudit, setup: viewSetup, me: viewMe, family: viewFamily }[view] || viewHome;
+  if (state.role === 'user') view = (view === 'me' || view === 'family' || view === 'paid') ? view : 'home';
+  const v = { home: viewHome, overview: viewOverview, global: viewGlobal, apps: viewApps, users: viewUsers, requests: viewRequests, cleanup: viewCleanup, audit: viewAudit, setup: viewSetup, me: viewMe, family: viewFamily, paywall: viewPaywall, paid: viewPaid }[view] || viewHome;
   if (!v || v === viewHome) view = 'home';
   setBar(view); $('#acct').open && $('#acct').close(); $('#sheet').open && $('#sheet').close();
   main().innerHTML = '<p class="muted">Loading…</p>';
@@ -677,7 +689,7 @@ async function userList(page = 1, search = '') {
 async function userDetail(id) {
   if (id === '__new') {
     main().innerHTML = `<div class="crumb"><a href="#/users">← Users</a></div><h1>Add user</h1><form id="f" class="card"><div class="kv">
-      <label>Email<input name="email" type="email" required></label><label>Name<input name="name"></label>
+      <label>Email<input name="email" type="email" required></label><label>Name and surname<input name="name" required pattern=".*\\S\\s+\\S.*" title="Enter a name and surname"></label>
       <label>Password (min 8)<input name="password" type="password" minlength="8" required></label></div>
       <label class="inline"><input type="checkbox" name="verified" checked> Mark as verified</label><button class="btn primary">Create user</button></form>`;
     $('#f').onsubmit = guard(async (e) => {
@@ -853,7 +865,7 @@ async function findCleanup() {
   add('apps', 'Settings of apps that are no longer registered', 'The app they belong to is not in your Apps list.',
     settings.filter((r) => r.app && !slugs.has(r.app) && !used.has('portal_settings:' + r.id)).map((r) => rec('portal_settings', r, r.key, r.app + (r.scope === 'user' ? ' · user ' + r.user : ''))));
   add('reqs', 'Access requests that can no longer be answered', 'The person was deleted or the app is no longer registered.',
-    reqs.filter((r) => (usersKnown && !userIds.has(r.user)) || (r.app !== DEL_REQ && r.app !== CHILD_REQ && !slugs.has(r.app))).map((r) => rec('portal_requests', r, (r.email || r.user) + ' → ' + (r.app === DEL_REQ ? 'account deletion' : r.app), r.status || '')));
+    reqs.filter((r) => (usersKnown && !userIds.has(r.user)) || (r.app !== DEL_REQ && r.app !== CHILD_REQ && r.app !== SPOUSE_REQ && !slugs.has(r.app))).map((r) => rec('portal_requests', r, (r.email || r.user) + ' → ' + (r.app === DEL_REQ ? 'account deletion' : r.app), r.status || '')));
   if (installed) {
     const gone = apps.filter((a) => !installed.slugs.has(a.slug));
     add('uninstalled', 'Apps no longer installed on this Umbrel', 'Removing one also removes its settings and per-user overrides.',
@@ -911,7 +923,7 @@ async function viewCleanup() {
 async function viewRequests() {
   if (await needSetup()) return;
   const [reqs, apps] = await Promise.all([listAll('portal_requests', { sort: '-created', max: 500 }), listAll('portal_apps')]);
-  const appName = (slug) => slug === DEL_REQ ? 'Account deletion' : slug === CHILD_REQ ? "Child's account (created by a parent)" : (apps.find((a) => a.slug === slug) || {}).name || slug;
+  const appName = (slug) => slug === DEL_REQ ? 'Account deletion' : slug === CHILD_REQ ? "Child's account (created by a parent)" : slug === SPOUSE_REQ ? "Spouse's account (created by their spouse)" : (apps.find((a) => a.slug === slug) || {}).name || slug;
   const pending = reqs.filter((r) => r.status === 'pending'), done = reqs.filter((r) => r.status !== 'pending');
   main().innerHTML = `<h1>Access requests</h1><p class="sub">Users asking for access to individual Joolzapp apps, and account deletion requests. Approving access sets <code>portal.access = true</code> for that user and app; confirming a deletion permanently removes the user and their settings.</p>
     <div class="card"><h2>Pending (${pending.length})</h2><table><tbody>${pending.map((r) => `<tr><td><b>${esc(r.email || r.user)}</b><div class="muted small">${esc(fmtDate(r.created))}</div></td>
@@ -927,7 +939,7 @@ async function viewRequests() {
       for (const x of await listAll('portal_settings', { filter: `scope = "user" && user = ${fq(r.user)}` })) await api('DELETE', `/api/collections/portal_settings/records/${x.id}`);
       await api('DELETE', `/api/collections/${state.usersColl}/records/${r.user}`);
       await audit('user.delete', r.user, { email: r.email, via: 'deletion request' });
-    } else if (r.app === CHILD_REQ) {
+    } else if (r.app === CHILD_REQ || r.app === SPOUSE_REQ) {
       for (const x of await listAll('joolz_guardians', { filter: `childId = ${fq(r.user)} && kind = "admin"` })) await api('PATCH', `/api/collections/joolz_guardians/records/${x.id}`, { status: approve ? 'approved' : 'declined', decidedAt: new Date().toISOString() });
     } else if (approve) {
       const ex = (await listAll('portal_settings', { filter: `scope = "user" && user = ${fq(r.user)} && app = ${fq(r.app)} && key = "portal.access"` }))[0];
@@ -941,6 +953,118 @@ async function viewRequests() {
 }
 
 
+
+
+/* ---------- Upcoming events ticker ----------
+   Scrolls in the top bar on the home screen. Today it carries birthdays; the Organiser app will add family events, notices and school pickups
+   through the same /events feed (see events.js on the server). */
+let EVENTS = [], tkTimer = null;
+const localDay = (d = new Date()) => d.toLocaleDateString('en-CA');
+const evDate = (s) => new Date(s + 'T00:00:00');
+function evWhen(e, long) {
+  const n = Math.round((evDate(e.date) - evDate(localDay())) / 86400000), d = evDate(e.date);
+  const dayTxt = long ? d.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' }) : d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+  const base = n === 0 ? 'Today' : n === 1 ? 'Tomorrow' : n < 7 && !long ? d.toLocaleDateString(undefined, { weekday: 'long' }) : dayTxt;
+  return base + (e.time ? ' ' + e.time : '');
+}
+const evIcon = (e) => (e.kind === 'birthday' ? '🎂' : e.kind === 'pickup' ? '🚌' : e.kind === 'notice' ? '📣' : '📅');
+function renderTicker() {
+  const b = $('#tb-ticker'), t = $('#tk-track'); if (!b || !t) return;
+  const show = !!selfId() && $('#shell').classList.contains('home-page') && !editing;
+  b.hidden = !show; $('#shell').classList.toggle('has-ticker', show);
+  if (!show) return;
+  if (!EVENTS.length) { t.innerHTML = '<span class="tk-i"><i>📅</i>Nothing coming up. Family birthdays and Organiser events will show here.</span>'; t.classList.add('still'); return; }
+  t.classList.remove('still');
+  const one = EVENTS.map((e) => `<span class="tk-i"><i>${evIcon(e)}</i><b>${esc(evWhen(e))}</b> ${esc(e.title)}${e.sub ? ' <em>' + esc(e.sub) + '</em>' : ''}</span>`).join('');
+  t.innerHTML = one + one;   // twice, so the loop is seamless
+  requestAnimationFrame(() => { const w = t.scrollWidth / 2; t.style.setProperty('--tk-dur', Math.max(14, Math.round(w / 45)) + 's'); });
+}
+async function loadEvents() {
+  if (!state.token || !selfId()) { EVENTS = []; renderTicker(); return; }
+  try { EVENTS = (await acctFetch('/events?days=60&today=' + localDay())).events || []; } catch { EVENTS = []; }
+  renderTicker();
+}
+function eventsSheet() {
+  const by = {}; EVENTS.forEach((e) => { (by[e.date] = by[e.date] || []).push(e); });
+  openSheet(`<h2>Upcoming</h2>${Object.keys(by).sort().map((d) => `<h3 class="ev-day">${esc(evWhen(by[d][0], true))}</h3>${by[d].map((e) => `<div class="ev-row"><i>${evIcon(e)}</i><div><b>${esc(e.title)}</b>${e.sub ? '<span class="muted small"> · ' + esc(e.sub) + '</span>' : ''}${e.link ? ` <a href="${esc(e.link)}" target="_blank" rel="noopener">Open</a>` : ''}</div></div>`).join('')}`).join('') || '<p class="muted">Nothing coming up.</p>'}<p class="muted small">Birthdays come from the dates of birth in your family. Events, notices and school pick-ups from the Organiser app will appear here too.</p>`);
+}
+$('#tb-ticker').onclick = eventsSheet;
+setInterval(() => { if (state.token) loadEvents(); }, 30 * 60 * 1000);
+
+
+/* ---------- Paid apps: return from Yoco, and the admin screen ---------- */
+let payPoll = 0;
+async function viewPaid(slug) {
+  const token = ++payPoll;
+  const app = (await listAll('portal_apps', { sort: 'name' }).catch(() => [])).find((x) => x.slug === slug);
+  const name = app ? app.name : 'your app', open = app && /^https?:\/\//i.test(app.url || '') ? `<a class="btn primary" href="${esc(app.url)}" target="_blank" rel="noopener">Open ${esc(name)}</a> ` : '';
+  const show = (h) => { if (token === payPoll) main().innerHTML = `<h1>Payment</h1><div class="card">${h}</div>`; };
+  show(`<p>Thanks! Confirming your payment for <b>${esc(name)}</b>…</p><p class="muted small">This usually takes a few seconds.</p>`);
+  for (let i = 0; i < 25 && token === payPoll; i++) {
+    const s = await acctFetch('/pay/status?slug=' + encodeURIComponent(slug)).catch(() => ({}));
+    if (s.active) { show(`<p><b>${esc(name)} is unlocked.</b></p>${s.until ? `<p class="muted small">Access runs until ${esc(fmtDay(s.until))}.</p>` : ''}<p>${open}<a class="btn" href="#/home">Back to Home</a></p>`); if (HM) HM = null; return; }
+    await new Promise((r) => setTimeout(r, 3000));
+  }
+  show(`<p>We haven't had confirmation from Yoco yet.</p><p class="muted small">If you were charged, it can take a minute. Check again, or ask the admin to unlock ${esc(name)} for you.</p><p><button class="btn primary" id="paid-again">Check again</button> <a class="btn" href="#/home">Back to Home</a></p>`);
+  const b = $('#paid-again'); if (b) b.onclick = () => viewPaid(slug);
+}
+const toCents = (v) => { const n = parseFloat(String(v).replace(',', '.')); return isFinite(n) && n > 0 ? Math.round(n * 100) : null; };
+async function viewPaywall() {
+  const j = await acctFetch('/admin/paywall'), apps = await listAll('portal_apps', { sort: 'name' });
+  const y = j.yoco, origin = location.origin;
+  const chip = (ok, t) => `<span class="chip ${ok ? 'ok' : 'warn'}">${esc(t)}</span>`;
+  main().innerHTML = `<h1>Paid apps</h1><p class="sub">Lock an app so only you, people you choose, and people who pay can use it.</p>
+    <div class="card"><h2>Yoco</h2><p>${chip(y.hasSecret, y.hasSecret ? 'Secret key saved' + (y.mode ? ' (' + y.mode + ' mode)' : '') : 'No secret key')} ${chip(!!y.publicUrl, y.publicUrl ? 'Public address set' : 'No public address')} ${chip(y.hasWebhook, y.hasWebhook ? 'Webhook secret saved' : 'Webhook not registered')}</p>
+      <form id="yoco" class="kv"><label>Yoco secret key<input name="secretKey" type="password" autocomplete="off" placeholder="${y.hasSecret ? 'Saved. Paste a new one to replace it.' : 'sk_test_… (start with a test key)'}"></label>
+      <label>Public address of this dashboard<input name="publicUrl" value="${esc(y.publicUrl)}" placeholder="https://your-funnel-address.ts.net" autocomplete="off" autocapitalize="none"></label>
+      <label>Webhook secret (filled in for you when you register)<input name="webhookSecret" type="password" autocomplete="off" placeholder="${y.hasWebhook ? 'Saved' : 'whsec_… (only if you registered it yourself)'}"></label>
+      <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn primary">Save</button><button type="button" class="btn" id="yreg">Register webhook with Yoco</button></div></form>
+      <p class="muted small">Yoco confirms each payment by calling <code>${esc((y.publicUrl || 'https://your-address') + '/yoco/webhook')}</code>, so the public address has to be the internet address of this dashboard (the Tailscale Funnel one, not your home network). Until the webhook is registered, payments are taken but apps don't unlock by themselves; you can still unlock people by hand below. Yoco takes payments of R2 or more, in rand.</p></div>
+    ${apps.map((a) => { const e = j.apps[a.slug] || { cfg: null, people: [] }, c = e.cfg;
+      return `<div class="card" data-app="${esc(a.slug)}"><div class="row spread"><h2>${esc(a.name)}</h2>${c ? '<span class="chip ok">locked, ' + esc(priceText(c)) + '</span>' : '<span class="chip">free for everyone</span>'}</div>
+        <form class="pw-cfg kv"><label class="inline"><input type="checkbox" name="on" ${c ? 'checked' : ''}> Lock behind payment</label>
+        <label>Access<select name="mode"><option value="period" ${!c || c.mode === 'period' ? 'selected' : ''}>For a number of days, then renew</option><option value="once" ${c && c.mode === 'once' ? 'selected' : ''}>One payment, permanent</option></select></label>
+        <label>Days of access<input name="days" type="number" min="1" max="3650" value="${c ? c.days : 30}"></label>
+        <label>Price for one person (R)<input name="price" inputmode="decimal" value="${c ? c.price / 100 : ''}" placeholder="49"></label>
+        <label>Price for a whole household (R, optional)<input name="hprice" inputmode="decimal" value="${c && c.householdPrice ? c.householdPrice / 100 : ''}" placeholder="leave empty for no household option"></label>
+        <div><button class="btn primary small">Save</button></div></form>
+        ${e.people.length ? `<table><thead><tr><th>Person</th><th>How</th><th>Until</th><th></th></tr></thead><tbody>${e.people.map((p) => `<tr><td><b>${esc(p.name || p.username || p.email)}</b><br><span class="muted small">${esc(p.email)}</span></td><td>${esc(p.via)}</td><td>${p.until ? esc(fmtDay(p.until)) + (p.expired ? ' (ended)' : '') : 'permanent'}</td><td><button class="btn small danger" data-revoke="${esc(p.userId)}">Remove</button></td></tr>`).join('')}</tbody></table>` : '<p class="muted small">Nobody has been given access yet.</p>'}
+        <form class="pw-grant row" style="gap:6px;margin-top:8px;flex-wrap:wrap"><input name="who" placeholder="Email or username" autocapitalize="none" required><input name="days" type="number" min="1" placeholder="Days (empty = permanent)" style="max-width:190px"><button class="btn small">Give access</button></form></div>`; }).join('')}`;
+  const redo = () => viewPaywall();
+  $('#yoco').onsubmit = guard(async (e) => { e.preventDefault(); const f = e.target.elements; await acctFetch('/admin/paywall', { action: 'yoco', secretKey: f.secretKey.value, publicUrl: f.publicUrl.value, webhookSecret: f.webhookSecret.value }); toast('Saved'); redo(); });
+  $('#yreg').onclick = guard(async () => { const f = $('#yoco').elements; await acctFetch('/admin/paywall', { action: 'yoco', secretKey: f.secretKey.value, publicUrl: f.publicUrl.value }); const r = await acctFetch('/admin/paywall', { action: 'register' }); toast(r.hasSecret ? 'Webhook registered' : 'Registered. Paste the webhook secret Yoco shows you.'); redo(); });
+  main().querySelectorAll('.pw-cfg').forEach((form) => {
+    const slug = form.closest('[data-app]').dataset.app;
+    form.onsubmit = guard(async (e) => {
+      e.preventDefault(); const f = e.target.elements, had = !!(j.apps[slug] && j.apps[slug].cfg);
+      if (!f.on.checked) { if (had && !confirm('Open this app to everyone again?')) return; await acctFetch('/admin/paywall', { action: 'config', slug, cfg: null }); toast('Unlocked for everyone'); return redo(); }
+      const price = toCents(f.price.value), hp = f.hprice.value.trim() ? toCents(f.hprice.value) : null;
+      if (!price) throw new Error('Enter a price in rand.');
+      if (!had && !confirm('Everyone except you and people you choose will lose access until they pay. Continue?')) return;
+      await acctFetch('/admin/paywall', { action: 'config', slug, cfg: { mode: f.mode.value, days: Number(f.days.value) || 30, price, householdPrice: hp } }); toast('Saved'); redo();
+    });
+  });
+  main().querySelectorAll('.pw-grant').forEach((form) => {
+    const slug = form.closest('[data-app]').dataset.app;
+    form.onsubmit = guard(async (e) => { e.preventDefault(); const f = e.target.elements; const r = await acctFetch('/admin/paywall', { action: 'grant', slug, identity: f.who.value, days: f.days.value ? Number(f.days.value) : 0 }); toast('Access given to ' + r.name); redo(); });
+  });
+  main().onclick = guard(async (e) => {
+    const b = e.target.closest('[data-revoke]'); if (!b) return;
+    if (!confirm('Remove this person’s access?')) return;
+    await acctFetch('/admin/paywall', { action: 'revoke', slug: b.closest('[data-app]').dataset.app, userId: b.dataset.revoke }); toast('Removed'); redo();
+  });
+}
+
+// Dates the way the person set them (their account's date format), falling back to their region's.
+function fmtDay(v) {
+  const d = new Date(v); if (isNaN(d)) return '';
+  const p = (n) => String(n).padStart(2, '0'), dd = p(d.getDate()), mm = p(d.getMonth() + 1), yy = d.getFullYear(), f = state.dateFormat || regionalDefaults().dateFormat;
+  return f === 'MM/DD/YYYY' ? `${mm}/${dd}/${yy}` : f === 'YYYY-MM-DD' ? `${yy}-${mm}-${dd}` : `${dd}/${mm}/${yy}`;
+}
+async function loadDatePref() {
+  if (!selfId()) return;
+  try { const r = await listAll('portal_settings', { filter: `scope = "user" && user = ${fq(selfId())} && app = "" && key = "pref.dateFormat"` }); if (r[0] && r[0].value) state.dateFormat = r[0].value; } catch { /* keep the regional default */ }
+}
 
 /* ---------- Regional defaults ----------
    A new account starts with settings that match where the person is (from the device language and time zone), e.g. South Africa gets
@@ -967,7 +1091,7 @@ function regionalDefaults() {
   };
 }
 async function seedRegional() {
-  const uid = state.uid;
+  const uid = selfId();
   const rows = await listAll('portal_settings', { filter: `scope = "user" && user = ${fq(uid)} && app = "" && key ~ "pref."` });
   if (rows.some((r) => r.key === 'pref.regionSeeded')) return;
   const have = new Set(rows.map((r) => r.key.slice(5))), d = regionalDefaults();
@@ -980,7 +1104,7 @@ async function seedRegional() {
 // Sign-up is "open" when this rule exists. It can never be met from a browser: accounts are created only by this app's server (POST /signup),
 // which checks date of birth and parent approval, so there is a single sign-up path for every JoolzApp app.
 const SIGNUP_RULE = '@request.body.email:isset = false && @request.body.email:isset = true';
-const DEL_REQ = '__account_deletion__', CHILD_REQ = '__child_account__';
+const DEL_REQ = '__account_deletion__', CHILD_REQ = '__child_account__', SPOUSE_REQ = '__spouse_account__';
 const PREFS = [
   ['language', 'Language', [['en', 'English'], ['af', 'Afrikaans'], ['zu', 'isiZulu'], ['xh', 'isiXhosa'], ['st', 'Sesotho'], ['tn', 'Setswana'], ['fr', 'Français'], ['es', 'Español'], ['pt', 'Português'], ['ar', 'العربية']]],
   ['currency', 'Currency', [['ZAR', 'ZAR – South African rand'], ['USD', 'USD – US dollar'], ['EUR', 'EUR – Euro'], ['GBP', 'GBP – Pound sterling'], ['AUD', 'AUD – Australian dollar'], ['CAD', 'CAD – Canadian dollar'], ['AED', 'AED – UAE dirham'], ['INR', 'INR – Indian rupee']]],
@@ -990,9 +1114,25 @@ const PREFS = [
   ['units', 'Distance and weight', [['metric', 'Metric (km, kg, litres)'], ['imperial', 'Imperial (mi, lb, gallons)']]],
   ['temperature', 'Temperature', [['C', 'Celsius (°C)'], ['F', 'Fahrenheit (°F)']]],
   ['theme', 'Theme', [['auto', 'Match my device'], ['light', 'Light'], ['dark', 'Dark']]],
+  ['background', 'Dashboard background', [['aurora', 'Aurora (default)'], ['sunset', 'Sunset'], ['ocean', 'Ocean'], ['forest', 'Forest'], ['violet', 'Violet'], ['plain', 'Plain (no colour glows)']]],
+  ['backgroundMotion', 'Background motion', [['animated', 'Slowly moving (default)'], ['still', 'Still']]],
 ];
+// The backdrop follows the person's account (pref.background / pref.backgroundMotion), so it is the same on every device.
+function applyBg(style, motion) {
+  const r = document.documentElement;
+  r.dataset.bg = ['aurora', 'sunset', 'ocean', 'forest', 'violet', 'plain'].includes(style) ? style : 'aurora';
+  r.dataset.motion = motion === 'still' ? 'still' : 'animated';
+}
+async function loadAppearance() {
+  if (!selfId()) return;
+  try {
+    const rows = await listAll('portal_settings', { filter: `scope = "user" && user = ${fq(selfId())} && app = "" && (key = "pref.background" || key = "pref.backgroundMotion")` });
+    const v = (k) => (rows.find((r) => r.key === k) || {}).value;
+    applyBg(v('pref.background'), v('pref.backgroundMotion'));
+  } catch { /* keep the default backdrop */ }
+}
 async function viewMe() {
-  const uid = state.uid;
+  const uid = selfId() || state.uid;
   const [rows, reqs] = await Promise.all([
     listAll('portal_settings', { filter: `scope = "user" && user = ${fq(uid)} && app = "" && key ~ "pref."` }),
     listAll('portal_requests', { filter: `user = ${fq(uid)}`, sort: '-created' }).catch(() => null),
@@ -1073,8 +1213,11 @@ async function viewMe() {
       else if (val !== '' && ex) { if (ex.value !== val) { await api('PATCH', `/api/collections/portal_settings/records/${ex.id}`, { value: val }); ex.value = val; } }
       else if (val !== '') cur[key] = await api('POST', '/api/collections/portal_settings/records', { scope: 'user', user: uid, app: '', key: 'pref.' + key, value: val, secret: false });
     }
+    applyBg(e.target.elements.background.value, e.target.elements.backgroundMotion.value);
+    if (e.target.elements.dateFormat.value) state.dateFormat = e.target.elements.dateFormat.value;
     toast('Preferences saved');
   });
+  $('#prefs').addEventListener('change', (e) => { if (e.target.name === 'background' || e.target.name === 'backgroundMotion') { const f = $('#prefs').elements; applyBg(f.background.value, f.backgroundMotion.value); } });   // see it straight away
   $('#regional').onclick = () => {
     const f = $('#prefs'), d = regionalDefaults();
     for (const [k, v] of Object.entries(d)) if (v && f.elements[k]) f.elements[k].value = v;
@@ -1106,7 +1249,7 @@ async function profilePane(uid) {
   const box = $('#pane-profile'); if (!box) return;
   const [me, g] = await Promise.all([api('GET', `/api/collections/${state.usersColl}/records/${uid}`).catch(() => ({})), acctFetch('/guardians').catch(() => ({ minor: false, parents: [] }))]);
   box.innerHTML = `<h2>Profile</h2>
-    <form id="pf-name" class="kv"><label>Name<input name="name" value="${esc(me.name || '')}" maxlength="80" autocomplete="name"></label><div><button class="btn primary small">Save name</button></div></form>
+    <form id="pf-name" class="kv"><label>Name and surname<input name="name" value="${esc(me.name || '')}" maxlength="80" autocomplete="name" required pattern=".*\\S\\s+\\S.*" title="Enter your name and surname"></label><div><button class="btn primary small">Save name</button></div></form>
     <p class="muted small">Email: <b>${esc(state.actor)}</b></p>
     ${'username' in me ? `<form id="pf-user" class="kv"><label>Username<input name="u" value="${esc(me.username || '')}" placeholder="Choose a username" autocapitalize="none" autocorrect="off" spellcheck="false" minlength="3" maxlength="30" required><span class="muted small">Sign in with your username or your email.</span></label><div><button class="btn primary small">Save username</button></div></form>` : ''}
     <h3>Change password</h3>
@@ -1135,13 +1278,13 @@ async function profilePane(uid) {
 
 async function viewFamily() {
   main().innerHTML = '<h1>Family</h1><p class="sub">Your household, and relatives linked across every JoolzApp app.</p><div id="pane-family"><p class="muted">Loading…</p></div>';
-  await familyPane(state.uid);
+  await familyPane(selfId() || state.uid);
 }
 
 // Everyone has a date of birth. Accounts that pre-date it are asked once, before anything else.
 async function needDob() {
-  if (state.dobOk || !state.uid) return false;
-  const me = await api('GET', `/api/collections/${state.usersColl}/records/${state.uid}`).catch(() => null);
+  if (state.dobOk || !selfId()) return false;
+  const me = await api('GET', `/api/collections/${state.usersColl}/records/${selfId()}`).catch(() => null);
   if (!me || me.dob) { state.dobOk = true; return false; }
   const today = new Date().toISOString().slice(0, 10);
   main().innerHTML = `<h1>One more thing</h1><p class="sub">Every JoolzApp account now has a date of birth. It can only be entered once. Under 18s need a parent or guardian with a JoolzApp account to approve them.</p>
@@ -1158,8 +1301,8 @@ async function needDob() {
 }
 
 async function needUsername() {
-  if (state.usernameOk || state.role !== 'user' || !state.uid) return false;
-  const me = await api('GET', `/api/collections/${state.usersColl}/records/${state.uid}`).catch(() => null);
+  if (state.usernameOk || !selfId()) return false;
+  const me = await api('GET', `/api/collections/${state.usersColl}/records/${selfId()}`).catch(() => null);
   if (!me || me.username || !('username' in me)) { state.usernameOk = true; return false; }   // no username field yet: nothing to ask
   const guess = String(me.email || '').split('@')[0].toLowerCase().replace(/[^a-z0-9._-]/g, '').replace(/^[^a-z0-9]+/, '').slice(0, 30);
   main().innerHTML = `<h1>Choose a username</h1><p class="sub">You can now sign in to JoolzApp with a username as well as your email. Pick one that is easy to remember.</p>
@@ -1179,10 +1322,10 @@ async function familyPane(uid) {
   let data; try { data = await acctFetch('/family'); } catch (e) { box.innerHTML = `<div class="card"><p class="muted">Families couldn't load: ${esc(e.message)}</p></div>`; return; }
   const f = data.family, inv = data.invites || [], extIn = data.extendedIn || [];
   const taken = f ? new Set([...f.members, ...(f.extended || []), ...f.invited].flatMap((m) => [m.id, (m.email || '').toLowerCase()])) : new Set();
-  const people = f && f.canManage ? (await acctFetch('/family/users').catch(() => ({ users: [] }))).users.filter((u) => !taken.has(u.id) && !taken.has(u.email.toLowerCase())) : [];
+  const people = f ? (await acctFetch('/family/users').catch(() => ({ users: [] }))).users.filter((u) => !taken.has(u.id) && !taken.has(u.email.toLowerCase())) : [];
   const act = async (body) => { try { const j = await acctFetch('/family', body); if (j.notice) toast(j.notice); familyPane(uid); } catch (e) { toast(e.message, true); } };
   const relTxt = (r) => (r ? ' · ' + esc(r) : '');
-  let h = inv.map((i) => `<div class="card"><b>${esc(i.ownerName || 'Someone')}</b> invited you ${i.tier === 'extended' ? `as <b>extended family</b>${i.relation ? ' (' + esc(i.relation) + ')' : ''} of` : 'to join the household of'} the <b>${esc(i.name)}</b> family.${i.tier === 'extended' ? '<div class="muted small">You keep your own household. You can be extended family of as many families as you like.</div>' : ''}<div class="row" style="gap:8px;margin-top:8px"><button class="btn primary small" data-fa="yes" data-id="${esc(i.id)}">Join</button><button class="btn small" data-fa="no" data-id="${esc(i.id)}">Decline</button></div></div>`).join('');
+  let h = inv.map((i) => `<div class="card"><b>${esc(i.ownerName || 'Someone')}</b> ${i.spouse ? 'asked to link you as their <b>spouse</b> in' : 'invited you'} ${i.spouse ? 'the household of' : i.tier === 'extended' ? `as <b>extended family</b>${i.relation ? ' (' + esc(i.relation) + ')' : ''} of` : 'to join the household of'} the <b>${esc(i.name)}</b> family.${i.tier === 'extended' ? '<div class="muted small">You keep your own household. You can be extended family of as many families as you like.</div>' : ''}<div class="row" style="gap:8px;margin-top:8px"><button class="btn primary small" data-fa="yes" data-id="${esc(i.id)}">Join</button><button class="btn small" data-fa="no" data-id="${esc(i.id)}">Decline</button></div></div>`).join('');
   if (!f) h += `<div class="card"><h2>Your household</h2><p class="muted small">A family on JoolzApp is one <b>household</b>: the people who live together and share family expenses. Create yours here, then invite the people who live with you. Relatives who live elsewhere, such as grandparents, are linked as <b>extended family</b> instead.</p>
     <form id="fam-new" class="row" style="gap:6px"><input name="name" placeholder="Family name (e.g. The Joolays)" maxlength="60" required><button class="btn primary">Create</button></form></div>`;
   else {
@@ -1198,20 +1341,30 @@ async function familyPane(uid) {
       ${f.canManage ? `<form id="fam-inv" class="kv" style="margin-top:12px"><label>Registered JoolzApp users<select name="pick"><option value="">Choose someone…</option>${people.map((u) => `<option value="${esc(u.email)}">${esc(u.name)} (${esc(u.email)})</option>`).join('')}</select></label><label>Or invite by email (they don't need an account yet)<input name="email" type="email"></label><label>They<select name="tier"><option value="family">Live in my household (share expenses)</option><option value="extended">Are extended family (live elsewhere)</option></select></label><label>Relationship (optional)<input name="relation" maxlength="40" placeholder="wife, grandmother, uncle…"></label><div><button class="btn primary small">Invite</button></div></form>` : ''}
       ${f.isOwner ? '<p class="muted small">Tip: make someone a manager and they can invite, remove and move members too.</p>' : ''}
       ${f.canManage && !data.minor ? `<details style="margin-top:12px"><summary><b>Create an account for your child</b></summary><form id="fam-child" class="kv" style="margin-top:8px"><p class="muted small">For under-18s. You approve them automatically; an admin still has to approve the new account before it can be used.</p>
-        <label>Child's name<input name="name" maxlength="80" required></label><label>Child's email (their sign-in)<input name="email" type="email" required autocomplete="off"></label>
+        <label>Child's name and surname<input name="name" maxlength="80" required pattern=".*\\S\\s+\\S.*" title="Enter a name and surname"></label><label>Child's email (their sign-in)<input name="email" type="email" required autocomplete="off"></label>
         <label>Password (min 8)<input name="pw" type="password" minlength="8" required autocomplete="new-password"></label>
         <label>Date of birth<input name="dob" type="date" min="${new Date(Date.now() - 18 * 365.25 * 864e5).toISOString().slice(0, 10)}" max="${new Date().toISOString().slice(0, 10)}" required></label>
         <label>Relationship (optional)<input name="relation" maxlength="40" placeholder="son, daughter…"></label><div><button class="btn primary small">Create account</button></div></form></details>` : ''}
+      ${data.minor ? '' : f.spouse ? `<h3>Spouse</h3><div class="row spread"><span>${esc(f.spouse)} <span class="chip">spouse</span></span><button class="btn small" data-fa="unspouse">Unlink</button></div>` : f.invited.some((m) => m.spouseOf === uid) ? '<h3>Spouse</h3><p class="muted small">Your spouse request is waiting for them to accept. Cancel it from the household list above.</p>' : `<h3>Spouse</h3><p class="muted small">Link your spouse so you are connected as spouses. You can have one at a time.</p>
+        <details><summary><b>Link an existing account</b></summary><form id="fam-sp-inv" class="kv" style="margin-top:8px"><label>Registered JoolzApp users<select name="pick"><option value="">Choose them…</option>${people.map((u) => `<option value="${esc(u.email)}">${esc(u.name)} (${esc(u.email)})</option>`).join('')}</select></label><label>Or their email<input name="email" type="email"></label><p class="muted small">They get a request and must accept it before you are linked.</p><div><button class="btn primary small">Send spouse request</button></div></form></details>
+        <details style="margin-top:6px"><summary><b>Create a new account for your spouse</b></summary><form id="fam-sp-new" class="kv" style="margin-top:8px"><p class="muted small">You are linked straight away. An admin has to approve the new account before it can be used.</p>
+        <label>Name and surname<input name="name" maxlength="80" required pattern=".*\\S\\s+\\S.*" title="Enter a name and surname"></label><label>Email (their sign-in)<input name="email" type="email" required autocomplete="off"></label>
+        <label>Username<input name="username" minlength="3" maxlength="30" pattern="[A-Za-z0-9][A-Za-z0-9._\\-]{2,29}" autocapitalize="none" autocorrect="off" spellcheck="false" required></label>
+        <label>Password (min 8)<input name="pw" type="password" minlength="8" required autocomplete="new-password"></label>
+        <label>Date of birth<input name="dob" type="date" max="${new Date(Date.now() - 18 * 365.25 * 864e5).toISOString().slice(0, 10)}" required></label><div><button class="btn primary small">Create spouse account</button></div></form></details>`}
       <p><button class="btn small" data-fa="leave">Leave this household</button></p></div>`;
   }
   if (extIn.length) h += `<div class="card"><h2>Extended family of</h2><p class="muted small">Families you are linked to as a relative. You can be linked to as many as you like, and you don't share their expenses.</p>${extIn.map((x) => `<div class="row spread" style="padding:6px 0;border-top:1px solid var(--line,#0002)"><span><b>${esc(x.name)}</b>${x.relation ? ' · you are ' + esc(x.relation) : ''}${x.ownerName ? ' <span class="muted small">(' + esc(x.ownerName) + ')</span>' : ''}</span><button class="btn small" data-fa="extleave" data-id="${esc(x.id)}">Leave</button></div>`).join('')}</div>`;
   box.innerHTML = h;
   if ($('#fam-new')) $('#fam-new').onsubmit = (e) => { e.preventDefault(); act({ action: 'create', name: e.target.name.value }); };
   if ($('#fam-inv')) $('#fam-inv').onsubmit = (e) => { e.preventDefault(); const f2 = e.target.elements; const em = (f2.pick.value || f2.email.value).trim(); if (!em) return toast('Choose someone or enter an email.', true); act({ action: 'invite', email: em, tier: f2.tier.value, relation: f2.relation.value }); };
+  if ($('#fam-sp-inv')) $('#fam-sp-inv').onsubmit = (e) => { e.preventDefault(); const c = e.target.elements, em = (c.pick.value || c.email.value).trim(); if (!em) return toast('Choose someone or enter an email.', true); act({ action: 'inviteSpouse', email: em }); };
+  if ($('#fam-sp-new')) $('#fam-sp-new').onsubmit = (e) => { e.preventDefault(); const c = e.target.elements; act({ action: 'createSpouse', name: c.name.value, email: c.email.value, username: c.username.value, password: c.pw.value, dob: c.dob.value }); };
   if ($('#fam-child')) $('#fam-child').onsubmit = (e) => { e.preventDefault(); const c = e.target.elements; act({ action: 'createChild', name: c.name.value, email: c.email.value, password: c.pw.value, dob: c.dob.value, relation: c.relation.value }); };
   box.onclick = (e) => {
     const b = e.target.closest('button[data-fa]'); if (!b) return; const a = b.dataset.fa, id = b.dataset.id, v = b.dataset.v;
     if (a === 'yes' || a === 'no') return act({ action: 'respond', familyId: id, accept: a === 'yes' });
+    if (a === 'unspouse' && confirm('Unlink your spouse? You both stay in the household.')) return act({ action: 'unlinkSpouse' });
     if (a === 'mgr') return act({ action: 'manager', memberId: id, on: !!v });
     if (a === 'tier') return act({ action: 'tier', memberId: id, tier: v });
     if (a === 'rm') return act({ action: 'remove', memberId: id });
@@ -1231,6 +1384,7 @@ const GL = {
   me: '<path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2.2"/><circle cx="9" cy="17" r="2.2"/>',
   overview: '<rect x="4" y="4" width="7" height="7" rx="2"/><rect x="13" y="4" width="7" height="7" rx="2"/><rect x="4" y="13" width="7" height="7" rx="2"/><rect x="13" y="13" width="7" height="7" rx="2"/>',
   global: '<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.6 2.4 3.6 5.2 3.6 8.5s-1 6.1-3.6 8.5c-2.6-2.4-3.6-5.2-3.6-8.5s1-6.1 3.6-8.5z"/>',
+  paywall: '<rect x="3.5" y="6" width="17" height="12" rx="2.5"/><path d="M3.5 10.5h17M7 14.5h3.5"/>',
   apps: '<path d="M12 4l8 4.5-8 4.5-8-4.5z"/><path d="M4 12.5l8 4.5 8-4.5M4 16.5l8 4.5 8-4.5"/>',
   users: '<circle cx="12" cy="8.5" r="3.5"/><path d="M5 20c.5-4 3.2-6 7-6s6.5 2 7 6"/>',
   requests: '<path d="M4 13l2.5-7.5h11L20 13v5.5H4z"/><path d="M4 13h4.5l1 2.5h5l1-2.5H20"/>',
@@ -1247,16 +1401,17 @@ const ICON_WARN = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 7v6M
 const ADMIN_TOOLS = [
   ['overview', 'Overview', ['#5b8cff', '#7c5cf0']], ['global', 'Global settings', ['#94a3b8', '#475569']], ['apps', 'Apps', ['#a855f7', '#6366f1']],
   ['users', 'Users', ['#10b981', '#0ea5e9']], ['requests', 'Access requests', ['#f43f5e', '#fb923c']], ['cleanup', 'Cleanup', ['#14b8a6', '#22c55e']],
-  ['audit', 'Audit log', ['#eab308', '#f97316']], ['setup', 'Setup', ['#0ea5e9', '#6366f1']],
+  ['paywall', 'Paid apps', ['#22c55e', '#0ea5e9']], ['audit', 'Audit log', ['#eab308', '#f97316']], ['setup', 'Setup', ['#0ea5e9', '#6366f1']],
 ];
-const VIEW_TITLES = { overview: 'Overview', global: 'Global settings', apps: 'Apps', users: 'Users', requests: 'Access requests', cleanup: 'Cleanup', audit: 'Audit log', setup: 'Setup & integration', me: 'My settings', family: 'Family' };
-const PROTECTED = new Set(['sys:me', 'sys:admin']);   // can't be hidden, so nobody loses the way back to their settings
+const VIEW_TITLES = { overview: 'Overview', global: 'Global settings', apps: 'Apps', users: 'Users', requests: 'Access requests', cleanup: 'Cleanup', audit: 'Audit log', setup: 'Setup & integration', me: 'My settings', family: 'Family', paywall: 'Paid apps', paid: 'Payment' };
+const PROTECTED = new Set(['sys:me', 'sys:admin']);
+const canFolder = (id) => !PROTECTED.has(id) && !String(id).startsWith('folder:');   // folders hold apps and Family, never nest, never hide the way back to Settings/Admin   // can't be hidden, so nobody loses the way back to their settings
 
 let HM = null, editing = false, saveChain = Promise.resolve();
 const isAdminRole = () => state.role !== 'user';
 
 async function homeModel() {
-  const uid = state.uid, isAdmin = isAdminRole();
+  const uid = selfId() || state.uid, isAdmin = isAdminRole();
   const [apps, reqs, acc, lrows, ssoRows, pend] = await Promise.all([
     listAll('portal_apps', { sort: 'name' }),
     isAdmin ? Promise.resolve([]) : listAll('portal_requests', { filter: `user = ${fq(uid)}`, sort: '-created' }).catch(() => null),
@@ -1275,20 +1430,29 @@ async function homeModel() {
   const items = {};
   apps.forEach((a) => { items['app:' + a.slug] = { id: 'app:' + a.slug, kind: 'app', name: a.name, app: a, grad: GRADS[hashN(a.slug) % GRADS.length], letter: (a.name || '?').trim().charAt(0).toUpperCase(), ok: allowed(a.slug) }; });
   if (isAdmin) items['sys:admin'] = { id: 'sys:admin', kind: 'folder', name: 'Admin', grad: ['#64748b', '#334155'], badge: pend };
-  else {
+  if (!isAdmin || selfId()) {
     items['sys:family'] = { id: 'sys:family', kind: 'sys', name: 'Family', glyph: 'family', grad: ['#fb7185', '#f59e0b'], href: '#/family' };
     items['sys:me'] = { id: 'sys:me', kind: 'sys', name: 'Settings', glyph: 'me', grad: ['#94a3b8', '#475569'], href: '#/me' };
   }
+  let pw = null; if (selfId()) { try { pw = await acctFetch('/paywall'); } catch { pw = null; } }
   let saved = lrows[0] && lrows[0].value && typeof lrows[0].value === 'object' ? lrows[0].value : null;
   if (!saved) { try { saved = JSON.parse(store.lget('pa.layout.' + uid) || 'null'); } catch { saved = null; } }
   const fresh = !saved;
-  saved = saved || { order: [], dock: isAdmin ? ['sys:admin'] : ['sys:family', 'sys:me'], hidden: [] };
+  saved = saved || { order: [], dock: isAdmin ? (selfId() ? ['sys:admin', 'sys:family', 'sys:me'] : ['sys:admin']) : ['sys:family', 'sys:me'], hidden: [] };
   const seen = new Set(), keep = (arr, f = () => true) => (Array.isArray(arr) ? arr : []).filter((id) => items[id] && f(id) && !seen.has(id) && seen.add(id));
+  // Folders the person made: { id: { name, items: [ids] } }. Their apps are claimed first so they don't also show on the grid.
+  const folders = {};
+  for (const [fid, f] of Object.entries(saved.folders && typeof saved.folders === 'object' ? saved.folders : {})) {
+    if (!/^[a-z0-9]{3,12}$/.test(fid) || !f || typeof f !== 'object') continue;
+    folders[fid] = { name: String(f.name || 'Folder').slice(0, 30), items: [] };
+    items['folder:' + fid] = { id: 'folder:' + fid, kind: 'ufolder', fid, name: folders[fid].name, grad: ['#64748b', '#334155'] };
+  }
+  for (const fid of Object.keys(folders)) folders[fid].items = keep((saved.folders[fid] || {}).items, (id) => canFolder(id));
   const dock = keep(saved.dock).slice(0, 4);
   const hidden = keep(saved.hidden, (id) => !PROTECTED.has(id));
   const order = keep(saved.order);
   Object.keys(items).forEach((id) => { if (!seen.has(id)) { order.push(id); seen.add(id); } });   // new apps appear at the end
-  return { apps, reqs, items, ssoSlugs, isAdmin, uid, layout: { order, dock, hidden, view: saved.view === 'icons' || saved.view === 'tiles' ? saved.view : '' }, lrow: lrows[0] || null, fresh, pend };
+  return { apps, reqs, items, ssoSlugs, isAdmin, uid, layout: { order, dock, hidden, folders, view: saved.view === 'icons' || saved.view === 'tiles' ? saved.view : '' }, lrow: lrows[0] || null, fresh, pend, pw };
 }
 
 function saveLayout() {
@@ -1302,15 +1466,34 @@ function saveLayout() {
   });
 }
 
-function tileInner(it) { return it.glyph ? svgG(it.glyph) : `<b>${esc(it.letter)}</b>`; }
+// Apps show the same icon as on the Umbrel dashboard (joolay-<slug>/icon.svg in the store repo). If it can't load, the lettered tile stays.
+const ICON_BASE = 'https://raw.githubusercontent.com/joolay/umbrel-apps/main/';
+function appIconUrl(a) { return /^https?:\/\//i.test(a.icon || '') ? a.icon : ICON_BASE + 'joolay-' + encodeURIComponent(a.slug) + '/icon.svg'; }
+// Second source (Stremio and other apps that use a public dashboard-icons file), then give up and keep the letter.
+function iconFail(img) {
+  if (img.dataset.tried) { img.remove(); return; }
+  img.dataset.tried = '1'; img.src = 'https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/' + encodeURIComponent(img.dataset.slug) + '.svg';
+}
+window.iconFail = iconFail;
+function tileInner(it) {
+  if (it.glyph) return svgG(it.glyph);
+  const img = it.app ? `<img class="ic-img" src="${esc(appIconUrl(it.app))}" alt="" draggable="false" loading="lazy" data-slug="${esc(it.app.slug)}" onerror="iconFail(this)">` : '';
+  return `<b>${esc(it.letter)}</b>${img}`;
+}
+function ufMini(it) {
+  const kids = ((HM && HM.layout.folders[it.fid]) || { items: [] }).items.map((id) => HM.items[id]).filter(Boolean).slice(0, 4);
+  return `<span class="mini">${kids.map((k) => `<i style="--c1:${k.grad[0]};--c2:${k.grad[1]}">${tileInner(k)}</i>`).join('')}</span>`;
+}
 function folderMini() { return `<span class="mini">${ADMIN_TOOLS.slice(0, 4).map(([k, , g]) => `<i style="--c1:${g[0]};--c2:${g[1]}">${svgG(k)}</i>`).join('')}</span>`; }
 // Tile view (desktop): a short description and a status line next to the icon. Hidden in the icon view.
 function tileText(it) {
   const a = it.app; let d = '', st = '';
   if (it.kind === 'app') {
     d = a.description || '';
-    st = !a.enabled ? 'Off' : a.maintenance ? 'Maintenance' : !it.ok ? 'Request access' : 'Open';
-  } else if (it.kind === 'folder') { d = 'Users, apps, requests and settings'; st = it.badge ? it.badge + ' waiting' : 'Open'; }
+    const pcfg = HM && HM.pw && HM.pw.apps[a.slug];
+    st = !a.enabled ? 'Off' : a.maintenance ? 'Maintenance' : !it.ok ? (pcfg ? priceText(pcfg) : 'Request access') : 'Open';
+  } else if (it.kind === 'ufolder') { const n = ((HM && HM.layout.folders[it.fid]) || { items: [] }).items.length; d = n ? n + (n === 1 ? ' app' : ' apps') : 'Empty folder'; st = 'Open'; }
+  else if (it.kind === 'folder') { d = 'Users, apps, requests and settings'; st = it.badge ? it.badge + ' waiting' : 'Open'; }
   else d = it.id === 'sys:family' ? 'Your household and relatives' : 'Your preferences and account';
   return `<span class="ic-desc">${esc(d)}</span><span class="ic-state">${esc(st || 'Open')}</span>`;
 }
@@ -1324,6 +1507,7 @@ function iconHTML(it, o = {}) {
   const a = it.app, c = `--c1:${it.grad[0]};--c2:${it.grad[1]};--d:${-(hashN(it.id) % 260)}ms`;
   let tile, st = '';
   if (it.kind === 'folder') tile = `<button class="ic-tile folder" data-folder="1" aria-label="Admin tools">${folderMini()}</button>`;
+  else if (it.kind === 'ufolder') tile = `<button class="ic-tile folder" data-ufolder="${esc(it.fid)}" aria-label="Folder ${esc(it.name)}">${ufMini(it)}</button>`;
   else if (it.kind === 'sys') tile = `<a class="ic-tile" href="${it.href}" draggable="false" aria-label="${esc(it.name)}">${tileInner(it)}</a>`;
   else if (a.enabled && it.ok && !a.maintenance && /^https?:\/\//i.test(a.url || '')) tile = `<a class="ic-tile" href="${esc(a.url)}" data-open="${esc(a.slug)}" target="_blank" rel="noopener" draggable="false" aria-label="Open ${esc(a.name)}">${tileInner(it)}</a>`;
   else tile = `<button class="ic-tile" data-info="${esc(a.slug)}" aria-label="${esc(a.name)}">${tileInner(it)}</button>`;
@@ -1333,15 +1517,15 @@ function iconHTML(it, o = {}) {
     else if (!it.ok) st = `<span class="ic-st" title="Request access">${ICON_LOCK}</span>`;
   }
   const badge = it.badge ? `<span class="ic-badge">${it.badge > 9 ? '9+' : it.badge}</span>` : '';
-  const x = !o.tray && !PROTECTED.has(it.id) ? `<button class="ic-x" data-hide="${esc(it.id)}" aria-label="Hide ${esc(it.name)}">${ICON_X}</button>` : '';
+  const x = !o.tray && it.kind === 'ufolder' ? `<button class="ic-x" data-delfolder="${esc(it.fid)}" aria-label="Remove folder ${esc(it.name)}">${ICON_X}</button>` : !o.tray && !PROTECTED.has(it.id) ? `<button class="ic-x" data-hide="${esc(it.id)}" aria-label="Hide ${esc(it.name)}">${ICON_X}</button>` : '';
   const ed = !o.tray && isAdminRole() && it.kind === 'app' ? `<button class="ic-ed" data-edit-app="${esc(a.slug)}" aria-label="Edit ${esc(a.name)}">${ICON_PEN}</button>` : '';
   const add = o.tray ? `<button class="ic-add" data-show="${esc(it.id)}" aria-label="Add ${esc(it.name)} back">${ICON_ADD}</button>` : '';
   return `<div class="ic${a && !a.enabled ? ' off' : ''}" data-id="${esc(it.id)}" style="${c}"><div class="ic-w">${tile}${st}${badge}${x}${ed}${add}<span class="ic-label">${esc(it.name)}</span>${tileText(it)}</div></div>`;
 }
 function renderTray() {
   const l = HM.layout, hid = $('#hid'); if (!hid) return;
-  hid.hidden = !(editing && l.hidden.length);
-  hid.innerHTML = l.hidden.length ? `<h2>Hidden</h2><div class="sb">${l.hidden.map((id) => iconHTML(HM.items[id], { tray: true })).join('')}</div>` : '';
+  hid.hidden = !editing;
+  hid.innerHTML = `<p style="margin:0 0 10px"><button class="btn small" id="new-folder">New folder</button> <span class="muted small">Or hold one icon over another to make a folder.</span></p>` + (l.hidden.length ? `<h2>Hidden</h2><div class="sb">${l.hidden.map((id) => iconHTML(HM.items[id], { tray: true })).join('')}</div>` : '');
 }
 function renderSb() {
   const sb = $('#sb'); if (!sb) return;
@@ -1356,7 +1540,7 @@ function renderDock() {
 function setEditing(on) {
   editing = !!on && !!$('#sb');
   document.body.classList.toggle('editing', editing);
-  $('#tb-edit').hidden = editing || !$('#sb'); $('#tb-done').hidden = !editing; if ($('#tb-view')) $('#tb-view').hidden = editing || !$('#sb');
+  renderTicker(); $('#tb-edit').hidden = editing || !$('#sb'); $('#tb-done').hidden = !editing; if ($('#tb-view')) $('#tb-view').hidden = editing || !$('#sb');
   if (HM) renderTray();
 }
 
@@ -1389,6 +1573,13 @@ function moveDrag(e) {
   if (inDock && !inDockNow) return;
   const sb = $('#sb'); let best = null, bd = 1e9;
   for (const el of sb.querySelectorAll('.ic')) { if (el === drag.ic) continue; const r = el.getBoundingClientRect(), d = Math.hypot(e.clientX - (r.left + r.width / 2), e.clientY - (r.top + r.height / 2)); if (d < bd) { bd = d; best = { el, r }; } }
+  // Hold an icon over the middle of another for a moment to make a folder (or drop it into one), like on a phone.
+  const cand = best && bd < Math.min(best.r.width, best.r.height) * 0.3 && canFolder(drag.ic.dataset.id) && (best.el.dataset.id.startsWith('folder:') || canFolder(best.el.dataset.id)) ? best.el : null;
+  if ((cand && cand.dataset.id) !== drag.cand) {
+    clearTimeout(drag.candT); drag.into = null; document.querySelectorAll('.drop-into').forEach((x) => x.classList.remove('drop-into')); drag.cand = cand && cand.dataset.id;
+    if (cand) drag.candT = setTimeout(() => { drag.into = cand.dataset.id; cand.classList.add('drop-into'); try { navigator.vibrate && navigator.vibrate(8); } catch {} }, 420);
+  }
+  if (cand) return;
   if (!best) { if (drag.ic.parentElement !== sb) flip(() => sb.appendChild(drag.ic)); return; }
   if (bd > best.r.width * 0.95 && drag.ic.parentElement === sb) return;
   const before = e.clientX < best.r.left + best.r.width / 2, ref = before ? best.el : best.el.nextSibling;
@@ -1399,7 +1590,9 @@ function endDrag() {
     drag.clone.remove(); drag.ic.classList.remove('ghost');
     const ids = (sel) => [...document.querySelectorAll(sel)].map((e) => e.dataset.id);
     HM.layout.order = ids('#sb .ic'); HM.layout.dock = ids('#dock .ic').slice(0, 4);
-    renderDock(); saveLayout();
+    if (drag.into) mergeInto(drag.ic.dataset.id, drag.into);
+    clearTimeout(drag.candT); document.querySelectorAll('.drop-into').forEach((x) => x.classList.remove('drop-into'));
+    renderSb(); renderDock(); saveLayout();
   }
   if (press) clearTimeout(press.t);
   if (drag || (press && press.long)) { suppress = true; setTimeout(() => { suppress = false; }, 80); }
@@ -1438,14 +1631,56 @@ function openSheet(html) {
   if (!d.open) d.showModal();
   return d;
 }
+document.addEventListener('change', (e) => {
+  const n = e.target.closest && e.target.closest('[data-fname]'); if (!n || !HM) return;
+  const f = HM.layout.folders[n.dataset.fname]; if (!f) return;
+  f.name = n.value.trim().slice(0, 30) || 'Folder'; n.value = f.name; HM.items['folder:' + n.dataset.fname].name = f.name; renderSb(); renderDock(); saveLayout();
+});
 document.addEventListener('click', (e) => {
   if (e.target.closest('[data-close]')) { const d = e.target.closest('dialog'); d && d.close(); return; }
   if (e.target.tagName === 'DIALOG') e.target.close();
 });
+/* ---------- Your own folders ---------- */
+const newFid = () => Math.random().toString(36).slice(2, 8).padEnd(6, 'x');
+function spotOf(id) { const l = HM.layout; return l.dock.includes(id) ? { arr: l.dock, i: l.dock.indexOf(id) } : { arr: l.order, i: l.order.indexOf(id) }; }
+function takeOut(id) { const l = HM.layout; l.order = l.order.filter((x) => x !== id); l.dock = l.dock.filter((x) => x !== id); Object.values(l.folders).forEach((f) => { f.items = f.items.filter((x) => x !== id); }); }
+function registerFolder(fid) { const f = HM.layout.folders[fid]; HM.items['folder:' + fid] = { id: 'folder:' + fid, kind: 'ufolder', fid, name: f.name, grad: ['#64748b', '#334155'] }; }
+function mergeInto(dragId, targetId) {   // an icon dropped on another: onto a folder it joins it, onto an app they become a new folder
+  const l = HM.layout; if (!canFolder(dragId)) return;
+  if (targetId.startsWith('folder:')) { const f = l.folders[targetId.slice(7)]; if (!f || f.items.length >= 12) return; takeOut(dragId); f.items.push(dragId); return; }
+  if (!canFolder(targetId) || !HM.items[targetId]) return;
+  const fid = newFid(), at = spotOf(targetId);
+  l.folders[fid] = { name: 'Folder', items: [targetId, dragId] }; registerFolder(fid);
+  const dockHad = l.dock.includes(targetId);
+  l.order = l.order.filter((x) => x !== dragId); l.dock = l.dock.filter((x) => x !== dragId);
+  const arr = dockHad ? l.dock : l.order, i = arr.indexOf(targetId); arr[i] = 'folder:' + fid;
+}
+function renderAll() { renderSb(); renderDock(); saveLayout(); }
+function removeFolder(fid) {   // its apps go back to the grid
+  const l = HM.layout, f = l.folders[fid]; if (!f) return;
+  const id = 'folder:' + fid, at = spotOf(id), kids = f.items.slice();
+  delete l.folders[fid]; delete HM.items[id];
+  at.arr.splice(at.i, 1, ...(at.arr === l.dock ? kids.slice(0, 4 - (l.dock.length - 1)) : kids)); 
+  kids.forEach((k) => { if (!l.dock.includes(k) && !l.order.includes(k)) l.order.push(k); });
+}
+function ufolderSheet(fid) {
+  const f = HM.layout.folders[fid]; if (!f) return;
+  const kids = f.items.map((id) => HM.items[id]).filter(Boolean).map((it) => iconHTML(it, { tray: true, plain: true }).replace(/<button class="ic-add"[^>]*>.*?<\/button>/, '').replace(/<\/div><\/div>$/, `<button class="ic-out" data-out="${esc(it.id)}">Move out</button></div></div>`));
+  const d = openSheet(`<input class="folder-name" data-fname="${esc(fid)}" value="${esc(f.name)}" maxlength="30" aria-label="Folder name"><div class="folder-grid">${kids.join('') || '<p class="muted">Empty. Drag an icon onto this folder while rearranging.</p>'}</div><p style="margin-top:14px"><button class="btn small danger" data-delfolder="${esc(fid)}">Remove folder</button></p>`);
+  d.dataset.fid = fid;
+  d.querySelectorAll('a.ic-tile').forEach((a) => a.addEventListener('click', () => d.close()));
+}
 function folderSheet() {
   const tools = ADMIN_TOOLS.map(([k, name, g]) => iconHTML({ id: 'tool:' + k, kind: 'sys', name, glyph: k, grad: g, href: '#/' + k, badge: k === 'requests' ? HM.pend : 0 }, { tray: true, plain: true }).replace(/<button class="ic-add"[^>]*>.*?<\/button>/, ''));
   openSheet(`<h2 style="margin:0 0 4px">Admin</h2><div class="folder-grid">${tools.join('')}</div>`);
   $('#sheet').querySelectorAll('a').forEach((a) => a.addEventListener('click', () => $('#sheet').close()));
+}
+const rand = (c) => 'R' + (c / 100).toFixed(c % 100 ? 2 : 0);
+const priceText = (c) => rand(c.price) + (c.mode === 'once' ? ' once' : ' for ' + c.days + ' days');
+function payBody(slug, renew) {
+  const c = HM.pw.apps[slug];
+  return `<div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn primary" data-pay="${esc(slug)}" data-scope="person">${renew ? 'Renew' : 'Pay'} ${esc(priceText(c))}</button>${c.householdPrice && HM.pw.household ? `<button class="btn" data-pay="${esc(slug)}" data-scope="household">Whole household: ${esc(rand(c.householdPrice))}${c.mode === 'once' ? '' : ' / ' + c.days + ' days'}</button>` : ''}</div>`
+    + (c.householdPrice && !HM.pw.household ? '<p class="muted small">Create a household under Family to pay once for everyone who lives with you.</p>' : '') + '<p class="muted small">Secure card payment by Yoco.</p>';
 }
 function infoSheet(slug, startEdit) {
   const it = HM.items['app:' + slug]; if (!it) return;
@@ -1457,6 +1692,10 @@ function infoSheet(slug, startEdit) {
   else if (it.ok) body = /^https?:\/\//i.test(a.url || '') ? `<a class="btn primary" href="${esc(a.url)}" data-open="${esc(a.slug)}" target="_blank" rel="noopener">Open ${esc(a.name)}</a>` : '<span class="muted small">No address set yet</span>';
   else body = HM.reqs === null ? '<span class="muted small">Ask the admin for access</span>' : pend ? '<span class="chip warn">request pending</span>'
     : `<div class="req-row"><input data-msg="${esc(a.slug)}" placeholder="Why do you need it? (optional)" maxlength="300"><button class="btn small primary" data-req="${esc(a.slug)}">Request access</button></div>${denied ? '<div class="muted small" style="margin-top:6px">Your last request was denied.</div>' : ''}`;
+  const pcfg = HM.pw && HM.pw.ready && HM.pw.apps[a.slug];
+  if (!it.ok && a.enabled && !a.maintenance && pcfg) body = `<p>This app is a paid app: <b>${esc(priceText(pcfg))}</b>.</p>` + payBody(a.slug) + `<p class="muted small" style="margin-top:10px">Or ask the admin to unlock it for you.</p>` + body;
+  const mine = HM.pw && HM.pw.mine[a.slug];
+  if (it.ok && pcfg && mine && mine.until) body += `<p class="muted small" style="margin-top:10px">Your access runs until ${esc(fmtDay(mine.until))}.</p>` + payBody(a.slug, true);
   const desc = isAdmin
     ? `<div data-desc><textarea rows="3" maxlength="300" placeholder="What is this app for?" aria-label="Description for ${esc(a.name)}">${esc(a.description || '')}</textarea><div class="row" style="gap:6px;margin-top:6px"><button class="btn small" data-dsave="${esc(a.slug)}">Save description</button></div></div>`
     : `<p class="muted">${esc(a.description || '')}</p>`;
@@ -1464,6 +1703,16 @@ function infoSheet(slug, startEdit) {
   if (startEdit) { const t = d.querySelector('textarea'); t && t.focus(); }
 }
 document.addEventListener('click', guard(async (e) => {
+  const uf = e.target.closest('[data-ufolder]'); if (uf && !editing) return ufolderSheet(uf.dataset.ufolder);
+  const df = e.target.closest('[data-delfolder]');
+  if (df && HM) { const fid = df.dataset.delfolder; if (!HM.layout.folders[fid]) return; if ((HM.layout.folders[fid].items.length) && !confirm('Remove this folder? Its apps go back to your home screen.')) return; removeFolder(fid); if ($('#sheet').open) $('#sheet').close(); renderAll(); return; }
+  const outb = e.target.closest('[data-out]');
+  if (outb && HM) { const id = outb.dataset.out, fid = ($('#sheet').dataset.fid || ''), l = HM.layout, f = l.folders[fid]; if (!f) return;
+    f.items = f.items.filter((x) => x !== id); if (!l.order.includes(id)) l.order.push(id);
+    if (!f.items.length) { removeFolder(fid); $('#sheet').close(); } else ufolderSheet(fid);
+    renderAll(); return; }
+  const nf = e.target.closest('#new-folder');
+  if (nf && HM) { const fid = newFid(); HM.layout.folders[fid] = { name: 'Folder', items: [] }; registerFolder(fid); HM.layout.order.push('folder:' + fid); renderAll(); return; }
   const di = e.target.closest('[data-info]'); if (di && !editing) return infoSheet(di.dataset.info);
   if (e.target.closest('[data-folder]') && !editing) return folderSheet();
   const ea = e.target.closest('[data-edit-app]'); if (ea) return infoSheet(ea.dataset.editApp, true);
@@ -1471,6 +1720,8 @@ document.addEventListener('click', guard(async (e) => {
   if (hide && HM) { const id = hide.dataset.hide, l = HM.layout; l.order = l.order.filter((x) => x !== id); l.dock = l.dock.filter((x) => x !== id); if (!l.hidden.includes(id)) l.hidden.push(id); renderSb(); renderDock(); saveLayout(); return; }
   const show = e.target.closest('[data-show]');
   if (show && HM) { const id = show.dataset.show, l = HM.layout; l.hidden = l.hidden.filter((x) => x !== id); l.order.push(id); renderSb(); saveLayout(); return; }
+  const pay = e.target.closest('[data-pay]');
+  if (pay) { pay.disabled = true; try { const j = await acctFetch('/pay', { slug: pay.dataset.pay, scope: pay.dataset.scope }); location.href = j.redirectUrl; } catch (err) { pay.disabled = false; throw err; } return; }
   const ds = e.target.closest('[data-dsave]');
   if (ds) {
     const app = HM.apps.find((x) => x.slug === ds.dataset.dsave); if (!app) return;
@@ -1493,6 +1744,19 @@ document.addEventListener('click', (e) => {
   const t = w.querySelector('.ic-tile'); if (t) t.click();
 });
 $('#tb-done').onclick = () => setEditing(false);
+// Dock icons grow as the mouse nears them (mouse only; neighbours slide aside so nothing overlaps).
+(() => {
+  const d = $('#dock'); if (!d || !matchMedia('(hover:hover)').matches) return;
+  const reset = () => d.querySelectorAll('.ic-w').forEach((w) => { w.style.transform = ''; });
+  d.addEventListener('pointermove', (e) => {
+    if (e.pointerType !== 'mouse' || editing || drag) return reset();
+    const ics = [...d.querySelectorAll('.ic')]; if (!ics.length) return;
+    const REACH = 120, MAX = 0.75, ex = ics.map((ic) => { const r = ic.getBoundingClientRect(), t = Math.max(0, 1 - Math.abs(e.clientX - (r.left + r.width / 2)) / REACH), s = 1 + MAX * t * t * (3 - 2 * t); return { s, extra: r.width * (s - 1) }; });
+    const total = ex.reduce((a, x) => a + x.extra, 0); let before = 0;
+    ics.forEach((ic, i) => { const w = ic.querySelector('.ic-w'); if (!w) return; w.style.transform = `translateX(${(-total / 2 + before + ex[i].extra / 2).toFixed(1)}px) scale(${ex[i].s.toFixed(3)})`; before += ex[i].extra; });
+  });
+  d.addEventListener('pointerleave', reset);
+})();
 $('#tb-me').onclick = () => { $('#acct').showModal(); };
 $('#tb-back').onclick = () => { location.hash = '#/home'; };
 
@@ -1503,23 +1767,23 @@ function setBar(view) {
   $('#tb-title').textContent = VIEW_TITLES[view] || '';
   $('#tb-me').textContent = (state.actor || '?').trim().charAt(0).toUpperCase();
   if (!home) { setEditing(false); $('#tb-edit').hidden = true; $('#tb-done').hidden = true; $('#tb-view').hidden = true; } else { $('#tb-edit').hidden = editing; }
-  $('#tb-view').hidden = !home || editing;
+  $('#tb-view').hidden = !home || editing; renderTicker();
 }
 
 // The landing page: apps as icons. Open goes to the app (signed in already where the app supports it);
 // apps the person isn't approved for open a small request form instead.
 async function viewHome() {
-  const uid = state.uid, isAdmin = isAdminRole();
+  const uid = selfId() || state.uid, isAdmin = isAdminRole(), hasSelf = !!selfId();
   HM = await homeModel();
-  const g = isAdmin ? null : await fetch('/guardians', { headers: { authorization: state.token }, cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
-  const fam = isAdmin ? null : await acctFetch('/family').catch(() => null);
+  const g = !hasSelf ? null : await fetch('/guardians', { headers: { authorization: state.token }, cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+  const fam = !hasSelf ? null : await acctFetch('/family').catch(() => null);
   if (fam && fam.invites && fam.invites.length && HM.items['sys:family']) HM.items['sys:family'].badge = fam.invites.length;
   const acc = !isAdmin ? await listAll('portal_settings', { filter: 'key = "portal.access"' }).catch(() => []) : [];
   const userRow = acc.find((r) => r.scope === 'user' && r.app === ''), globalBlock = acc.find((r) => r.scope === 'global' && r.value === false);
   const banner = isAdmin ? '' : userRow && userRow.value === false ? 'Your account access has been turned off. Contact the admin.' : (globalBlock && !userRow ? 'The admin approves access to each app separately. Tap an app with a lock to request access.' : '');
   const famInv = fam && fam.invites && fam.invites.length ? `<div class="card"><b>You've been invited to a family.</b> <a href="#/family">Open Family</a> to join or decline.</div>` : '';
   const guardCard = (!g ? '' : [
-    g.minor && g.adminPending ? `<div class="card"><b>Your account is waiting for an admin to approve it.</b> Once they do, you can use the apps.</div>` : '',
+    g.adminPending ? `<div class="card"><b>Your account is waiting for an admin to approve it.</b> Once they do, you can use the apps.</div>` : '',
     g.minor && g.parents.length && !g.adminPending ? `<div class="card"><b>Your account needs a parent's approval.</b> ${g.parents.map((p) => `${esc(p.name)}: ${p.status === 'approved' ? 'approved' : p.status === 'pending' ? 'waiting' : 'declined'}`).join(' · ')}</div>` : '',
     g.pending.length ? `<div class="card"><h2>Needs your approval</h2>${g.pending.map((x) => `<div class="row spread" style="padding:6px 0"><span>${esc(x.label)}</span><span><button class="btn primary small" data-gact="yes" data-id="${esc(x.id)}">Approve</button> <button class="btn small" data-gact="no" data-id="${esc(x.id)}">Decline</button></span></div>`).join('')}</div>` : '',
     g.kids.length ? `<div class="card"><h2>Kids you look after</h2>${g.kids.map((k) => `<div class="row spread" style="padding:6px 0"><span>${esc(k.childName)}</span><button class="btn small" data-gact="revoke" data-id="${esc(k.childId)}">Withdraw approval</button></div>`).join('')}</div>` : '',

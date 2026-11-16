@@ -54,7 +54,10 @@ async function rows(filter) {
 }
 // Is this person a minor, and has a parent approved them?
 async function statusOf(u) {
-  if (!isMinor(u)) return { minor: false, approved: true };
+  if (!isMinor(u)) {   // adults are approved, except an account someone else created for them (a spouse), which an admin approves first
+    const adm = await rows(`childId = '${clean(u.id)}' && kind = 'admin'`), pending = adm.some(x => x.status !== "approved");
+    return { minor: false, approved: !pending, adminPending: pending };
+  }
   const r = await rows(`childId = '${clean(u.id)}' && (kind = 'account' || kind = 'admin')`);
   const par = r.filter(x => x.kind === "account"), adm = r.filter(x => x.kind === "admin");
   const adminOk = !adm.some(x => x.status !== "approved");   // accounts a parent created here also need an admin's OK
@@ -66,6 +69,11 @@ async function createdByParent(child, parent) {
   const base_ = { childId: child.id, childName: nameOf(child), parentId: parent.id, parentName: nameOf(parent), ref: "" };
   await pb.asSuper("POST", base + "/records", { ...base_, kind: "account", label: "Created by " + nameOf(parent), status: "approved", decidedAt: new Date().toISOString() });
   await pb.asSuper("POST", base + "/records", { ...base_, kind: "admin", label: "Admin approval", status: "pending" });
+}
+// A household member creating an adult's (spouse's) account: an admin has to approve it before it can be used.
+async function createdSpouse(spouse, creator) {
+  await ensure();
+  await pb.asSuper("POST", base + "/records", { childId: spouse.id, childName: nameOf(spouse), parentId: creator.id, parentName: nameOf(creator), ref: "", kind: "admin", label: "Spouse account created by " + nameOf(creator), status: "pending" });
 }
 async function adminDecide(childId, approve) {
   await ensure();
@@ -127,4 +135,4 @@ async function revoke(parent, childId) {
   for (const r of await rows(`parentId = '${clean(parent.id)}' && childId = '${clean(childId)}' && kind = 'account' && status = 'approved'`)) await pb.asSuper("PATCH", `${base}/records/${r.id}`, { status: "declined", decidedAt: new Date().toISOString() });
   return { ok: true };
 }
-module.exports = { createdByParent, adminDecide, validDob, ageOf, isMinor, statusOf, checkParents, requestApproval, requestFamily, inbox, decide, revoke };
+module.exports = { createdSpouse, createdByParent, adminDecide, validDob, ageOf, isMinor, statusOf, checkParents, requestApproval, requestFamily, inbox, decide, revoke };

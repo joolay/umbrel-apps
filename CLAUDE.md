@@ -42,3 +42,10 @@ Defaults come from the person's region, never a hard-coded US/UK style. Portal A
 (`regionalDefaults()` in `src/portal-admin/public/app.js`; South Africa = metric, Celsius, DD/MM/YYYY, 24-hour, ZAR) into the shared `pref.*` rows:
 `language`, `currency`, `timezone`, `dateFormat`, `timeFormat`, `units` (metric|imperial), `temperature` (C|F). Every app reads them from `user.portal.prefs`,
 formats with them, and only falls back to metric / Celsius / DD/MM/YYYY / 24h when a value is missing. Do not add per-app unit or date toggles that ignore them.
+
+## Upcoming events (dashboard ticker)
+The top bar of the JoolzApp home screen scrolls upcoming events. Apps that own dates (Organiser, school pick-ups, notices) never build their own ticker: write rows to
+`portal_events` (see `src/portal-admin/README.md`, "Events and the Organiser") or add a provider in `src/portal-admin/events.js`.
+
+## Paid apps
+Admin > Paid apps (Yoco) locks an app behind payment using the existing `portal.access` rows, so apps need no changes. Details: `src/portal-admin/README.md`, "Paid apps (Yoco)".
