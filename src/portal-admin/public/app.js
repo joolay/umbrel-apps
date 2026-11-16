@@ -1302,7 +1302,20 @@ function saveLayout() {
   });
 }
 
-function tileInner(it) { return it.glyph ? svgG(it.glyph) : `<b>${esc(it.letter)}</b>`; }
+// Apps show the same icon as on the Umbrel dashboard (joolay-<slug>/icon.svg in the store repo). If it can't load, the lettered tile stays.
+const ICON_BASE = 'https://raw.githubusercontent.com/joolay/umbrel-apps/main/';
+function appIconUrl(a) { return /^https?:\/\//i.test(a.icon || '') ? a.icon : ICON_BASE + 'joolay-' + encodeURIComponent(a.slug) + '/icon.svg'; }
+// Second source (Stremio and other apps that use a public dashboard-icons file), then give up and keep the letter.
+function iconFail(img) {
+  if (img.dataset.tried) { img.remove(); return; }
+  img.dataset.tried = '1'; img.src = 'https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/' + encodeURIComponent(img.dataset.slug) + '.svg';
+}
+window.iconFail = iconFail;
+function tileInner(it) {
+  if (it.glyph) return svgG(it.glyph);
+  const img = it.app ? `<img class="ic-img" src="${esc(appIconUrl(it.app))}" alt="" draggable="false" loading="lazy" data-slug="${esc(it.app.slug)}" onerror="iconFail(this)">` : '';
+  return `<b>${esc(it.letter)}</b>${img}`;
+}
 function folderMini() { return `<span class="mini">${ADMIN_TOOLS.slice(0, 4).map(([k, , g]) => `<i style="--c1:${g[0]};--c2:${g[1]}">${svgG(k)}</i>`).join('')}</span>`; }
 // Tile view (desktop): a short description and a status line next to the icon. Hidden in the icon view.
 function tileText(it) {
