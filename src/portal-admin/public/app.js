@@ -242,7 +242,7 @@ async function showShell() {
   $('#login').classList.add('hidden'); $('#shell').classList.remove('hidden');
   $('#who').textContent = state.actor; route(); startDetecting();
   homeModel().then((m) => { if (!HM) HM = m; renderDock(); }).catch(() => {});   // so the dock is there on every page
-  if (selfId()) seedRegional().then(loadDatePref).catch(loadDatePref);
+  if (selfId()) { seedRegional().then(loadDatePref).catch(loadDatePref); loadAppearance(); }
   loadEvents();
 }
 const SESSION_KEYS = ['token', 'actor', 'role', 'uid', 'pid'];
@@ -1114,7 +1114,23 @@ const PREFS = [
   ['units', 'Distance and weight', [['metric', 'Metric (km, kg, litres)'], ['imperial', 'Imperial (mi, lb, gallons)']]],
   ['temperature', 'Temperature', [['C', 'Celsius (°C)'], ['F', 'Fahrenheit (°F)']]],
   ['theme', 'Theme', [['auto', 'Match my device'], ['light', 'Light'], ['dark', 'Dark']]],
+  ['background', 'Dashboard background', [['aurora', 'Aurora (default)'], ['sunset', 'Sunset'], ['ocean', 'Ocean'], ['forest', 'Forest'], ['violet', 'Violet'], ['plain', 'Plain (no colour glows)']]],
+  ['backgroundMotion', 'Background motion', [['animated', 'Slowly moving (default)'], ['still', 'Still']]],
 ];
+// The backdrop follows the person's account (pref.background / pref.backgroundMotion), so it is the same on every device.
+function applyBg(style, motion) {
+  const r = document.documentElement;
+  r.dataset.bg = ['aurora', 'sunset', 'ocean', 'forest', 'violet', 'plain'].includes(style) ? style : 'aurora';
+  r.dataset.motion = motion === 'still' ? 'still' : 'animated';
+}
+async function loadAppearance() {
+  if (!selfId()) return;
+  try {
+    const rows = await listAll('portal_settings', { filter: `scope = "user" && user = ${fq(selfId())} && app = "" && (key = "pref.background" || key = "pref.backgroundMotion")` });
+    const v = (k) => (rows.find((r) => r.key === k) || {}).value;
+    applyBg(v('pref.background'), v('pref.backgroundMotion'));
+  } catch { /* keep the default backdrop */ }
+}
 async function viewMe() {
   const uid = selfId() || state.uid;
   const [rows, reqs] = await Promise.all([
@@ -1197,8 +1213,11 @@ async function viewMe() {
       else if (val !== '' && ex) { if (ex.value !== val) { await api('PATCH', `/api/collections/portal_settings/records/${ex.id}`, { value: val }); ex.value = val; } }
       else if (val !== '') cur[key] = await api('POST', '/api/collections/portal_settings/records', { scope: 'user', user: uid, app: '', key: 'pref.' + key, value: val, secret: false });
     }
+    applyBg(e.target.elements.background.value, e.target.elements.backgroundMotion.value);
+    if (e.target.elements.dateFormat.value) state.dateFormat = e.target.elements.dateFormat.value;
     toast('Preferences saved');
   });
+  $('#prefs').addEventListener('change', (e) => { if (e.target.name === 'background' || e.target.name === 'backgroundMotion') { const f = $('#prefs').elements; applyBg(f.background.value, f.backgroundMotion.value); } });   // see it straight away
   $('#regional').onclick = () => {
     const f = $('#prefs'), d = regionalDefaults();
     for (const [k, v] of Object.entries(d)) if (v && f.elements[k]) f.elements[k].value = v;
@@ -1385,7 +1404,8 @@ const ADMIN_TOOLS = [
   ['paywall', 'Paid apps', ['#22c55e', '#0ea5e9']], ['audit', 'Audit log', ['#eab308', '#f97316']], ['setup', 'Setup', ['#0ea5e9', '#6366f1']],
 ];
 const VIEW_TITLES = { overview: 'Overview', global: 'Global settings', apps: 'Apps', users: 'Users', requests: 'Access requests', cleanup: 'Cleanup', audit: 'Audit log', setup: 'Setup & integration', me: 'My settings', family: 'Family', paywall: 'Paid apps', paid: 'Payment' };
-const PROTECTED = new Set(['sys:me', 'sys:admin']);   // can't be hidden, so nobody loses the way back to their settings
+const PROTECTED = new Set(['sys:me', 'sys:admin']);
+const canFolder = (id) => !PROTECTED.has(id) && !String(id).startsWith('folder:');   // folders hold apps and Family, never nest, never hide the way back to Settings/Admin   // can't be hidden, so nobody loses the way back to their settings
 
 let HM = null, editing = false, saveChain = Promise.resolve();
 const isAdminRole = () => state.role !== 'user';
@@ -1420,11 +1440,19 @@ async function homeModel() {
   const fresh = !saved;
   saved = saved || { order: [], dock: isAdmin ? (selfId() ? ['sys:admin', 'sys:family', 'sys:me'] : ['sys:admin']) : ['sys:family', 'sys:me'], hidden: [] };
   const seen = new Set(), keep = (arr, f = () => true) => (Array.isArray(arr) ? arr : []).filter((id) => items[id] && f(id) && !seen.has(id) && seen.add(id));
+  // Folders the person made: { id: { name, items: [ids] } }. Their apps are claimed first so they don't also show on the grid.
+  const folders = {};
+  for (const [fid, f] of Object.entries(saved.folders && typeof saved.folders === 'object' ? saved.folders : {})) {
+    if (!/^[a-z0-9]{3,12}$/.test(fid) || !f || typeof f !== 'object') continue;
+    folders[fid] = { name: String(f.name || 'Folder').slice(0, 30), items: [] };
+    items['folder:' + fid] = { id: 'folder:' + fid, kind: 'ufolder', fid, name: folders[fid].name, grad: ['#64748b', '#334155'] };
+  }
+  for (const fid of Object.keys(folders)) folders[fid].items = keep((saved.folders[fid] || {}).items, (id) => canFolder(id));
   const dock = keep(saved.dock).slice(0, 4);
   const hidden = keep(saved.hidden, (id) => !PROTECTED.has(id));
   const order = keep(saved.order);
   Object.keys(items).forEach((id) => { if (!seen.has(id)) { order.push(id); seen.add(id); } });   // new apps appear at the end
-  return { apps, reqs, items, ssoSlugs, isAdmin, uid, layout: { order, dock, hidden, view: saved.view === 'icons' || saved.view === 'tiles' ? saved.view : '' }, lrow: lrows[0] || null, fresh, pend, pw };
+  return { apps, reqs, items, ssoSlugs, isAdmin, uid, layout: { order, dock, hidden, folders, view: saved.view === 'icons' || saved.view === 'tiles' ? saved.view : '' }, lrow: lrows[0] || null, fresh, pend, pw };
 }
 
 function saveLayout() {
@@ -1452,6 +1480,10 @@ function tileInner(it) {
   const img = it.app ? `<img class="ic-img" src="${esc(appIconUrl(it.app))}" alt="" draggable="false" loading="lazy" data-slug="${esc(it.app.slug)}" onerror="iconFail(this)">` : '';
   return `<b>${esc(it.letter)}</b>${img}`;
 }
+function ufMini(it) {
+  const kids = ((HM && HM.layout.folders[it.fid]) || { items: [] }).items.map((id) => HM.items[id]).filter(Boolean).slice(0, 4);
+  return `<span class="mini">${kids.map((k) => `<i style="--c1:${k.grad[0]};--c2:${k.grad[1]}">${tileInner(k)}</i>`).join('')}</span>`;
+}
 function folderMini() { return `<span class="mini">${ADMIN_TOOLS.slice(0, 4).map(([k, , g]) => `<i style="--c1:${g[0]};--c2:${g[1]}">${svgG(k)}</i>`).join('')}</span>`; }
 // Tile view (desktop): a short description and a status line next to the icon. Hidden in the icon view.
 function tileText(it) {
@@ -1460,7 +1492,8 @@ function tileText(it) {
     d = a.description || '';
     const pcfg = HM && HM.pw && HM.pw.apps[a.slug];
     st = !a.enabled ? 'Off' : a.maintenance ? 'Maintenance' : !it.ok ? (pcfg ? priceText(pcfg) : 'Request access') : 'Open';
-  } else if (it.kind === 'folder') { d = 'Users, apps, requests and settings'; st = it.badge ? it.badge + ' waiting' : 'Open'; }
+  } else if (it.kind === 'ufolder') { const n = ((HM && HM.layout.folders[it.fid]) || { items: [] }).items.length; d = n ? n + (n === 1 ? ' app' : ' apps') : 'Empty folder'; st = 'Open'; }
+  else if (it.kind === 'folder') { d = 'Users, apps, requests and settings'; st = it.badge ? it.badge + ' waiting' : 'Open'; }
   else d = it.id === 'sys:family' ? 'Your household and relatives' : 'Your preferences and account';
   return `<span class="ic-desc">${esc(d)}</span><span class="ic-state">${esc(st || 'Open')}</span>`;
 }
@@ -1474,6 +1507,7 @@ function iconHTML(it, o = {}) {
   const a = it.app, c = `--c1:${it.grad[0]};--c2:${it.grad[1]};--d:${-(hashN(it.id) % 260)}ms`;
   let tile, st = '';
   if (it.kind === 'folder') tile = `<button class="ic-tile folder" data-folder="1" aria-label="Admin tools">${folderMini()}</button>`;
+  else if (it.kind === 'ufolder') tile = `<button class="ic-tile folder" data-ufolder="${esc(it.fid)}" aria-label="Folder ${esc(it.name)}">${ufMini(it)}</button>`;
   else if (it.kind === 'sys') tile = `<a class="ic-tile" href="${it.href}" draggable="false" aria-label="${esc(it.name)}">${tileInner(it)}</a>`;
   else if (a.enabled && it.ok && !a.maintenance && /^https?:\/\//i.test(a.url || '')) tile = `<a class="ic-tile" href="${esc(a.url)}" data-open="${esc(a.slug)}" target="_blank" rel="noopener" draggable="false" aria-label="Open ${esc(a.name)}">${tileInner(it)}</a>`;
   else tile = `<button class="ic-tile" data-info="${esc(a.slug)}" aria-label="${esc(a.name)}">${tileInner(it)}</button>`;
@@ -1483,15 +1517,15 @@ function iconHTML(it, o = {}) {
     else if (!it.ok) st = `<span class="ic-st" title="Request access">${ICON_LOCK}</span>`;
   }
   const badge = it.badge ? `<span class="ic-badge">${it.badge > 9 ? '9+' : it.badge}</span>` : '';
-  const x = !o.tray && !PROTECTED.has(it.id) ? `<button class="ic-x" data-hide="${esc(it.id)}" aria-label="Hide ${esc(it.name)}">${ICON_X}</button>` : '';
+  const x = !o.tray && it.kind === 'ufolder' ? `<button class="ic-x" data-delfolder="${esc(it.fid)}" aria-label="Remove folder ${esc(it.name)}">${ICON_X}</button>` : !o.tray && !PROTECTED.has(it.id) ? `<button class="ic-x" data-hide="${esc(it.id)}" aria-label="Hide ${esc(it.name)}">${ICON_X}</button>` : '';
   const ed = !o.tray && isAdminRole() && it.kind === 'app' ? `<button class="ic-ed" data-edit-app="${esc(a.slug)}" aria-label="Edit ${esc(a.name)}">${ICON_PEN}</button>` : '';
   const add = o.tray ? `<button class="ic-add" data-show="${esc(it.id)}" aria-label="Add ${esc(it.name)} back">${ICON_ADD}</button>` : '';
   return `<div class="ic${a && !a.enabled ? ' off' : ''}" data-id="${esc(it.id)}" style="${c}"><div class="ic-w">${tile}${st}${badge}${x}${ed}${add}<span class="ic-label">${esc(it.name)}</span>${tileText(it)}</div></div>`;
 }
 function renderTray() {
   const l = HM.layout, hid = $('#hid'); if (!hid) return;
-  hid.hidden = !(editing && l.hidden.length);
-  hid.innerHTML = l.hidden.length ? `<h2>Hidden</h2><div class="sb">${l.hidden.map((id) => iconHTML(HM.items[id], { tray: true })).join('')}</div>` : '';
+  hid.hidden = !editing;
+  hid.innerHTML = `<p style="margin:0 0 10px"><button class="btn small" id="new-folder">New folder</button> <span class="muted small">Or hold one icon over another to make a folder.</span></p>` + (l.hidden.length ? `<h2>Hidden</h2><div class="sb">${l.hidden.map((id) => iconHTML(HM.items[id], { tray: true })).join('')}</div>` : '');
 }
 function renderSb() {
   const sb = $('#sb'); if (!sb) return;
@@ -1539,6 +1573,13 @@ function moveDrag(e) {
   if (inDock && !inDockNow) return;
   const sb = $('#sb'); let best = null, bd = 1e9;
   for (const el of sb.querySelectorAll('.ic')) { if (el === drag.ic) continue; const r = el.getBoundingClientRect(), d = Math.hypot(e.clientX - (r.left + r.width / 2), e.clientY - (r.top + r.height / 2)); if (d < bd) { bd = d; best = { el, r }; } }
+  // Hold an icon over the middle of another for a moment to make a folder (or drop it into one), like on a phone.
+  const cand = best && bd < Math.min(best.r.width, best.r.height) * 0.3 && canFolder(drag.ic.dataset.id) && (best.el.dataset.id.startsWith('folder:') || canFolder(best.el.dataset.id)) ? best.el : null;
+  if ((cand && cand.dataset.id) !== drag.cand) {
+    clearTimeout(drag.candT); drag.into = null; document.querySelectorAll('.drop-into').forEach((x) => x.classList.remove('drop-into')); drag.cand = cand && cand.dataset.id;
+    if (cand) drag.candT = setTimeout(() => { drag.into = cand.dataset.id; cand.classList.add('drop-into'); try { navigator.vibrate && navigator.vibrate(8); } catch {} }, 420);
+  }
+  if (cand) return;
   if (!best) { if (drag.ic.parentElement !== sb) flip(() => sb.appendChild(drag.ic)); return; }
   if (bd > best.r.width * 0.95 && drag.ic.parentElement === sb) return;
   const before = e.clientX < best.r.left + best.r.width / 2, ref = before ? best.el : best.el.nextSibling;
@@ -1549,7 +1590,9 @@ function endDrag() {
     drag.clone.remove(); drag.ic.classList.remove('ghost');
     const ids = (sel) => [...document.querySelectorAll(sel)].map((e) => e.dataset.id);
     HM.layout.order = ids('#sb .ic'); HM.layout.dock = ids('#dock .ic').slice(0, 4);
-    renderDock(); saveLayout();
+    if (drag.into) mergeInto(drag.ic.dataset.id, drag.into);
+    clearTimeout(drag.candT); document.querySelectorAll('.drop-into').forEach((x) => x.classList.remove('drop-into'));
+    renderSb(); renderDock(); saveLayout();
   }
   if (press) clearTimeout(press.t);
   if (drag || (press && press.long)) { suppress = true; setTimeout(() => { suppress = false; }, 80); }
@@ -1588,10 +1631,45 @@ function openSheet(html) {
   if (!d.open) d.showModal();
   return d;
 }
+document.addEventListener('change', (e) => {
+  const n = e.target.closest && e.target.closest('[data-fname]'); if (!n || !HM) return;
+  const f = HM.layout.folders[n.dataset.fname]; if (!f) return;
+  f.name = n.value.trim().slice(0, 30) || 'Folder'; n.value = f.name; HM.items['folder:' + n.dataset.fname].name = f.name; renderSb(); renderDock(); saveLayout();
+});
 document.addEventListener('click', (e) => {
   if (e.target.closest('[data-close]')) { const d = e.target.closest('dialog'); d && d.close(); return; }
   if (e.target.tagName === 'DIALOG') e.target.close();
 });
+/* ---------- Your own folders ---------- */
+const newFid = () => Math.random().toString(36).slice(2, 8).padEnd(6, 'x');
+function spotOf(id) { const l = HM.layout; return l.dock.includes(id) ? { arr: l.dock, i: l.dock.indexOf(id) } : { arr: l.order, i: l.order.indexOf(id) }; }
+function takeOut(id) { const l = HM.layout; l.order = l.order.filter((x) => x !== id); l.dock = l.dock.filter((x) => x !== id); Object.values(l.folders).forEach((f) => { f.items = f.items.filter((x) => x !== id); }); }
+function registerFolder(fid) { const f = HM.layout.folders[fid]; HM.items['folder:' + fid] = { id: 'folder:' + fid, kind: 'ufolder', fid, name: f.name, grad: ['#64748b', '#334155'] }; }
+function mergeInto(dragId, targetId) {   // an icon dropped on another: onto a folder it joins it, onto an app they become a new folder
+  const l = HM.layout; if (!canFolder(dragId)) return;
+  if (targetId.startsWith('folder:')) { const f = l.folders[targetId.slice(7)]; if (!f || f.items.length >= 12) return; takeOut(dragId); f.items.push(dragId); return; }
+  if (!canFolder(targetId) || !HM.items[targetId]) return;
+  const fid = newFid(), at = spotOf(targetId);
+  l.folders[fid] = { name: 'Folder', items: [targetId, dragId] }; registerFolder(fid);
+  const dockHad = l.dock.includes(targetId);
+  l.order = l.order.filter((x) => x !== dragId); l.dock = l.dock.filter((x) => x !== dragId);
+  const arr = dockHad ? l.dock : l.order, i = arr.indexOf(targetId); arr[i] = 'folder:' + fid;
+}
+function renderAll() { renderSb(); renderDock(); saveLayout(); }
+function removeFolder(fid) {   // its apps go back to the grid
+  const l = HM.layout, f = l.folders[fid]; if (!f) return;
+  const id = 'folder:' + fid, at = spotOf(id), kids = f.items.slice();
+  delete l.folders[fid]; delete HM.items[id];
+  at.arr.splice(at.i, 1, ...(at.arr === l.dock ? kids.slice(0, 4 - (l.dock.length - 1)) : kids)); 
+  kids.forEach((k) => { if (!l.dock.includes(k) && !l.order.includes(k)) l.order.push(k); });
+}
+function ufolderSheet(fid) {
+  const f = HM.layout.folders[fid]; if (!f) return;
+  const kids = f.items.map((id) => HM.items[id]).filter(Boolean).map((it) => iconHTML(it, { tray: true, plain: true }).replace(/<button class="ic-add"[^>]*>.*?<\/button>/, '').replace(/<\/div><\/div>$/, `<button class="ic-out" data-out="${esc(it.id)}">Move out</button></div></div>`));
+  const d = openSheet(`<input class="folder-name" data-fname="${esc(fid)}" value="${esc(f.name)}" maxlength="30" aria-label="Folder name"><div class="folder-grid">${kids.join('') || '<p class="muted">Empty. Drag an icon onto this folder while rearranging.</p>'}</div><p style="margin-top:14px"><button class="btn small danger" data-delfolder="${esc(fid)}">Remove folder</button></p>`);
+  d.dataset.fid = fid;
+  d.querySelectorAll('a.ic-tile').forEach((a) => a.addEventListener('click', () => d.close()));
+}
 function folderSheet() {
   const tools = ADMIN_TOOLS.map(([k, name, g]) => iconHTML({ id: 'tool:' + k, kind: 'sys', name, glyph: k, grad: g, href: '#/' + k, badge: k === 'requests' ? HM.pend : 0 }, { tray: true, plain: true }).replace(/<button class="ic-add"[^>]*>.*?<\/button>/, ''));
   openSheet(`<h2 style="margin:0 0 4px">Admin</h2><div class="folder-grid">${tools.join('')}</div>`);
@@ -1625,6 +1703,16 @@ function infoSheet(slug, startEdit) {
   if (startEdit) { const t = d.querySelector('textarea'); t && t.focus(); }
 }
 document.addEventListener('click', guard(async (e) => {
+  const uf = e.target.closest('[data-ufolder]'); if (uf && !editing) return ufolderSheet(uf.dataset.ufolder);
+  const df = e.target.closest('[data-delfolder]');
+  if (df && HM) { const fid = df.dataset.delfolder; if (!HM.layout.folders[fid]) return; if ((HM.layout.folders[fid].items.length) && !confirm('Remove this folder? Its apps go back to your home screen.')) return; removeFolder(fid); if ($('#sheet').open) $('#sheet').close(); renderAll(); return; }
+  const outb = e.target.closest('[data-out]');
+  if (outb && HM) { const id = outb.dataset.out, fid = ($('#sheet').dataset.fid || ''), l = HM.layout, f = l.folders[fid]; if (!f) return;
+    f.items = f.items.filter((x) => x !== id); if (!l.order.includes(id)) l.order.push(id);
+    if (!f.items.length) { removeFolder(fid); $('#sheet').close(); } else ufolderSheet(fid);
+    renderAll(); return; }
+  const nf = e.target.closest('#new-folder');
+  if (nf && HM) { const fid = newFid(); HM.layout.folders[fid] = { name: 'Folder', items: [] }; registerFolder(fid); HM.layout.order.push('folder:' + fid); renderAll(); return; }
   const di = e.target.closest('[data-info]'); if (di && !editing) return infoSheet(di.dataset.info);
   if (e.target.closest('[data-folder]') && !editing) return folderSheet();
   const ea = e.target.closest('[data-edit-app]'); if (ea) return infoSheet(ea.dataset.editApp, true);
@@ -1656,6 +1744,19 @@ document.addEventListener('click', (e) => {
   const t = w.querySelector('.ic-tile'); if (t) t.click();
 });
 $('#tb-done').onclick = () => setEditing(false);
+// Dock icons grow as the mouse nears them (mouse only; neighbours slide aside so nothing overlaps).
+(() => {
+  const d = $('#dock'); if (!d || !matchMedia('(hover:hover)').matches) return;
+  const reset = () => d.querySelectorAll('.ic-w').forEach((w) => { w.style.transform = ''; });
+  d.addEventListener('pointermove', (e) => {
+    if (e.pointerType !== 'mouse' || editing || drag) return reset();
+    const ics = [...d.querySelectorAll('.ic')]; if (!ics.length) return;
+    const REACH = 120, MAX = 0.75, ex = ics.map((ic) => { const r = ic.getBoundingClientRect(), t = Math.max(0, 1 - Math.abs(e.clientX - (r.left + r.width / 2)) / REACH), s = 1 + MAX * t * t * (3 - 2 * t); return { s, extra: r.width * (s - 1) }; });
+    const total = ex.reduce((a, x) => a + x.extra, 0); let before = 0;
+    ics.forEach((ic, i) => { const w = ic.querySelector('.ic-w'); if (!w) return; w.style.transform = `translateX(${(-total / 2 + before + ex[i].extra / 2).toFixed(1)}px) scale(${ex[i].s.toFixed(3)})`; before += ex[i].extra; });
+  });
+  d.addEventListener('pointerleave', reset);
+})();
 $('#tb-me').onclick = () => { $('#acct').showModal(); };
 $('#tb-back').onclick = () => { location.hash = '#/home'; };
 

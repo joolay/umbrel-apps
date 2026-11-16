@@ -77,3 +77,9 @@ Spouse is a special, one-at-a-time link between two adults in the same household
 - **Create a new account** (`createSpouse`): the creator is linked straight away; the new adult account is held for admin approval
   (`joolz_guardians` row `kind=admin`, plus a `portal_requests` row `__spouse_account__`). `guardians.statusOf` reports `adminPending` for adults too.
 `unlinkSpouse` clears both sides. A linked spouse can't be moved out of the household until unlinked.
+
+## Home screen: folders, dock and background
+
+- **Folders:** in rearrange mode, hold one icon over another (or press New folder) to make a folder; hold an icon over a folder to add it. Folders can sit on the grid or in the dock, never nest, and can't hold Settings/Admin. Stored in the same `pref.home.layout` row: `folders: { <id>: { name, items: [ids] } }`; the grid/dock list them as `folder:<id>`.
+- **Dock:** icons grow as the mouse approaches (mouse only).
+- **Background:** an animated, Umbrel-style colour-glow backdrop (`#bg`). Chosen in My settings > Preferences: `pref.background` (aurora, sunset, ocean, forest, violet, plain) and `pref.backgroundMotion` (animated, still). Reduced-motion devices never animate.

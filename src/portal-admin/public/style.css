@@ -145,3 +145,41 @@ dialog#sheet,dialog#acct{position:fixed;margin:auto;width:min(440px,calc(100vw -
   .has-ticker .tb-gap{display:none}
 }
 .tk-track.still{animation:none}
+
+
+/* ---- Your folders, dock magnify, animated backdrop ---- */
+.ic-tile.folder .mini i{position:relative;overflow:hidden}
+.ic-tile.folder .mini i b{font-size:11px;text-shadow:none}
+.ic-tile.folder .mini:empty::after{content:"";width:100%;height:100%}
+.ic.drop-into .ic-tile{transform:scale(1.18);box-shadow:0 0 0 3px var(--accent),0 10px 26px rgba(0,0,0,.28);transition:transform .15s,box-shadow .15s}
+.folder-name{display:block;width:100%;box-sizing:border-box;margin:0 0 6px;padding:8px 12px;border:1px solid transparent;border-radius:12px;background:transparent;color:var(--text);font:700 20px/1.2 inherit;text-align:center}
+.folder-name:focus{background:var(--glass-strong);border-color:var(--glass-line);outline:0}
+.ic-out{margin-top:6px;border:0;border-radius:99px;padding:3px 10px;font-size:11px;cursor:pointer;color:var(--text);background:var(--glass-strong);border:1px solid var(--glass-line)}
+.dock .ic-w{transform-origin:50% 100%;transition:transform .09s ease-out}
+.editing .dock .ic-w{transition:none}
+
+/* An Umbrel-style backdrop: soft colour glows drifting slowly behind everything. */
+#bg{position:fixed;inset:0;z-index:-1;overflow:hidden;pointer-events:none;
+  --b1:#8fb0ff;--b2:#f0a8ff;--b3:#7fe6cf;--b4:#ffc98f;--bo:.55}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) #bg{--b1:#3d56e0;--b2:#8a3fd0;--b3:#0f9a94;--b4:#c4501b;--bo:.5}}
+:root[data-theme="dark"] #bg{--b1:#3d56e0;--b2:#8a3fd0;--b3:#0f9a94;--b4:#c4501b;--bo:.5}
+#bg i{position:absolute;width:64vmax;height:64vmax;border-radius:50%;opacity:var(--bo);filter:blur(60px);will-change:transform;
+  background:radial-gradient(circle at 50% 50%,var(--bc),transparent 68%)}
+#bg i:nth-child(1){--bc:var(--b1);left:-18vmax;top:-22vmax;animation:bgA 42s ease-in-out infinite alternate}
+#bg i:nth-child(2){--bc:var(--b2);right:-24vmax;top:-6vmax;animation:bgB 53s ease-in-out infinite alternate}
+#bg i:nth-child(3){--bc:var(--b3);left:-6vmax;bottom:-30vmax;animation:bgC 47s ease-in-out infinite alternate}
+#bg i:nth-child(4){--bc:var(--b4);right:-20vmax;bottom:-26vmax;width:48vmax;height:48vmax;opacity:calc(var(--bo) * .7);animation:bgD 61s ease-in-out infinite alternate}
+@keyframes bgA{to{transform:translate3d(34vmax,20vmax,0) scale(1.18)}}
+@keyframes bgB{to{transform:translate3d(-30vmax,26vmax,0) scale(.9)}}
+@keyframes bgC{to{transform:translate3d(30vmax,-22vmax,0) scale(1.12)}}
+@keyframes bgD{to{transform:translate3d(-34vmax,-18vmax,0) scale(1.2)}}
+@media (prefers-reduced-motion:reduce){#bg i{animation:none}}
+
+:root:root[data-bg="sunset"] #bg{--b1:#ff9a6b;--b2:#ff6fa5;--b3:#ffd36b;--b4:#9a7bff}
+:root:root[data-bg="ocean"] #bg{--b1:#3aa0ff;--b2:#2fd3d0;--b3:#5b7cff;--b4:#8be3ff}
+:root:root[data-bg="forest"] #bg{--b1:#3fc08a;--b2:#9bd95a;--b3:#2aa6a0;--b4:#f0d56a}
+:root:root[data-bg="violet"] #bg{--b1:#8b5cf6;--b2:#d46bff;--b3:#5b8cff;--b4:#ff7ad9}
+:root[data-bg="plain"] #bg{display:none}
+:root[data-motion="still"] #bg i{animation:none}
+.ic-tile.folder .mini i b{color:#fff}
+.ic-tile.folder .mini:empty{border:2px dashed rgba(127,127,127,.45);border-radius:10px;margin:10px;width:calc(100% - 20px);height:calc(100% - 20px);padding:0}
