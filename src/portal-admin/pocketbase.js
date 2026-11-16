@@ -71,15 +71,43 @@ async function usersSchema() {
   const col = await asSuper("GET", "/api/collections/" + encodeURIComponent(COLL));
   const key = col.fields ? "fields" : "schema", have = new Set((col[key] || []).map(f => f.name)), patch = {};
   const mk = n => key === "fields" ? { name: n, type: "text" } : { name: n, type: "text", options: {} };
-  if (!have.has("dob")) patch[key] = [...(col[key] || []), mk("dob")];
+  const extra = [!have.has("dob") && "dob", key === "fields" && !have.has("username") && "username"].filter(Boolean);
+  if (extra.length) patch[key] = [...(col[key] || []), ...extra.map(mk)];
+  // Sign in with a username as well as an email.
+  if (key === "fields") {
+    const ids = (col.passwordAuth && col.passwordAuth.identityFields) || ["email"];
+    if (!ids.includes("username")) patch.passwordAuth = { ...(col.passwordAuth || { enabled: true }), identityFields: [...ids, "username"] };
+    const idx = col.indexes || [];
+    if (!idx.some(i => /username/i.test(i))) patch.indexes = [...idx, "CREATE UNIQUE INDEX idx_" + COLL + "_username ON " + COLL + " (username) WHERE username != ''"];
+  } else if (col.options && col.options.allowUsernameAuth === false) patch.options = { ...col.options, allowUsernameAuth: true };
   if (col.createRule !== null && col.createRule !== SERVER_ONLY) patch.createRule = SERVER_ONLY;
   const ref = key === "fields" ? "@request.body." : "@request.data.";
-  if (typeof col.updateRule === "string" && col.updateRule.includes("isAdmin:isset = false") && !col.updateRule.includes("dob:isset")) patch.updateRule = col.updateRule + " && " + ref + "dob:isset = false";
+  let ur = typeof col.updateRule === "string" && col.updateRule.includes("isAdmin:isset = false") ? col.updateRule : null;
+  if (ur !== null && !ur.includes("dob:isset")) ur += " && " + ref + "dob:isset = false";
+  if (ur !== null && key === "fields" && !ur.includes("username:isset")) ur += " && " + ref + "username:isset = false";   // usernames are set only through this server, which checks them
+  if (ur !== null && ur !== col.updateRule) patch.updateRule = ur;
   if (Object.keys(patch).length) await asSuper("PATCH", "/api/collections/" + encodeURIComponent(COLL), patch);
   return col.createRule !== null || patch.createRule !== undefined;
 }
-async function createUser({ email, password, name, dob }) {
-  return asSuper("POST", rec(), { email, password, passwordConfirm: password, name: name || "", emailVisibility: true, isAdmin: false, dob });
+async function createUser({ email, password, name, dob, username }) {
+  return asSuper("POST", rec(), { email, password, passwordConfirm: password, name: name || "", emailVisibility: true, isAdmin: false, dob, ...(username ? { username } : {}) });
+}
+// Usernames: 3-30 letters, digits, dots, dashes or underscores, saved in lower case, unique, and never shaped like an email.
+const USERNAME_RE = /^[a-z0-9][a-z0-9._-]{2,29}$/;
+function cleanUsername(v) { return String(v || "").trim().toLowerCase(); }
+function usernameError(u) { return USERNAME_RE.test(u) ? "" : "Use 3 to 30 letters, numbers, dots, dashes or underscores, starting with a letter or number."; }
+async function findByUsername(u) {
+  const j = await asSuper("GET", rec(`?page=1&perPage=1&filter=${q(`username = '${esc(u)}'`)}`));
+  return (j.items || [])[0] || null;
+}
+async function setUsername(id, username) {
+  const t = await findByUsername(username); if (t && t.id !== id) throw Object.assign(new Error("That username is taken. Try another."), { status: 409 });
+  await asSuper("PATCH", rec("/" + encodeURIComponent(id)), { username });
+}
+// Password reset by email or username, without telling the caller whether the account exists.
+async function requestReset(identity) {
+  const v = String(identity || "").trim(), u = v.includes("@") ? await findByEmail(v.toLowerCase()) : await findByUsername(cleanUsername(v));
+  if (u && u.email) await raw("POST", "/api/collections/" + encodeURIComponent(COLL) + "/request-password-reset", { body: { email: u.email } }).catch(() => {});
 }
 // Who is this signed-in person? (their own PocketBase token, refreshed)
 async function userFromToken(token) {
@@ -97,4 +125,4 @@ async function listUsers() {
 }
 async function getUser(id) { return asSuper("GET", rec("/" + encodeURIComponent(id))); }
 async function setDob(id, dob) { await asSuper("PATCH", rec("/" + encodeURIComponent(id)), { dob }); }
-module.exports = { listUsers, getUser, setDob, userFromToken, ready, asSuper, findByEmail, createUser, usersSchema, PBError, collection: COLL };
+module.exports = { cleanUsername, usernameError, findByUsername, setUsername, requestReset, listUsers, getUser, setDob, userFromToken, ready, asSuper, findByEmail, createUser, usersSchema, PBError, collection: COLL };

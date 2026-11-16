@@ -20,8 +20,8 @@
   <form id="login-form" class="card login-card" autocomplete="on">
     <div class="brand big"><img src="icon.svg" alt="" width="40" height="40"><span>Portal Admin</span></div>
     <p class="muted">Sign in with your <strong>JoolzApp</strong> account (or PocketBase superuser).</p>
-    <label>Email
-      <input id="login-email" type="email" autocomplete="username" required>
+    <label>Email or username
+      <input id="login-email" type="text" inputmode="email" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" required>
     </label>
     <label>Password
       <input id="login-pass" type="password" autocomplete="current-password" required>
@@ -45,7 +45,11 @@
       <input id="signup-name" autocomplete="name">
     </label>
     <label>Email
-      <input id="signup-email" type="email" autocomplete="username" required>
+      <input id="signup-email" type="email" autocomplete="email" required>
+    </label>
+    <label>Username
+      <input id="signup-username" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" minlength="3" maxlength="30" pattern="[A-Za-z0-9][A-Za-z0-9._\-]{2,29}" placeholder="e.g. zahir.j" required>
+      <span class="muted small">You can sign in with your username or your email.</span>
     </label>
     <label>Password (min 8)
       <input id="signup-pass" type="password" autocomplete="new-password" minlength="8" required>
@@ -98,6 +102,7 @@
     <div class="brand" id="tb-brand"><img src="icon.svg" alt="" width="28" height="28"><span>Portal Admin</span></div>
     <h1 class="tb-title" id="tb-title" hidden></h1>
     <span class="tb-gap"></span>
+    <button id="tb-view" class="tb-btn" hidden aria-label="Show as tiles" title="Show as tiles"><svg class="v-tiles" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4" width="17" height="6" rx="2"/><rect x="3.5" y="14" width="17" height="6" rx="2"/></svg><svg class="v-icons" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="6" height="6" rx="1.8"/><rect x="14" y="4" width="6" height="6" rx="1.8"/><rect x="4" y="14" width="6" height="6" rx="1.8"/><rect x="14" y="14" width="6" height="6" rx="1.8"/></svg></button>
     <button id="tb-edit" class="tb-btn" aria-label="Rearrange apps" title="Rearrange apps"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 16.5V20h3.5L18.2 9.3l-3.5-3.5z"/><path d="M14.7 5.8l1.6-1.6a1.7 1.7 0 0 1 2.5 0l1 1a1.7 1.7 0 0 1 0 2.5l-1.6 1.6"/></svg></button>
     <button id="tb-done" class="btn primary small pill" hidden>Done</button>
     <button id="tb-me" class="tb-btn avatar" aria-label="Account" title="Account"></button>

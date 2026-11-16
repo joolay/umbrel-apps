@@ -198,10 +198,11 @@ $('#signup-form').onsubmit = async (e) => {
   const email = $('#signup-email').value.trim(), password = $('#signup-pass').value;
   if (password !== $('#signup-pass2').value) { $('#signup-err').textContent = 'Passwords do not match.'; return; }
   try {
-    const r = await fetch('/signup', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email, password, name: $('#signup-name').value.trim(), dob: $('#signup-dob').value, parentEmails: kidMode() ? [$('#signup-parent').value] : [] }) });
+    const r = await fetch('/signup', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email, password, username: $('#signup-username').value.trim(), name: $('#signup-name').value.trim(), dob: $('#signup-dob').value, parentEmails: kidMode() ? [$('#signup-parent').value] : [] }) });
     const j = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(j.message || 'Could not create that account.');
     Object.assign(state, await signIn(email, password));
+    state.usernameOk = true;
     saveSession(false);
     ['#signup-pass', '#signup-pass2'].forEach((id) => { $(id).value = ''; });
     const aiKey = $('#signup-ai-key').value.trim();
@@ -239,11 +240,13 @@ function showShell() {
   $('#login').classList.add('hidden'); $('#shell').classList.remove('hidden');
   $('#who').textContent = state.actor; route(); startDetecting();
   homeModel().then((m) => { if (!HM) HM = m; renderDock(); }).catch(() => {});   // so the dock is there on every page
+  if (state.role === 'user' && state.uid) seedRegional().catch(() => {});
 }
 const SESSION_KEYS = ['token', 'actor', 'role', 'uid'];
 function saveSession(remember) { SESSION_KEYS.forEach((k) => { store.set('pa.' + k, state[k]); store.lset('pa.' + k, remember ? state[k] : null); }); }
 function logout() { SESSION_KEYS.forEach((k) => { state[k] = ''; store.set('pa.' + k, null); store.lset('pa.' + k, null); }); state.role = 'admin'; showLogin(); }
 async function signIn(identity, password) {
+  identity = String(identity || '').trim(); if (!identity.includes('@')) identity = identity.toLowerCase();   // usernames are saved in lower case
   let adminBlocked = false;
   try {
     const r = await api('POST', '/api/collections/_superusers/auth-with-password', { identity, password });
@@ -274,11 +277,11 @@ $('#login-form').onsubmit = async (e) => {
 
 $('#login-forgot').onclick = async (e) => {
   e.preventDefault(); $('#login-err').textContent = ''; $('#login-ok').textContent = '';
-  const email = $('#login-email').value.trim();
-  if (!email) { $('#login-err').textContent = 'Enter your email above first.'; $('#login-email').focus(); return; }
+  const who = $('#login-email').value.trim();
+  if (!who) { $('#login-err').textContent = 'Enter your email or username above first.'; $('#login-email').focus(); return; }
   try {
-    await api('POST', '/api/collections/_superusers/request-password-reset', { email });
-    await api('POST', `/api/collections/${state.usersColl}/request-password-reset`, { email }).catch(() => {});
+    if (who.includes('@')) await api('POST', '/api/collections/_superusers/request-password-reset', { email: who }).catch(() => {});
+    await fetch('/forgot', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ identity: who }) });
     $('#login-ok').textContent = 'If that account exists, a password reset email has been sent.';
   } catch (err) { $('#login-err').textContent = err.message; }
 };
@@ -292,7 +295,7 @@ function route() {
   if (!v || v === viewHome) view = 'home';
   setBar(view); $('#acct').open && $('#acct').close(); $('#sheet').open && $('#sheet').close();
   main().innerHTML = '<p class="muted">Loading…</p>';
-  guard(async (a) => { if (await needDob()) return; await v(a); })(arg ? decodeURIComponent(arg) : undefined);
+  guard(async (a) => { if (await needDob()) return; if (await needUsername()) return; await v(a); })(arg ? decodeURIComponent(arg) : undefined);
 }
 
 /* ---------- Setup banner ---------- */
@@ -937,6 +940,41 @@ async function viewRequests() {
   });
 }
 
+
+
+/* ---------- Regional defaults ----------
+   A new account starts with settings that match where the person is (from the device language and time zone), e.g. South Africa gets
+   metric, Celsius, DD/MM/YYYY, 24-hour, ZAR. They are saved once on the account (so every app reads the same values) and the person can change
+   any of them in My settings; "Use my region" puts them back. */
+const EURO = 'AT BE CY DE EE ES FI FR GR HR IE IT LT LU LV MT NL PT SI SK'.split(' ');
+const TZ_REGION = { 'Africa/Johannesburg': 'ZA', 'Africa/Maputo': 'MZ', 'Africa/Harare': 'ZW', 'Africa/Lagos': 'NG', 'Africa/Nairobi': 'KE', 'Africa/Cairo': 'EG', 'Europe/London': 'GB', 'Europe/Dublin': 'IE', 'Australia/Sydney': 'AU', 'Australia/Melbourne': 'AU', 'Australia/Perth': 'AU', 'Pacific/Auckland': 'NZ', 'Asia/Dubai': 'AE', 'Asia/Kolkata': 'IN', 'Asia/Calcutta': 'IN', 'America/Toronto': 'CA', 'America/Vancouver': 'CA', 'America/New_York': 'US', 'America/Chicago': 'US', 'America/Denver': 'US', 'America/Los_Angeles': 'US', 'Europe/Paris': 'FR', 'Europe/Berlin': 'DE', 'Europe/Madrid': 'ES', 'Europe/Lisbon': 'PT', 'Europe/Amsterdam': 'NL', 'Europe/Rome': 'IT' };
+function regionalDefaults() {
+  let loc = 'en-ZA', tz = '';
+  try { loc = (navigator.languages && navigator.languages[0]) || navigator.language || loc; } catch {}
+  try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch {}
+  let region = ((loc.split('-')[1] || '').match(/^[A-Za-z]{2}$/) || [''])[0].toUpperCase() || TZ_REGION[tz] || '';
+  if (TZ_REGION[tz] === 'ZA') region = 'ZA';   // a device set to South Africa time is in South Africa, whatever language it runs in
+  const lang = loc.split('-')[0].toLowerCase();
+  const cur = { ZA: 'ZAR', US: 'USD', GB: 'GBP', AU: 'AUD', CA: 'CAD', AE: 'AED', IN: 'INR' }[region] || (EURO.includes(region) ? 'EUR' : '');
+  const us = ['US', 'LR', 'MM'].includes(region);
+  return {
+    language: ['en', 'af', 'zu', 'xh', 'st', 'tn', 'fr', 'es', 'pt', 'ar'].includes(lang) ? lang : 'en',
+    currency: cur, timezone: tz,
+    dateFormat: ['US', 'PH', 'FM', 'PW'].includes(region) ? 'MM/DD/YYYY' : ['CN', 'JP', 'KR', 'TW', 'SE', 'LT', 'HU'].includes(region) ? 'YYYY-MM-DD' : 'DD/MM/YYYY',
+    timeFormat: ['US', 'CA', 'AU', 'NZ', 'IN', 'PH', 'EG', 'SA', 'CO', 'PK', 'MY'].includes(region) ? '12h' : '24h',
+    units: us ? 'imperial' : 'metric',
+    temperature: ['US', 'BS', 'BZ', 'KY', 'PW', 'LR'].includes(region) ? 'F' : 'C',
+  };
+}
+async function seedRegional() {
+  const uid = state.uid;
+  const rows = await listAll('portal_settings', { filter: `scope = "user" && user = ${fq(uid)} && app = "" && key ~ "pref."` });
+  if (rows.some((r) => r.key === 'pref.regionSeeded')) return;
+  const have = new Set(rows.map((r) => r.key.slice(5))), d = regionalDefaults();
+  for (const [k, v] of Object.entries(d)) if (v && !have.has(k)) await api('POST', '/api/collections/portal_settings/records', { scope: 'user', user: uid, app: '', key: 'pref.' + k, value: v, secret: false });
+  await api('POST', '/api/collections/portal_settings/records', { scope: 'user', user: uid, app: '', key: 'pref.regionSeeded', value: '1', secret: false });
+}
+
 /* ---------- My settings (regular JoolzApp users) ---------- */
 // Open sign-ups, but never let a new account set its own isAdmin flag (ShutterWorth and others use that field).
 // Sign-up is "open" when this rule exists. It can never be met from a browser: accounts are created only by this app's server (POST /signup),
@@ -949,7 +987,8 @@ const PREFS = [
   ['timezone', 'Time zone', null],
   ['dateFormat', 'Date format', [['DD/MM/YYYY', '31/12/2026'], ['MM/DD/YYYY', '12/31/2026'], ['YYYY-MM-DD', '2026-12-31']]],
   ['timeFormat', 'Time format', [['24h', '24-hour (14:30)'], ['12h', '12-hour (2:30 pm)']]],
-  ['units', 'Units', [['metric', 'Metric (km, kg, °C)'], ['imperial', 'Imperial (mi, lb, °F)']]],
+  ['units', 'Distance and weight', [['metric', 'Metric (km, kg, litres)'], ['imperial', 'Imperial (mi, lb, gallons)']]],
+  ['temperature', 'Temperature', [['C', 'Celsius (°C)'], ['F', 'Fahrenheit (°F)']]],
   ['theme', 'Theme', [['auto', 'Match my device'], ['light', 'Light'], ['dark', 'Dark']]],
 ];
 async function viewMe() {
@@ -972,7 +1011,7 @@ async function viewMe() {
     <div class="tabs"><button class="active" data-t="prefs">Preferences</button><button data-t="profile">Profile</button><button data-t="ai">AI</button><button data-t="account">Account</button></div>
     <div data-pane="profile" hidden><div class="card" id="pane-profile"><p class="muted">Loading…</p></div></div>
     <div data-pane="prefs"><form id="prefs" class="card"><h2>Preferences</h2><div class="kv">${PREFS.map(field).join('')}</div>
-      ${detected ? `<p class="muted small">Your device time zone: ${esc(detected)}</p>` : ''}<button class="btn primary">Save preferences</button></form></div>
+      ${detected ? `<p class="muted small">Your device time zone: ${esc(detected)}. Defaults follow your region.</p>` : ''}<div class="row" style="gap:8px"><button class="btn primary">Save preferences</button><button type="button" class="btn" id="regional">Use my region</button></div></form></div>
     <div data-pane="ai" hidden><form id="ai" class="card"><h2>AI (for apps that use it)</h2><p class="muted small">Pick your own AI provider, model and API key. Apps that read menus, photos or text with AI will use these instead of the shared key. Only you and the admin can see them.</p>
       <div class="kv"><label>Provider<select name="provider">${AI_PROVIDERS.map(([v, l]) => opt(v, l, (cur['ai.provider'] ? cur['ai.provider'].value : 'gemini') === v)).join('')}</select></label>
       <label>Model<input name="model" list="ai-models" value="${esc(cur['ai.model'] ? cur['ai.model'].value : '')}" placeholder="" autocomplete="off"><datalist id="ai-models"></datalist></label>
@@ -1036,6 +1075,11 @@ async function viewMe() {
     }
     toast('Preferences saved');
   });
+  $('#regional').onclick = () => {
+    const f = $('#prefs'), d = regionalDefaults();
+    for (const [k, v] of Object.entries(d)) if (v && f.elements[k]) f.elements[k].value = v;
+    f.requestSubmit();
+  };
   if ($('#del')) $('#del').onsubmit = guard(async (e) => {
     e.preventDefault();
     if (reqs === null) throw new Error('Requests are not set up yet. Ask the admin.');
@@ -1064,6 +1108,7 @@ async function profilePane(uid) {
   box.innerHTML = `<h2>Profile</h2>
     <form id="pf-name" class="kv"><label>Name<input name="name" value="${esc(me.name || '')}" maxlength="80" autocomplete="name"></label><div><button class="btn primary small">Save name</button></div></form>
     <p class="muted small">Email: <b>${esc(state.actor)}</b></p>
+    ${'username' in me ? `<form id="pf-user" class="kv"><label>Username<input name="u" value="${esc(me.username || '')}" placeholder="Choose a username" autocapitalize="none" autocorrect="off" spellcheck="false" minlength="3" maxlength="30" required><span class="muted small">Sign in with your username or your email.</span></label><div><button class="btn primary small">Save username</button></div></form>` : ''}
     <h3>Change password</h3>
     <form id="pf-pass" class="kv"><label>Current password<input name="old" type="password" autocomplete="current-password" required></label><label>New password (min 8)<input name="pw" type="password" autocomplete="new-password" minlength="8" required></label><label>Confirm new password<input name="pw2" type="password" autocomplete="new-password" minlength="8" required></label><div><button class="btn primary small">Change password</button></div></form>
     <h3>Date of birth</h3>
@@ -1072,6 +1117,7 @@ async function profilePane(uid) {
         <label id="pf-dob-parent" hidden>Parent or guardian's JoolzApp email<input name="parent" type="email" autocomplete="off"></label><div><button class="btn primary small">Save date of birth</button></div></form>`}
     ${g.minor ? `<h3>Your parents</h3><p class="muted small">A parent approves your account and settings such as joining a family.</p>${g.parents.map((p) => `<div class="row spread"><span>${esc(p.name)}</span><span>${p.status === 'approved' ? 'approved' : p.status === 'pending' ? 'waiting' : 'declined'}</span></div>`).join('')}
       <form id="pf-parent" class="row" style="gap:6px;margin-top:8px"><input name="email" type="email" placeholder="Add another parent's email" required><button class="btn small">Add</button></form>` : ''}`;
+  if ($('#pf-user')) $('#pf-user').onsubmit = guard(async (e) => { e.preventDefault(); const j = await acctFetch('/account/username', { username: e.target.u.value }); e.target.u.value = j.username; toast('Username saved'); });
   $('#pf-name').onsubmit = guard(async (e) => { e.preventDefault(); await api('PATCH', `/api/collections/${state.usersColl}/records/${uid}`, { name: e.target.name.value.trim() }); toast('Name saved'); });
   $('#pf-pass').onsubmit = guard(async (e) => {
     e.preventDefault(); const f = e.target.elements;
@@ -1107,6 +1153,23 @@ async function needDob() {
     e.preventDefault();
     await acctFetch('/account/dob', { dob: f.elements.dob.value, parentEmails: f.elements.parent.value ? [f.elements.parent.value] : [] });
     state.dobOk = true; toast('Saved'); route();
+  });
+  return true;
+}
+
+async function needUsername() {
+  if (state.usernameOk || state.role !== 'user' || !state.uid) return false;
+  const me = await api('GET', `/api/collections/${state.usersColl}/records/${state.uid}`).catch(() => null);
+  if (!me || me.username || !('username' in me)) { state.usernameOk = true; return false; }   // no username field yet: nothing to ask
+  const guess = String(me.email || '').split('@')[0].toLowerCase().replace(/[^a-z0-9._-]/g, '').replace(/^[^a-z0-9]+/, '').slice(0, 30);
+  main().innerHTML = `<h1>Choose a username</h1><p class="sub">You can now sign in to JoolzApp with a username as well as your email. Pick one that is easy to remember.</p>
+    <div class="card"><form id="unreq" class="kv"><label>Username<input name="u" value="${esc(guess)}" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" minlength="3" maxlength="30" pattern="[A-Za-z0-9][A-Za-z0-9._\\-]{2,29}" required>
+    <span class="muted small">3 to 30 letters, numbers, dots, dashes or underscores.</span></label>
+    <div class="row" style="gap:8px"><button class="btn primary">Save username</button><button type="button" class="btn" id="unlater">Later</button></div></form></div>`;
+  $('#unlater').onclick = () => { state.usernameOk = true; route(); };
+  $('#unreq').onsubmit = guard(async (e) => {
+    e.preventDefault(); const j = await acctFetch('/account/username', { username: e.target.u.value });
+    state.usernameOk = true; toast('Username saved: ' + j.username); route();
   });
   return true;
 }
@@ -1225,7 +1288,7 @@ async function homeModel() {
   const hidden = keep(saved.hidden, (id) => !PROTECTED.has(id));
   const order = keep(saved.order);
   Object.keys(items).forEach((id) => { if (!seen.has(id)) { order.push(id); seen.add(id); } });   // new apps appear at the end
-  return { apps, reqs, items, ssoSlugs, isAdmin, uid, layout: { order, dock, hidden }, lrow: lrows[0] || null, fresh, pend };
+  return { apps, reqs, items, ssoSlugs, isAdmin, uid, layout: { order, dock, hidden, view: saved.view === 'icons' || saved.view === 'tiles' ? saved.view : '' }, lrow: lrows[0] || null, fresh, pend };
 }
 
 function saveLayout() {
@@ -1241,6 +1304,22 @@ function saveLayout() {
 
 function tileInner(it) { return it.glyph ? svgG(it.glyph) : `<b>${esc(it.letter)}</b>`; }
 function folderMini() { return `<span class="mini">${ADMIN_TOOLS.slice(0, 4).map(([k, , g]) => `<i style="--c1:${g[0]};--c2:${g[1]}">${svgG(k)}</i>`).join('')}</span>`; }
+// Tile view (desktop): a short description and a status line next to the icon. Hidden in the icon view.
+function tileText(it) {
+  const a = it.app; let d = '', st = '';
+  if (it.kind === 'app') {
+    d = a.description || '';
+    st = !a.enabled ? 'Off' : a.maintenance ? 'Maintenance' : !it.ok ? 'Request access' : 'Open';
+  } else if (it.kind === 'folder') { d = 'Users, apps, requests and settings'; st = it.badge ? it.badge + ' waiting' : 'Open'; }
+  else d = it.id === 'sys:family' ? 'Your household and relatives' : 'Your preferences and account';
+  return `<span class="ic-desc">${esc(d)}</span><span class="ic-state">${esc(st || 'Open')}</span>`;
+}
+const homeView = () => (HM && HM.layout.view) || (matchMedia('(min-width:900px)').matches ? 'tiles' : 'icons');
+function applyView() {
+  const sb = $('#sb'), v = homeView();
+  if (sb) sb.classList.toggle('tiles', v === 'tiles');
+  const b = $('#tb-view'); if (b) { b.dataset.v = v; b.title = v === 'tiles' ? 'Show as icons' : 'Show as tiles'; b.setAttribute('aria-label', b.title); }
+}
 function iconHTML(it, o = {}) {
   const a = it.app, c = `--c1:${it.grad[0]};--c2:${it.grad[1]};--d:${-(hashN(it.id) % 260)}ms`;
   let tile, st = '';
@@ -1257,7 +1336,7 @@ function iconHTML(it, o = {}) {
   const x = !o.tray && !PROTECTED.has(it.id) ? `<button class="ic-x" data-hide="${esc(it.id)}" aria-label="Hide ${esc(it.name)}">${ICON_X}</button>` : '';
   const ed = !o.tray && isAdminRole() && it.kind === 'app' ? `<button class="ic-ed" data-edit-app="${esc(a.slug)}" aria-label="Edit ${esc(a.name)}">${ICON_PEN}</button>` : '';
   const add = o.tray ? `<button class="ic-add" data-show="${esc(it.id)}" aria-label="Add ${esc(it.name)} back">${ICON_ADD}</button>` : '';
-  return `<div class="ic${a && !a.enabled ? ' off' : ''}" data-id="${esc(it.id)}" style="${c}"><div class="ic-w">${tile}${st}${badge}${x}${ed}${add}<span class="ic-label">${esc(it.name)}</span></div></div>`;
+  return `<div class="ic${a && !a.enabled ? ' off' : ''}" data-id="${esc(it.id)}" style="${c}"><div class="ic-w">${tile}${st}${badge}${x}${ed}${add}<span class="ic-label">${esc(it.name)}</span>${tileText(it)}</div></div>`;
 }
 function renderTray() {
   const l = HM.layout, hid = $('#hid'); if (!hid) return;
@@ -1267,7 +1346,7 @@ function renderTray() {
 function renderSb() {
   const sb = $('#sb'); if (!sb) return;
   sb.innerHTML = HM.layout.order.map((id) => iconHTML(HM.items[id])).join('') || '<p class="muted">No apps have been added yet.</p>';
-  renderTray();
+  applyView(); renderTray();
 }
 function renderDock() {
   const d = $('#dock'); if (!d) return;
@@ -1277,7 +1356,7 @@ function renderDock() {
 function setEditing(on) {
   editing = !!on && !!$('#sb');
   document.body.classList.toggle('editing', editing);
-  $('#tb-edit').hidden = editing || !$('#sb'); $('#tb-done').hidden = !editing;
+  $('#tb-edit').hidden = editing || !$('#sb'); $('#tb-done').hidden = !editing; if ($('#tb-view')) $('#tb-view').hidden = editing || !$('#sb');
   if (HM) renderTray();
 }
 
@@ -1407,6 +1486,12 @@ document.addEventListener('click', guard(async (e) => {
   }
 }));
 $('#tb-edit').onclick = () => setEditing(true);
+$('#tb-view').onclick = () => { if (!HM) return; HM.layout.view = homeView() === 'tiles' ? 'icons' : 'tiles'; applyView(); saveLayout(); };
+// Clicking anywhere on a tile card opens it (the whole card, not just the icon).
+document.addEventListener('click', (e) => {
+  const w = e.target.closest('.sb.tiles .ic-w'); if (!w || editing || suppress || e.target.closest('a,button')) return;
+  const t = w.querySelector('.ic-tile'); if (t) t.click();
+});
 $('#tb-done').onclick = () => setEditing(false);
 $('#tb-me').onclick = () => { $('#acct').showModal(); };
 $('#tb-back').onclick = () => { location.hash = '#/home'; };
@@ -1417,7 +1502,8 @@ function setBar(view) {
   $('#tb-back').hidden = home; $('#tb-brand').hidden = !home; $('#tb-title').hidden = home;
   $('#tb-title').textContent = VIEW_TITLES[view] || '';
   $('#tb-me').textContent = (state.actor || '?').trim().charAt(0).toUpperCase();
-  if (!home) { setEditing(false); $('#tb-edit').hidden = true; $('#tb-done').hidden = true; } else { $('#tb-edit').hidden = editing; }
+  if (!home) { setEditing(false); $('#tb-edit').hidden = true; $('#tb-done').hidden = true; $('#tb-view').hidden = true; } else { $('#tb-edit').hidden = editing; }
+  $('#tb-view').hidden = !home || editing;
 }
 
 // The landing page: apps as icons. Open goes to the app (signed in already where the app supports it);

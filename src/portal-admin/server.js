@@ -274,7 +274,7 @@ async function accountRoutes(req, res, pathname) {
         if (minor) return out({ status: 403, message: 'Only a parent or guardian can create an account for a child.' });
         const mineF = (await family.mine(user)).family;
         if (!mineF || !mineF.canManage) return out({ status: 400, message: 'Create a family first, or ask its creator to make you a manager.' });
-        const email = String(b.email || '').trim().toLowerCase(), password = String(b.password || ''), name = String(b.name || '').trim().slice(0, 80), dob = String(b.dob || '').trim();
+        const email = String(b.email || '').trim().toLowerCase(), password = String(b.password || ''), name = String(b.name || '').trim().slice(0, 80), dob = String(b.dob || '').trim(), username = pbx.cleanUsername(b.username);
         if (!name) return out({ status: 400, message: "Enter the child's name." });
         if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return out({ status: 400, message: "Enter a valid email for the child's account." });
         if (password.length < 8 || password.length > 200) return out({ status: 400, message: 'Use a password of at least 8 characters.' });
@@ -303,6 +303,11 @@ async function accountRoutes(req, res, pathname) {
       if (b.action === 'leave') return out(await family.drop(user, ''));
       if (b.action === 'remove') return out(await family.drop(user, b.memberId));
       return send(res, 400, { message: 'Unknown action' });
+    }
+    if (pathname === '/account/username' && req.method === 'POST') {
+      const username = pbx.cleanUsername(b.username); if (pbx.usernameError(username)) return send(res, 400, { message: pbx.usernameError(username) });
+      try { await pbx.setUsername(user.id, username); } catch (e) { return send(res, e.status === 409 ? 409 : 500, { message: String(e.message || e) }); }
+      return send(res, 200, { ok: true, username });
     }
     if (pathname === '/account/dob' && req.method === 'POST') {
       const fresh = await pbx.getUser(user.id);
@@ -337,6 +342,8 @@ async function signup(req, res) {
     if (!validEmail(email)) return send(res, 400, { message: 'Enter a valid email address.' });
     if (password.length < 8 || password.length > 200) return send(res, 400, { message: 'Use a password of at least 8 characters.' });
     if (!guardians.validDob(dob)) return send(res, 400, { message: 'Enter your date of birth.' });
+    if (pbx.usernameError(username)) return send(res, 400, { message: pbx.usernameError(username) });
+    if (await pbx.findByUsername(username)) return send(res, 400, { message: 'That username is taken. Try another.' });
     let parents = [];
     if (guardians.ageOf(dob) < 18) {
       const chk = await guardians.checkParents(b.parentEmails, email);
@@ -344,7 +351,7 @@ async function signup(req, res) {
       parents = chk.parents;
     }
     let created;
-    try { created = await pbx.createUser({ email, password, name, dob }); }
+    try { created = await pbx.createUser({ email, password, name, dob, username }); }
     catch (e) {
       if (e instanceof pbx.PBError && e.status === 400) return send(res, 400, { message: e.data && e.data.email && e.data.email.code === 'validation_not_unique' ? 'That email is already registered. Sign in instead.' : ((e.data && e.data.password && e.data.password.message) || 'Could not create that account.') });
       throw e;
@@ -361,7 +368,13 @@ const handle = async (req, res) => {
 
     if (pathname === '/signup-config') { if (req.method !== 'GET') return send(res, 405, { message: 'Method not allowed' }); return signupConfig(req, res); }
     if (pathname === '/guardians') return guardiansRoute(req, res);
-    if (pathname === '/family' || pathname === '/family/users' || pathname === '/account/dob' || pathname === '/account/guardian') return accountRoutes(req, res, pathname);
+    if (pathname === '/family' || pathname === '/family/users' || pathname === '/account/dob' || pathname === '/account/username' || pathname === '/account/guardian') return accountRoutes(req, res, pathname);
+    if (pathname === '/forgot') {
+      if (req.method !== 'POST') return send(res, 405, { message: 'Method not allowed' });
+      if (signupThrottled(req)) return send(res, 429, { message: 'Too many attempts. Try again later.' });
+      let b; try { b = JSON.parse(await readBody(req)); } catch { return send(res, 400, { message: 'Invalid request.' }); }
+      await pbx.requestReset(b.identity).catch(() => {}); return send(res, 200, { ok: true });
+    }
     if (pathname === '/signup') { if (req.method !== 'POST') return send(res, 405, { message: 'Method not allowed' }); return signup(req, res); }
 
     if (pathname === '/config') {
