@@ -13,5 +13,5 @@ module.exports = function portalClient(PBError) {
     if (!j.ok) throw new PBError(j.status || 500, j.message || "Portal API error", j.data);
     return j.result;
   }
-  return Object.fromEntries(FNS.map((fn) => [fn, (...args) => call(fn, args)]));
+  return { call, fns: Object.fromEntries(FNS.map((fn) => [fn, (...args) => call(fn, args)])) };
 };
