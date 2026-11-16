@@ -31,6 +31,14 @@ module.exports = function makeChanges({ pbx, installedApps, APPS_DIR, DATA_DIR, 
       fs.writeFileSync(tmp, [...keep, ...Object.entries(kv).map(([k, v]) => k + '=' + v), ''].join('\n'), { mode: 0o600 });
       fs.renameSync(tmp, file);
     },
+    // Take keys out of <app data>/pocketbase.env, keeping every other line.
+    unsetEnv(app, keys) {
+      const data = dataDirOf(app), file = path.join(data, 'pocketbase.env');
+      let lines; try { lines = fs.readFileSync(file, 'utf8').split(/\r?\n/); } catch { return; }
+      const keep = lines.filter((l) => l.trim() && !keys.some((k) => new RegExp('^\\s*' + k + '\\s*=').test(l)));
+      const tmp = path.join(data, '.pocketbase.env.' + process.pid + '.tmp');
+      fs.writeFileSync(tmp, [...keep, ''].join('\n'), { mode: 0o600 }); fs.renameSync(tmp, file);
+    },
     // Does this login work? When PocketBase's own rate limiter (if on) says 429, `retry` waits and tries again; without it a 429 counts as
     // "can't tell, assume yes" so that just looking at the Changes page never waits on the limiter.
     async loginWorks(collection, email, password, { retry = true } = {}) {
