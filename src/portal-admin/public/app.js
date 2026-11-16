@@ -1266,7 +1266,7 @@ async function homeModel() {
   const hidden = keep(saved.hidden, (id) => !PROTECTED.has(id));
   const order = keep(saved.order);
   Object.keys(items).forEach((id) => { if (!seen.has(id)) { order.push(id); seen.add(id); } });   // new apps appear at the end
-  return { apps, reqs, items, ssoSlugs, isAdmin, uid, layout: { order, dock, hidden }, lrow: lrows[0] || null, fresh, pend };
+  return { apps, reqs, items, ssoSlugs, isAdmin, uid, layout: { order, dock, hidden, view: saved.view === 'icons' || saved.view === 'tiles' ? saved.view : '' }, lrow: lrows[0] || null, fresh, pend };
 }
 
 function saveLayout() {
@@ -1282,6 +1282,22 @@ function saveLayout() {
 
 function tileInner(it) { return it.glyph ? svgG(it.glyph) : `<b>${esc(it.letter)}</b>`; }
 function folderMini() { return `<span class="mini">${ADMIN_TOOLS.slice(0, 4).map(([k, , g]) => `<i style="--c1:${g[0]};--c2:${g[1]}">${svgG(k)}</i>`).join('')}</span>`; }
+// Tile view (desktop): a short description and a status line next to the icon. Hidden in the icon view.
+function tileText(it) {
+  const a = it.app; let d = '', st = '';
+  if (it.kind === 'app') {
+    d = a.description || '';
+    st = !a.enabled ? 'Off' : a.maintenance ? 'Maintenance' : !it.ok ? 'Request access' : 'Open';
+  } else if (it.kind === 'folder') { d = 'Users, apps, requests and settings'; st = it.badge ? it.badge + ' waiting' : 'Open'; }
+  else d = it.id === 'sys:family' ? 'Your household and relatives' : 'Your preferences and account';
+  return `<span class="ic-desc">${esc(d)}</span><span class="ic-state">${esc(st || 'Open')}</span>`;
+}
+const homeView = () => (HM && HM.layout.view) || (matchMedia('(min-width:900px)').matches ? 'tiles' : 'icons');
+function applyView() {
+  const sb = $('#sb'), v = homeView();
+  if (sb) sb.classList.toggle('tiles', v === 'tiles');
+  const b = $('#tb-view'); if (b) { b.dataset.v = v; b.title = v === 'tiles' ? 'Show as icons' : 'Show as tiles'; b.setAttribute('aria-label', b.title); }
+}
 function iconHTML(it, o = {}) {
   const a = it.app, c = `--c1:${it.grad[0]};--c2:${it.grad[1]};--d:${-(hashN(it.id) % 260)}ms`;
   let tile, st = '';
@@ -1298,7 +1314,7 @@ function iconHTML(it, o = {}) {
   const x = !o.tray && !PROTECTED.has(it.id) ? `<button class="ic-x" data-hide="${esc(it.id)}" aria-label="Hide ${esc(it.name)}">${ICON_X}</button>` : '';
   const ed = !o.tray && isAdminRole() && it.kind === 'app' ? `<button class="ic-ed" data-edit-app="${esc(a.slug)}" aria-label="Edit ${esc(a.name)}">${ICON_PEN}</button>` : '';
   const add = o.tray ? `<button class="ic-add" data-show="${esc(it.id)}" aria-label="Add ${esc(it.name)} back">${ICON_ADD}</button>` : '';
-  return `<div class="ic${a && !a.enabled ? ' off' : ''}" data-id="${esc(it.id)}" style="${c}"><div class="ic-w">${tile}${st}${badge}${x}${ed}${add}<span class="ic-label">${esc(it.name)}</span></div></div>`;
+  return `<div class="ic${a && !a.enabled ? ' off' : ''}" data-id="${esc(it.id)}" style="${c}"><div class="ic-w">${tile}${st}${badge}${x}${ed}${add}<span class="ic-label">${esc(it.name)}</span>${tileText(it)}</div></div>`;
 }
 function renderTray() {
   const l = HM.layout, hid = $('#hid'); if (!hid) return;
@@ -1308,7 +1324,7 @@ function renderTray() {
 function renderSb() {
   const sb = $('#sb'); if (!sb) return;
   sb.innerHTML = HM.layout.order.map((id) => iconHTML(HM.items[id])).join('') || '<p class="muted">No apps have been added yet.</p>';
-  renderTray();
+  applyView(); renderTray();
 }
 function renderDock() {
   const d = $('#dock'); if (!d) return;
@@ -1318,7 +1334,7 @@ function renderDock() {
 function setEditing(on) {
   editing = !!on && !!$('#sb');
   document.body.classList.toggle('editing', editing);
-  $('#tb-edit').hidden = editing || !$('#sb'); $('#tb-done').hidden = !editing;
+  $('#tb-edit').hidden = editing || !$('#sb'); $('#tb-done').hidden = !editing; if ($('#tb-view')) $('#tb-view').hidden = editing || !$('#sb');
   if (HM) renderTray();
 }
 
@@ -1448,6 +1464,12 @@ document.addEventListener('click', guard(async (e) => {
   }
 }));
 $('#tb-edit').onclick = () => setEditing(true);
+$('#tb-view').onclick = () => { if (!HM) return; HM.layout.view = homeView() === 'tiles' ? 'icons' : 'tiles'; applyView(); saveLayout(); };
+// Clicking anywhere on a tile card opens it (the whole card, not just the icon).
+document.addEventListener('click', (e) => {
+  const w = e.target.closest('.sb.tiles .ic-w'); if (!w || editing || suppress || e.target.closest('a,button')) return;
+  const t = w.querySelector('.ic-tile'); if (t) t.click();
+});
 $('#tb-done').onclick = () => setEditing(false);
 $('#tb-me').onclick = () => { $('#acct').showModal(); };
 $('#tb-back').onclick = () => { location.hash = '#/home'; };
@@ -1458,7 +1480,8 @@ function setBar(view) {
   $('#tb-back').hidden = home; $('#tb-brand').hidden = !home; $('#tb-title').hidden = home;
   $('#tb-title').textContent = VIEW_TITLES[view] || '';
   $('#tb-me').textContent = (state.actor || '?').trim().charAt(0).toUpperCase();
-  if (!home) { setEditing(false); $('#tb-edit').hidden = true; $('#tb-done').hidden = true; } else { $('#tb-edit').hidden = editing; }
+  if (!home) { setEditing(false); $('#tb-edit').hidden = true; $('#tb-done').hidden = true; $('#tb-view').hidden = true; } else { $('#tb-edit').hidden = editing; }
+  $('#tb-view').hidden = !home || editing;
 }
 
 // The landing page: apps as icons. Open goes to the app (signed in already where the app supports it);
