@@ -52,6 +52,6 @@ The home screen has an **Upcoming** ticker in the top bar (tap it for the full l
 Each event is `{ id, kind, title, sub, date, time?, allDay, source, link? }`; `kind` picks the icon (`birthday`, `pickup`, `notice`, anything else = calendar).
 
 Providers today:
-- **Birthdays** (built in): everyone in the person's circle: their household, its extended relatives, and the households they are extended family of. Only the day, month and the age they turn leave the server.
+- **Birthdays** (built in): everyone in the person's circle: their household, its extended relatives, and the households they are extended family of. Only the day, month and the age they turn leave the server. A PocketBase superuser sees the ticker too, as the JoolzApp person with the same email address (if none exists, there is nothing to show).
 - **Organiser hook**: the planned Organiser app (family events, notices, school pick-up schedules) writes rows to a PocketBase collection `portal_events` and they appear with no change here.
   Fields: `title`, `start` (`YYYY-MM-DD` or `YYYY-MM-DD HH:MM`), `kind`, `sub`, `link`, `source`, `familyId` (a `joolz_families` id: shown to that family's circle) and/or `userIds` (comma-wrapped ids, e.g. `,u1,u2,`: shown to those people). A row with neither is shown to everyone. If the collection does not exist yet, nothing breaks.

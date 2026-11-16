@@ -259,7 +259,8 @@ async function guardiansRoute(req, res) {
 // ---- Family and account details. These are managed here once for every JoolzApp app (the apps only link to this page). ----
 async function accountRoutes(req, res, pathname) {
   const tok = String(req.headers.authorization || '');
-  const user = tok ? await pbx.userFromToken(tok).catch(() => null) : null;
+  let user = tok ? await pbx.userFromToken(tok).catch(() => null) : null;
+  if (!user && tok && pathname === '/events') user = await pbx.userForSuperuser(tok).catch(() => null);   // the admin, as the person they also are
   if (!user) return send(res, 401, { message: 'Sign in to continue.' });
   const out = (r) => (r.status ? send(res, r.status, { message: r.message }) : send(res, 200, r));
   try {

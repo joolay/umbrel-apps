@@ -967,7 +967,7 @@ function renderTicker() {
   requestAnimationFrame(() => { const w = t.scrollWidth / 2; t.style.setProperty('--tk-dur', Math.max(14, Math.round(w / 45)) + 's'); });
 }
 async function loadEvents() {
-  if (state.role !== 'user' || !state.token) { EVENTS = []; renderTicker(); return; }
+  if (!state.token) { EVENTS = []; renderTicker(); return; }
   try { EVENTS = (await acctFetch('/events?days=60&today=' + localDay())).events || []; } catch { EVENTS = []; }
   renderTicker();
 }
