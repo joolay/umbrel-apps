@@ -1,6 +1,6 @@
 {
   "name": "stremio-sync",
-  "version": "1.1.4",
+  "version": "1.1.5",
   "private": true,
   "description": "Soft-sync layer in front of Stremio Web: saves the Stremio login to the JoolzApp account. Never blocks Stremio.",
   "main": "server.js",

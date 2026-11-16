@@ -1,6 +1,6 @@
 {
   "name": "portal-admin",
-  "version": "0.21.9",
+  "version": "0.21.10",
   "private": true,
   "description": "Centralised admin panel for custom apps backed by PocketBase",
   "type": "commonjs",

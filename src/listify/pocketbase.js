@@ -441,15 +441,18 @@ module.exports = { setDob, portalUrl, requestPasswordReset, trialUsed, trialBump
   const portalFallback = e => !!e && (e.portalDenied || e.portalUnknown || e.status === 0) && legacyOn();
   const merged = {};
   for (const k of Object.keys(legacy)) if (!Object.getOwnPropertyDescriptor(legacy, k).get) merged[k] = legacy[k];
-  for (const fn of makePortal.FNS) if (typeof legacy[fn] === "function") merged[fn] = async (...a) => {
+  const wrap = (fn, as) => async (...a) => {
     if (!portalOn()) return legacy[fn](...a);
-    try { return await portal.fns[fn](...a); }
+    try { return await (as ? portal.fnsAs(as) : portal.fns)[fn](...a); }
     catch (e) {
       if (!portalFallback(e)) throw e;
       if (!warned) { warned = true; console.warn("[pocketbase] Portal API not used (" + (e.status || 0) + " " + e.message + "); using this app's own PocketBase login instead"); }
       return legacy[fn](...a);
     }
   };
+  for (const fn of makePortal.FNS) if (typeof legacy[fn] === "function") merged[fn] = wrap(fn);
+  // The same functions, carried out in the name of the signed-in person (their token). Needed for admin work: Portal Admin checks the token is an admin's.
+  merged.withToken = token => Object.fromEntries(makePortal.FNS.filter(fn => typeof legacy[fn] === "function").map(fn => [fn, wrap(fn, token)]));
   Object.defineProperty(merged, "enabled", { enumerable: true, get: () => portalOn() || legacyOn() });
   merged.reload = () => portalOn() || (legacy.reload ? (legacy.reload() || portalOn()) : legacyOn());
   merged.portalOn = portalOn; merged.legacyOn = legacyOn; merged.portalFallback = portalFallback;

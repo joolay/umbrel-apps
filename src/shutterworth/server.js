@@ -252,9 +252,10 @@ async function accountRoutes(req, res, p, url) {
     const me = await currentUser(req, true);
     if (!me) return send(res, 401, { code: "signin_required", message: "Sign in to continue." }), true;
     if (!me.isAdmin) return send(res, 403, { code: "forbidden", message: "Admins only." }), true;
+    const apb = pb.withToken((req._renew && req._renew.fresh) || tokenOf(req));   // admin work is done in this admin's name; Portal Admin checks it
 
     if (p === "/api/admin/users" && req.method === "GET") {
-      const users = await pb.listUsers(String(url.searchParams.get("q") || "").trim().slice(0, 80));
+      const users = await apb.listUsers(String(url.searchParams.get("q") || "").trim().slice(0, 80));
       send(res, 200, { users: users.map(publicUser), settings: loadSettings(), me: me.id }); return true;
     }
     if (p === "/api/admin/settings" && req.method === "GET") { send(res, 200, loadSettings()); return true; }
@@ -271,7 +272,7 @@ async function accountRoutes(req, res, p, url) {
       if (body.email !== undefined) { const e = String(body.email).trim().toLowerCase(); if (!validEmail(e)) return send(res, 400, { code: "bad_email", message: "Enter a valid email address." }), true; data.email = e; }
       if (typeof body.unlimited === "boolean") data.unlimited = body.unlimited;
       let portalChanged = false;
-      if (typeof body.access === "boolean") { if (await pb.portalAvailable()) { await pb.setPortalAccess(id, body.access); portalChanged = true; } else data.access = body.access; }
+      if (typeof body.access === "boolean") { if (await pb.portalAvailable()) { await apb.setPortalAccess(id, body.access); portalChanged = true; } else data.access = body.access; }
       if (typeof body.isAdmin === "boolean") {
         if (id === me.id && !body.isAdmin) return send(res, 400, { code: "self_demote", message: "You can't remove your own admin access." }), true;
         data.isAdmin = body.isAdmin;
@@ -284,7 +285,7 @@ async function accountRoutes(req, res, p, url) {
         data.password = body.password; data.passwordConfirm = body.password;
       }
       if (!Object.keys(data).length) { if (portalChanged) { tokenCache.clear(); send(res, 200, { user: publicUser(await pb.getUser(id)) }); return true; } return send(res, 400, { code: "nothing", message: "Nothing to change." }), true; }
-      try { const u = await pb.updateUser(id, data); tokenCache.clear(); send(res, 200, { user: publicUser(u) }); }
+      try { const u = await apb.updateUser(id, data); tokenCache.clear(); send(res, 200, { user: publicUser(u) }); }
       catch (e) {
         if (e instanceof pb.PBError && e.status === 404) return send(res, 404, { code: "not_found", message: "That user no longer exists." }), true;
         if (e instanceof pb.PBError && e.status === 400) return send(res, 400, { code: "cannot_save", message: e.data?.email?.code === "validation_not_unique" ? "Another account already uses that email." : (e.data?.email?.message || e.data?.password?.message || "PocketBase didn't accept that change.") }), true;
@@ -294,7 +295,7 @@ async function accountRoutes(req, res, p, url) {
     }
     if (m && req.method === "DELETE") {
       if (m[1] === me.id) return send(res, 400, { code: "self_delete", message: "You can't delete your own account here." }), true;
-      try { await pb.deleteUser(m[1]); tokenCache.clear(); send(res, 200, { ok: true }); }
+      try { await apb.deleteUser(m[1]); tokenCache.clear(); send(res, 200, { ok: true }); }
       catch (e) { if (e instanceof pb.PBError && e.status === 404) return send(res, 404, { code: "not_found", message: "That user no longer exists." }), true; throw e; }
       return true;
     }
