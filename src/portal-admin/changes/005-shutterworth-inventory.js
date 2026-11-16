@@ -17,7 +17,7 @@ const COLS = {
 const stale = (col) => Object.entries(RULES).filter(([k, v]) => (col[k] ?? null) !== v).map(([k]) => k.replace('Rule', ''));
 
 module.exports = {
-  id: '004-shutterworth-inventory',
+  id: '005-shutterworth-inventory',
   title: 'ShutterWorth inventory storage',
   summary: 'ShutterWorth stores inventory items and photos in PocketBase. Only ShutterWorth\'s own limited login will be able to read or write them, so the app no longer needs the superuser login for this.',
   async plan(c) {
