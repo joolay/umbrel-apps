@@ -166,7 +166,8 @@ async function boot() {
     }
   }
   // Keep people signed in until 90 days after they last opened the dashboard: ask PocketBase for a fresh token each time it opens.
-  if (state.token && state.role === 'user') { try { const r = await api('POST', `/api/collections/${state.usersColl}/auth-refresh`); if (r.token) { state.token = r.token; saveSession(!!store.lget('pa.token')); } if (store.lget('pa.seen') !== new Date().toISOString().slice(0, 10)) { await acctFetch('/api/active', {}); store.lset('pa.seen', new Date().toISOString().slice(0, 10)); } } catch {} }
+  // (in the background, so the dashboard opens without waiting for it)
+  if (state.token && state.role === 'user') (async () => { try { const r = await api('POST', `/api/collections/${state.usersColl}/auth-refresh`); if (r.token) { state.token = r.token; saveSession(!!store.lget('pa.token')); } if (store.lget('pa.seen') !== new Date().toISOString().slice(0, 10)) { await acctFetch('/api/active', {}); store.lset('pa.seen', new Date().toISOString().slice(0, 10)); } } catch {} })();
   if (state.token) { try { await api('GET', '/api/collections/portal_apps/records?perPage=1').catch((e) => { if (e.status !== 404) throw e; }); return showShell(); } catch {} }
   showLogin();
 }

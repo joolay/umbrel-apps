@@ -176,23 +176,36 @@ const activity = require("./activity");
 // "Signed in for 90 days since you last used the app": every time PocketBase checks a token it hands back a fresh one, and the cookie is renewed
 // with it (at most once an hour). PocketBase's own token lifetime for the users collection is set to 90 days by Portal Admin > Changes.
 const tokenOf = req => tokensOf(req)[0] || "";
-async function currentUser(req) {
-  let failure = null;
-  for (const t of tokensOf(req)) {
-    const c = tokenCache.get(t);
-    if (c && Date.now() - c.at < 15000) { if (c.user) { req._renew = c; return c.user; } continue; }
+// Checking a sign-in with PocketBase takes several round trips, so the answer is reused: as it is for 15 seconds, and for up to 10 minutes
+// while a fresh check runs in the background, so pages open straight away. Requests arriving together share one check.
+// Admin actions and "who am I" pass strict and always get an answer no older than 15 seconds.
+const checking = new Map();
+function verifyFresh(t, prev) {
+  if (checking.has(t)) return checking.get(t);
+  const p = (async () => {
     try {
       const j = await pb.verifyToken(t);
       await withGuard(j.record);
       activity.touch(j.record.id);
-      const e = { user: j.record, at: Date.now(), fresh: j.token, renewedAt: c && c.renewedAt || 0 };
-      tokenCache.set(t, e); req._renew = e;
+      const e = { user: j.record, at: Date.now(), fresh: j.token, renewedAt: prev && prev.renewedAt || 0 };
+      tokenCache.set(t, e);
       if (tokenCache.size > 200) tokenCache.delete(tokenCache.keys().next().value);
-      return j.record;
+      return e;
     } catch (e) {
-      if (e instanceof pb.PBError && [400, 401, 403, 404].includes(e.status)) { tokenCache.set(t, { user: null, at: Date.now() }); continue; }
-      failure = failure || e;
-    }
+      if (e instanceof pb.PBError && [400, 401, 403, 404].includes(e.status)) { const n = { user: null, at: Date.now() }; tokenCache.set(t, n); return n; }
+      throw e;
+    } finally { checking.delete(t); }
+  })();
+  checking.set(t, p); return p;
+}
+async function currentUser(req, strict) {
+  let failure = null;
+  for (const t of tokensOf(req)) {
+    let c = tokenCache.get(t); const age = c ? Date.now() - c.at : Infinity;
+    if (c && age < 15000) { if (c.user) { req._renew = c; return c.user; } continue; }
+    if (c && c.user && !strict && age < 600000) { verifyFresh(t, c).catch(() => {}); req._renew = c; return c.user; }
+    try { c = await verifyFresh(t, c); if (c.user) { req._renew = c; return c.user; } }
+    catch (e) { failure = failure || e; }
   }
   if (failure) throw failure;
   return null;
@@ -227,10 +240,10 @@ async function accountRoutes(req, res, p) {
       send(res, 200, { ok: true, message: "If that account exists, a password reset email has been sent." }); return true;
     }
     if (p === "/api/account/me" && req.method === "GET") {
-      const u = await currentUser(req);
+      const u = await currentUser(req, true);
       if (!u) return send(res, 401, { code: "signin_required", message: "Sign in to continue." }), true;
       setSessionCookie(req, res, (req._renew && req._renew.fresh) || tokenOf(req));
-      send(res, 200, { user: { ...publicUser(await withGuard(await pb.getUser(u.id))), portalUrl: await pb.portalUrl().catch(() => "") } }); return true;
+      send(res, 200, { user: { ...publicUser(u), portalUrl: await pb.portalUrl().catch(() => "") } }); return true;
     }
     if (p === "/api/account/logout" && req.method === "POST") { clearSessionCookie(res); send(res, 200, { ok: true }); return true; }
     send(res, 404, { code: "not_found" }); return true;
