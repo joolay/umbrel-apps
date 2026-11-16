@@ -48,8 +48,8 @@ details.ai{margin:10px 0;font-size:14px}details.ai summary{cursor:pointer;color:
 (function () {
   "use strict";
   var TOKEN = "sw.token", mode = "in", cfg = {}, view = document.getElementById("view"), sub = document.getElementById("sub");
-  function tok() { try { return localStorage.getItem(TOKEN) || ""; } catch (e) { return ""; } }
-  function setTok(t) { try { t ? localStorage.setItem(TOKEN, t) : localStorage.removeItem(TOKEN); } catch (e) {} }
+  function tok() { try { return sessionStorage.getItem(TOKEN) || localStorage.getItem(TOKEN) || ""; } catch (e) { return ""; } }
+  function setTok(t, remember) { try { localStorage.removeItem(TOKEN); sessionStorage.removeItem(TOKEN); if (t) (remember ? localStorage : sessionStorage).setItem(TOKEN, t); } catch (e) {} }
   function api(path, opts) {
     opts = opts || {}; var h = { "content-type": "application/json" }; if (tok()) h["x-sw-token"] = tok();
     return fetch(path, { method: opts.method || "GET", headers: h, body: opts.body, cache: "no-store" }).then(function (r) {
@@ -60,24 +60,36 @@ details.ai{margin:10px 0;font-size:14px}details.ai summary{cursor:pointer;color:
   function field(label, type, auto) { var l = el("label", "", label), i = el("input"); i.type = type; i.autocomplete = auto; l.appendChild(i); return { l: l, i: i }; }
 
   function form() {
-    var reg = mode === "up"; view.textContent = "";
+    var reg = false; view.textContent = "";
     sub.textContent = reg ? "Create your JoolzApp account. One account works in all JoolzApp apps." : "Sign in with your JoolzApp account";
     var f = el("form"), name = field("Name", "text", "name"), email = field("Email", "email", "email"), pass = field("Password", "password", reg ? "new-password" : "current-password");
     email.i.required = true; pass.i.required = true; if (reg) pass.i.minLength = 8;
-    if (reg) f.appendChild(name.l); f.append(email.l, pass.l);
+    f.append(email.l, pass.l);
+    var remember, forgot, ok = el("p", "ok");
+    if (!reg) {
+      var opts = el("div", "opts"), rl = el("label", "inline"); remember = el("input"); remember.type = "checkbox";
+      try { remember.checked = localStorage.getItem("sw.remember") === "1"; if (remember.checked) email.i.value = localStorage.getItem("sw.email") || ""; } catch (e) {}
+      rl.append(remember, document.createTextNode(" Remember me")); forgot = el("a", "", "Forgot password?"); forgot.href = "#";
+      forgot.onclick = function (ev) {
+        ev.preventDefault(); err.textContent = ""; ok.textContent = "";
+        if (!email.i.value.trim()) { err.textContent = "Enter your email above first."; email.i.focus(); return; }
+        api("api/account/forgot", { method: "POST", body: JSON.stringify({ email: email.i.value.trim() }) }).then(function (j) { ok.textContent = j.message; }).catch(function (e) { err.textContent = e.message; });
+      };
+      opts.append(rl, forgot); f.appendChild(opts);
+    }
     var err = el("p", "e"); err.setAttribute("role", "alert");
     var go = el("button", "go", reg ? "Create account" : "Sign in"); go.type = "submit";
-    f.append(err, go);
+    f.append(err, ok, go);
     f.onsubmit = function (ev) {
       ev.preventDefault(); err.textContent = ""; go.disabled = true;
-      api(reg ? "api/account/register" : "api/account/login", { method: "POST", body: JSON.stringify({ email: email.i.value, password: pass.i.value, name: name.i.value }) })
-        .then(function (j) { setTok(j.token); j.user.canOpen ? location.reload() : waiting(j.user); })
+      api(reg ? "api/account/register" : "api/account/login", { method: "POST", body: JSON.stringify({ email: email.i.value, password: pass.i.value, name: name.i.value, remember: !reg && remember.checked }) })
+        .then(function (j) { var rem = !reg && remember.checked; setTok(j.token, rem); try { if (rem) { localStorage.setItem("sw.remember", "1"); localStorage.setItem("sw.email", email.i.value); } else if (!reg) { localStorage.removeItem("sw.remember"); localStorage.removeItem("sw.email"); } } catch (e) {} j.user.canOpen ? location.reload() : waiting(j.user); })
         .catch(function (e) { err.textContent = e.message; go.disabled = false; });
     };
     view.appendChild(f);
-    if (reg || cfg.signups !== false) {
-      var alt = el("button", "alt", reg ? "I already have a JoolzApp account" : "Create a JoolzApp account"); alt.type = "button";
+    if (cfg.signups !== false) {
       // There is one JoolzApp sign-up page, in Portal Admin. It sends you back here when the account is made.
+      var alt = el("button", "alt", "Create a JoolzApp account"); alt.type = "button";
       alt.onclick = function () { if (cfg.portalUrl) location.href = cfg.portalUrl.replace(/\/+$/, "") + "/?signup=1&app=shutterworth"; else err.textContent = "Sign-up lives in Portal Admin, but its address isn't set yet. Ask the admin."; }; view.appendChild(alt);
     }
   }
@@ -86,8 +98,14 @@ details.ai{margin:10px 0;font-size:14px}details.ai summary{cursor:pointer;color:
     view.appendChild(el("p", "note", "You're signed in as " + (u.name || u.email) + ". " + ((u.gate && u.gate.message) || "The admin hasn't opened this inventory to you yet. Ask them to give you access, then check again.")));
     var row = el("div", "row"), again = el("button", "", "Check again"), out = el("button", "", "Sign out");
     again.onclick = function () { start(); }; out.onclick = signOut; row.append(again, out); view.appendChild(row);
+    if (u.gate && u.gate.reason === "guardian_pending") {
+      // Parents are approved, added or changed in Portal Admin (the one place for account settings).
+      var dash = el("button", "alt", "Open the JoolzApp dashboard (add a parent, see who has been asked)"); dash.type = "button"; dash.style.marginTop = "14px";
+      dash.onclick = function () { var t = ""; try { t = sessionStorage.getItem(TOKEN) || localStorage.getItem(TOKEN) || ""; } catch (e) {} if (cfg.portalUrl) location.href = cfg.portalUrl.replace(/\/+$/, "") + "/" + (t ? "#sso=" + encodeURIComponent(t) : ""); };
+      view.appendChild(dash);
+    }
   }
-  function signOut() { setTok(""); try { localStorage.removeItem("sw_prefs"); } catch (e) {} fetch("api/account/logout", { method: "POST" }).catch(function () {}).then(function () { location.reload(); }); }
+  function signOut() { setTok("", false); try { localStorage.removeItem("sw_prefs"); } catch (e) {} fetch("api/account/logout", { method: "POST" }).catch(function () {}).then(function () { location.reload(); }); }
   function problem(msg) {
     view.textContent = ""; sub.textContent = "Can't reach the account server";
     view.appendChild(el("p", "note", msg));
