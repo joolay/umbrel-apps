@@ -10,7 +10,7 @@ services:
       PROXY_AUTH_ADD: "true"
 
   web:
-    image: ghcr.io/joolay/portal-admin:0.21.0
+    image: ghcr.io/joolay/portal-admin:0.21.1
     restart: on-failure
     stop_grace_period: 10s
     # Lets the container reach the PocketBase app (port 5400) published on this Umbrel.
@@ -22,7 +22,7 @@ services:
     ports:
       - "3892:3001"
       # Portal API for the apps (needs an app key). Not published through the tunnel.
-      - "3893:3002"
+      - "3899:3002"
     labels:
       tsdproxy.enable: "true"
       tsdproxy.name: "joolzapp"
