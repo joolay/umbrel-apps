@@ -15,6 +15,7 @@ const family = require('./family');
 const events = require('./events');
 const paywall = require('./paywall');
 const makeChanges = require('./changes');
+const makeAppApi = require('./appapi');
 const CHILD_REQ = '__child_account__', SPOUSE_REQ = '__spouse_account__';
 
 const PORT = Number(process.env.PORT || 3000);
@@ -416,7 +417,8 @@ async function signup(req, res) {
   } catch (e) { return send(res, e instanceof pbx.PBError && e.status === 503 ? 503 : 500, { message: String(e.message || e) }); }
 }
 
-const changes = makeChanges({ pbx, installedApps, APPS_DIR, DATA_DIR: pbx.dataDir });
+const appapi = makeAppApi({ pbx, DATA_DIR: pbx.dataDir, readBody, send });
+const changes = makeChanges({ pbx, installedApps, APPS_DIR, DATA_DIR: pbx.dataDir, appKeys: appapi.keys });
 const handle = async (req, res) => {
   try {
     const { pathname, search } = new URL(req.url, 'http://x');
@@ -509,4 +511,11 @@ if (PUBLIC_PORT && PUBLIC_PORT !== PORT) {
   pubServer = http.createServer((req, res) => { req.publicPort = true; handle(req, res); });
   pubServer.listen(PUBLIC_PORT, '0.0.0.0', () => console.log(`Portal Admin public (user-only) listening on :${PUBLIC_PORT}`));
 }
-process.on('SIGTERM', () => { if (pubServer) pubServer.close(); server.close(() => process.exit(0)); });
+// Portal API for the apps: its own internal port, never published through the tunnel. Every call needs an app key.
+const APP_API_PORT = Number(process.env.APP_API_PORT === undefined ? 3002 : process.env.APP_API_PORT);
+let apiServer = null;
+if (APP_API_PORT && APP_API_PORT !== PORT && APP_API_PORT !== PUBLIC_PORT) {
+  apiServer = http.createServer((req, res) => { appapi.handle(req, res).catch((e) => send(res, 500, { message: String(e.message || e) })); });
+  apiServer.listen(APP_API_PORT, '0.0.0.0', () => console.log(`Portal API (apps only) listening on :${APP_API_PORT}`));
+}
+process.on('SIGTERM', () => { if (pubServer) pubServer.close(); if (apiServer) apiServer.close(); server.close(() => process.exit(0)); });
