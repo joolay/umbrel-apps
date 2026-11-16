@@ -18,7 +18,10 @@ async function addMissing(path, wanted) {
   await pb.asSuper("PATCH", path, { [key]: [...have, ...missing.map(mk)] });
 }
 const MENU_FIELDS = [["owner", "text", true], ["ownerName", "text"], ["name", "text", true], ["phone", "text"], ["currency", "text"],
-  ["categories", "json", false, { maxSize: 5000000 }], ["branches", "json", false, { maxSize: 200000 }], ["version", "text"], ["versionByName", "text"], ["wa", "text"], ["logo", "json", false, { maxSize: 600000 }]];
+  ["categories", "json", false, { maxSize: 5000000 }], ["branches", "json", false, { maxSize: 200000 }], ["version", "text"], ["versionByName", "text"], ["wa", "text"], ["rerenderReq", "json", false, { maxSize: 20000 }], ["logo", "json", false, { maxSize: 600000 }]];
+const SRC = process.env.GRUBTOGO_SOURCES_COLLECTION || "grubtogo_menu_sources";
+const srcBase = "/api/collections/" + encodeURIComponent(SRC);
+const SRC_FIELDS = [["menuId", "text", true], ["kind", "text"], ["name", "text"], ["mime", "text"], ["byName", "text"], ["size", "number"], ["data", "json", false, { maxSize: 9000000 }]];
 const ARCH_FIELDS = [["menuId", "text", true], ["version", "text"], ["byName", "text"], ["data", "json", false, { maxSize: 5000000 }]];
 
 let ready = null;
@@ -28,7 +31,7 @@ function ensure() {
     const key = users.fields ? "fields" : "schema"; // PocketBase 0.23+ / 0.22
     const mk = ([name, type, required, opts]) => key === "fields" ? { name, type, required: !!required, ...(opts || {}) } : { name, type, required: !!required, options: { ...(opts || {}) } };
     // No API rules: only this server (as superuser) reads or writes these, and it enforces who may do what.
-    for (const [path, name, fields] of [[base, COLL, MENU_FIELDS], [archBase, ARCH, ARCH_FIELDS]]) {
+    for (const [path, name, fields] of [[base, COLL, MENU_FIELDS], [archBase, ARCH, ARCH_FIELDS], [srcBase, SRC, SRC_FIELDS]]) {
       try { await addMissing(path, fields); continue; } catch (e) { if (e.status !== 404) throw e; }
       try { await pb.asSuper("POST", "/api/collections", { name, type: "base", [key]: fields.map(mk), listRule: null, viewRule: null, createRule: null, updateRule: null, deleteRule: null }); }
       catch (e) { if (e.status !== 400) throw e; } // another request may have created it a moment ago
@@ -50,7 +53,7 @@ function cleanCategories(cats) {
     name: str(c && c.name, 120) || "Menu",
     items: (Array.isArray(c && c.items) ? c.items : []).slice(0, 300).filter(i => i && i.name).map((i, ii) => ({
       id: str(i.id, 40) || `c${ci}i${ii}`, name: str(i.name, 160), description: str(i.description, 600),
-      price: typeof i.price === "number" && isFinite(i.price) ? i.price : (parseFloat(i.price) || null),
+      price: parsePrice(i.price),
       ...(cleanEdit(i.edit) ? { edit: cleanEdit(i.edit) } : {}),
     })),
   })).filter(c => c.items.length);
@@ -69,10 +72,27 @@ function cleanMenu(x) {
   return { name: str(x.name, 120) || "Restaurant", phone: str(x.phone, 40), currency: str(x.currency, 8) || "R", categories };
 }
 
-const canEdit = (user, rec) => !!(user && (user.isAdmin || user.id === rec.owner));
+// The JoolzApp hierarchy: Admin > Editor (granted by an admin, edits everything shared) > Member > View-only. Whoever uploaded something is its
+// "uploader" (a title for the originator) and has editor rights over that upload.
+const isEditor = u => !!(u && (u.isAdmin || (u.portal && u.portal.editor && !u.portal.readonly)));
+const canEdit = (user, rec) => !!(user && (isEditor(user) || user.id === rec.owner));
+// The AI sometimes returns prices as text ("R 89,90", "1 250.00", "R89-R95"). Read the first amount; a comma followed by one or two
+// digits is a decimal comma, otherwise commas and spaces are thousands separators.
+function parsePrice(v) {
+  if (typeof v === "number") return isFinite(v) && v >= 0 ? v : null;
+  const m = String(v == null ? "" : v).replace(/\u00a0/g, " ").match(/\d[\d ,.']*/);
+  if (!m) return null;
+  let t = m[0].trim().replace(/[ ']/g, "");
+  if (/,\d{1,2}$/.test(t) && !/\.\d{1,2}$/.test(t)) t = t.replace(/\./g, "").replace(",", ".");
+  else t = t.replace(/,/g, "");
+  const n = parseFloat(t);
+  return isFinite(n) && n >= 0 && n < 100000 ? n : null;
+}
 const shape = (rec, user) => ({ id: rec.id, name: rec.name || "", phone: rec.phone || "", wa: rec.wa || "", logo: typeof rec.logo === "string" ? rec.logo : "", branches: Array.isArray(rec.branches) ? rec.branches : [], currency: rec.currency || "R", categories: Array.isArray(rec.categories) ? rec.categories : [],
   owner: rec.owner, ownerName: rec.ownerName || "", canEdit: canEdit(user, rec), updated: rec.updated || "",
-  version: rec.version || rec.created || "", versionByName: rec.versionByName || rec.ownerName || "" });
+  version: rec.version || rec.created || "", versionByName: rec.versionByName || rec.ownerName || "",
+  // People ask the uploader or an admin to re-render a menu; only they see who asked.
+  rerenderReq: canEdit(user, rec) && Array.isArray(rec.rerenderReq) ? rec.rerenderReq : [], iRequested: Array.isArray(rec.rerenderReq) && rec.rerenderReq.some(x => x && x.by === user.id) });
 
 async function list(user) {
   await ensure();
@@ -174,7 +194,7 @@ async function guarded(user, id) {
   let rec;
   try { rec = await pb.asSuper("GET", `${base}/records/${encodeURIComponent(id)}`); }
   catch (e) { if (e.status === 404) return { status: 404, message: "That menu no longer exists." }; throw e; }
-  if (!canEdit(user, rec)) return { status: 403, message: "Only the person who uploaded this menu, or an admin, can change it." };
+  if (!canEdit(user, rec)) return { status: 403, message: "Only an editor, an admin or the person who uploaded this menu can change it." };
   return { rec };
 }
 async function update(user, id, body) {
@@ -202,10 +222,76 @@ async function setLogo(user, id, logo) {
   const out = await pb.asSuper("PATCH", `${base}/records/${encodeURIComponent(id)}`, { logo: v });
   return { menu: shape(out, user) };
 }
+// The original material a menu was read from (photos, PDF pages, pasted text or the link) is kept with the menu, so it can be
+// looked at again or re-read later. Anyone who is not view-only can add to it when they upload; everyone can look.
+async function addSources(user, id, items) {
+  await ensure();
+  try { await pb.asSuper("GET", `${base}/records/${encodeURIComponent(id)}`); } catch (e) { if (e.status === 404) return { status: 404, message: "That menu no longer exists." }; throw e; }
+  let saved = 0;
+  for (const it of (Array.isArray(items) ? items : []).slice(0, 12)) {
+    const kind = it && ["image", "text", "url"].includes(it.kind) ? it.kind : "";
+    let data = "", mime = "";
+    if (kind === "image") { mime = /^image\/(jpeg|png|webp)$/.test(it.type) ? it.type : "image/jpeg"; data = typeof it.data === "string" && /^[A-Za-z0-9+/=]+$/.test(it.data) ? it.data : ""; }
+    else if (kind === "text") data = str(it.text, 60000);
+    else if (kind === "url") data = str(it.url, 500);
+    if (!kind || !data || data.length > 6500000) continue;
+    await pb.asSuper("POST", srcBase + "/records", { menuId: id, kind, name: str(it.name, 80) || (kind === "image" ? "Photo " + (saved + 1) : kind === "text" ? "Pasted text" : "Link"), mime, byName: who(user), size: data.length, data });
+    saved++;
+  }
+  return { saved };
+}
+async function listSources(user, id) {
+  await ensure();
+  const j = await pb.asSuper("GET", `${srcBase}/records?page=1&perPage=100&sort=created&fields=id,kind,name,mime,byName,size,created&filter=${encodeURIComponent(`menuId = '${str(id, 40).replace(/[^A-Za-z0-9]/g, "")}'`)}`);
+  return { sources: (j.items || []).map(r => ({ id: r.id, kind: r.kind, name: r.name, mime: r.mime, byName: r.byName || "", size: r.size || 0, at: r.created || "" })) };
+}
+async function getSource(user, id, sid) {
+  await ensure();
+  let r; try { r = await pb.asSuper("GET", `${srcBase}/records/${encodeURIComponent(sid)}`); } catch (e) { if (e.status === 404) return { status: 404, message: "That file no longer exists." }; throw e; }
+  if (r.menuId !== id) return { status: 404, message: "That file no longer exists." };
+  return { source: { id: r.id, kind: r.kind, name: r.name, mime: r.mime, data: r.data } };
+}
+// Re-reads the menu from its saved original with today's instructions and model. The current version is archived first, so it can be
+// restored from "Previous versions". Hand edits to items are replaced by the new reading (they stay in the archived version).
+async function rerender(user, id, extract) {
+  const g = await guarded(user, id); if (g.status) return g;
+  const list = (await pb.asSuper("GET", `${srcBase}/records?page=1&perPage=100&sort=created&filter=${encodeURIComponent(`menuId = '${str(id, 40).replace(/[^A-Za-z0-9]/g, "")}'`)}`)).items || [];
+  if (!list.length) return { status: 400, message: "No original was kept for this menu, so it can't be re-rendered. Upload it again instead." };
+  const images = list.filter(s => s.kind === "image").map(s => ({ type: s.mime || "image/jpeg", data: s.data })), url = (list.find(s => s.kind === "url") || {}).data, text = list.filter(s => s.kind === "text").map(s => s.data).join("\n\n");
+  const out = await extract(images.length ? { images } : url ? { url } : { text });
+  if (!out || out.error) return { status: 422, message: "The AI couldn't read a menu from the original" + (out && out.error ? " (" + str(out.error, 120) + ")" : "") + ". Nothing was changed." };
+  const stamp = Date.now().toString(36);
+  const cats = cleanCategories((out.categories || []).map((c, ci) => ({ name: c && c.name, items: ((c && c.items) || []).map((i, ii) => ({ ...i, id: `r${stamp}c${ci}i${ii}`, edit: undefined })) })));
+  if (!cats) return { status: 422, message: "No menu items were found in the original. Nothing was changed." };
+  await archive(g.rec);
+  const rec = await pb.asSuper("PATCH", `${base}/records/${encodeURIComponent(id)}`, { categories: cats, currency: str(out.currency, 8) || g.rec.currency || "R", phone: g.rec.phone || str(out.phone, 40), version: nowIso(), versionByName: who(user), rerenderReq: [] });
+  return { menu: shape(rec, user) };
+}
+async function requestRerender(user, id) {
+  await ensure();
+  let rec; try { rec = await pb.asSuper("GET", `${base}/records/${encodeURIComponent(id)}`); } catch (e) { if (e.status === 404) return { status: 404, message: "That menu no longer exists." }; throw e; }
+  const cur = (Array.isArray(rec.rerenderReq) ? rec.rerenderReq : []).filter(x => x && x.by !== user.id);
+  const out = await pb.asSuper("PATCH", `${base}/records/${encodeURIComponent(id)}`, { rerenderReq: [...cur, { by: user.id, byName: who(user), at: nowIso() }].slice(-30) });
+  return { menu: shape(out, user), requested: true };
+}
+// An admin, or the person who uploaded the menu, confirms the edits other people made: the "edited by" tag is cleared (one item, or all of them). The new values stay.
+async function confirmEdits(user, id, itemId) {
+  await ensure();
+  let rec; try { rec = await pb.asSuper("GET", `${base}/records/${encodeURIComponent(id)}`); } catch (e) { if (e.status === 404) return { status: 404, message: "That menu no longer exists." }; throw e; }
+  if (!canEdit(user, rec)) return { status: 403, message: "Only an editor, an admin or the person who uploaded this menu can confirm its edits." };
+  let n = 0;
+  const cats = (Array.isArray(rec.categories) ? rec.categories : []).map(c => ({ ...c, items: (c.items || []).map(i => {
+    if (!i.edit || (itemId && i.id !== itemId)) return i;
+    n++; const { edit, ...rest } = i; return rest;
+  }) }));
+  if (!n) return { menu: shape(rec, user), cleared: 0 };
+  const out = await pb.asSuper("PATCH", `${base}/records/${encodeURIComponent(id)}`, { categories: cats });
+  return { menu: shape(out, user), cleared: n };
+}
 async function remove(user, id) {
   const g = await guarded(user, id); if (g.status) return g;
   await pb.asSuper("DELETE", `${base}/records/${encodeURIComponent(id)}`);
   return { ok: true };
 }
 
-module.exports = { setLogo, list, create, update, remove, cleanMenu, editItem, addBranch, versions, restore };
+module.exports = { confirmEdits, rerender, requestRerender, addSources, listSources, getSource, setLogo, list, create, update, remove, cleanMenu, editItem, addBranch, versions, restore };

@@ -51,6 +51,11 @@
           "name": "logo",
           "type": "json",
           "maxSize": 600000
+        },
+        {
+          "name": "rerenderReq",
+          "type": "json",
+          "maxSize": 20000
         }
       ]
     },

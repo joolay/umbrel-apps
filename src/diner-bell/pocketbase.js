@@ -171,10 +171,10 @@ function resolvePortal(rows, userId) {
   const mine = rows.filter(r => r.scope === "global" || (r.scope === "app" && r.app === APP) || (r.scope === "user" && r.user === userId && (r.app === "" || r.app === APP))).sort((a, b) => rank(a) - rank(b));
   const eff = {}; for (const r of mine) eff[r.key] = r.value;
   const prefs = {}; for (const [k, v] of Object.entries(eff)) if (k.startsWith("pref.")) prefs[k.slice(5)] = v;
-  return { access: eff["portal.access"] !== false, readonly: eff["portal.readonly"] === true, prefs };
+  return { access: eff["portal.access"] !== false, readonly: eff["portal.readonly"] === true, editor: eff["portal.editor"] === true, prefs };
 }
 async function portalRowsFor(userId) {
-  const f = `(key = 'portal.access' || key = 'portal.readonly' || key ~ 'pref.') && (scope = 'global' || (scope = 'app' && app = '${esc(APP)}') || (scope = 'user' && user = '${esc(userId)}'))`;
+  const f = `(key = 'portal.access' || key = 'portal.readonly' || key = 'portal.editor' || key ~ 'pref.') && (scope = 'global' || (scope = 'app' && app = '${esc(APP)}') || (scope = 'user' && user = '${esc(userId)}'))`;
   const j = await asSuper("GET", `/api/collections/portal_settings/records?page=1&perPage=200&filter=${q(f)}`);
   return j.items || [];
 }

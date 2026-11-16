@@ -13,6 +13,7 @@ const state = { token: sess('token'), actor: sess('actor'), role: sess('role') |
 const SLUG = /^[a-z0-9][a-z0-9_-]{0,47}$/;
 const RESERVED = [
   ['portal.access', 'boolean', 'false blocks a user (all apps, or one app) from using the app'],
+  ['portal.editor', 'boolean', 'true makes a user an Editor: can edit, confirm and re-render shared resources in every app'],
   ['portal.readonly', 'boolean', 'true stops a user changing shared resources (menus, logos, uploads) in any app; they can still use the app'],
   ['portal.url', 'string', 'Address of this dashboard, used by the "Back to Dashboard" button in apps (blank = same address with port 3892)'],
 ];
@@ -734,21 +735,27 @@ async function userDetail(id) {
       return ap.required ? { inherited: true } : undefined;
     };
     const all = blockedFor('');
-    const roRow = (await listAll('portal_settings', { filter: `scope = "user" && user = ${fq(id)} && key = "portal.readonly" && app = ""` }))[0];
+    const roleRows = await listAll('portal_settings', { filter: `scope = "user" && user = ${fq(id)} && (key = "portal.readonly" || key = "portal.editor") && app = ""` });
+    const roleRow = k => roleRows.find((r) => r.key === k && r.value === true);
+    const role = roleRow('portal.readonly') ? 'viewonly' : roleRow('portal.editor') ? 'editor' : 'member';
     const targets = [{ slug: '', name: 'All apps' }, ...apps];
     $('#tab').innerHTML = `<div class="card"><p class="muted small">Untick to block this user. Apps check the <code>portal.access</code> setting (see Setup &amp; integration).</p>
       <table><tbody>${targets.map((t) => `<tr><td><b>${esc(t.name)}</b>${t.slug ? `<div class="muted small">${esc(t.slug)}</div>` : ''}</td>
         <td>${t.slug && !t.enabled ? '<span class="chip bad">app disabled</span>' : ''}${t.slug && all && !all.inherited ? ' <span class="chip">blocked by "All apps"</span>' : ''}${ap.required && !recs.find((r) => r.app === t.slug) ? ' <span class="chip">approval required</span>' : ''}</td>
         <td style="width:90px"><label class="inline" style="margin:0"><input type="checkbox" data-slug="${esc(t.slug)}"${blockedFor(t.slug) ? '' : ' checked'}> allowed</label></td></tr>`).join('')}</tbody></table></div>`
-    $('#tab').insertAdjacentHTML('beforeend', `<div class="card"><h2>Shared resources</h2><p class="muted small">Untick to stop this user changing anything that is shared between people in any app (for example Diner Bell menus, logos and uploads). They can still use the apps, place orders and change their own settings. Apps check the <code>portal.readonly</code> setting.</p>
-      <label class="inline" style="margin:0"><input type="checkbox" id="ro"${roRow && roRow.value === true ? '' : ' checked'}> can edit shared resources</label></div>`);
-    $('#ro').onchange = guard(async (e) => {
-      const block = !e.target.checked;
-      if (block && roRow) await api('PATCH', `/api/collections/portal_settings/records/${roRow.id}`, { value: true });
-      else if (block) await api('POST', '/api/collections/portal_settings/records', { scope: 'user', user: id, app: '', key: 'portal.readonly', value: true });
-      else if (roRow) await api('DELETE', `/api/collections/portal_settings/records/${roRow.id}`);
-      await audit(block ? 'user.readonly.on' : 'user.readonly.off', id, {});
-      toast('Updated'); tabAccess();
+    $('#tab').insertAdjacentHTML('beforeend', `<div class="card"><h2>Role in the JoolzApps</h2>
+      <p class="muted small">Admin (set under Users) can do everything. <b>Editor</b> can edit, confirm and re-render shared things (menus, pictures, uploads) in every app, not only their own. <b>Member</b> is the normal user: they can use the apps and make tagged edits that an editor or admin confirms; whoever uploads something is its <i>uploader</i> (a title for the originator) and is treated as an editor of that upload. <b>View-only</b> can use the apps but cannot change anything shared.</p>
+      <select id="role" style="max-width:260px"><option value="editor"${role === 'editor' ? ' selected' : ''}>Editor (elevated)</option><option value="member"${role === 'member' ? ' selected' : ''}>Member</option><option value="viewonly"${role === 'viewonly' ? ' selected' : ''}>View-only</option></select></div>`);
+    $('#role').onchange = guard(async (e) => {
+      const want = e.target.value, set = async (key, on) => {
+        const ex = roleRows.find((r) => r.key === key);
+        if (on && ex) await api('PATCH', `/api/collections/portal_settings/records/${ex.id}`, { value: true });
+        else if (on) await api('POST', '/api/collections/portal_settings/records', { scope: 'user', user: id, app: '', key, value: true });
+        else if (ex) await api('DELETE', `/api/collections/portal_settings/records/${ex.id}`);
+      };
+      await set('portal.editor', want === 'editor'); await set('portal.readonly', want === 'viewonly');
+      await audit('user.role', id, { role: want });
+      toast('Role updated'); tabAccess();
     });
     $('#tab').onchange = guard(async (e) => {
       const slug = e.target.dataset.slug; if (slug === undefined) return;
