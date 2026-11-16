@@ -299,6 +299,7 @@ async function accountRoutes(req, res, pathname) {
       }
       if (b.action === 'tier') return out(await family.setTier(user, b.memberId, b.tier, b.relation));
       if (b.action === 'manager') { const t = await pbx.getUser(String(b.memberId || '').replace(/[^A-Za-z0-9]/g, '')).catch(() => null); if (t && guardians.isMinor(t)) return out({ status: 403, message: "Under-18s can't manage a family." }); return out(await family.setManager(user, b.memberId, !!b.on)); }
+      if (b.action === 'leaveExt') return out(await family.leaveExtended(user, b.familyId));
       if (b.action === 'leave') return out(await family.drop(user, ''));
       if (b.action === 'remove') return out(await family.drop(user, b.memberId));
       return send(res, 400, { message: 'Unknown action' });

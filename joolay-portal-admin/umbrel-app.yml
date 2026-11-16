@@ -2,7 +2,7 @@ manifestVersion: 1
 id: joolay-portal-admin
 category: developer
 name: Portal Admin
-version: "0.17.0"
+version: "0.18.0"
 tagline: One admin panel for all your custom PocketBase apps
 description: >-
   A central admin panel for your custom apps that use PocketBase. Register each app, then manage
@@ -21,7 +21,7 @@ gallery: []
 path: ""
 defaultUsername: ""
 defaultPassword: ""
-releaseNotes: "New Role setting on each user (Access tab): Editor, Member or View-only, used across the JoolzApps."
+releaseNotes: "Renamed JoolzApp Portal with a new twin-bolt icon. The dashboard is now an iPhone-style home screen: Settings and Family appear as app icons, the top bar stays put while you scroll, there is a dock, and you can long-press to rearrange (icons jiggle), hide or restore apps. Your layout is saved on your account. Family now means one household; extended relatives such as grandparents can be linked to any number of families, and can be moved into the household when they live with you."
 submitter: joolay
 submission: https://github.com/joolay/umbrel-apps
 icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-portal-admin/icon.svg

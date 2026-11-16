@@ -9,8 +9,8 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Portal Admin">
-<title>Portal Admin</title>
+<meta name="apple-mobile-web-app-title" content="JoolzApp Portal">
+<title>JoolzApp Portal</title>
 <link rel="icon" href="icon.svg">
 <link rel="stylesheet" href="glass.css">
 <link rel="stylesheet" href="style.css">
@@ -93,26 +93,25 @@
 </div>
 
 <div id="shell" class="shell hidden">
-  <aside class="side">
-    <div class="brand"><img src="icon.svg" alt="" width="28" height="28"><span>Portal Admin</span></div>
-    <nav id="nav">
-      <a href="#/home" data-route="home">Dashboard</a>
-      <a href="#/overview" data-route="overview">Overview</a>
-      <a href="#/global" data-route="global">Global settings</a>
-      <a href="#/apps" data-route="apps">Apps</a>
-      <a href="#/users" data-route="users">Users</a>
-      <a href="#/requests" data-route="requests">Access requests</a>
-      <a href="#/cleanup" data-route="cleanup">Cleanup</a>
-      <a href="#/audit" data-route="audit">Audit log</a>
-      <a href="#/setup" data-route="setup">Setup &amp; integration</a>
-    </nav>
-    <div class="side-foot">
-      <div id="who" class="muted small"></div>
-      <button id="logout" class="btn small">Sign out</button>
-    </div>
-  </aside>
+  <header class="topbar" id="topbar">
+    <button id="tb-back" class="tb-btn" aria-label="Back to Home" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg></button>
+    <div class="brand" id="tb-brand"><img src="icon.svg" alt="" width="28" height="28"><span>Portal Admin</span></div>
+    <h1 class="tb-title" id="tb-title" hidden></h1>
+    <span class="tb-gap"></span>
+    <button id="tb-edit" class="tb-btn" aria-label="Rearrange apps" title="Rearrange apps"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 16.5V20h3.5L18.2 9.3l-3.5-3.5z"/><path d="M14.7 5.8l1.6-1.6a1.7 1.7 0 0 1 2.5 0l1 1a1.7 1.7 0 0 1 0 2.5l-1.6 1.6"/></svg></button>
+    <button id="tb-done" class="btn primary small pill" hidden>Done</button>
+    <button id="tb-me" class="tb-btn avatar" aria-label="Account" title="Account"></button>
+  </header>
   <main id="main"></main>
+  <nav id="dock" class="dock" aria-label="Dock"></nav>
 </div>
+<dialog id="sheet" aria-label="Details"></dialog>
+<dialog id="acct" aria-label="Account">
+  <button class="sheet-x" data-close aria-label="Close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+  <h2>Account</h2>
+  <p id="who" class="muted"></p>
+  <button id="logout" class="btn pill">Sign out</button>
+</dialog>
 <div id="toast" class="toast hidden" role="status"></div>
 <script src="pwtoggle.js"></script>
 <script src="app.js"></script>
