@@ -2,7 +2,7 @@ manifestVersion: 1
 id: joolay-diner-bell
 category: files
 name: Diner Bell
-version: "2.0.1"
+version: "2.0.2"
 tagline: Tile your favourite restaurants, order by phone or WhatsApp, split the bill
 description: >-
   Diner Bell reads a restaurant menu from a photo, PDF, link or pasted text, lets you build an order from one or more
