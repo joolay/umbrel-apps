@@ -31,13 +31,14 @@ module.exports = function makeChanges({ pbx, installedApps, APPS_DIR, DATA_DIR, 
       fs.writeFileSync(tmp, [...keep, ...Object.entries(kv).map(([k, v]) => k + '=' + v), ''].join('\n'), { mode: 0o600 });
       fs.renameSync(tmp, file);
     },
-    // PocketBase's own rate limiter (if it is on) allows very few sign-ins per few seconds, so wait and retry when it says 429.
-    async loginWorks(collection, email, password) {
+    // Does this login work? When PocketBase's own rate limiter (if on) says 429, `retry` waits and tries again; without it a 429 counts as
+    // "can't tell, assume yes" so that just looking at the Changes page never waits on the limiter.
+    async loginWorks(collection, email, password, { retry = true } = {}) {
       if (!email || !password) return false;
       for (let i = 0; ; i++) {
         try { await pbx.raw('POST', `/api/collections/${encodeURIComponent(collection)}/auth-with-password`, { body: { identity: email, password } }); return true; }
         catch (e) {
-          if (e.status === 429 && i < 4) { await new Promise((r) => setTimeout(r, 3500)); continue; }
+          if (e.status === 429) { if (!retry) return true; if (i < 4) { await new Promise((r) => setTimeout(r, 3500)); continue; } }
           if (e.status === 400 || e.status === 401 || e.status === 404) return false;
           throw e;
         }
@@ -55,13 +56,14 @@ module.exports = function makeChanges({ pbx, installedApps, APPS_DIR, DATA_DIR, 
   let busy = false;
   return {
     async list() {
-      const out = [];
-      for (const s of sets()) {
-        const o = { id: s.id, title: s.title, summary: s.summary };
-        try { await ctx.needNewPocketBase(); o.plan = await s.plan(ctx); o.status = o.plan.length ? 'pending' : 'done'; }
+      const limit = (p, ms) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error('PocketBase is taking too long to answer. Try again in a moment.')), ms))]);
+      const out = await Promise.all(sets().map(async (s) => {
+        const o = { id: s.id, title: s.title, summary: s.summary }, t0 = Date.now();
+        try { await limit(ctx.needNewPocketBase(), 15000); o.plan = await limit(s.plan(ctx), 20000); o.status = o.plan.length ? 'pending' : 'done'; }
         catch (e) { o.plan = []; o.status = 'error'; o.error = String(e.message || e); }
-        out.push(o);
-      }
+        if (Date.now() - t0 > 5000) console.warn(`[changes] ${s.id} took ${Date.now() - t0} ms to check`);
+        return o;
+      }));
       return { changes: out, history: history().slice(0, 20) };
     },
     async apply(id) {

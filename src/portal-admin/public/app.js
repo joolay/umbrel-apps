@@ -1804,7 +1804,9 @@ async function viewHome() {
 
 let chgNotes = { id: '', notes: [] };
 async function viewChanges() {
-  const r = await acctFetch('/admin/changes');
+  let r;
+  try { r = await Promise.race([acctFetch('/admin/changes'), new Promise((_, rej) => setTimeout(() => rej(new Error('Portal Admin did not answer in time.')), 60000))]); }
+  catch (e) { main().innerHTML = `<h1>PocketBase changes</h1><div class="card"><p class="error">${esc(e.message)}</p><button class="btn primary" id="chg-retry">Try again</button></div>`; $('#chg-retry').onclick = () => route(); return; }
   const chip = (c) => c.status === 'done' ? '<span class="chip ok">up to date</span>' : c.status === 'error' ? '<span class="chip bad">problem</span>' : `<span class="chip warn">${c.plan.length} to do</span>`;
   main().innerHTML = `<h1>PocketBase changes</h1><p class="sub">Changes that ship with Portal Admin. Each one shows exactly what it will do to PocketBase. Nothing happens until you press Apply, and applying twice is harmless.</p>
     ${r.changes.map((c) => `<div class="card" data-id="${esc(c.id)}"><div class="row spread"><h2>${esc(c.title)}</h2>${chip(c)}</div><p class="muted small">${esc(c.summary)}</p>

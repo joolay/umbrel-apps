@@ -13,7 +13,7 @@ const email = (slug) => slug + '@apps.local';
 
 async function stale(c) {   // apps whose saved service login is missing or no longer works
   const out = [];
-  for (const a of c.apps()) { const e = c.readEnv(a); if (!(await c.loginWorks(SVC, e.POCKETBASE_SERVICE_EMAIL, e.POCKETBASE_SERVICE_PASSWORD))) out.push(a); }
+  for (const a of c.apps()) { const e = c.readEnv(a); if (!(await c.loginWorks(SVC, e.POCKETBASE_SERVICE_EMAIL, e.POCKETBASE_SERVICE_PASSWORD, { retry: false }))) out.push(a); }
   return out;
 }
 module.exports = {
