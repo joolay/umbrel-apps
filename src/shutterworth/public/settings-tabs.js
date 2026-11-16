@@ -1,14 +1,13 @@
-// Settings tabs: Account, Inventory and Data. AI comes from the shared JoolzApp AI settings in Portal Admin, so there is no Admin tab.
+// Settings tabs: Account and Data (depreciation rates and sharing now live in each list's options). AI comes from the shared JoolzApp AI settings in Portal Admin, so there is no Admin tab.
 // Other scripts add their panels to #setView at their own pace, so panels are sorted into tabs as they appear.
 (() => {
   "use strict";
   const KEY = "sw.setTab";
   const TABS = [
     { id: "account", label: "Account" },
-    { id: "inventory", label: "Inventory" },
     { id: "data", label: "Data" },
   ];
-  const ADMIN_IDS = new Set(["swUsersPanel", "swAdsPanel"]);   // admin-only panels, shown under Inventory
+  const ADMIN_IDS = new Set(["swUsersPanel", "swAdsPanel"]);   // admin-only panels, shown under Account
 
   const css = document.createElement("style");
   css.textContent = `
@@ -18,7 +17,6 @@
 #swTabs button[aria-selected="true"]{background:var(--forest,#145f4f);border-color:var(--forest,#145f4f);color:var(--cream,#f8f4ea)}
 #swTabs button:focus-visible{outline:2px solid var(--gold,#d9ab55);outline-offset:2px}
 #setView[data-tab="account"] .panel:not([data-tab="account"]),
-#setView[data-tab="inventory"] .panel:not([data-tab="inventory"]),
 #setView[data-tab="data"] .panel:not([data-tab="data"]){display:none}
 `;
   document.head.appendChild(css);
@@ -33,13 +31,12 @@
   try { current = sessionStorage.getItem(KEY) || ""; } catch (e) {}
 
   function tabFor(p) {
-    if (ADMIN_IDS.has(p.id)) return "inventory";
+    if (ADMIN_IDS.has(p.id)) return "account";
     if (p.id === "swAccountPanel") return "account";
     if (p.id === "swStorePanel" || p.querySelector("#bkList")) return "data";
-    if (p.querySelector(".rates")) return "inventory";
     return "data";
   }
-  const visibleTabs = () => TABS.filter(t => (t.id === "account" ? accountsOn : true));
+  const visibleTabs = () => TABS.filter(t => (t.id === "account" ? accountsOn || !!view.querySelector(":scope > .panel[data-tab=\"account\"]") : true));
 
   function paint() {
     const tabs = visibleTabs();

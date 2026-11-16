@@ -26,6 +26,7 @@
     const es = new EventSource("api/events");
     es.onmessage = ev => {
       const m = JSON.parse(ev.data);
+      if (m.refresh) { loadAll().then(() => notify(null)).catch(() => {}); return; }   // sharing changed (invited, removed...): take the full picture again
       if (m.hello) { if (wasOpen) loadAll().then(() => notify(null)).catch(() => {}); wasOpen = true; return; }
       if (m.origin === ORIGIN) return;
       const paths = [];
@@ -112,7 +113,7 @@
 
   const assets = {
     async upload(blob) {
-      const r = await fetch("api/assets", { method: "POST", headers: { "content-type": blob.type || "application/octet-stream" }, body: blob });
+      const r = await fetch("api/assets", { method: "POST", headers: { "content-type": blob.type || "application/octet-stream", ...(window.__swList && window.__swList() ? { "x-sw-list": window.__swList() } : {}) }, body: blob });   // the open list, so photos added to a shared list go to its owner
       if (!r.ok) throw err("upload_failed", "Photo upload failed");
       return r.json();
     },
