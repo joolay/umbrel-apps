@@ -239,6 +239,7 @@ function showShell() {
   $('#login').classList.add('hidden'); $('#shell').classList.remove('hidden');
   $('#who').textContent = state.actor; route(); startDetecting();
   homeModel().then((m) => { if (!HM) HM = m; renderDock(); }).catch(() => {});   // so the dock is there on every page
+  if (state.role === 'user' && state.uid) seedRegional().catch(() => {});
 }
 const SESSION_KEYS = ['token', 'actor', 'role', 'uid'];
 function saveSession(remember) { SESSION_KEYS.forEach((k) => { store.set('pa.' + k, state[k]); store.lset('pa.' + k, remember ? state[k] : null); }); }
@@ -937,6 +938,40 @@ async function viewRequests() {
   });
 }
 
+
+/* ---------- Regional defaults ----------
+   A new account starts with settings that match where the person is (from the device language and time zone), e.g. South Africa gets
+   metric, Celsius, DD/MM/YYYY, 24-hour, ZAR. They are saved once on the account (so every app reads the same values) and the person can change
+   any of them in My settings; "Use my region" puts them back. */
+const EURO = 'AT BE CY DE EE ES FI FR GR HR IE IT LT LU LV MT NL PT SI SK'.split(' ');
+const TZ_REGION = { 'Africa/Johannesburg': 'ZA', 'Africa/Maputo': 'MZ', 'Africa/Harare': 'ZW', 'Africa/Lagos': 'NG', 'Africa/Nairobi': 'KE', 'Africa/Cairo': 'EG', 'Europe/London': 'GB', 'Europe/Dublin': 'IE', 'Australia/Sydney': 'AU', 'Australia/Melbourne': 'AU', 'Australia/Perth': 'AU', 'Pacific/Auckland': 'NZ', 'Asia/Dubai': 'AE', 'Asia/Kolkata': 'IN', 'Asia/Calcutta': 'IN', 'America/Toronto': 'CA', 'America/Vancouver': 'CA', 'America/New_York': 'US', 'America/Chicago': 'US', 'America/Denver': 'US', 'America/Los_Angeles': 'US', 'Europe/Paris': 'FR', 'Europe/Berlin': 'DE', 'Europe/Madrid': 'ES', 'Europe/Lisbon': 'PT', 'Europe/Amsterdam': 'NL', 'Europe/Rome': 'IT' };
+function regionalDefaults() {
+  let loc = 'en-ZA', tz = '';
+  try { loc = (navigator.languages && navigator.languages[0]) || navigator.language || loc; } catch {}
+  try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch {}
+  let region = ((loc.split('-')[1] || '').match(/^[A-Za-z]{2}$/) || [''])[0].toUpperCase() || TZ_REGION[tz] || '';
+  if (TZ_REGION[tz] === 'ZA') region = 'ZA';   // a device set to South Africa time is in South Africa, whatever language it runs in
+  const lang = loc.split('-')[0].toLowerCase();
+  const cur = { ZA: 'ZAR', US: 'USD', GB: 'GBP', AU: 'AUD', CA: 'CAD', AE: 'AED', IN: 'INR' }[region] || (EURO.includes(region) ? 'EUR' : '');
+  const us = ['US', 'LR', 'MM'].includes(region);
+  return {
+    language: ['en', 'af', 'zu', 'xh', 'st', 'tn', 'fr', 'es', 'pt', 'ar'].includes(lang) ? lang : 'en',
+    currency: cur, timezone: tz,
+    dateFormat: ['US', 'PH', 'FM', 'PW'].includes(region) ? 'MM/DD/YYYY' : ['CN', 'JP', 'KR', 'TW', 'SE', 'LT', 'HU'].includes(region) ? 'YYYY-MM-DD' : 'DD/MM/YYYY',
+    timeFormat: ['US', 'CA', 'AU', 'NZ', 'IN', 'PH', 'EG', 'SA', 'CO', 'PK', 'MY'].includes(region) ? '12h' : '24h',
+    units: us ? 'imperial' : 'metric',
+    temperature: ['US', 'BS', 'BZ', 'KY', 'PW', 'LR'].includes(region) ? 'F' : 'C',
+  };
+}
+async function seedRegional() {
+  const uid = state.uid;
+  const rows = await listAll('portal_settings', { filter: `scope = "user" && user = ${fq(uid)} && app = "" && key ~ "pref."` });
+  if (rows.some((r) => r.key === 'pref.regionSeeded')) return;
+  const have = new Set(rows.map((r) => r.key.slice(5))), d = regionalDefaults();
+  for (const [k, v] of Object.entries(d)) if (v && !have.has(k)) await api('POST', '/api/collections/portal_settings/records', { scope: 'user', user: uid, app: '', key: 'pref.' + k, value: v, secret: false });
+  await api('POST', '/api/collections/portal_settings/records', { scope: 'user', user: uid, app: '', key: 'pref.regionSeeded', value: '1', secret: false });
+}
+
 /* ---------- My settings (regular JoolzApp users) ---------- */
 // Open sign-ups, but never let a new account set its own isAdmin flag (ShutterWorth and others use that field).
 // Sign-up is "open" when this rule exists. It can never be met from a browser: accounts are created only by this app's server (POST /signup),
@@ -949,7 +984,8 @@ const PREFS = [
   ['timezone', 'Time zone', null],
   ['dateFormat', 'Date format', [['DD/MM/YYYY', '31/12/2026'], ['MM/DD/YYYY', '12/31/2026'], ['YYYY-MM-DD', '2026-12-31']]],
   ['timeFormat', 'Time format', [['24h', '24-hour (14:30)'], ['12h', '12-hour (2:30 pm)']]],
-  ['units', 'Units', [['metric', 'Metric (km, kg, °C)'], ['imperial', 'Imperial (mi, lb, °F)']]],
+  ['units', 'Distance and weight', [['metric', 'Metric (km, kg, litres)'], ['imperial', 'Imperial (mi, lb, gallons)']]],
+  ['temperature', 'Temperature', [['C', 'Celsius (°C)'], ['F', 'Fahrenheit (°F)']]],
   ['theme', 'Theme', [['auto', 'Match my device'], ['light', 'Light'], ['dark', 'Dark']]],
 ];
 async function viewMe() {
@@ -972,7 +1008,7 @@ async function viewMe() {
     <div class="tabs"><button class="active" data-t="prefs">Preferences</button><button data-t="profile">Profile</button><button data-t="ai">AI</button><button data-t="account">Account</button></div>
     <div data-pane="profile" hidden><div class="card" id="pane-profile"><p class="muted">Loading…</p></div></div>
     <div data-pane="prefs"><form id="prefs" class="card"><h2>Preferences</h2><div class="kv">${PREFS.map(field).join('')}</div>
-      ${detected ? `<p class="muted small">Your device time zone: ${esc(detected)}</p>` : ''}<button class="btn primary">Save preferences</button></form></div>
+      ${detected ? `<p class="muted small">Your device time zone: ${esc(detected)}. Defaults follow your region.</p>` : ''}<div class="row" style="gap:8px"><button class="btn primary">Save preferences</button><button type="button" class="btn" id="regional">Use my region</button></div></form></div>
     <div data-pane="ai" hidden><form id="ai" class="card"><h2>AI (for apps that use it)</h2><p class="muted small">Pick your own AI provider, model and API key. Apps that read menus, photos or text with AI will use these instead of the shared key. Only you and the admin can see them.</p>
       <div class="kv"><label>Provider<select name="provider">${AI_PROVIDERS.map(([v, l]) => opt(v, l, (cur['ai.provider'] ? cur['ai.provider'].value : 'gemini') === v)).join('')}</select></label>
       <label>Model<input name="model" list="ai-models" value="${esc(cur['ai.model'] ? cur['ai.model'].value : '')}" placeholder="" autocomplete="off"><datalist id="ai-models"></datalist></label>
@@ -1036,6 +1072,11 @@ async function viewMe() {
     }
     toast('Preferences saved');
   });
+  $('#regional').onclick = () => {
+    const f = $('#prefs'), d = regionalDefaults();
+    for (const [k, v] of Object.entries(d)) if (v && f.elements[k]) f.elements[k].value = v;
+    f.requestSubmit();
+  };
   if ($('#del')) $('#del').onsubmit = guard(async (e) => {
     e.preventDefault();
     if (reqs === null) throw new Error('Requests are not set up yet. Ask the admin.');
