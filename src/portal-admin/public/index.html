@@ -20,8 +20,8 @@
   <form id="login-form" class="card login-card" autocomplete="on">
     <div class="brand big"><img src="icon.svg" alt="" width="40" height="40"><span>Portal Admin</span></div>
     <p class="muted">Sign in with your <strong>JoolzApp</strong> account (or PocketBase superuser).</p>
-    <label>Email
-      <input id="login-email" type="email" autocomplete="username" required>
+    <label>Email or username
+      <input id="login-email" type="text" inputmode="email" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" required>
     </label>
     <label>Password
       <input id="login-pass" type="password" autocomplete="current-password" required>
@@ -45,7 +45,11 @@
       <input id="signup-name" autocomplete="name">
     </label>
     <label>Email
-      <input id="signup-email" type="email" autocomplete="username" required>
+      <input id="signup-email" type="email" autocomplete="email" required>
+    </label>
+    <label>Username
+      <input id="signup-username" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" minlength="3" maxlength="30" pattern="[A-Za-z0-9][A-Za-z0-9._\-]{2,29}" placeholder="e.g. zahir.j" required>
+      <span class="muted small">You can sign in with your username or your email.</span>
     </label>
     <label>Password (min 8)
       <input id="signup-pass" type="password" autocomplete="new-password" minlength="8" required>
