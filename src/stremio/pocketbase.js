@@ -117,9 +117,35 @@ async function asApp(method, path, body) {
     try { return await raw(method, path, { token: await serviceToken(), body }); }
     catch (e) { if (e.status === 401) return await raw(method, path, { token: await serviceToken(true), body }); throw e; }
   } catch (e) {
-    if (e.status === 400 || e.status === 403 || e.status === 404) { svOffUntil = Date.now() + 5 * 60 * 1000; svWarn(e.status + " " + e.message); return asSuper(method, path, body); }
+    // Only while this app still has a superuser login to fall back on. Without one the answer stands (a 404 really is "not there").
+    if ((e.status === 400 || e.status === 403 || e.status === 404) && SU_EMAIL && SU_PASS) { svOffUntil = Date.now() + 5 * 60 * 1000; svWarn(e.status + " " + e.message); return asSuper(method, path, body); }
     throw e;
   }
+}
+
+// Same as asApp but for file uploads and downloads (returns the raw fetch Response).
+async function appFetch(path, init = {}, timeout = 60000) {
+  if (!(SV_EMAIL && SV_PASS) || Date.now() < svOffUntil) return superFetch(path, init, timeout);
+  const go = async force => fetch(URL_BASE + path, { ...init, headers: { ...(init.headers || {}), authorization: await serviceToken(force) }, signal: AbortSignal.timeout(timeout) });
+  try {
+    let r = await go(false);
+    if (r.status === 401) r = await go(true);
+    if ((r.status === 403 || r.status === 404 && init.method === "POST") && SU_EMAIL && SU_PASS) { svOffUntil = Date.now() + 5 * 60 * 1000; svWarn(r.status + " on a file request"); return superFetch(path, init, timeout); }
+    return r;
+  } catch (e) {
+    if (e instanceof PBError) throw e;
+    if (e.status && SU_EMAIL && SU_PASS) { svOffUntil = Date.now() + 5 * 60 * 1000; svWarn(e.status + " " + e.message); return superFetch(path, init, timeout); }
+    if (e.status) throw e;
+    throw new PBError(0, "Can't reach PocketBase at " + URL_BASE + " (" + (e.cause?.code || e.message) + ")");
+  }
+}
+
+// True when this app's own limited login can use all of these collections (Portal Admin > Changes sets that up), so the app needs no
+// superuser login for its own data.
+async function serviceCan(paths) {
+  if (!(SV_EMAIL && SV_PASS)) return false;
+  try { for (const p of paths) await raw("GET", p + "/records?page=1&perPage=1", { token: await serviceToken() }); return true; }
+  catch (e) { if ([400, 401, 403, 404].includes(e.status)) return false; throw e; }
 }
 
 /* ---------- shared schema: isAdmin on users, plus the per-app access collection ---------- */
@@ -433,7 +459,7 @@ async function clearAppPref(userId) {
   const ex = await findAppPref(userId);
   if (ex) await asSuper("DELETE", `/api/collections/portal_settings/records/${ex.id}`);
 }
-module.exports = { getAppPref, setAppPref, clearAppPref, setDob, portalUrl, requestPasswordReset, trialUsed, trialBump, setUserPrefs, portalAvailable, setPortalAccess, signupsOpen, get enabled() { return isEnabled(); }, reload, PBError, login, verifyToken, createUser, listUsers, getUser, updateUser, updateAccess, deleteUser, countAdmins, findByEmail, firstAdmin, asSuper, superFetch, ensureSchema, collection: COLL, app: APP };
+module.exports = { getAppPref, setAppPref, clearAppPref, setDob, portalUrl, requestPasswordReset, trialUsed, trialBump, setUserPrefs, portalAvailable, setPortalAccess, signupsOpen, get enabled() { return isEnabled(); }, reload, PBError, login, verifyToken, createUser, listUsers, getUser, updateUser, updateAccess, deleteUser, countAdmins, findByEmail, firstAdmin, asSuper, serviceCan, appFetch, asApp, superFetch, ensureSchema, collection: COLL, app: APP };
 
 // Portal API: when Portal Admin has given this app a key (Portal Admin > Changes), account, access and settings calls go through it and need
 // no PocketBase login here. Until then the functions above run as before. If Portal Admin can't be reached, refuses the key or is an older

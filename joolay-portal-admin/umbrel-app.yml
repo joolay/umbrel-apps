@@ -2,7 +2,7 @@ manifestVersion: 1
 id: joolay-portal-admin
 category: developer
 name: Portal Admin
-version: "0.21.8"
+version: "0.21.9"
 tagline: One admin panel for all your custom PocketBase apps
 description: >-
   A central admin panel for your custom apps that use PocketBase. Register each app, then manage
@@ -21,7 +21,7 @@ gallery: []
 path: ""
 defaultUsername: ""
 defaultPassword: ""
-releaseNotes: "New: apps can post a notice to the dashboard ticker (for example App Updater announcing that an app was updated). Apply \"Dashboard notices from apps\" under Changes to switch it on. Notices show with a refresh icon."
+releaseNotes: "New card under Changes: App data storage (Diner Bell, Jolly Grocer)."
 submitter: joolay
 submission: https://github.com/joolay/umbrel-apps
 icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-portal-admin/icon.svg

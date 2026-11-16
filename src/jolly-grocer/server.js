@@ -149,6 +149,10 @@ const esc = s => String(s).replace(/\\/g, "\\\\").replace(/'/g, "\\'");
 let schemaReady = null;
 function ensureCollections() {
   if (!schemaReady) schemaReady = (async () => {
+    // Portal Admin > Changes ("App data storage") creates these two collections and lets only Jolly Grocer's own limited login use them.
+    // Once that is done nothing below is needed. Until then (older setups) the app makes them itself with its superuser login.
+    if (await pb.serviceCan([STATE_COL, RCPT_COL].map(c => "/api/collections/" + c))) return;
+    if (!pb.legacyOn()) throw new pb.PBError(503, "Jolly Grocer's storage isn't set up yet. In Portal Admin > Changes, apply \"App data storage\".");
     await pb.ensureSchema();
     const users = await pb.asSuper("GET", "/api/collections/" + encodeURIComponent(pb.collection));
     const key = users.fields ? "fields" : "schema"; // PocketBase 0.23+ says "fields", 0.22 says "schema"
@@ -174,26 +178,26 @@ const fileStore = {
   async delReceipt(u, id) { fs.rmSync(path.join(this.dir(u), "receipts", id + ".jpg"), { force: true }); },
 };
 const pbStore = {
-  async getState(u) { await ensureCollections(); const j = await pb.asSuper("GET", recs(STATE_COL) + `?page=1&perPage=1&filter=${qs(`owner = '${esc(u.id)}'`)}`); const r = (j.items || [])[0]; return r && r.data && typeof r.data === "object" ? r.data : null; },
+  async getState(u) { await ensureCollections(); const j = await pb.asApp("GET", recs(STATE_COL) + `?page=1&perPage=1&filter=${qs(`owner = '${esc(u.id)}'`)}`); const r = (j.items || [])[0]; return r && r.data && typeof r.data === "object" ? r.data : null; },
   async putState(u, s) {
     await ensureCollections();
-    const j = await pb.asSuper("GET", recs(STATE_COL) + `?page=1&perPage=1&filter=${qs(`owner = '${esc(u.id)}'`)}`), r = (j.items || [])[0];
-    if (r) await pb.asSuper("PATCH", recs(STATE_COL) + "/" + r.id, { data: s }); else await pb.asSuper("POST", recs(STATE_COL), { owner: u.id, data: s });
+    const j = await pb.asApp("GET", recs(STATE_COL) + `?page=1&perPage=1&filter=${qs(`owner = '${esc(u.id)}'`)}`), r = (j.items || [])[0];
+    if (r) await pb.asApp("PATCH", recs(STATE_COL) + "/" + r.id, { data: s }); else await pb.asApp("POST", recs(STATE_COL), { owner: u.id, data: s });
   },
-  async findReceipt(u, id) { const j = await pb.asSuper("GET", recs(RCPT_COL) + `?page=1&perPage=1&filter=${qs(`owner = '${esc(u.id)}' && rid = '${esc(id)}'`)}`); return (j.items || [])[0] || null; },
+  async findReceipt(u, id) { const j = await pb.asApp("GET", recs(RCPT_COL) + `?page=1&perPage=1&filter=${qs(`owner = '${esc(u.id)}' && rid = '${esc(id)}'`)}`); return (j.items || [])[0] || null; },
   async putReceipt(u, id, buf) {
     await ensureCollections();
-    const old = await this.findReceipt(u, id); if (old) await pb.asSuper("DELETE", recs(RCPT_COL) + "/" + old.id);
+    const old = await this.findReceipt(u, id); if (old) await pb.asApp("DELETE", recs(RCPT_COL) + "/" + old.id);
     const fd = new FormData(); fd.append("owner", u.id); fd.append("rid", id); fd.append("file", new Blob([buf], { type: "image/jpeg" }), id + ".jpg");
-    const r = await pb.superFetch(recs(RCPT_COL), { method: "POST", body: fd });
+    const r = await pb.appFetch(recs(RCPT_COL), { method: "POST", body: fd });
     if (!r.ok) throw new pb.PBError(r.status, "Couldn't archive the receipt (" + r.status + ")");
   },
   async getReceipt(u, id) {
     await ensureCollections(); const r = await this.findReceipt(u, id); if (!r) return null;
-    const f = await pb.superFetch(`/api/files/${RCPT_COL}/${r.id}/${qs(one(r.file))}`); if (!f.ok) return null;
+    const f = await pb.appFetch(`/api/files/${RCPT_COL}/${r.id}/${qs(one(r.file))}`); if (!f.ok) return null;
     return Buffer.from(await f.arrayBuffer());
   },
-  async delReceipt(u, id) { await ensureCollections(); const r = await this.findReceipt(u, id); if (r) { try { await pb.asSuper("DELETE", recs(RCPT_COL) + "/" + r.id); } catch (e) { if (e.status !== 404) throw e; } } },
+  async delReceipt(u, id) { await ensureCollections(); const r = await this.findReceipt(u, id); if (r) { try { await pb.asApp("DELETE", recs(RCPT_COL) + "/" + r.id); } catch (e) { if (e.status !== 404) throw e; } } },
 };
 const store = () => (pb.enabled ? pbStore : fileStore);
 // Keep the shape the app needs and bound its size; the page tidies the rest when it loads.

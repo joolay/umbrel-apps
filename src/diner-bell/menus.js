@@ -27,10 +27,14 @@ const ARCH_FIELDS = [["menuId", "text", true], ["version", "text"], ["byName", "
 let ready = null;
 function ensure() {
   if (!ready) ready = (async () => {
+    // Portal Admin > Changes ("App data storage") creates these collections and lets only Diner Bell's own limited login use them.
+    // Once that is done nothing below is needed. Until then (older setups) the app makes them itself with its superuser login.
+    if (await pb.serviceCan([base, archBase, srcBase])) return;
+    if (!pb.legacyOn()) throw new pb.PBError(503, "Diner Bell's menu storage isn't set up yet. In Portal Admin > Changes, apply \"App data storage\".");
     const users = await pb.asSuper("GET", "/api/collections/" + encodeURIComponent(pb.collection));
     const key = users.fields ? "fields" : "schema"; // PocketBase 0.23+ / 0.22
     const mk = ([name, type, required, opts]) => key === "fields" ? { name, type, required: !!required, ...(opts || {}) } : { name, type, required: !!required, options: { ...(opts || {}) } };
-    // No API rules: only this server (as superuser) reads or writes these, and it enforces who may do what.
+    // Only this server reads or writes these, and it enforces who may do what.
     for (const [path, name, fields] of [[base, COLL, MENU_FIELDS], [archBase, ARCH, ARCH_FIELDS], [srcBase, SRC, SRC_FIELDS]]) {
       try { await addMissing(path, fields); continue; } catch (e) { if (e.status !== 404) throw e; }
       try { await pb.asSuper("POST", "/api/collections", { name, type: "base", [key]: fields.map(mk), listRule: null, viewRule: null, createRule: null, updateRule: null, deleteRule: null }); }
@@ -98,7 +102,7 @@ async function list(user) {
   await ensure();
   const out = []; let page = 1;
   for (;;) {
-    const j = await pb.asSuper("GET", `${base}/records?page=${page}&perPage=200&sort=name`);
+    const j = await pb.asApp("GET", `${base}/records?page=${page}&perPage=200&sort=name`);
     out.push(...(j.items || []));
     if (page >= (j.totalPages || 1) || page >= 25) break;
     page++;
@@ -113,7 +117,7 @@ async function findByName(name) {
   const key = norm(name); if (!key) return null;
   let page = 1;
   for (;;) {
-    const j = await pb.asSuper("GET", `${base}/records?page=${page}&perPage=200&fields=id,name`);
+    const j = await pb.asApp("GET", `${base}/records?page=${page}&perPage=200&fields=id,name`);
     const hit = (j.items || []).find(r => norm(r.name) === key); if (hit) return hit.id;
     if (page >= (j.totalPages || 1) || page >= 25) return null;
     page++;
@@ -121,7 +125,7 @@ async function findByName(name) {
 }
 // Keeps the old version of a menu in the archive before it is replaced.
 async function archive(rec) {
-  await pb.asSuper("POST", archBase + "/records", { menuId: rec.id, version: rec.version || rec.created || "", byName: rec.versionByName || rec.ownerName || "",
+  await pb.asApp("POST", archBase + "/records", { menuId: rec.id, version: rec.version || rec.created || "", byName: rec.versionByName || rec.ownerName || "",
     data: { name: rec.name, phone: rec.phone || "", branches: rec.branches || [], currency: rec.currency || "R", categories: rec.categories || [] } });
 }
 // A new upload. If the restaurant is already in the archive it becomes a new version of that restaurant (the old one is archived)
@@ -130,20 +134,20 @@ async function create(user, menu) {
   await ensure();
   const existing = await findByName(menu.name);
   if (existing) {
-    const cur = await pb.asSuper("GET", `${base}/records/${encodeURIComponent(existing)}`);
+    const cur = await pb.asApp("GET", `${base}/records/${encodeURIComponent(existing)}`);
     await archive(cur);
-    const rec = await pb.asSuper("PATCH", `${base}/records/${encodeURIComponent(existing)}`, {
+    const rec = await pb.asApp("PATCH", `${base}/records/${encodeURIComponent(existing)}`, {
       categories: menu.categories, currency: menu.currency || cur.currency, phone: cur.phone || menu.phone || "", version: nowIso(), versionByName: who(user) });
     return { menu: shape(rec, user), merged: true };
   }
-  const rec = await pb.asSuper("POST", base + "/records", { ...menu, owner: user.id, ownerName: who(user), version: nowIso(), versionByName: who(user) });
+  const rec = await pb.asApp("POST", base + "/records", { ...menu, owner: user.id, ownerName: who(user), version: nowIso(), versionByName: who(user) });
   return { menu: shape(rec, user), merged: false };
 }
 // Anyone signed in may fix an item. The item is tagged with who edited it, and keeps what it said before.
 async function editItem(user, id, body) {
   await ensure();
   let rec;
-  try { rec = await pb.asSuper("GET", `${base}/records/${encodeURIComponent(id)}`); }
+  try { rec = await pb.asApp("GET", `${base}/records/${encodeURIComponent(id)}`); }
   catch (e) { if (e.status === 404) return { status: 404, message: "That menu no longer exists." }; throw e; }
   const cats = Array.isArray(rec.categories) ? rec.categories : [];
   const item = cats.flatMap(c => c.items || []).find(i => i.id === String(body.itemId || ""));
@@ -153,14 +157,14 @@ async function editItem(user, id, body) {
   if (price !== null && !(isFinite(price) && price >= 0)) return { status: 400, message: "That price isn't a number." };
   const was = { name: item.name, description: item.description || "", price: item.price == null ? null : item.price };
   Object.assign(item, { name, description: str(body.description, 600), price, edit: { by: user.id, byName: who(user), at: nowIso(), was } });
-  const out = await pb.asSuper("PATCH", `${base}/records/${encodeURIComponent(id)}`, { categories: cats });
+  const out = await pb.asApp("PATCH", `${base}/records/${encodeURIComponent(id)}`, { categories: cats });
   return { menu: shape(out, user) };
 }
 // Anyone signed in may add a branch number. It lives on the restaurant record, so everyone sees it.
 async function addBranch(user, id, body) {
   await ensure();
   let rec;
-  try { rec = await pb.asSuper("GET", `${base}/records/${encodeURIComponent(id)}`); }
+  try { rec = await pb.asApp("GET", `${base}/records/${encodeURIComponent(id)}`); }
   catch (e) { if (e.status === 404) return { status: 404, message: "That menu no longer exists." }; throw e; }
   const name = str(body.name, 80), phone = str(body.phone, 40), wa = str(body.wa, 40);
   if (!phone) return { status: 400, message: "Enter the branch's phone number." };
@@ -168,31 +172,31 @@ async function addBranch(user, id, body) {
   const digits = s => String(s || "").replace(/\D/g, "");
   if (list.some(b => digits(b.phone) === digits(phone))) return { status: 400, message: "That number is already listed." };
   if (list.length >= 40) return { status: 400, message: "This restaurant has too many branches listed." };
-  const out = await pb.asSuper("PATCH", `${base}/records/${encodeURIComponent(id)}`, { branches: [...list, { name, phone, wa }] });
+  const out = await pb.asApp("PATCH", `${base}/records/${encodeURIComponent(id)}`, { branches: [...list, { name, phone, wa }] });
   return { menu: shape(out, user) };
 }
 async function versions(user, id) {
   await ensure();
-  const j = await pb.asSuper("GET", `${archBase}/records?page=1&perPage=50&sort=-created&fields=id,version,byName,created&filter=${encodeURIComponent(`menuId = '${String(id).replace(/[^A-Za-z0-9]/g, "")}'`)}`);
+  const j = await pb.asApp("GET", `${archBase}/records?page=1&perPage=50&sort=-created&fields=id,version,byName,created&filter=${encodeURIComponent(`menuId = '${String(id).replace(/[^A-Za-z0-9]/g, "")}'`)}`);
   return { versions: (j.items || []).map(r => ({ id: r.id, version: r.version || r.created, byName: r.byName || "" })) };
 }
 // Puts an archived version back as the current one (the current one is archived first). Uploader or admin only.
 async function restore(user, id, versionId) {
   const g = await guarded(user, id); if (g.status) return g;
   let a;
-  try { a = await pb.asSuper("GET", `${archBase}/records/${encodeURIComponent(String(versionId || ""))}`); }
+  try { a = await pb.asApp("GET", `${archBase}/records/${encodeURIComponent(String(versionId || ""))}`); }
   catch (e) { if (e.status === 404) return { status: 404, message: "That version no longer exists." }; throw e; }
   if (a.menuId !== id || !a.data) return { status: 400, message: "That version belongs to another restaurant." };
   await archive(g.rec);
   const d = a.data, cats = cleanCategories(d.categories); if (!cats) return { status: 400, message: "That version has no items." };
-  const rec = await pb.asSuper("PATCH", `${base}/records/${encodeURIComponent(id)}`, { categories: cats, phone: str(d.phone, 40), currency: str(d.currency, 8) || "R", branches: cleanBranches(d.branches) || [], version: a.version || nowIso(), versionByName: a.byName || "" });
+  const rec = await pb.asApp("PATCH", `${base}/records/${encodeURIComponent(id)}`, { categories: cats, phone: str(d.phone, 40), currency: str(d.currency, 8) || "R", branches: cleanBranches(d.branches) || [], version: a.version || nowIso(), versionByName: a.byName || "" });
   return { menu: shape(rec, user) };
 }
 // Returns { rec } or { status, message } when the menu is missing or the person isn't allowed to change it.
 async function guarded(user, id) {
   await ensure();
   let rec;
-  try { rec = await pb.asSuper("GET", `${base}/records/${encodeURIComponent(id)}`); }
+  try { rec = await pb.asApp("GET", `${base}/records/${encodeURIComponent(id)}`); }
   catch (e) { if (e.status === 404) return { status: 404, message: "That menu no longer exists." }; throw e; }
   if (!canEdit(user, rec)) return { status: 403, message: "Only an editor, an admin or the person who uploaded this menu can change it." };
   return { rec };
@@ -206,7 +210,7 @@ async function update(user, id, body) {
   if (body.branches !== undefined) { const b = cleanBranches(body.branches); if (b) patch.branches = b; }
   if (body.currency !== undefined) patch.currency = str(body.currency, 8) || "R";
   if (body.categories !== undefined) { const c = cleanCategories(body.categories); if (!c) return { status: 400, message: "A menu needs at least one item." }; patch.categories = c; }
-  const rec = Object.keys(patch).length ? await pb.asSuper("PATCH", `${base}/records/${encodeURIComponent(id)}`, patch) : g.rec;
+  const rec = Object.keys(patch).length ? await pb.asApp("PATCH", `${base}/records/${encodeURIComponent(id)}`, patch) : g.rec;
   return { menu: shape(rec, user) };
 }
 // Anyone signed in (and not view-only) may set a restaurant's display picture. Pass "" to clear it. The picture is a small
@@ -214,19 +218,19 @@ async function update(user, id, body) {
 async function setLogo(user, id, logo) {
   await ensure();
   let rec;
-  try { rec = await pb.asSuper("GET", `${base}/records/${encodeURIComponent(id)}`); }
+  try { rec = await pb.asApp("GET", `${base}/records/${encodeURIComponent(id)}`); }
   catch (e) { if (e.status === 404) return { status: 404, message: "That menu no longer exists." }; throw e; }
   const v = typeof logo === "string" ? logo : "";
   if (v && !/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(v)) return { status: 400, message: "That isn't a usable picture." };
   if (v.length > 400000) return { status: 400, message: "That picture is too big." };
-  const out = await pb.asSuper("PATCH", `${base}/records/${encodeURIComponent(id)}`, { logo: v });
+  const out = await pb.asApp("PATCH", `${base}/records/${encodeURIComponent(id)}`, { logo: v });
   return { menu: shape(out, user) };
 }
 // The original material a menu was read from (photos, PDF pages, pasted text or the link) is kept with the menu, so it can be
 // looked at again or re-read later. Anyone who is not view-only can add to it when they upload; everyone can look.
 async function addSources(user, id, items) {
   await ensure();
-  try { await pb.asSuper("GET", `${base}/records/${encodeURIComponent(id)}`); } catch (e) { if (e.status === 404) return { status: 404, message: "That menu no longer exists." }; throw e; }
+  try { await pb.asApp("GET", `${base}/records/${encodeURIComponent(id)}`); } catch (e) { if (e.status === 404) return { status: 404, message: "That menu no longer exists." }; throw e; }
   let saved = 0;
   for (const it of (Array.isArray(items) ? items : []).slice(0, 12)) {
     const kind = it && ["image", "text", "url"].includes(it.kind) ? it.kind : "";
@@ -235,19 +239,19 @@ async function addSources(user, id, items) {
     else if (kind === "text") data = str(it.text, 60000);
     else if (kind === "url") data = str(it.url, 500);
     if (!kind || !data || data.length > 6500000) continue;
-    await pb.asSuper("POST", srcBase + "/records", { menuId: id, kind, name: str(it.name, 80) || (kind === "image" ? "Photo " + (saved + 1) : kind === "text" ? "Pasted text" : "Link"), mime, byName: who(user), size: data.length, data });
+    await pb.asApp("POST", srcBase + "/records", { menuId: id, kind, name: str(it.name, 80) || (kind === "image" ? "Photo " + (saved + 1) : kind === "text" ? "Pasted text" : "Link"), mime, byName: who(user), size: data.length, data });
     saved++;
   }
   return { saved };
 }
 async function listSources(user, id) {
   await ensure();
-  const j = await pb.asSuper("GET", `${srcBase}/records?page=1&perPage=100&sort=created&fields=id,kind,name,mime,byName,size,created&filter=${encodeURIComponent(`menuId = '${str(id, 40).replace(/[^A-Za-z0-9]/g, "")}'`)}`);
+  const j = await pb.asApp("GET", `${srcBase}/records?page=1&perPage=100&sort=created&fields=id,kind,name,mime,byName,size,created&filter=${encodeURIComponent(`menuId = '${str(id, 40).replace(/[^A-Za-z0-9]/g, "")}'`)}`);
   return { sources: (j.items || []).map(r => ({ id: r.id, kind: r.kind, name: r.name, mime: r.mime, byName: r.byName || "", size: r.size || 0, at: r.created || "" })) };
 }
 async function getSource(user, id, sid) {
   await ensure();
-  let r; try { r = await pb.asSuper("GET", `${srcBase}/records/${encodeURIComponent(sid)}`); } catch (e) { if (e.status === 404) return { status: 404, message: "That file no longer exists." }; throw e; }
+  let r; try { r = await pb.asApp("GET", `${srcBase}/records/${encodeURIComponent(sid)}`); } catch (e) { if (e.status === 404) return { status: 404, message: "That file no longer exists." }; throw e; }
   if (r.menuId !== id) return { status: 404, message: "That file no longer exists." };
   return { source: { id: r.id, kind: r.kind, name: r.name, mime: r.mime, data: r.data } };
 }
@@ -255,7 +259,7 @@ async function getSource(user, id, sid) {
 // restored from "Previous versions". Hand edits to items are replaced by the new reading (they stay in the archived version).
 async function rerender(user, id, extract) {
   const g = await guarded(user, id); if (g.status) return g;
-  const list = (await pb.asSuper("GET", `${srcBase}/records?page=1&perPage=100&sort=created&filter=${encodeURIComponent(`menuId = '${str(id, 40).replace(/[^A-Za-z0-9]/g, "")}'`)}`)).items || [];
+  const list = (await pb.asApp("GET", `${srcBase}/records?page=1&perPage=100&sort=created&filter=${encodeURIComponent(`menuId = '${str(id, 40).replace(/[^A-Za-z0-9]/g, "")}'`)}`)).items || [];
   if (!list.length) return { status: 400, message: "No original was kept for this menu, so it can't be re-rendered. Upload it again instead." };
   const images = list.filter(s => s.kind === "image").map(s => ({ type: s.mime || "image/jpeg", data: s.data })), url = (list.find(s => s.kind === "url") || {}).data, text = list.filter(s => s.kind === "text").map(s => s.data).join("\n\n");
   const out = await extract(images.length ? { images } : url ? { url } : { text });
@@ -264,20 +268,20 @@ async function rerender(user, id, extract) {
   const cats = cleanCategories((out.categories || []).map((c, ci) => ({ name: c && c.name, items: ((c && c.items) || []).map((i, ii) => ({ ...i, id: `r${stamp}c${ci}i${ii}`, edit: undefined })) })));
   if (!cats) return { status: 422, message: "No menu items were found in the original. Nothing was changed." };
   await archive(g.rec);
-  const rec = await pb.asSuper("PATCH", `${base}/records/${encodeURIComponent(id)}`, { categories: cats, currency: str(out.currency, 8) || g.rec.currency || "R", phone: g.rec.phone || str(out.phone, 40), version: nowIso(), versionByName: who(user), rerenderReq: [] });
+  const rec = await pb.asApp("PATCH", `${base}/records/${encodeURIComponent(id)}`, { categories: cats, currency: str(out.currency, 8) || g.rec.currency || "R", phone: g.rec.phone || str(out.phone, 40), version: nowIso(), versionByName: who(user), rerenderReq: [] });
   return { menu: shape(rec, user) };
 }
 async function requestRerender(user, id) {
   await ensure();
-  let rec; try { rec = await pb.asSuper("GET", `${base}/records/${encodeURIComponent(id)}`); } catch (e) { if (e.status === 404) return { status: 404, message: "That menu no longer exists." }; throw e; }
+  let rec; try { rec = await pb.asApp("GET", `${base}/records/${encodeURIComponent(id)}`); } catch (e) { if (e.status === 404) return { status: 404, message: "That menu no longer exists." }; throw e; }
   const cur = (Array.isArray(rec.rerenderReq) ? rec.rerenderReq : []).filter(x => x && x.by !== user.id);
-  const out = await pb.asSuper("PATCH", `${base}/records/${encodeURIComponent(id)}`, { rerenderReq: [...cur, { by: user.id, byName: who(user), at: nowIso() }].slice(-30) });
+  const out = await pb.asApp("PATCH", `${base}/records/${encodeURIComponent(id)}`, { rerenderReq: [...cur, { by: user.id, byName: who(user), at: nowIso() }].slice(-30) });
   return { menu: shape(out, user), requested: true };
 }
 // An admin, or the person who uploaded the menu, confirms the edits other people made: the "edited by" tag is cleared (one item, or all of them). The new values stay.
 async function confirmEdits(user, id, itemId) {
   await ensure();
-  let rec; try { rec = await pb.asSuper("GET", `${base}/records/${encodeURIComponent(id)}`); } catch (e) { if (e.status === 404) return { status: 404, message: "That menu no longer exists." }; throw e; }
+  let rec; try { rec = await pb.asApp("GET", `${base}/records/${encodeURIComponent(id)}`); } catch (e) { if (e.status === 404) return { status: 404, message: "That menu no longer exists." }; throw e; }
   if (!canEdit(user, rec)) return { status: 403, message: "Only an editor, an admin or the person who uploaded this menu can confirm its edits." };
   let n = 0;
   const cats = (Array.isArray(rec.categories) ? rec.categories : []).map(c => ({ ...c, items: (c.items || []).map(i => {
@@ -285,12 +289,12 @@ async function confirmEdits(user, id, itemId) {
     n++; const { edit, ...rest } = i; return rest;
   }) }));
   if (!n) return { menu: shape(rec, user), cleared: 0 };
-  const out = await pb.asSuper("PATCH", `${base}/records/${encodeURIComponent(id)}`, { categories: cats });
+  const out = await pb.asApp("PATCH", `${base}/records/${encodeURIComponent(id)}`, { categories: cats });
   return { menu: shape(out, user), cleared: n };
 }
 async function remove(user, id) {
   const g = await guarded(user, id); if (g.status) return g;
-  await pb.asSuper("DELETE", `${base}/records/${encodeURIComponent(id)}`);
+  await pb.asApp("DELETE", `${base}/records/${encodeURIComponent(id)}`);
   return { ok: true };
 }
 
