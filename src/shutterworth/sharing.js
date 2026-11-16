@@ -78,6 +78,53 @@ module.exports = function makeSharing({ store, pb, clients, readBody, send, Stor
     for (const [uid, cs] of per) push(uid, cs, origin);
   }
 
+  /* ---------- item locks (who is editing what right now) ---------- */
+  // Kept in memory only: a lock is held while someone is working in an item, refreshed by their page every few seconds,
+  // and drops by itself shortly after they stop (or close the page). Held per owner + item, so ids can't clash.
+  const LOCK_MS = 25000;
+  const locks = new Map();   // "<ownerId>:<itemId>" -> { userId, name, until }
+  const lockKey = (ownerId, itemId) => ownerId + ":" + itemId;
+  function liveLock(ownerId, itemId) {
+    const k = lockKey(ownerId, itemId), l = locks.get(k);
+    if (l && l.until <= Date.now()) { locks.delete(k); announce(ownerId, itemId, null); return null; }
+    return l || null;
+  }
+  const lockMsg = (itemId, l) => ({ lock: { itemId, by: l ? l.name : null, byId: l ? l.userId : null } });
+  async function audience(ownerId, itemId) {
+    const docs = await docsOf(ownerId), it = docs["items/" + itemId], ids = new Set([ownerId]);
+    const sh = it && docs["shares/" + it.listId];
+    if (sh) for (const m of sh.members) if (m.status === "accepted") ids.add(m.id);
+    return { ids, shared: ids.size > 1 };
+  }
+  function announce(ownerId, itemId, l) {
+    audience(ownerId, itemId).then(a => { const msg = `data: ${JSON.stringify(lockMsg(itemId, l))}\n\n`; for (const [res, o] of clients) if (a.ids.has(o) && !(l && o === l.userId)) res.write(msg); }).catch(() => {});
+  }
+  // The locks this person's page should know about: items of their own lists and of lists shared with them.
+  async function locksFor(user) {
+    const owners = new Set([user.id, ...[...(await membershipsFor(user.id)).values()].map(m => m.ownerId)]), out = {};
+    for (const [k, l] of [...locks]) {
+      const [ownerId, itemId] = k.split(":");
+      if (l.until <= Date.now()) { locks.delete(k); continue; }
+      if (owners.has(ownerId) && l.userId !== user.id) out[itemId] = { by: l.name, byId: l.userId };
+    }
+    return out;
+  }
+  // The item's owner and what this person may do with it (null if it isn't theirs and isn't in a list shared with them).
+  async function itemAccess(user, itemId) {
+    const mine = (await docsOf(user.id))["items/" + itemId];
+    if (mine) return { ownerId: user.id, role: "edit" };
+    for (const m of (await membershipsFor(user.id)).values()) {
+      const it = (await docsOf(m.ownerId))["items/" + itemId];
+      if (it && (await membershipsFor(user.id)).get(it.listId)) return { ownerId: m.ownerId, role: m.role };
+    }
+    return null;
+  }
+  function checkUnlocked(user, ownerId, itemId) {
+    const l = liveLock(ownerId, itemId);
+    if (l && l.userId !== user.id) throw err(423, "locked", who({ name: l.name }) + " is editing this item. Try again in a moment.", { by: l.name });
+    if (l) l.until = Date.now() + LOCK_MS;   // their own save keeps their hold fresh
+  }
+
   /* ---------- writes ---------- */
   // Splits a person's writes into their own and ones that belong to an owner whose list is shared with them.
   async function write(user, ops, origin) {
@@ -108,6 +155,7 @@ module.exports = function makeSharing({ store, pb, clients, readBody, send, Stor
           if (o.data && o.data.listId !== undefined && !(ms.get(o.data.listId) && ms.get(o.data.listId).ownerId === target.ownerId)) throw err(400, "cross_owner", "Items can't be moved out of a shared list.");
         }
       }
+      if (p.startsWith("items/")) { const iid = p.slice(6), ow = target ? target.ownerId : user.id; checkUnlocked(user, ow, iid); if (o.op === "delete" && locks.has(lockKey(ow, iid))) { locks.delete(lockKey(ow, iid)); announce(ow, iid, null); } }
       if (target) { if (!theirs.has(target.ownerId)) theirs.set(target.ownerId, []); theirs.get(target.ownerId).push(o); } else mine.push(o);
     }
     const all = [];
@@ -151,6 +199,22 @@ module.exports = function makeSharing({ store, pb, clients, readBody, send, Stor
     if (!p.startsWith("/api/share/") || req.method !== "POST") return false;
     let b; try { b = JSON.parse((await readBody(req)).toString() || "{}"); } catch { throw err(400, "bad_request", "Invalid request."); }
     const listId = String(b.listId || "");
+    if (p === "/api/share/lock") {
+      const itemId = String(b.itemId || ""); if (!/^[A-Za-z0-9-]{1,64}$/.test(itemId)) throw err(400, "bad_request", "Invalid request.");
+      const acc = await itemAccess(user, itemId);
+      if (!acc || acc.role !== "edit") { send(res, 200, { ok: true, shared: false }); return true; }
+      const a = await audience(acc.ownerId, itemId);
+      if (!a.shared) { send(res, 200, { ok: true, shared: false }); return true; }
+      const k = lockKey(acc.ownerId, itemId), cur = liveLock(acc.ownerId, itemId);
+      if (b.release) {
+        if (cur && cur.userId === user.id) { locks.delete(k); announce(acc.ownerId, itemId, null); }
+        send(res, 200, { ok: true, shared: true }); return true;
+      }
+      if (cur && cur.userId !== user.id) throw err(423, "locked", who({ name: cur.name }) + " is editing this item.", { by: cur.name });
+      locks.set(k, { userId: user.id, name: who(user), until: Date.now() + LOCK_MS });
+      if (!cur) announce(acc.ownerId, itemId, locks.get(k));
+      send(res, 200, { ok: true, shared: true }); return true;
+    }
     if (p === "/api/share/add") {
       const list = await ownList(user, listId), role = String(b.role || "view"), email = String(b.email || "").trim().toLowerCase();
       if (!ROLES.has(role)) throw err(400, "bad_role", "Choose view only or can edit.");
@@ -193,5 +257,5 @@ module.exports = function makeSharing({ store, pb, clients, readBody, send, Stor
     return false;
   }
 
-  return { docsFor, write, photos, handle, fanout, membershipsFor };
+  return { docsFor, write, photos, handle, fanout, membershipsFor, locksFor };
 };

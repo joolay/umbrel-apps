@@ -377,7 +377,7 @@ const server = http.createServer(async (req, res) => {
       clients.set(res, store.ownerKey(user)); req.on("close", () => clients.delete(res));
       return;
     }
-    if (p === "/api/docs" && req.method === "GET") return send(res, 200, { docs: sharing ? await sharing.docsFor(user) : await store.docs(user) });
+    if (p === "/api/docs" && req.method === "GET") return send(res, 200, sharing ? { docs: await sharing.docsFor(user), locks: await sharing.locksFor(user) } : { docs: await store.docs(user) });
     if (p === "/api/app-config") return send(res, 200, { googleClientId: process.env.GOOGLE_CLIENT_ID || "", accounts: pb.enabled, ...(pb.enabled ? { trialLimit: loadSettings().trialLimit, signups: loadSettings().signups && await pb.signupsOpen(), portalUrl: await pb.portalUrl().catch(() => "") } : {}) });
     if (await accountRoutes(req, res, p, url)) return;
     if (sharing && user && await sharing.handle(req, res, p, user)) return;

@@ -18,7 +18,8 @@
   async function loadAll() {
     const r = await fetch("api/docs", { cache: "no-store" });
     if (!r.ok) throw err("unavailable", "server returned " + r.status);
-    const { docs } = await r.json();
+    const { docs, locks } = await r.json();
+    window.__swLocks = new Map(Object.entries(locks || {})); window.dispatchEvent(new Event("sw-locks"));
     cache.clear(); for (const [k, v] of Object.entries(docs)) cache.set(k, v);
   }
   function connect() {
@@ -27,6 +28,7 @@
     es.onmessage = ev => {
       const m = JSON.parse(ev.data);
       if (m.refresh) { loadAll().then(() => notify(null)).catch(() => {}); return; }   // sharing changed (invited, removed...): take the full picture again
+      if (m.lock) { if (!window.__swLocks) window.__swLocks = new Map(); if (m.lock.by) window.__swLocks.set(m.lock.itemId, { by: m.lock.by, byId: m.lock.byId }); else window.__swLocks.delete(m.lock.itemId); window.dispatchEvent(new Event("sw-locks")); return; }
       if (m.hello) { if (wasOpen) loadAll().then(() => notify(null)).catch(() => {}); wasOpen = true; return; }
       if (m.origin === ORIGIN) return;
       const paths = [];

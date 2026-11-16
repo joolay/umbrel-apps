@@ -160,6 +160,9 @@ body.in-list .mark{display:none}
 .badge{display:inline-block;font-size:.7rem;font-weight:700;border-radius:999px;padding:1px 8px;background:var(--bg);border:1px solid var(--line);color:var(--muted)}
 .invite{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--paper);border:1px solid var(--gold,#d9ab55);border-radius:12px;padding:10px 12px;margin-bottom:8px}
 .invite span{flex:1 1 200px;min-width:0}
+.row.locked{opacity:.62}
+.row.locked .del,.row.locked .est,.row.locked .recalc,.row.locked .mv,.row.locked .thumb,.row.locked .info{pointer-events:none}
+.lktag{grid-column:1/-1;font-size:.75rem;font-weight:600;color:var(--gold-d,#8a6a1f);padding:0 2px 4px}
 body.ro #snapBtn,body.ro #pickBtn,body.ro #manualBtn,body.ro .row .del,body.ro .row .est,body.ro .row .recalc,body.ro .row .mv{display:none!important}
 body.ro .row .thumb.none{pointer-events:none}
 dialog{border:0;border-radius:14px;padding:0;background:var(--paper);color:var(--ink);max-width:min(92vw,820px);width:auto}
@@ -404,6 +407,12 @@ body.in-list .tot b{font-size:.9rem}
       <div class="list" id="binList"></div>
     </section>
     <section id="setView" hidden>
+      <div class="panel" id="defRatesPanel">
+        <h2>Preferred depreciation rates</h2>
+        <p>New lists start with these yearly rates. You can still change the rates on any one list from its options menu; changing these later doesn't alter lists you've already made.</p>
+        <div class="rates" id="dRates"></div>
+        <div class="prow"><button class="pbtn accent" id="dRatesSave" type="button" disabled>Save</button><button class="pbtn" id="dRatesReset" type="button">Reset to defaults</button><span class="rnote" id="dRatesNote"></span></div>
+      </div>
       <div class="panel">
         <h2>Backups</h2>
         <p>A copy of all lists, items and settings is saved automatically once a day when you open the app and something has changed. The 10 most recent automatic backups are kept. Photos stay in photo storage and are linked from the backup.</p>
@@ -728,8 +737,62 @@ function render(){
 // People who can only view a shared list get no way to edit it here (the server refuses their changes too).
 function applyRO(){
   const ro = !!currentListId && isRO(currentListId);
-  listEl.querySelectorAll("input,select,textarea").forEach(x=>{ if(ro){ x.dataset.ro="1"; if(x.tagName==="SELECT") x.disabled=true; else x.readOnly=true; } else if(x.dataset.ro){ delete x.dataset.ro; x.disabled=false; x.readOnly=false; } });
+  listEl.querySelectorAll("input,select,textarea").forEach(x=>{ if(x.dataset.lk) return; if(ro){ x.dataset.ro="1"; if(x.tagName==="SELECT") x.disabled=true; else x.readOnly=true; } else if(x.dataset.ro){ delete x.dataset.ro; x.disabled=false; x.readOnly=false; } });
+  applyLocks();
 }
+
+/* ---------- live collaboration: items someone else is editing are locked until they finish ---------- */
+const LK = () => window.__swLocks || (window.__swLocks = new Map());
+const lockedBy = id => { const l = LK().get(id); return l ? l.by : ""; };
+function applyLocks(){
+  const ro = !!currentListId && isRO(currentListId);
+  listEl.querySelectorAll(".row").forEach(row=>{
+    const by = lockedBy(row.dataset.id); row.classList.toggle("locked", !!by);
+    let tag = row.querySelector(".lktag");
+    if(by){ if(!tag){ tag = document.createElement("div"); tag.className = "lktag"; row.prepend(tag); } tag.textContent = by + " is editing…"; } else if(tag) tag.remove();
+    if(ro) return;
+    row.querySelectorAll("input,select,textarea").forEach(x=>{
+      if(by){ x.dataset.lk = "1"; if(x.tagName==="SELECT") x.disabled = true; else x.readOnly = true; }
+      else if(x.dataset.lk){ delete x.dataset.lk; x.disabled = false; x.readOnly = false; }
+    });
+  });
+  if(viewerId && $("viewer").open) fillViewer();
+}
+window.addEventListener("sw-locks", applyLocks);
+let heldId = null, hbTimer = null, relTimer = null; const unsharedUntil = new Map();
+async function lockReq(id, release){
+  try{ const r = await fetch("api/share/lock", {method:"POST", headers:{"content-type":"application/json"}, body:JSON.stringify({itemId:id, release:!!release})}); return {status:r.status, j: await r.json().catch(()=>({}))}; }
+  catch(e){ return {status:0, j:{}}; }
+}
+async function holdItem(id){
+  clearTimeout(relTimer);
+  if(!id || heldId===id) return true;
+  if(heldId) releaseItem();
+  if((unsharedUntil.get(id)||0) > Date.now()) return true;
+  const {status, j} = await lockReq(id, false);
+  if(status===423){ showMsg(`${j.by||"Someone"} is editing this item. You can edit it once they're done.`, true); return false; }
+  if(j.shared===false){ unsharedUntil.set(id, Date.now()+60000); return true; }
+  heldId = id; clearInterval(hbTimer); hbTimer = setInterval(()=>lockReq(heldId,false), 10000);
+  return true;
+}
+function releaseItem(){ if(!heldId) return; const id = heldId; heldId = null; clearInterval(hbTimer); lockReq(id, true); }
+function releaseSoon(){   // after their save has gone out and they've moved on to something else
+  clearTimeout(relTimer);
+  relTimer = setTimeout(()=>{
+    const a = document.activeElement, row = a && a.closest ? a.closest(".row") : null;
+    if(row && row.dataset.id===heldId) return;
+    if($("viewer").open && viewerId===heldId) return;
+    releaseItem();
+  }, 1200);
+}
+listEl.addEventListener("focusin", e => {
+  const row = e.target.closest && e.target.closest(".row"); if(!row || isRO(currentListId) || lockedBy(row.dataset.id)) return;
+  holdItem(row.dataset.id).then(ok => { if(!ok && document.activeElement===e.target) e.target.blur(); });
+});
+listEl.addEventListener("focusout", releaseSoon);
+$("viewer").addEventListener("close", releaseSoon);
+$("viewer").addEventListener("focusin", () => { if(viewerId && !isRO(currentListId) && !lockedBy(viewerId)) holdItem(viewerId); });
+window.addEventListener("pagehide", () => { if(heldId) navigator.sendBeacon("api/share/lock", new Blob([JSON.stringify({itemId:heldId, release:true})], {type:"application/json"})); });
 
 const qtyOf = i => Math.max(1, Math.round(num(i.qty ?? 1)) || 1);
 const sumQty = arr => arr.reduce((s,i)=>s+qtyOf(i),0);
@@ -824,7 +887,7 @@ $("listName").addEventListener("change", e => { const v=e.target.value.trim()||"
 $("newListForm").addEventListener("submit", async e => {
   e.preventDefault(); const inp=$("hq"); const name=inp.value.trim(); if(!name){ inp.focus(); showMsg("Type a name in the bar, then tap + to create the list."); return; }
   $("newListBtn").disabled = true;
-  try{ const ref = db.collection("lists").doc(); await ref.set({name, createdAt:Date.now()}); inp.value=""; showMsg(""); openList(ref.id); }
+  try{ const ref = db.collection("lists").doc(); await ref.set({name, createdAt:Date.now(), rates:startRates()}); inp.value=""; showMsg(""); openList(ref.id); }
   catch(err){ showMsg("Couldn't create the list: "+(err.message||err.code), true); }
   finally{ $("newListBtn").disabled = false; }
 });
@@ -904,7 +967,7 @@ async function migrateLoose(){
   if(!loose.length || migrating || !listsLoaded) return;
   migrating = true;
   try{
-    const ref = db.collection("lists").doc(); await ref.set({name:"My inventory", createdAt:Date.now()-1});
+    const ref = db.collection("lists").doc(); await ref.set({name:"My inventory", createdAt:Date.now()-1, rates:startRates()});
     for(const it of loose) await col.doc(it.id).update({listId: ref.id});
   }catch(e){} finally{ migrating = false; }
 }
@@ -1102,7 +1165,7 @@ function fillViewer(){
   $("vPhoto").hidden = !assets;
   const i = viewOrder.indexOf(viewerId);
   $("vPrev").hidden = i <= 0; $("vNext").hidden = i < 0 || i >= viewOrder.length-1;
-  { const l = listById(it.listId), ro = !!l?.shared && l.shared.role==="view";   // view-only: look but don't touch; shared lists can't hand items to other people's lists
+  { const l = listById(it.listId), ro = (!!l?.shared && l.shared.role==="view") || !!lockedBy(it.id);   // view-only: look but don't touch; shared lists can't hand items to other people's lists
     $("viewer").querySelectorAll("input,select,textarea,.pbtn").forEach(x=>{ if(x.id==="viewerClose") return; x.disabled = ro; });
     if(l?.shared) $("viewerList").disabled = true; }
 }
@@ -1151,7 +1214,7 @@ async function moveToNewList(){
   const name = $("viewerNewList").value.trim(); if(!name){ $("viewerNewList").focus(); return; }
   const id = viewerId; if(!id) return;
   $("viewerNewListGo").disabled = true;
-  try{ const ref = db.collection("lists").doc(); await ref.set({name, createdAt:Date.now()}); $("newListRow").hidden = true; await moveItem(id, ref.id, name); }
+  try{ const ref = db.collection("lists").doc(); await ref.set({name, createdAt:Date.now(), rates:startRates()}); $("newListRow").hidden = true; await moveItem(id, ref.id, name); }
   catch(e){ showMsg("Couldn't create the list: "+(e.message||e.code), true); }
   finally{ $("viewerNewListGo").disabled = false; }
 }
@@ -1268,7 +1331,7 @@ window.addEventListener("scroll", () => { if(railTick) return; railTick = true; 
 
 /* ---------- list options: rates (per list) and sharing ---------- */
 let rateDraft = null;
-function renderSettings(){ $("autoBk").checked = settings.autoBackup !== false; }
+function renderSettings(){ $("autoBk").checked = settings.autoBackup !== false; renderDefRates(); }
 function renderRates(){
   if(!rateDraft) rateDraft = Object.fromEntries(CATS.map(c=>[c, pct(rateFor(c, currentListId))]));
   const box = $("rates");
@@ -1369,6 +1432,32 @@ async function saveSettings(patch){
   settings = {...settings, ...patch};
   await db.doc("settings/main").set(settings);
 }
+
+/* ---------- preferred rates (account-wide starting point for new lists) ---------- */
+const startRates = () => Object.fromEntries(CATS.map(c => [c, typeof settings.rates?.[c]==="number" ? settings.rates[c] : DEFAULT_RATES[c]]));
+let dDraft = null;
+const dPct = c => pct(startRates()[c]);
+function renderDefRates(){
+  if(!dDraft) dDraft = Object.fromEntries(CATS.map(c=>[c, dPct(c)]));
+  const box = $("dRates");
+  if(!box.childElementCount){
+    box.innerHTML = CATS.map((c,k)=>`<label class="rate" data-c="${k}"><span></span><span class="in"><input id="drate-${k}" inputmode="decimal">%</span></label>`).join("");
+    CATS.forEach((c,k)=>{ const lab = box.querySelector(`[data-c="${k}"]`); lab.firstChild.textContent = c; lab.querySelector("input").addEventListener("input", e => { dDraft[c] = e.target.value; markDef(); }); });
+  }
+  CATS.forEach((c,k)=>{ const inp = $("drate-"+k); if(document.activeElement!==inp) inp.value = dDraft[c]; });
+  markDef();
+}
+function markDef(){
+  let n=0; CATS.forEach((c,k)=>{ const ch = num(dDraft[c]) !== dPct(c); if(ch) n++; $("drate-"+k).closest(".rate").classList.toggle("changed", ch); });
+  $("dRatesSave").disabled = !n; $("dRatesNote").textContent = n ? `${n} changed` : "";
+}
+$("dRatesReset").onclick = () => { dDraft = Object.fromEntries(CATS.map(c=>[c, pct(DEFAULT_RATES[c])])); renderDefRates(); };
+$("dRatesSave").onclick = async () => {
+  const rates = {};
+  for(const c of CATS){ const v = num(dDraft[c]); if(!(v>=0 && v<=100)){ showMsg(`Rate for ${c} must be between 0 and 100%.`, true); return; } rates[c] = Math.round(v*10)/1000; }
+  try{ await saveSettings({rates}); dDraft = null; renderDefRates(); showMsg("Preferred rates saved. New lists will start with them."); }
+  catch(e){ showMsg("Couldn't save rates: "+(e.message||e.code), true); }
+};
 
 /* ---------- auto-categorise old and new items ---------- */
 const catBusy = new Set(), catTried = new Set(); let catRunning = false;
