@@ -76,6 +76,8 @@ function pbStore(pb, dataDir) {
   let schemaReady = null;
   function ensureCollections() {
     if (!schemaReady) schemaReady = (async () => {
+      // Portal Admin's "Inventory storage" change creates both collections and gives this app a login for them, so a quick look is all it needs.
+      try { await pb.asApp("GET", recs(DOCS) + "?page=1&perPage=1"); await pb.asApp("GET", recs(PHOTOS) + "?page=1&perPage=1"); return; } catch (e) { if (e.status !== 404 && e.status !== 403) throw e; }
       await pb.ensureSchema();
       const users = await pb.asSuper("GET", "/api/collections/" + encodeURIComponent(pb.collection));
       const key = users.fields ? "fields" : "schema"; // PocketBase 0.23+ says "fields", 0.22 says "schema"
@@ -115,7 +117,7 @@ function pbStore(pb, dataDir) {
     if (!s.loading) s.loading = (async () => {
       const docs = {}, ids = new Map();
       for (let page = 1; ; page++) {
-        const j = await pb.asSuper("GET", recs(DOCS) + `?page=${page}&perPage=200&filter=${q(`owner = '${esc(owner)}'`)}`);
+        const j = await pb.asApp("GET", recs(DOCS) + `?page=${page}&perPage=200&filter=${q(`owner = '${esc(owner)}'`)}`);
         for (const r of j.items || []) { docs[r.path] = r.data && typeof r.data === "object" ? r.data : {}; ids.set(r.path, r.id); }
         if (page >= (j.totalPages || 1)) break;
       }
@@ -127,9 +129,9 @@ function pbStore(pb, dataDir) {
 
   async function wipe(collection, owner) {
     for (let i = 0; i < 2000; i++) {
-      const j = await pb.asSuper("GET", recs(collection) + `?page=1&perPage=200&filter=${q(`owner = '${esc(owner)}'`)}`);
+      const j = await pb.asApp("GET", recs(collection) + `?page=1&perPage=200&filter=${q(`owner = '${esc(owner)}'`)}`);
       if (!(j.items || []).length) return;
-      for (const r of j.items) await pb.asSuper("DELETE", recs(collection) + "/" + r.id);
+      for (const r of j.items) await pb.asApp("DELETE", recs(collection) + "/" + r.id);
     }
   }
 
@@ -137,7 +139,7 @@ function pbStore(pb, dataDir) {
     const fd = new FormData();
     fd.append("owner", owner); fd.append("pid", pid);
     fd.append("file", new Blob([buf], { type: "image/jpeg" }), pid + ".jpg");
-    const r = await pb.superFetch(recs(PHOTOS), { method: "POST", body: fd });
+    const r = await pb.appFetch(recs(PHOTOS), { method: "POST", body: fd });
     const j = await r.json().catch(() => ({}));
     if (!r.ok) throw new pb.PBError(r.status, j.message || "PocketBase couldn't store a photo", j.data);
     return { rid: j.id, file: one(j.file) };
@@ -146,7 +148,7 @@ function pbStore(pb, dataDir) {
   async function findPhoto(owner, pid) {
     const s = state(owner);
     if (s.photos.has(pid)) return s.photos.get(pid);
-    const j = await pb.asSuper("GET", recs(PHOTOS) + `?page=1&perPage=1&filter=${q(`owner = '${esc(owner)}' && pid = '${esc(pid)}'`)}`);
+    const j = await pb.asApp("GET", recs(PHOTOS) + `?page=1&perPage=1&filter=${q(`owner = '${esc(owner)}' && pid = '${esc(pid)}'`)}`);
     const r = (j.items || [])[0];
     if (!r) return null;
     const v = { rid: r.id, file: one(r.file) };
@@ -164,7 +166,7 @@ function pbStore(pb, dataDir) {
     let nd = 0, np = 0;
     for (const [p, data] of Object.entries(legacy)) {
       if (!validPath(p)) continue;
-      await pb.asSuper("POST", recs(DOCS), { owner: ownerId, path: p, data: data && typeof data === "object" ? data : {} }); nd++;
+      await pb.asApp("POST", recs(DOCS), { owner: ownerId, path: p, data: data && typeof data === "object" ? data : {} }); nd++;
     }
     for (const id of photoIds) { await uploadPhoto(ownerId, id, fs.readFileSync(path.join(LEGACY_PHOTOS, id))); np++; }
     fs.writeFileSync(MARKER, JSON.stringify({ at: new Date().toISOString(), owner: ownerId, docs: nd, photos: np }));
@@ -199,9 +201,9 @@ function pbStore(pb, dataDir) {
           for (const [p, d] of staged) {
             const rid = s.ids.get(p);
             if (d === null) {
-              if (rid) { try { await pb.asSuper("DELETE", recs(DOCS) + "/" + rid); } catch (e) { if (e.status !== 404) throw e; } s.ids.delete(p); }
-            } else if (rid) await pb.asSuper("PATCH", recs(DOCS) + "/" + rid, { data: d });
-            else { const r = await pb.asSuper("POST", recs(DOCS), { owner: user.id, path: p, data: d }); s.ids.set(p, r.id); }
+              if (rid) { try { await pb.asApp("DELETE", recs(DOCS) + "/" + rid); } catch (e) { if (e.status !== 404) throw e; } s.ids.delete(p); }
+            } else if (rid) await pb.asApp("PATCH", recs(DOCS) + "/" + rid, { data: d });
+            else { const r = await pb.asApp("POST", recs(DOCS), { owner: user.id, path: p, data: d }); s.ids.set(p, r.id); }
           }
         } catch (e) { owners.delete(user.id); throw e; } // forget the cache so the next request re-reads what PocketBase really holds
         for (const [p, d] of staged) { if (d === null) delete s.docs[p]; else s.docs[p] = d; }
@@ -219,7 +221,7 @@ function pbStore(pb, dataDir) {
       await ready(user);
       const v = await findPhoto(user.id, id);
       if (!v) return null;
-      const r = await pb.superFetch(`/api/files/${PHOTOS}/${v.rid}/${q(v.file)}`);
+      const r = await pb.appFetch(`/api/files/${PHOTOS}/${v.rid}/${q(v.file)}`);
       if (r.status === 404) { state(user.id).photos.delete(id); return null; }
       if (!r.ok) throw new pb.PBError(r.status, "PocketBase couldn't return a photo");
       return Buffer.from(await r.arrayBuffer());
@@ -229,7 +231,7 @@ function pbStore(pb, dataDir) {
       await ready(user);
       const v = await findPhoto(user.id, id);
       if (!v) return;
-      try { await pb.asSuper("DELETE", recs(PHOTOS) + "/" + v.rid); } catch (e) { if (e.status !== 404) throw e; }
+      try { await pb.asApp("DELETE", recs(PHOTOS) + "/" + v.rid); } catch (e) { if (e.status !== 404) throw e; }
       state(user.id).photos.delete(id);
     },
     async flush() {},
