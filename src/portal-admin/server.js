@@ -373,7 +373,7 @@ async function signup(req, res) {
   let b; try { b = JSON.parse(await readBody(req)); } catch { return send(res, 400, { message: 'Invalid request.' }); }
   try {
     if (!(await pbx.usersSchema())) return send(res, 403, { message: 'Sign-ups are currently closed. Ask the admin for an account.' });
-    const email = String(b.email || '').trim().toLowerCase(), password = String(b.password || ''), name = String(b.name || '').trim().slice(0, 80), dob = String(b.dob || '').trim();
+    const email = String(b.email || '').trim().toLowerCase(), password = String(b.password || ''), name = String(b.name || '').trim().slice(0, 80), dob = String(b.dob || '').trim(), username = pbx.cleanUsername(b.username);
     if (!/\S\s+\S/.test(name)) return send(res, 400, { message: 'Enter your name and surname.' });
     if (!validEmail(email)) return send(res, 400, { message: 'Enter a valid email address.' });
     if (password.length < 8 || password.length > 200) return send(res, 400, { message: 'Use a password of at least 8 characters.' });
