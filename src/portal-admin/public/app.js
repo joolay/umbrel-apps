@@ -9,7 +9,7 @@ const store = {
   lset: (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch {} },
 };
 const sess = (k) => store.get('pa.' + k) || store.lget('pa.' + k);
-const state = { token: sess('token'), actor: sess('actor'), role: sess('role') || 'admin', uid: sess('uid'), usersColl: store.lget('pa.usersColl', 'users') };
+const state = { token: sess('token'), actor: sess('actor'), role: sess('role') || 'admin', uid: sess('uid'), pid: sess('pid') || '', usersColl: store.lget('pa.usersColl', 'users') };
 const SLUG = /^[a-z0-9][a-z0-9_-]{0,47}$/;
 const RESERVED = [
   ['portal.access', 'boolean', 'false blocks a user (all apps, or one app) from using the app'],
@@ -201,6 +201,7 @@ $('#signup-form').onsubmit = async (e) => {
     const r = await fetch('/signup', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email, password, username: $('#signup-username').value.trim(), name: $('#signup-name').value.trim(), dob: $('#signup-dob').value, parentEmails: kidMode() ? [$('#signup-parent').value] : [] }) });
     const j = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(j.message || 'Could not create that account.');
+    state.pid = ''; state.pidTried = false;
     Object.assign(state, await signIn(email, password));
     state.usernameOk = true;
     saveSession(false);
@@ -235,17 +236,26 @@ $('#reset-form').onsubmit = async (e) => {
 // and on the public address (the server tells us which one we are on through /config).
 function setBrand(name) { document.querySelectorAll('.brand span').forEach((n) => { n.textContent = name; }); document.title = name; }
 fetch('/config').then((r) => r.json()).then((c) => { state.public = !!c.public; if (state.public) setBrand('JoolzApp'); }).catch(() => {});
-function showShell() {
+async function showShell() {
+  await resolvePid();
   setBrand(state.role === 'user' || state.public ? 'JoolzApp' : 'Portal Admin');
   $('#login').classList.add('hidden'); $('#shell').classList.remove('hidden');
   $('#who').textContent = state.actor; route(); startDetecting();
   homeModel().then((m) => { if (!HM) HM = m; renderDock(); }).catch(() => {});   // so the dock is there on every page
-  if (state.role === 'user' && state.uid) seedRegional().catch(() => {});
+  if (selfId()) seedRegional().catch(() => {});
   loadEvents();
 }
-const SESSION_KEYS = ['token', 'actor', 'role', 'uid'];
+const SESSION_KEYS = ['token', 'actor', 'role', 'uid', 'pid'];
+// The JoolzApp person behind this sign-in. A regular user is themselves; the PocketBase superuser is the account with the same email (if any),
+// so the admin gets Family, Settings, events, layout and everything else just like everyone else.
+const selfId = () => (state.role === 'user' ? state.uid : state.pid) || '';
+async function resolvePid() {
+  if (state.role === 'user' || state.pid || state.pidTried || !state.token) return;
+  state.pidTried = true;
+  try { const r = await api('GET', `/api/collections/${state.usersColl}/records?perPage=1&filter=${q('email = ' + fq(String(state.actor || '').toLowerCase()))}`); state.pid = (r.items[0] && r.items[0].id) || ''; saveSession(!!store.lget('pa.remember')); } catch { /* no linked account */ }
+}
 function saveSession(remember) { SESSION_KEYS.forEach((k) => { store.set('pa.' + k, state[k]); store.lset('pa.' + k, remember ? state[k] : null); }); }
-function logout() { SESSION_KEYS.forEach((k) => { state[k] = ''; store.set('pa.' + k, null); store.lset('pa.' + k, null); }); state.role = 'admin'; showLogin(); }
+function logout() { SESSION_KEYS.forEach((k) => { state[k] = ''; store.set('pa.' + k, null); store.lset('pa.' + k, null); }); state.role = 'admin'; state.pidTried = false; showLogin(); }
 async function signIn(identity, password) {
   identity = String(identity || '').trim(); if (!identity.includes('@')) identity = identity.toLowerCase();   // usernames are saved in lower case
   let adminBlocked = false;
@@ -266,6 +276,7 @@ $('#login-form').onsubmit = async (e) => {
   e.preventDefault(); $('#login-err').textContent = '';
   try {
     const email = $('#login-email').value.trim();
+    state.pid = ''; state.pidTried = false;
     Object.assign(state, await signIn(email, $('#login-pass').value));
     const remember = $('#login-remember').checked;
     saveSession(remember);
@@ -959,15 +970,17 @@ function evWhen(e, long) {
 const evIcon = (e) => (e.kind === 'birthday' ? '🎂' : e.kind === 'pickup' ? '🚌' : e.kind === 'notice' ? '📣' : '📅');
 function renderTicker() {
   const b = $('#tb-ticker'), t = $('#tk-track'); if (!b || !t) return;
-  const show = !!EVENTS.length && $('#shell').classList.contains('home-page') && !editing;
+  const show = !!selfId() && $('#shell').classList.contains('home-page') && !editing;
   b.hidden = !show; $('#shell').classList.toggle('has-ticker', show);
   if (!show) return;
+  if (!EVENTS.length) { t.innerHTML = '<span class="tk-i"><i>📅</i>Nothing coming up. Family birthdays and Organiser events will show here.</span>'; t.classList.add('still'); return; }
+  t.classList.remove('still');
   const one = EVENTS.map((e) => `<span class="tk-i"><i>${evIcon(e)}</i><b>${esc(evWhen(e))}</b> ${esc(e.title)}${e.sub ? ' <em>' + esc(e.sub) + '</em>' : ''}</span>`).join('');
   t.innerHTML = one + one;   // twice, so the loop is seamless
   requestAnimationFrame(() => { const w = t.scrollWidth / 2; t.style.setProperty('--tk-dur', Math.max(14, Math.round(w / 45)) + 's'); });
 }
 async function loadEvents() {
-  if (!state.token) { EVENTS = []; renderTicker(); return; }
+  if (!state.token || !selfId()) { EVENTS = []; renderTicker(); return; }
   try { EVENTS = (await acctFetch('/events?days=60&today=' + localDay())).events || []; } catch { EVENTS = []; }
   renderTicker();
 }
@@ -1003,7 +1016,7 @@ function regionalDefaults() {
   };
 }
 async function seedRegional() {
-  const uid = state.uid;
+  const uid = selfId();
   const rows = await listAll('portal_settings', { filter: `scope = "user" && user = ${fq(uid)} && app = "" && key ~ "pref."` });
   if (rows.some((r) => r.key === 'pref.regionSeeded')) return;
   const have = new Set(rows.map((r) => r.key.slice(5))), d = regionalDefaults();
@@ -1028,7 +1041,7 @@ const PREFS = [
   ['theme', 'Theme', [['auto', 'Match my device'], ['light', 'Light'], ['dark', 'Dark']]],
 ];
 async function viewMe() {
-  const uid = state.uid;
+  const uid = selfId() || state.uid;
   const [rows, reqs] = await Promise.all([
     listAll('portal_settings', { filter: `scope = "user" && user = ${fq(uid)} && app = "" && key ~ "pref."` }),
     listAll('portal_requests', { filter: `user = ${fq(uid)}`, sort: '-created' }).catch(() => null),
@@ -1171,13 +1184,13 @@ async function profilePane(uid) {
 
 async function viewFamily() {
   main().innerHTML = '<h1>Family</h1><p class="sub">Your household, and relatives linked across every JoolzApp app.</p><div id="pane-family"><p class="muted">Loading…</p></div>';
-  await familyPane(state.uid);
+  await familyPane(selfId() || state.uid);
 }
 
 // Everyone has a date of birth. Accounts that pre-date it are asked once, before anything else.
 async function needDob() {
-  if (state.dobOk || !state.uid) return false;
-  const me = await api('GET', `/api/collections/${state.usersColl}/records/${state.uid}`).catch(() => null);
+  if (state.dobOk || !selfId()) return false;
+  const me = await api('GET', `/api/collections/${state.usersColl}/records/${selfId()}`).catch(() => null);
   if (!me || me.dob) { state.dobOk = true; return false; }
   const today = new Date().toISOString().slice(0, 10);
   main().innerHTML = `<h1>One more thing</h1><p class="sub">Every JoolzApp account now has a date of birth. It can only be entered once. Under 18s need a parent or guardian with a JoolzApp account to approve them.</p>
@@ -1194,8 +1207,8 @@ async function needDob() {
 }
 
 async function needUsername() {
-  if (state.usernameOk || state.role !== 'user' || !state.uid) return false;
-  const me = await api('GET', `/api/collections/${state.usersColl}/records/${state.uid}`).catch(() => null);
+  if (state.usernameOk || !selfId()) return false;
+  const me = await api('GET', `/api/collections/${state.usersColl}/records/${selfId()}`).catch(() => null);
   if (!me || me.username || !('username' in me)) { state.usernameOk = true; return false; }   // no username field yet: nothing to ask
   const guess = String(me.email || '').split('@')[0].toLowerCase().replace(/[^a-z0-9._-]/g, '').replace(/^[^a-z0-9]+/, '').slice(0, 30);
   main().innerHTML = `<h1>Choose a username</h1><p class="sub">You can now sign in to JoolzApp with a username as well as your email. Pick one that is easy to remember.</p>
@@ -1292,7 +1305,7 @@ let HM = null, editing = false, saveChain = Promise.resolve();
 const isAdminRole = () => state.role !== 'user';
 
 async function homeModel() {
-  const uid = state.uid, isAdmin = isAdminRole();
+  const uid = selfId() || state.uid, isAdmin = isAdminRole();
   const [apps, reqs, acc, lrows, ssoRows, pend] = await Promise.all([
     listAll('portal_apps', { sort: 'name' }),
     isAdmin ? Promise.resolve([]) : listAll('portal_requests', { filter: `user = ${fq(uid)}`, sort: '-created' }).catch(() => null),
@@ -1311,14 +1324,14 @@ async function homeModel() {
   const items = {};
   apps.forEach((a) => { items['app:' + a.slug] = { id: 'app:' + a.slug, kind: 'app', name: a.name, app: a, grad: GRADS[hashN(a.slug) % GRADS.length], letter: (a.name || '?').trim().charAt(0).toUpperCase(), ok: allowed(a.slug) }; });
   if (isAdmin) items['sys:admin'] = { id: 'sys:admin', kind: 'folder', name: 'Admin', grad: ['#64748b', '#334155'], badge: pend };
-  else {
+  if (!isAdmin || selfId()) {
     items['sys:family'] = { id: 'sys:family', kind: 'sys', name: 'Family', glyph: 'family', grad: ['#fb7185', '#f59e0b'], href: '#/family' };
     items['sys:me'] = { id: 'sys:me', kind: 'sys', name: 'Settings', glyph: 'me', grad: ['#94a3b8', '#475569'], href: '#/me' };
   }
   let saved = lrows[0] && lrows[0].value && typeof lrows[0].value === 'object' ? lrows[0].value : null;
   if (!saved) { try { saved = JSON.parse(store.lget('pa.layout.' + uid) || 'null'); } catch { saved = null; } }
   const fresh = !saved;
-  saved = saved || { order: [], dock: isAdmin ? ['sys:admin'] : ['sys:family', 'sys:me'], hidden: [] };
+  saved = saved || { order: [], dock: isAdmin ? (selfId() ? ['sys:admin', 'sys:family', 'sys:me'] : ['sys:admin']) : ['sys:family', 'sys:me'], hidden: [] };
   const seen = new Set(), keep = (arr, f = () => true) => (Array.isArray(arr) ? arr : []).filter((id) => items[id] && f(id) && !seen.has(id) && seen.add(id));
   const dock = keep(saved.dock).slice(0, 4);
   const hidden = keep(saved.hidden, (id) => !PROTECTED.has(id));
@@ -1558,10 +1571,10 @@ function setBar(view) {
 // The landing page: apps as icons. Open goes to the app (signed in already where the app supports it);
 // apps the person isn't approved for open a small request form instead.
 async function viewHome() {
-  const uid = state.uid, isAdmin = isAdminRole();
+  const uid = selfId() || state.uid, isAdmin = isAdminRole(), hasSelf = !!selfId();
   HM = await homeModel();
-  const g = isAdmin ? null : await fetch('/guardians', { headers: { authorization: state.token }, cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
-  const fam = isAdmin ? null : await acctFetch('/family').catch(() => null);
+  const g = !hasSelf ? null : await fetch('/guardians', { headers: { authorization: state.token }, cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+  const fam = !hasSelf ? null : await acctFetch('/family').catch(() => null);
   if (fam && fam.invites && fam.invites.length && HM.items['sys:family']) HM.items['sys:family'].badge = fam.invites.length;
   const acc = !isAdmin ? await listAll('portal_settings', { filter: 'key = "portal.access"' }).catch(() => []) : [];
   const userRow = acc.find((r) => r.scope === 'user' && r.app === ''), globalBlock = acc.find((r) => r.scope === 'global' && r.value === false);

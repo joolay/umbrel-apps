@@ -144,3 +144,4 @@ dialog#sheet,dialog#acct{position:fixed;margin:auto;width:min(440px,calc(100vw -
   .tb-ticker{order:0;flex:1 1 0;margin-top:0!important;max-width:620px;margin-left:auto!important;margin-right:auto!important}
   .has-ticker .tb-gap{display:none}
 }
+.tk-track.still{animation:none}

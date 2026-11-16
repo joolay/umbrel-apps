@@ -243,7 +243,7 @@ const validEmail = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(e) && e.length <=
 // Parents approve their kids' accounts here (and the kids' settings, such as joining a family).
 async function guardiansRoute(req, res) {
   const tok = String(req.headers.authorization || '');
-  const user = tok ? await pbx.userFromToken(tok).catch(() => null) : null;
+  const user = tok ? await personFromToken(tok) : null;
   if (!user) return send(res, 401, { message: 'Sign in to continue.' });
   try {
     if (req.method === 'GET') { const st = await guardians.statusOf(user), ib = await guardians.inbox(user); return send(res, 200, { minor: st.minor, adminPending: !!st.adminPending, parents: st.parents || [], ...ib }); }
@@ -257,10 +257,15 @@ async function guardiansRoute(req, res) {
 }
 
 // ---- Family and account details. These are managed here once for every JoolzApp app (the apps only link to this page). ----
+// Who is signed in, as a JoolzApp person: their own account token, or a PocketBase superuser token mapped to the account with the same email.
+// So the admin uses Family, Settings, events and everything else exactly as everyone else does.
+async function personFromToken(tok) {
+  const u = await pbx.userFromToken(tok).catch(() => null);
+  return u || (await pbx.userForSuperuser(tok).catch(() => null));
+}
 async function accountRoutes(req, res, pathname) {
   const tok = String(req.headers.authorization || '');
-  let user = tok ? await pbx.userFromToken(tok).catch(() => null) : null;
-  if (!user && tok && pathname === '/events') user = await pbx.userForSuperuser(tok).catch(() => null);   // the admin, as the person they also are
+  let user = tok ? await personFromToken(tok) : null;
   if (!user) return send(res, 401, { message: 'Sign in to continue.' });
   const out = (r) => (r.status ? send(res, r.status, { message: r.message }) : send(res, 200, r));
   try {
