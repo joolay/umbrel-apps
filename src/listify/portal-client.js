@@ -6,9 +6,10 @@ const FNS = ["portalUrl", "requestPasswordReset", "setUserPrefs", "portalAvailab
   "trialUsed", "trialBump", "setDob", "getAppPref", "setAppPref", "clearAppPref"];
 module.exports = function portalClient(PBError) {
   const URL_BASE = (process.env.POCKETBASE_PORTAL_URL || "").replace(/\/+$/, ""), KEY = process.env.POCKETBASE_PORTAL_KEY || "";
-  async function call(fn, args) {
+  // `as` is the signed-in person's own token. Portal Admin insists on an admin's token for admin work (listing, changing or deleting people).
+  async function call(fn, args, as) {
     let r;
-    try { r = await fetch(URL_BASE + "/app-api/call", { method: "POST", headers: { "content-type": "application/json", authorization: "Bearer " + KEY }, body: JSON.stringify({ fn, args }), signal: AbortSignal.timeout(30000) }); }
+    try { r = await fetch(URL_BASE + "/app-api/call", { method: "POST", headers: { "content-type": "application/json", authorization: "Bearer " + KEY }, body: JSON.stringify(as ? { fn, args, as } : { fn, args }), signal: AbortSignal.timeout(30000) }); }
     catch (e) { throw new PBError(0, "Can't reach Portal Admin at " + URL_BASE + " (" + (e.cause?.code || e.message) + ")"); }
     const j = await r.json().catch(() => ({}));
     if (!r.ok) throw Object.assign(new PBError(r.status, j.message || "Portal API error " + r.status), { portalDenied: r.status === 401 });
@@ -16,6 +17,6 @@ module.exports = function portalClient(PBError) {
     if (!j.ok) throw Object.assign(new PBError(j.status || 500, j.message || "Portal API error", j.data), { portalUnknown: j.status === 404 && /^Unknown function/.test(j.message || "") });
     return j.result;
   }
-  return { call, fns: Object.fromEntries(FNS.map((fn) => [fn, (...args) => call(fn, args)])) };
+  return { call, fns: Object.fromEntries(FNS.map((fn) => [fn, (...args) => call(fn, args)])), fnsAs: (as) => Object.fromEntries(FNS.map((fn) => [fn, (...args) => call(fn, args, as)])) };
 };
 module.exports.FNS = FNS;

@@ -60,6 +60,19 @@ module.exports = function makeAppApi({ pbx, DATA_DIR, readBody, send }) {
   }
 
   const plain = (v) => (v instanceof Set ? [...v] : v);   // JSON can't carry a Set
+  // Admin work needs more than an app's key: the request must carry the token of a signed-in admin, checked here with PocketBase.
+  // So a leaked or misused app key can't list, change, create or delete people.
+  const ADMIN_ONLY = new Set(['listUsers', 'updateUser', 'deleteUser', 'createUser', 'setPortalAccess', 'guardians.adminDecide']);
+  const adminOk = new Map();   // token hash -> checked at (15 s)
+  async function isAdminToken(tok) {
+    tok = String(tok || ''); if (!tok || tok.length > 4096) return false;
+    const h = hash(tok), at = adminOk.get(h);
+    if (at && Date.now() - at < 15000) return true;
+    const u = await pbx.userFromToken(tok);
+    if (!u || u.isAdmin !== true) { adminOk.delete(h); return false; }
+    adminOk.set(h, Date.now()); if (adminOk.size > 500) adminOk.clear();
+    return true;
+  }
   const bad = new Map();   // failed key attempts per caller: 20 per 10 minutes
   const fails = (ip) => { const n = Date.now(), a = (bad.get(ip) || []).filter((t) => n - t < 600e3); bad.set(ip, a); return a; };
 
@@ -73,8 +86,9 @@ module.exports = function makeAppApi({ pbx, DATA_DIR, readBody, send }) {
     let b; try { b = JSON.parse(await readBody(req, 256 * 1024)); } catch { return send(res, 400, { message: 'Invalid request.' }); }
     const fn = String(b.fn || '');
     if (!ALLOWED.has(fn)) return send(res, 200, { ok: false, status: 404, message: 'Unknown function: ' + fn });
+    if (ADMIN_ONLY.has(fn)) { let adm = false; try { adm = await isAdminToken(b.as); } catch (e) { return send(res, 200, { ok: false, status: Number(e.status) || 500, message: String(e.message || e) }); } if (!adm) return send(res, 200, { ok: false, status: 403, message: 'Only a signed-in admin can do that.' }); }
     try { const args = Array.isArray(b.args) ? b.args : [], r = fn === 'touchActive' ? await touchActive(args[0]) : fn.startsWith('guardians.') ? await guardians[fn.slice(10)](...args) : fn.startsWith('family.') ? plain(await family[fn.slice(7)](...args)) : await client(app)[fn](...args); return send(res, 200, { ok: true, result: r === undefined ? null : r }); }
     catch (e) { return send(res, 200, { ok: false, status: Number(e.status) || 500, message: String(e.message || e), data: e.data || undefined }); }
   }
-  return { handle, keys, allowed: [...ALLOWED], touchActive, forgetTouch };
+  return { handle, keys, allowed: [...ALLOWED], adminOnly: [...ADMIN_ONLY], touchActive, forgetTouch };
 };
