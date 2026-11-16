@@ -5,6 +5,9 @@
 // Served on a separate internal port that is NOT published through the internet tunnel.
 const fs = require('fs'), path = require('path'), crypto = require('crypto');
 const makeClient = require('./appclient');
+const guardians = require('./guardians');
+// Guardian approvals (under-18s) run here, in one place for every app: call them as 'guardians.<name>'.
+const GUARD = ['createdSpouse', 'createdByParent', 'adminDecide', 'statusOf', 'checkParents', 'requestApproval', 'requestFamily', 'inbox', 'decide', 'revoke'];
 
 const RAW = new Set(['asSuper', 'superFetch', 'ensureSchema', 'enabled', 'PBError', 'collection', 'app']);   // never callable through the API
 
@@ -36,7 +39,7 @@ module.exports = function makeAppApi({ pbx, DATA_DIR, readBody, send }) {
     const cl = makeClient({ url: pbx.url(), email: c.email, pass: c.pass, app });
     clients.set(app, { sig, cl }); return cl;
   }
-  const ALLOWED = new Set(Object.entries(makeClient({ url: '', email: '', pass: '', app: 'x' })).filter(([k, v]) => typeof v === 'function' && !RAW.has(k)).map(([k]) => k));
+  const ALLOWED = new Set([...Object.entries(makeClient({ url: '', email: '', pass: '', app: 'x' })).filter(([k, v]) => typeof v === 'function' && !RAW.has(k)).map(([k]) => k), ...GUARD.map((n) => 'guardians.' + n)]);
 
   const bad = new Map();   // failed key attempts per caller: 20 per 10 minutes
   const fails = (ip) => { const n = Date.now(), a = (bad.get(ip) || []).filter((t) => n - t < 600e3); bad.set(ip, a); return a; };
@@ -51,7 +54,7 @@ module.exports = function makeAppApi({ pbx, DATA_DIR, readBody, send }) {
     let b; try { b = JSON.parse(await readBody(req, 256 * 1024)); } catch { return send(res, 400, { message: 'Invalid request.' }); }
     const fn = String(b.fn || '');
     if (!ALLOWED.has(fn)) return send(res, 200, { ok: false, status: 404, message: 'Unknown function: ' + fn });
-    try { const r = await client(app)[fn](...(Array.isArray(b.args) ? b.args : [])); return send(res, 200, { ok: true, result: r === undefined ? null : r }); }
+    try { const args = Array.isArray(b.args) ? b.args : [], r = fn.startsWith('guardians.') ? await guardians[fn.slice(10)](...args) : await client(app)[fn](...args); return send(res, 200, { ok: true, result: r === undefined ? null : r }); }
     catch (e) { return send(res, 200, { ok: false, status: Number(e.status) || 500, message: String(e.message || e), data: e.data || undefined }); }
   }
   return { handle, keys, allowed: [...ALLOWED] };

@@ -390,8 +390,8 @@ module.exports = { portalUrl, requestPasswordReset, setUserPrefs, portalAvailabl
 // Until then (or if the key is refused) the functions above run as before. Raw superuser helpers (asSuper, superFetch, ensureSchema) stay as they are
 // until guardians.js and inventory-store.js have moved too.
 if (process.env.POCKETBASE_PORTAL_URL && process.env.POCKETBASE_PORTAL_KEY) {
-  const legacy = module.exports, portal = require("./portal-client")(PBError), merged = { ...legacy, enabled: true };
-  for (const [fn, viaPortal] of Object.entries(portal)) merged[fn] = async (...a) => {
+  const legacy = module.exports, portal = require("./portal-client")(PBError), merged = { ...legacy, enabled: true, portalCall: portal.call };
+  for (const [fn, viaPortal] of Object.entries(portal.fns)) merged[fn] = async (...a) => {
     try { return await viaPortal(...a); }
     catch (e) { if (e.portalDenied && legacy.enabled) { svWarn("Portal API refused this app's key"); return legacy[fn](...a); } throw e; }
   };
