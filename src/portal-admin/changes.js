@@ -6,7 +6,7 @@
 // a change exists only if it was built into this image.
 const fs = require('fs'), path = require('path'), crypto = require('crypto');
 
-module.exports = function makeChanges({ pbx, installedApps, APPS_DIR, DATA_DIR }) {
+module.exports = function makeChanges({ pbx, installedApps, APPS_DIR, DATA_DIR, appKeys }) {
   const DIR = path.join(__dirname, 'changes'), HISTORY = path.join(DATA_DIR, 'changes-history.json');
   const sets = () => { try { return fs.readdirSync(DIR).filter((f) => /^\d+[\w-]*\.js$/.test(f)).sort().map((f) => require(path.join(DIR, f))); } catch { return []; } };
 
@@ -44,6 +44,8 @@ module.exports = function makeChanges({ pbx, installedApps, APPS_DIR, DATA_DIR }
       }
     },
     password: () => crypto.randomBytes(24).toString('base64url'),
+    appKeys,
+    portalApiUrl: process.env.PORTAL_API_HOST_URL || 'http://host.docker.internal:3893',
     esc: (s) => String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'"),
   };
 

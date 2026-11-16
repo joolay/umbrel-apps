@@ -1,0 +1,58 @@
+'use strict';
+// Portal API: lets an app ask Portal Admin to do its account, access and portal-settings work, so the app needs no PocketBase login of its own.
+//   POST /app-api/call   Authorization: Bearer <app>.<secret>   { fn, args }   ->   { ok, result } or { ok:false, status, message, data }
+// Each app has its own key. Every call runs as that app (its access rows, its settings). Keys are only stored here as hashes.
+// Served on a separate internal port that is NOT published through the internet tunnel.
+const fs = require('fs'), path = require('path'), crypto = require('crypto');
+const makeClient = require('./appclient');
+
+const RAW = new Set(['asSuper', 'superFetch', 'ensureSchema', 'enabled', 'PBError', 'collection', 'app']);   // never callable through the API
+
+module.exports = function makeAppApi({ pbx, DATA_DIR, readBody, send }) {
+  const FILE = path.join(DATA_DIR, 'app-keys.json');
+  const load = () => { try { return JSON.parse(fs.readFileSync(FILE, 'utf8')); } catch { return {}; } };
+  const hash = (s) => crypto.createHash('sha256').update(s).digest('hex');
+  const keys = {
+    appOf(key) {
+      key = String(key || ''); const i = key.indexOf('.'); if (i < 1) return null;
+      const app = key.slice(0, i), want = load()[app]; if (!want) return null;
+      const a = Buffer.from(hash(key)), b = Buffer.from(want);
+      return a.length === b.length && crypto.timingSafeEqual(a, b) ? app : null;
+    },
+    valid: (app, key) => keys.appOf(key) === app,
+    issue(app) {
+      const key = app + '.' + crypto.randomBytes(32).toString('base64url'), all = load(); all[app] = hash(key);
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+      const tmp = FILE + '.tmp'; fs.writeFileSync(tmp, JSON.stringify(all), { mode: 0o600 }); fs.renameSync(tmp, FILE);
+      return key;
+    },
+  };
+
+  const clients = new Map();
+  function client(app) {
+    const c = pbx.creds(), sig = [pbx.url(), c.email, c.pass].join('|'), have = clients.get(app);
+    if (have && have.sig === sig) return have.cl;
+    if (!c.email) throw Object.assign(new Error("Portal Admin isn't connected to PocketBase yet."), { status: 503 });
+    const cl = makeClient({ url: pbx.url(), email: c.email, pass: c.pass, app });
+    clients.set(app, { sig, cl }); return cl;
+  }
+  const ALLOWED = new Set(Object.entries(makeClient({ url: '', email: '', pass: '', app: 'x' })).filter(([k, v]) => typeof v === 'function' && !RAW.has(k)).map(([k]) => k));
+
+  const bad = new Map();   // failed key attempts per caller: 20 per 10 minutes
+  const fails = (ip) => { const n = Date.now(), a = (bad.get(ip) || []).filter((t) => n - t < 600e3); bad.set(ip, a); return a; };
+
+  async function handle(req, res) {
+    if (req.url === '/healthz') return send(res, 200, 'ok');
+    if (req.method !== 'POST' || req.url !== '/app-api/call') return send(res, 404, { message: 'Not found' });
+    const ip = String(req.socket.remoteAddress || '');
+    if (fails(ip).length >= 20) return send(res, 429, { message: 'Too many attempts.' });
+    const app = keys.appOf(String(req.headers.authorization || '').replace(/^Bearer\s+/i, ''));
+    if (!app) { bad.set(ip, [...fails(ip), Date.now()]); if (bad.size > 2000) bad.clear(); return send(res, 401, { message: 'Unknown app key.' }); }
+    let b; try { b = JSON.parse(await readBody(req, 256 * 1024)); } catch { return send(res, 400, { message: 'Invalid request.' }); }
+    const fn = String(b.fn || '');
+    if (!ALLOWED.has(fn)) return send(res, 200, { ok: false, status: 404, message: 'Unknown function: ' + fn });
+    try { const r = await client(app)[fn](...(Array.isArray(b.args) ? b.args : [])); return send(res, 200, { ok: true, result: r === undefined ? null : r }); }
+    catch (e) { return send(res, 200, { ok: false, status: Number(e.status) || 500, message: String(e.message || e), data: e.data || undefined }); }
+  }
+  return { handle, keys, allowed: [...ALLOWED] };
+};

@@ -135,4 +135,4 @@ async function listUsers() {
 }
 async function getUser(id) { return asSuper("GET", rec("/" + encodeURIComponent(id))); }
 async function setDob(id, dob) { await asSuper("PATCH", rec("/" + encodeURIComponent(id)), { dob }); }
-module.exports = { raw, dataDir: DATA_DIR, isSuperuser, userForSuperuser, cleanUsername, usernameError, findByUsername, setUsername, requestReset, listUsers, getUser, setDob, userFromToken, ready, asSuper, findByEmail, createUser, usersSchema, PBError, collection: COLL };
+module.exports = { raw, creds, url: URL_BASE, dataDir: DATA_DIR, isSuperuser, userForSuperuser, cleanUsername, usernameError, findByUsername, setUsername, requestReset, listUsers, getUser, setDob, userFromToken, ready, asSuper, findByEmail, createUser, usersSchema, PBError, collection: COLL };
