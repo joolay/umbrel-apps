@@ -188,9 +188,9 @@ module.exports = function makeClient(cfg) {
   }
   // { access, prefs, app } for one person, or null when the portal isn't set up.
   async function portalFor(userId) {
-    const rows = await cached("u:" + userId, 10000, () => portalRowsFor(userId));
+    const [rows, app] = await Promise.all([cached("u:" + userId, 10000, () => portalRowsFor(userId)), portalApp().catch(() => null)]);
     if (rows === null) return null;
-    return { ...resolvePortal(rows, userId), app: await portalApp() };
+    return { ...resolvePortal(rows, userId), app: app || await portalApp() };
   }
   // userId -> allowed, for the admin Users list (one pass instead of one query per person).
   async function portalAccessMap() {
@@ -259,7 +259,8 @@ module.exports = function makeClient(cfg) {
   async function verifyToken(token) {
     // PocketBase checks the signature and expiry; the record comes back fresh from the database.
     const j = await raw("POST", colPath + "/auth-refresh", { token });
-    return { ...j, record: await withPortal(merge(j.record, await getAccess(j.record.id, true))) };
+    const [acc, portal] = await Promise.all([getAccess(j.record.id, true), portalFor(j.record.id)]);   // side by side: this runs on every page start
+    return { ...j, record: { ...merge(j.record, acc), portal } };
   }
   async function createUser({ email, password, name }) {
     await ensureSchema();
