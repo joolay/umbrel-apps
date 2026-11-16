@@ -107,6 +107,22 @@ async function asApp(method, path, body) {
   }
 }
 
+// Same as asApp but for file uploads and downloads (returns the raw fetch Response).
+async function appFetch(path, init = {}, timeout = 60000) {
+  if (!(SV_EMAIL && SV_PASS) || Date.now() < svOffUntil) return superFetch(path, init, timeout);
+  const go = async force => fetch(URL_BASE + path, { ...init, headers: { ...(init.headers || {}), authorization: await serviceToken(force) }, signal: AbortSignal.timeout(timeout) });
+  try {
+    let r = await go(false);
+    if (r.status === 401) r = await go(true);
+    if (r.status === 403 || r.status === 404 && init.method === "POST") { svOffUntil = Date.now() + 5 * 60 * 1000; svWarn(r.status + " on a file request"); return superFetch(path, init, timeout); }
+    return r;
+  } catch (e) {
+    if (e instanceof PBError) throw e;
+    if (e.status) { svOffUntil = Date.now() + 5 * 60 * 1000; svWarn(e.status + " " + e.message); return superFetch(path, init, timeout); }
+    throw new PBError(0, "Can't reach PocketBase at " + URL_BASE + " (" + (e.cause?.code || e.message) + ")");
+  }
+}
+
 /* ---------- shared schema: isAdmin on users, plus the per-app access collection ---------- */
 let ready = null;
 function ensureSchema() {
@@ -384,7 +400,7 @@ async function portalUrl() {
     const v = (j.items || [])[0] && j.items[0].value; return typeof v === "string" && /^https?:\/\//i.test(v) ? v : "";
   })) || "";
 }
-module.exports = { portalUrl, requestPasswordReset, setUserPrefs, portalAvailable, setPortalAccess, signupsOpen, enabled, PBError, login, verifyToken, createUser, listUsers, getUser, updateUser, updateAccess, deleteUser, countAdmins, findByEmail, firstAdmin, asSuper, superFetch, ensureSchema, collection: COLL, app: APP };
+module.exports = { portalUrl, requestPasswordReset, setUserPrefs, portalAvailable, setPortalAccess, signupsOpen, enabled, PBError, login, verifyToken, createUser, listUsers, getUser, updateUser, updateAccess, deleteUser, countAdmins, findByEmail, firstAdmin, asSuper, superFetch, asApp, appFetch, ensureSchema, collection: COLL, app: APP };
 
 // Portal API: when Portal Admin has given this app a key, account / access / portal-settings calls go through it and need no PocketBase login.
 // Until then (or if the key is refused) the functions above run as before. Raw superuser helpers (asSuper, superFetch, ensureSchema) stay as they are
