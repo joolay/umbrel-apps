@@ -241,6 +241,7 @@ function showShell() {
   $('#who').textContent = state.actor; route(); startDetecting();
   homeModel().then((m) => { if (!HM) HM = m; renderDock(); }).catch(() => {});   // so the dock is there on every page
   if (state.role === 'user' && state.uid) seedRegional().catch(() => {});
+  loadEvents();
 }
 const SESSION_KEYS = ['token', 'actor', 'role', 'uid'];
 function saveSession(remember) { SESSION_KEYS.forEach((k) => { store.set('pa.' + k, state[k]); store.lset('pa.' + k, remember ? state[k] : null); }); }
@@ -942,6 +943,41 @@ async function viewRequests() {
 
 
 
+
+/* ---------- Upcoming events ticker ----------
+   Scrolls in the top bar on the home screen. Today it carries birthdays; the Organiser app will add family events, notices and school pickups
+   through the same /events feed (see events.js on the server). */
+let EVENTS = [], tkTimer = null;
+const localDay = (d = new Date()) => d.toLocaleDateString('en-CA');
+const evDate = (s) => new Date(s + 'T00:00:00');
+function evWhen(e, long) {
+  const n = Math.round((evDate(e.date) - evDate(localDay())) / 86400000), d = evDate(e.date);
+  const dayTxt = long ? d.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' }) : d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+  const base = n === 0 ? 'Today' : n === 1 ? 'Tomorrow' : n < 7 && !long ? d.toLocaleDateString(undefined, { weekday: 'long' }) : dayTxt;
+  return base + (e.time ? ' ' + e.time : '');
+}
+const evIcon = (e) => (e.kind === 'birthday' ? '🎂' : e.kind === 'pickup' ? '🚌' : e.kind === 'notice' ? '📣' : '📅');
+function renderTicker() {
+  const b = $('#tb-ticker'), t = $('#tk-track'); if (!b || !t) return;
+  const show = !!EVENTS.length && $('#shell').classList.contains('home-page') && !editing;
+  b.hidden = !show; $('#shell').classList.toggle('has-ticker', show);
+  if (!show) return;
+  const one = EVENTS.map((e) => `<span class="tk-i"><i>${evIcon(e)}</i><b>${esc(evWhen(e))}</b> ${esc(e.title)}${e.sub ? ' <em>' + esc(e.sub) + '</em>' : ''}</span>`).join('');
+  t.innerHTML = one + one;   // twice, so the loop is seamless
+  requestAnimationFrame(() => { const w = t.scrollWidth / 2; t.style.setProperty('--tk-dur', Math.max(14, Math.round(w / 45)) + 's'); });
+}
+async function loadEvents() {
+  if (state.role !== 'user' || !state.token) { EVENTS = []; renderTicker(); return; }
+  try { EVENTS = (await acctFetch('/events?days=60&today=' + localDay())).events || []; } catch { EVENTS = []; }
+  renderTicker();
+}
+function eventsSheet() {
+  const by = {}; EVENTS.forEach((e) => { (by[e.date] = by[e.date] || []).push(e); });
+  openSheet(`<h2>Upcoming</h2>${Object.keys(by).sort().map((d) => `<h3 class="ev-day">${esc(evWhen(by[d][0], true))}</h3>${by[d].map((e) => `<div class="ev-row"><i>${evIcon(e)}</i><div><b>${esc(e.title)}</b>${e.sub ? '<span class="muted small"> · ' + esc(e.sub) + '</span>' : ''}${e.link ? ` <a href="${esc(e.link)}" target="_blank" rel="noopener">Open</a>` : ''}</div></div>`).join('')}`).join('') || '<p class="muted">Nothing coming up.</p>'}<p class="muted small">Birthdays come from the dates of birth in your family. Events, notices and school pick-ups from the Organiser app will appear here too.</p>`);
+}
+$('#tb-ticker').onclick = eventsSheet;
+setInterval(() => { if (state.token) loadEvents(); }, 30 * 60 * 1000);
+
 /* ---------- Regional defaults ----------
    A new account starts with settings that match where the person is (from the device language and time zone), e.g. South Africa gets
    metric, Celsius, DD/MM/YYYY, 24-hour, ZAR. They are saved once on the account (so every app reads the same values) and the person can change
@@ -1369,7 +1405,7 @@ function renderDock() {
 function setEditing(on) {
   editing = !!on && !!$('#sb');
   document.body.classList.toggle('editing', editing);
-  $('#tb-edit').hidden = editing || !$('#sb'); $('#tb-done').hidden = !editing; if ($('#tb-view')) $('#tb-view').hidden = editing || !$('#sb');
+  renderTicker(); $('#tb-edit').hidden = editing || !$('#sb'); $('#tb-done').hidden = !editing; if ($('#tb-view')) $('#tb-view').hidden = editing || !$('#sb');
   if (HM) renderTray();
 }
 
@@ -1516,7 +1552,7 @@ function setBar(view) {
   $('#tb-title').textContent = VIEW_TITLES[view] || '';
   $('#tb-me').textContent = (state.actor || '?').trim().charAt(0).toUpperCase();
   if (!home) { setEditing(false); $('#tb-edit').hidden = true; $('#tb-done').hidden = true; $('#tb-view').hidden = true; } else { $('#tb-edit').hidden = editing; }
-  $('#tb-view').hidden = !home || editing;
+  $('#tb-view').hidden = !home || editing; renderTicker();
 }
 
 // The landing page: apps as icons. Open goes to the app (signed in already where the app supports it);

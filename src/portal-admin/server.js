@@ -12,6 +12,7 @@ const { URL } = require('url');
 const pbx = require('./pocketbase');
 const guardians = require('./guardians');
 const family = require('./family');
+const events = require('./events');
 const CHILD_REQ = '__child_account__';
 
 const PORT = Number(process.env.PORT || 3000);
@@ -263,6 +264,10 @@ async function accountRoutes(req, res, pathname) {
   const out = (r) => (r.status ? send(res, r.status, { message: r.message }) : send(res, 200, r));
   try {
     let b = {}; if (req.method === 'POST') { try { b = JSON.parse(await readBody(req)); } catch { return send(res, 400, { message: 'Invalid request.' }); } }
+    if (pathname === '/events' && req.method === 'GET') {
+      const sp = new URL(req.url, 'http://x').searchParams, days = Math.min(120, Math.max(1, parseInt(sp.get('days'), 10) || 60));
+      return send(res, 200, { events: await events.upcoming(user, sp.get('today'), days) });
+    }
     if (pathname === '/family/users' && req.method === 'GET') return send(res, 200, { users: (await pbx.listUsers()).filter((u) => u.id !== user.id) });
     if (pathname === '/family') {
       if (req.method === 'GET') return out(await family.mine(user));
@@ -368,7 +373,7 @@ const handle = async (req, res) => {
 
     if (pathname === '/signup-config') { if (req.method !== 'GET') return send(res, 405, { message: 'Method not allowed' }); return signupConfig(req, res); }
     if (pathname === '/guardians') return guardiansRoute(req, res);
-    if (pathname === '/family' || pathname === '/family/users' || pathname === '/account/dob' || pathname === '/account/username' || pathname === '/account/guardian') return accountRoutes(req, res, pathname);
+    if (pathname === '/family' || pathname === '/events' || pathname === '/family/users' || pathname === '/account/dob' || pathname === '/account/username' || pathname === '/account/guardian') return accountRoutes(req, res, pathname);
     if (pathname === '/forgot') {
       if (req.method !== 'POST') return send(res, 405, { message: 'Method not allowed' });
       if (signupThrottled(req)) return send(res, 429, { message: 'Too many attempts. Try again later.' });

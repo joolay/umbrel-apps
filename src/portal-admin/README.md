@@ -44,3 +44,14 @@ People who sign in (not admins) land on the **Dashboard**: every app registered 
 address (signed in already where the app supports it); apps they aren't approved for show a request form. Admins have a
 **Dashboard** link in the sidebar to preview exactly what users see. On the public address the page is branded JoolzApp.
 **My settings** has three tabs: Preferences, AI and Account (account deletion request).
+
+
+## Events and the Organiser
+
+The home screen has an **Upcoming** ticker in the top bar (tap it for the full list). It reads `GET /events?days=60&today=YYYY-MM-DD` with the person's own token, served by `events.js`.
+Each event is `{ id, kind, title, sub, date, time?, allDay, source, link? }`; `kind` picks the icon (`birthday`, `pickup`, `notice`, anything else = calendar).
+
+Providers today:
+- **Birthdays** (built in): everyone in the person's circle: their household, its extended relatives, and the households they are extended family of. Only the day, month and the age they turn leave the server.
+- **Organiser hook**: the planned Organiser app (family events, notices, school pick-up schedules) writes rows to a PocketBase collection `portal_events` and they appear with no change here.
+  Fields: `title`, `start` (`YYYY-MM-DD` or `YYYY-MM-DD HH:MM`), `kind`, `sub`, `link`, `source`, `familyId` (a `joolz_families` id: shown to that family's circle) and/or `userIds` (comma-wrapped ids, e.g. `,u1,u2,`: shown to those people). A row with neither is shown to everyone. If the collection does not exist yet, nothing breaks.

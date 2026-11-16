@@ -126,3 +126,21 @@ dialog#sheet,dialog#acct{position:fixed;margin:auto;width:min(440px,calc(100vw -
 .ic-tile .ic-img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:inherit;z-index:1;-webkit-user-drag:none;user-select:none;pointer-events:none}
 .ic-tile:has(.ic-img){box-shadow:0 8px 18px rgba(15,23,42,.28),inset 0 0 0 1px rgba(255,255,255,.12)}
 .ic-tile:has(.ic-img)::before{z-index:2}
+
+/* Upcoming-events ticker in the top bar: a second row on phones, inline in the middle on desktop. */
+.topbar{flex-wrap:wrap}
+.tb-ticker{order:9;flex:1 0 100%;min-width:0;border:0;padding:0;background:none;color:var(--text);text-align:left;cursor:pointer;margin-top:6px!important}
+.tb-ticker[hidden]{display:none}
+.tk-win{display:block;overflow:hidden;border-radius:99px;background:var(--glass-strong);border:1px solid var(--glass-line);padding:6px 0;
+  -webkit-mask-image:linear-gradient(90deg,transparent,#000 22px,#000 calc(100% - 22px),transparent);mask-image:linear-gradient(90deg,transparent,#000 22px,#000 calc(100% - 22px),transparent)}
+.tk-track{display:inline-flex;white-space:nowrap;will-change:transform;animation:tk var(--tk-dur,30s) linear infinite}
+.tb-ticker:hover .tk-track,.tb-ticker:focus-visible .tk-track,.tb-ticker:active .tk-track{animation-play-state:paused}
+.tk-i{display:inline-flex;align-items:center;gap:6px;font-size:13px;padding:0 22px}.tk-i i{font-style:normal}.tk-i b{color:var(--accent)}.tk-i em{font-style:normal;color:var(--muted)}
+@keyframes tk{to{transform:translateX(-50%)}}
+@media (prefers-reduced-motion:reduce){.tk-track{animation:none}.tk-win{overflow-x:auto}}
+.ev-day{margin:14px 0 4px;font-size:13px;color:var(--muted);font-weight:600}.ev-row{display:flex;gap:10px;align-items:center;padding:8px 0;border-top:1px solid var(--line)}.ev-row i{font-style:normal;font-size:20px}
+@media (min-width:900px){
+  .topbar{flex-wrap:nowrap}
+  .tb-ticker{order:0;flex:1 1 0;margin-top:0!important;max-width:620px;margin-left:auto!important;margin-right:auto!important}
+  .has-ticker .tb-gap{display:none}
+}

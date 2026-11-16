@@ -248,4 +248,13 @@ async function linkedIds(user) {
   const fam = await familyOf(user.id);
   return new Set(fam ? (fam.members || []).map(m => m.id).filter(id => id !== user.id) : []);
 }
-module.exports = { leaveExtended, setManager, linkedIds, mine, create, invite, respond, drop, setTier, addOrder, listOrders, removeOrder };
+// Everyone this person shares events with: their household and its extended relatives, plus the households they are extended family of.
+async function circleIds(user) {
+  await ensure();
+  const out = new Set([user.id]);
+  const fam = await familyOf(user.id);
+  if (fam) { (fam.members || []).forEach(m => out.add(m.id)); (fam.extended || []).forEach(m => out.add(m.id)); }
+  for (const f of await extendedOf(user.id)) (f.members || []).forEach(m => out.add(m.id));
+  return { ids: out, familyIds: [...(fam ? [fam.id] : []), ...(await extendedOf(user.id)).map(f => f.id)] };
+}
+module.exports = { circleIds, leaveExtended, setManager, linkedIds, mine, create, invite, respond, drop, setTier, addOrder, listOrders, removeOrder };
