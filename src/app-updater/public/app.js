@@ -145,8 +145,20 @@ function renderGroups(d) {
         h('span', { class: 'gname' }, g.name),
         h('span', { class: 'sub' }, meta),
         updates ? h('span', { class: 'chip accent' }, updates + (updates === 1 ? ' update' : ' updates')) : null),
-      open ? h('div', { class: 'gbody' }, g.apps.map(renderApp)) : null);
+      open ? h('div', { class: 'gbody' }, renderModeSections(g.apps)) : null);
   });
+}
+
+/* Inside each store, apps are split by their auto-update mode: immediately, scheduled (nightly) or off. */
+const MODE_SECTIONS = [['immediate', 'Immediately'], ['nightly', 'Scheduled'], ['off', 'Off']];
+function renderModeSections(apps) {
+  const out = [];
+  for (const [m, label] of MODE_SECTIONS) {
+    const items = apps.filter((a) => (a.mode || 'off') === m).sort((x, y) => (y.update ? 1 : 0) - (x.update ? 1 : 0) || x.name.localeCompare(y.name));
+    if (!items.length) continue;
+    out.push(h('div', { class: 'msec' }, label + ' · ' + items.length), items.map(renderApp));
+  }
+  return out;
 }
 
 async function toggleGroup(id, open) {

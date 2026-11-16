@@ -255,15 +255,42 @@ async function announce(item, from, to) {
 
 // Walks whatever umbrelOS returns for the store registry and collects { appId: version }.
 // When `stores` is given it also records which store each app came from ({ id, name }).
+// Store ids/names are read from several possible field names because umbrelOS versions differ.
+const firstStr = (...v) => v.find((x) => typeof x === 'string' && x) || null;
+function storeOf(node) {
+  const id = firstStr(node.app_store_id, node.appStoreId, node.store_id, node.storeId, node.id, node.slug, node.meta && node.meta.id);
+  if (!id) return null;
+  return friendlyStore(id, firstStr(node.app_store_name, node.name, node.meta && node.meta.name));
+}
+// Friendly group names: Umbrel (official), JoolzApp, Big Bear, anything else gets a tidy version of its own name.
+function friendlyStore(id, name) {
+  const key = (String(id) + ' ' + String(name || '')).toLowerCase().replace(/[^a-z0-9]+/g, '');
+  if (/^(umbrelappstore|getumbrel|umbrel|official|umbrelofficial)/.test(key) || key.includes('umbrelappstore')) return { id: 'umbrel', name: 'Umbrel' };
+  if (key.includes('joolay') || key.includes('joolzapp')) return { id: 'joolzapp', name: 'JoolzApp' };
+  if (key.includes('bigbear')) return { id: 'big-bear', name: 'Big Bear' };
+  return { id: String(id), name: prettyStore(name || id) };
+}
+// Fallback when the registry does not say which store an app came from: community app ids start with their store id.
+function storeFromAppId(id) {
+  const k = String(id).toLowerCase();
+  if (k.startsWith('joolay-')) return { id: 'joolzapp', name: 'JoolzApp' };
+  if (k.startsWith('big-bear-') || k.startsWith('bigbear-')) return { id: 'big-bear', name: 'Big Bear' };
+  return null;
+}
 function collectVersions(node, map, depth, stores, store) {
   if (!node || depth > 6) return map;
   if (Array.isArray(node)) { node.forEach((n) => collectVersions(n, map, depth + 1, stores, store)); return map; }
   if (typeof node === 'object') {
-    if (typeof node.id === 'string' && typeof node.version === 'string' && !node.apps) {
+    const isApp = typeof node.id === 'string' && typeof node.version === 'string' && !Array.isArray(node.apps);
+    if (isApp) {
       map.set(node.id, node.version);
-      if (stores && store) stores.set(node.id, store);
+      const own = firstStr(node.app_store_id, node.appStoreId, node.store_id, node.storeId);
+      if (stores) {
+        const found = own ? friendlyStore(own, null) : store;
+        if (found) stores.set(node.id, found);
+      }
     }
-    const here = node.apps && typeof node.id === 'string' ? { id: node.id, name: prettyStore(node.name || node.id) } : store;
+    const here = Array.isArray(node.apps) ? (storeOf(node) || store) : store;
     for (const k of ['apps', 'registry']) if (node[k]) collectVersions(node[k], map, depth + 1, stores, here);
   }
   return map;
@@ -311,7 +338,7 @@ async function check() {
     const latest = registry && registry.get(a.id) ? registry.get(a.id) : null;
     const flagged = typeof a.updateAvailable === 'boolean' ? a.updateAvailable : null; // newer umbrelOS builds may report it directly
     const update = flagged !== null ? flagged : !!(latest && a.version && isNewer(latest, a.version));
-    const store = status.stores.get(a.id) || null;
+    const store = status.stores.get(a.id) || storeFromAppId(a.id) || null;
     const item = { id: a.id, name: a.name || a.id, version: a.version || null, latest: latest || null, update, state: a.state || null, store: store || { id: 'other', name: 'Other apps' } };
     if (update) {
       if (!status.detectedAt[a.id] || status.detectedAt[a.id].version !== (latest || '?')) {
@@ -469,6 +496,7 @@ async function diagnose() {
   const apps = await probe('apps.list', 'query');
   if (Array.isArray(apps) && apps[0]) out.push({ proc: 'apps.list item fields', ok: true, shape: Object.keys(apps[0]).join(', ') });
   const reg = await probe('appStore.registry', 'query');
+  if (reg) { const n = Array.isArray(reg) ? reg[0] : reg; if (n && typeof n === 'object') out.push({ proc: 'registry top-level fields', ok: true, shape: Object.keys(n).slice(0, 12).join(', ') }); }
   if (reg) out.push({ proc: 'versions found in registry', ok: true, shape: String(collectVersions(reg, new Map(), 0).size) });
   return out;
 }

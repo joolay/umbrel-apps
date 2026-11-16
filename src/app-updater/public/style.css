@@ -63,3 +63,16 @@ dialog input[inputmode]{display:block;width:100%;margin-top:5px}
 dialog label.check{display:flex;gap:8px;align-items:center}
 .actions{display:flex;justify-content:flex-end;gap:10px;margin-top:18px}
 @media (max-width:560px){main{padding:14px}.app .ctl{width:100%;justify-content:space-between}}
+
+.msec{margin:12px 4px 6px;font-size:12px;font-weight:650;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+
+/* Slimmer app rows */
+.gbody{gap:6px}
+.card.app{padding:6px 10px;margin-bottom:0;gap:8px}
+.app .id{flex:1 1 150px}
+.app .name{font-size:14px;line-height:1.25}
+.app .id .sub{font-size:11.5px;line-height:1.2}
+.app .ctl{gap:6px}
+.app .chip{font-size:11px;padding:1px 7px}
+.app .seg button{padding:3px 9px;font-size:12px;min-height:0}
+.app .btn.small{padding:3px 9px;font-size:12px;min-height:0}

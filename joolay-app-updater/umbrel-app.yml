@@ -2,7 +2,7 @@ manifestVersion: 1
 id: joolay-app-updater
 category: developer
 name: App Updater
-version: "1.0.1"
+version: "1.0.2"
 tagline: Update the Umbrel apps you choose automatically, nightly or the moment a new version appears
 description: >-
   Umbrel never updates apps by itself. App Updater does it for the apps you pick, including Portal Admin.
@@ -21,7 +21,7 @@ gallery: []
 path: ""
 defaultUsername: ""
 defaultPassword: ""
-releaseNotes: "Apps are now grouped by the App Store they came from (collapse or expand each store), and App Updater no longer lists itself. New toggle: announce finished updates in the dashboard news ticker for everyone (needs Portal Admin 0.21.4)."
+releaseNotes: "Apps are now sorted into Umbrel, JoolzApp, Big Bear and other stores, and inside each store split into Immediately, Scheduled and Off. App rows are slimmer. Diagnostics now shows the store registry fields."
 submitter: joolay
 submission: https://github.com/joolay/umbrel-apps
 icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-app-updater/icon.svg
