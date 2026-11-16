@@ -13,6 +13,7 @@ const pbx = require('./pocketbase');
 const guardians = require('./guardians');
 const family = require('./family');
 const events = require('./events');
+const paywall = require('./paywall');
 const CHILD_REQ = '__child_account__';
 
 const PORT = Number(process.env.PORT || 3000);
@@ -270,6 +271,9 @@ async function accountRoutes(req, res, pathname) {
   const out = (r) => (r.status ? send(res, r.status, { message: r.message }) : send(res, 200, r));
   try {
     let b = {}; if (req.method === 'POST') { try { b = JSON.parse(await readBody(req)); } catch { return send(res, 400, { message: 'Invalid request.' }); } }
+    if (pathname === '/paywall' && req.method === 'GET') return send(res, 200, await paywall.forPerson(user));
+    if (pathname === '/pay' && req.method === 'POST') { try { return send(res, 200, await paywall.startPayment(user, b.slug, b.scope)); } catch (e) { return send(res, e.status || 500, { message: String(e.message || e) }); } }
+    if (pathname === '/pay/status' && req.method === 'GET') return send(res, 200, await paywall.status(user, new URL(req.url, 'http://x').searchParams.get('slug')));
     if (pathname === '/events' && req.method === 'GET') {
       const sp = new URL(req.url, 'http://x').searchParams, days = Math.min(120, Math.max(1, parseInt(sp.get('days'), 10) || 60));
       return send(res, 200, { events: await events.upcoming(user, sp.get('today'), days) });
@@ -379,7 +383,23 @@ const handle = async (req, res) => {
 
     if (pathname === '/signup-config') { if (req.method !== 'GET') return send(res, 405, { message: 'Method not allowed' }); return signupConfig(req, res); }
     if (pathname === '/guardians') return guardiansRoute(req, res);
-    if (pathname === '/family' || pathname === '/events' || pathname === '/family/users' || pathname === '/account/dob' || pathname === '/account/username' || pathname === '/account/guardian') return accountRoutes(req, res, pathname);
+    if (pathname === '/family' || pathname === '/events' || pathname === '/paywall' || pathname === '/pay' || pathname === '/pay/status' || pathname === '/family/users' || pathname === '/account/dob' || pathname === '/account/username' || pathname === '/account/guardian') return accountRoutes(req, res, pathname);
+    if (pathname === '/yoco/webhook') {
+      if (req.method !== 'POST') return send(res, 405, { message: 'Method not allowed' });
+      const raw = await readBody(req); const r = await paywall.handleWebhook(req.headers, raw);
+      return send(res, r.status, { ok: r.status === 200 });
+    }
+    if (pathname === '/admin/paywall') {
+      if (isPublicRequest(req)) return send(res, 403, { message: 'Only available from your home network or tailnet.' });
+      const tok = String(req.headers.authorization || '');
+      if (!tok || !(await pbx.isSuperuser(tok))) return send(res, 401, { message: 'Admin only.' });
+      try {
+        if (req.method === 'GET') return send(res, 200, await paywall.adminView());
+        if (req.method !== 'POST') return send(res, 405, { message: 'Method not allowed' });
+        const b = JSON.parse(await readBody(req)); const me = await pbx.userForSuperuser(tok).catch(() => null);
+        return send(res, 200, await paywall.adminAction(b, me));
+      } catch (e) { return send(res, e.status || 500, { message: String(e.message || e) }); }
+    }
     if (pathname === '/forgot') {
       if (req.method !== 'POST') return send(res, 405, { message: 'Method not allowed' });
       if (signupThrottled(req)) return send(res, 429, { message: 'Too many attempts. Try again later.' });
@@ -424,6 +444,8 @@ const handle = async (req, res) => {
 // PocketBase admin APIs stay refused no matter how the tunnel forwards or labels traffic. Set PUBLIC_PORT=0 to turn it off.
 const PUBLIC_PORT = Number(process.env.PUBLIC_PORT === undefined ? 3001 : process.env.PUBLIC_PORT);
 const server = http.createServer(handle);
+setInterval(() => paywall.sweep().catch((e) => console.error('paywall sweep:', e.message)), 3600e3).unref();
+setTimeout(() => paywall.sweep().catch(() => {}), 20e3).unref();
 server.listen(PORT, '0.0.0.0', () => console.log(`Portal Admin listening on :${PORT}`));
 let pubServer = null;
 if (PUBLIC_PORT && PUBLIC_PORT !== PORT) {

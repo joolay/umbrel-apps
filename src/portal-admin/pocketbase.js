@@ -119,6 +119,11 @@ async function userForSuperuser(token) {
   try { const j = await raw("POST", "/api/collections/_superusers/auth-refresh", { token }); return j.record && j.record.email ? await findByEmail(String(j.record.email).toLowerCase()) : null; }
   catch (e) { if ([400, 401, 403, 404].includes(e.status)) return null; throw e; }
 }
+// Is this a valid PocketBase superuser token?
+async function isSuperuser(token) {
+  try { await raw("POST", "/api/collections/_superusers/auth-refresh", { token }); return true; }
+  catch (e) { if ([400, 401, 403, 404].includes(e.status)) return false; throw e; }
+}
 // Registered people, for picking family members. Only name and email leave here, and only to signed-in users.
 async function listUsers() {
   const out = []; for (let page = 1; page <= 10; page++) {
@@ -130,4 +135,4 @@ async function listUsers() {
 }
 async function getUser(id) { return asSuper("GET", rec("/" + encodeURIComponent(id))); }
 async function setDob(id, dob) { await asSuper("PATCH", rec("/" + encodeURIComponent(id)), { dob }); }
-module.exports = { userForSuperuser, cleanUsername, usernameError, findByUsername, setUsername, requestReset, listUsers, getUser, setDob, userFromToken, ready, asSuper, findByEmail, createUser, usersSchema, PBError, collection: COLL };
+module.exports = { isSuperuser, userForSuperuser, cleanUsername, usernameError, findByUsername, setUsername, requestReset, listUsers, getUser, setDob, userFromToken, ready, asSuper, findByEmail, createUser, usersSchema, PBError, collection: COLL };

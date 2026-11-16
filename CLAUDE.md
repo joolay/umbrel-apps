@@ -46,3 +46,6 @@ formats with them, and only falls back to metric / Celsius / DD/MM/YYYY / 24h wh
 ## Upcoming events (dashboard ticker)
 The top bar of the JoolzApp home screen scrolls upcoming events. Apps that own dates (Organiser, school pick-ups, notices) never build their own ticker: write rows to
 `portal_events` (see `src/portal-admin/README.md`, "Events and the Organiser") or add a provider in `src/portal-admin/events.js`.
+
+## Paid apps
+Admin > Paid apps (Yoco) locks an app behind payment using the existing `portal.access` rows, so apps need no changes. Details: `src/portal-admin/README.md`, "Paid apps (Yoco)".

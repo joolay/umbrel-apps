@@ -242,7 +242,7 @@ async function showShell() {
   $('#login').classList.add('hidden'); $('#shell').classList.remove('hidden');
   $('#who').textContent = state.actor; route(); startDetecting();
   homeModel().then((m) => { if (!HM) HM = m; renderDock(); }).catch(() => {});   // so the dock is there on every page
-  if (selfId()) seedRegional().catch(() => {});
+  if (selfId()) seedRegional().then(loadDatePref).catch(loadDatePref);
   loadEvents();
 }
 const SESSION_KEYS = ['token', 'actor', 'role', 'uid', 'pid'];
@@ -302,8 +302,8 @@ $('#login-forgot').onclick = async (e) => {
 window.addEventListener('hashchange', () => { if (resetToken()) return showReset(); state.token && route(); });
 function route() {
   let [, view = 'home', arg] = location.hash.split('/');
-  if (state.role === 'user') view = (view === 'me' || view === 'family') ? view : 'home';
-  const v = { home: viewHome, overview: viewOverview, global: viewGlobal, apps: viewApps, users: viewUsers, requests: viewRequests, cleanup: viewCleanup, audit: viewAudit, setup: viewSetup, me: viewMe, family: viewFamily }[view] || viewHome;
+  if (state.role === 'user') view = (view === 'me' || view === 'family' || view === 'paid') ? view : 'home';
+  const v = { home: viewHome, overview: viewOverview, global: viewGlobal, apps: viewApps, users: viewUsers, requests: viewRequests, cleanup: viewCleanup, audit: viewAudit, setup: viewSetup, me: viewMe, family: viewFamily, paywall: viewPaywall, paid: viewPaid }[view] || viewHome;
   if (!v || v === viewHome) view = 'home';
   setBar(view); $('#acct').open && $('#acct').close(); $('#sheet').open && $('#sheet').close();
   main().innerHTML = '<p class="muted">Loading…</p>';
@@ -991,6 +991,81 @@ function eventsSheet() {
 $('#tb-ticker').onclick = eventsSheet;
 setInterval(() => { if (state.token) loadEvents(); }, 30 * 60 * 1000);
 
+
+/* ---------- Paid apps: return from Yoco, and the admin screen ---------- */
+let payPoll = 0;
+async function viewPaid(slug) {
+  const token = ++payPoll;
+  const app = (await listAll('portal_apps', { sort: 'name' }).catch(() => [])).find((x) => x.slug === slug);
+  const name = app ? app.name : 'your app', open = app && /^https?:\/\//i.test(app.url || '') ? `<a class="btn primary" href="${esc(app.url)}" target="_blank" rel="noopener">Open ${esc(name)}</a> ` : '';
+  const show = (h) => { if (token === payPoll) main().innerHTML = `<h1>Payment</h1><div class="card">${h}</div>`; };
+  show(`<p>Thanks! Confirming your payment for <b>${esc(name)}</b>…</p><p class="muted small">This usually takes a few seconds.</p>`);
+  for (let i = 0; i < 25 && token === payPoll; i++) {
+    const s = await acctFetch('/pay/status?slug=' + encodeURIComponent(slug)).catch(() => ({}));
+    if (s.active) { show(`<p><b>${esc(name)} is unlocked.</b></p>${s.until ? `<p class="muted small">Access runs until ${esc(fmtDay(s.until))}.</p>` : ''}<p>${open}<a class="btn" href="#/home">Back to Home</a></p>`); if (HM) HM = null; return; }
+    await new Promise((r) => setTimeout(r, 3000));
+  }
+  show(`<p>We haven't had confirmation from Yoco yet.</p><p class="muted small">If you were charged, it can take a minute. Check again, or ask the admin to unlock ${esc(name)} for you.</p><p><button class="btn primary" id="paid-again">Check again</button> <a class="btn" href="#/home">Back to Home</a></p>`);
+  const b = $('#paid-again'); if (b) b.onclick = () => viewPaid(slug);
+}
+const toCents = (v) => { const n = parseFloat(String(v).replace(',', '.')); return isFinite(n) && n > 0 ? Math.round(n * 100) : null; };
+async function viewPaywall() {
+  const j = await acctFetch('/admin/paywall'), apps = await listAll('portal_apps', { sort: 'name' });
+  const y = j.yoco, origin = location.origin;
+  const chip = (ok, t) => `<span class="chip ${ok ? 'ok' : 'warn'}">${esc(t)}</span>`;
+  main().innerHTML = `<h1>Paid apps</h1><p class="sub">Lock an app so only you, people you choose, and people who pay can use it.</p>
+    <div class="card"><h2>Yoco</h2><p>${chip(y.hasSecret, y.hasSecret ? 'Secret key saved' + (y.mode ? ' (' + y.mode + ' mode)' : '') : 'No secret key')} ${chip(!!y.publicUrl, y.publicUrl ? 'Public address set' : 'No public address')} ${chip(y.hasWebhook, y.hasWebhook ? 'Webhook secret saved' : 'Webhook not registered')}</p>
+      <form id="yoco" class="kv"><label>Yoco secret key<input name="secretKey" type="password" autocomplete="off" placeholder="${y.hasSecret ? 'Saved. Paste a new one to replace it.' : 'sk_test_… (start with a test key)'}"></label>
+      <label>Public address of this dashboard<input name="publicUrl" value="${esc(y.publicUrl)}" placeholder="https://your-funnel-address.ts.net" autocomplete="off" autocapitalize="none"></label>
+      <label>Webhook secret (filled in for you when you register)<input name="webhookSecret" type="password" autocomplete="off" placeholder="${y.hasWebhook ? 'Saved' : 'whsec_… (only if you registered it yourself)'}"></label>
+      <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn primary">Save</button><button type="button" class="btn" id="yreg">Register webhook with Yoco</button></div></form>
+      <p class="muted small">Yoco confirms each payment by calling <code>${esc((y.publicUrl || 'https://your-address') + '/yoco/webhook')}</code>, so the public address has to be the internet address of this dashboard (the Tailscale Funnel one, not your home network). Until the webhook is registered, payments are taken but apps don't unlock by themselves; you can still unlock people by hand below. Yoco takes payments of R2 or more, in rand.</p></div>
+    ${apps.map((a) => { const e = j.apps[a.slug] || { cfg: null, people: [] }, c = e.cfg;
+      return `<div class="card" data-app="${esc(a.slug)}"><div class="row spread"><h2>${esc(a.name)}</h2>${c ? '<span class="chip ok">locked, ' + esc(priceText(c)) + '</span>' : '<span class="chip">free for everyone</span>'}</div>
+        <form class="pw-cfg kv"><label class="inline"><input type="checkbox" name="on" ${c ? 'checked' : ''}> Lock behind payment</label>
+        <label>Access<select name="mode"><option value="period" ${!c || c.mode === 'period' ? 'selected' : ''}>For a number of days, then renew</option><option value="once" ${c && c.mode === 'once' ? 'selected' : ''}>One payment, permanent</option></select></label>
+        <label>Days of access<input name="days" type="number" min="1" max="3650" value="${c ? c.days : 30}"></label>
+        <label>Price for one person (R)<input name="price" inputmode="decimal" value="${c ? c.price / 100 : ''}" placeholder="49"></label>
+        <label>Price for a whole household (R, optional)<input name="hprice" inputmode="decimal" value="${c && c.householdPrice ? c.householdPrice / 100 : ''}" placeholder="leave empty for no household option"></label>
+        <div><button class="btn primary small">Save</button></div></form>
+        ${e.people.length ? `<table><thead><tr><th>Person</th><th>How</th><th>Until</th><th></th></tr></thead><tbody>${e.people.map((p) => `<tr><td><b>${esc(p.name || p.username || p.email)}</b><br><span class="muted small">${esc(p.email)}</span></td><td>${esc(p.via)}</td><td>${p.until ? esc(fmtDay(p.until)) + (p.expired ? ' (ended)' : '') : 'permanent'}</td><td><button class="btn small danger" data-revoke="${esc(p.userId)}">Remove</button></td></tr>`).join('')}</tbody></table>` : '<p class="muted small">Nobody has been given access yet.</p>'}
+        <form class="pw-grant row" style="gap:6px;margin-top:8px;flex-wrap:wrap"><input name="who" placeholder="Email or username" autocapitalize="none" required><input name="days" type="number" min="1" placeholder="Days (empty = permanent)" style="max-width:190px"><button class="btn small">Give access</button></form></div>`; }).join('')}`;
+  const redo = () => viewPaywall();
+  $('#yoco').onsubmit = guard(async (e) => { e.preventDefault(); const f = e.target.elements; await acctFetch('/admin/paywall', { action: 'yoco', secretKey: f.secretKey.value, publicUrl: f.publicUrl.value, webhookSecret: f.webhookSecret.value }); toast('Saved'); redo(); });
+  $('#yreg').onclick = guard(async () => { const f = $('#yoco').elements; await acctFetch('/admin/paywall', { action: 'yoco', secretKey: f.secretKey.value, publicUrl: f.publicUrl.value }); const r = await acctFetch('/admin/paywall', { action: 'register' }); toast(r.hasSecret ? 'Webhook registered' : 'Registered. Paste the webhook secret Yoco shows you.'); redo(); });
+  main().querySelectorAll('.pw-cfg').forEach((form) => {
+    const slug = form.closest('[data-app]').dataset.app;
+    form.onsubmit = guard(async (e) => {
+      e.preventDefault(); const f = e.target.elements, had = !!(j.apps[slug] && j.apps[slug].cfg);
+      if (!f.on.checked) { if (had && !confirm('Open this app to everyone again?')) return; await acctFetch('/admin/paywall', { action: 'config', slug, cfg: null }); toast('Unlocked for everyone'); return redo(); }
+      const price = toCents(f.price.value), hp = f.hprice.value.trim() ? toCents(f.hprice.value) : null;
+      if (!price) throw new Error('Enter a price in rand.');
+      if (!had && !confirm('Everyone except you and people you choose will lose access until they pay. Continue?')) return;
+      await acctFetch('/admin/paywall', { action: 'config', slug, cfg: { mode: f.mode.value, days: Number(f.days.value) || 30, price, householdPrice: hp } }); toast('Saved'); redo();
+    });
+  });
+  main().querySelectorAll('.pw-grant').forEach((form) => {
+    const slug = form.closest('[data-app]').dataset.app;
+    form.onsubmit = guard(async (e) => { e.preventDefault(); const f = e.target.elements; const r = await acctFetch('/admin/paywall', { action: 'grant', slug, identity: f.who.value, days: f.days.value ? Number(f.days.value) : 0 }); toast('Access given to ' + r.name); redo(); });
+  });
+  main().onclick = guard(async (e) => {
+    const b = e.target.closest('[data-revoke]'); if (!b) return;
+    if (!confirm('Remove this person’s access?')) return;
+    await acctFetch('/admin/paywall', { action: 'revoke', slug: b.closest('[data-app]').dataset.app, userId: b.dataset.revoke }); toast('Removed'); redo();
+  });
+}
+
+// Dates the way the person set them (their account's date format), falling back to their region's.
+function fmtDay(v) {
+  const d = new Date(v); if (isNaN(d)) return '';
+  const p = (n) => String(n).padStart(2, '0'), dd = p(d.getDate()), mm = p(d.getMonth() + 1), yy = d.getFullYear(), f = state.dateFormat || regionalDefaults().dateFormat;
+  return f === 'MM/DD/YYYY' ? `${mm}/${dd}/${yy}` : f === 'YYYY-MM-DD' ? `${yy}-${mm}-${dd}` : `${dd}/${mm}/${yy}`;
+}
+async function loadDatePref() {
+  if (!selfId()) return;
+  try { const r = await listAll('portal_settings', { filter: `scope = "user" && user = ${fq(selfId())} && app = "" && key = "pref.dateFormat"` }); if (r[0] && r[0].value) state.dateFormat = r[0].value; } catch { /* keep the regional default */ }
+}
+
 /* ---------- Regional defaults ----------
    A new account starts with settings that match where the person is (from the device language and time zone), e.g. South Africa gets
    metric, Celsius, DD/MM/YYYY, 24-hour, ZAR. They are saved once on the account (so every app reads the same values) and the person can change
@@ -1280,6 +1355,7 @@ const GL = {
   me: '<path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2.2"/><circle cx="9" cy="17" r="2.2"/>',
   overview: '<rect x="4" y="4" width="7" height="7" rx="2"/><rect x="13" y="4" width="7" height="7" rx="2"/><rect x="4" y="13" width="7" height="7" rx="2"/><rect x="13" y="13" width="7" height="7" rx="2"/>',
   global: '<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.6 2.4 3.6 5.2 3.6 8.5s-1 6.1-3.6 8.5c-2.6-2.4-3.6-5.2-3.6-8.5s1-6.1 3.6-8.5z"/>',
+  paywall: '<rect x="3.5" y="6" width="17" height="12" rx="2.5"/><path d="M3.5 10.5h17M7 14.5h3.5"/>',
   apps: '<path d="M12 4l8 4.5-8 4.5-8-4.5z"/><path d="M4 12.5l8 4.5 8-4.5M4 16.5l8 4.5 8-4.5"/>',
   users: '<circle cx="12" cy="8.5" r="3.5"/><path d="M5 20c.5-4 3.2-6 7-6s6.5 2 7 6"/>',
   requests: '<path d="M4 13l2.5-7.5h11L20 13v5.5H4z"/><path d="M4 13h4.5l1 2.5h5l1-2.5H20"/>',
@@ -1296,9 +1372,9 @@ const ICON_WARN = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 7v6M
 const ADMIN_TOOLS = [
   ['overview', 'Overview', ['#5b8cff', '#7c5cf0']], ['global', 'Global settings', ['#94a3b8', '#475569']], ['apps', 'Apps', ['#a855f7', '#6366f1']],
   ['users', 'Users', ['#10b981', '#0ea5e9']], ['requests', 'Access requests', ['#f43f5e', '#fb923c']], ['cleanup', 'Cleanup', ['#14b8a6', '#22c55e']],
-  ['audit', 'Audit log', ['#eab308', '#f97316']], ['setup', 'Setup', ['#0ea5e9', '#6366f1']],
+  ['paywall', 'Paid apps', ['#22c55e', '#0ea5e9']], ['audit', 'Audit log', ['#eab308', '#f97316']], ['setup', 'Setup', ['#0ea5e9', '#6366f1']],
 ];
-const VIEW_TITLES = { overview: 'Overview', global: 'Global settings', apps: 'Apps', users: 'Users', requests: 'Access requests', cleanup: 'Cleanup', audit: 'Audit log', setup: 'Setup & integration', me: 'My settings', family: 'Family' };
+const VIEW_TITLES = { overview: 'Overview', global: 'Global settings', apps: 'Apps', users: 'Users', requests: 'Access requests', cleanup: 'Cleanup', audit: 'Audit log', setup: 'Setup & integration', me: 'My settings', family: 'Family', paywall: 'Paid apps', paid: 'Payment' };
 const PROTECTED = new Set(['sys:me', 'sys:admin']);   // can't be hidden, so nobody loses the way back to their settings
 
 let HM = null, editing = false, saveChain = Promise.resolve();
@@ -1328,6 +1404,7 @@ async function homeModel() {
     items['sys:family'] = { id: 'sys:family', kind: 'sys', name: 'Family', glyph: 'family', grad: ['#fb7185', '#f59e0b'], href: '#/family' };
     items['sys:me'] = { id: 'sys:me', kind: 'sys', name: 'Settings', glyph: 'me', grad: ['#94a3b8', '#475569'], href: '#/me' };
   }
+  let pw = null; if (selfId()) { try { pw = await acctFetch('/paywall'); } catch { pw = null; } }
   let saved = lrows[0] && lrows[0].value && typeof lrows[0].value === 'object' ? lrows[0].value : null;
   if (!saved) { try { saved = JSON.parse(store.lget('pa.layout.' + uid) || 'null'); } catch { saved = null; } }
   const fresh = !saved;
@@ -1337,7 +1414,7 @@ async function homeModel() {
   const hidden = keep(saved.hidden, (id) => !PROTECTED.has(id));
   const order = keep(saved.order);
   Object.keys(items).forEach((id) => { if (!seen.has(id)) { order.push(id); seen.add(id); } });   // new apps appear at the end
-  return { apps, reqs, items, ssoSlugs, isAdmin, uid, layout: { order, dock, hidden, view: saved.view === 'icons' || saved.view === 'tiles' ? saved.view : '' }, lrow: lrows[0] || null, fresh, pend };
+  return { apps, reqs, items, ssoSlugs, isAdmin, uid, layout: { order, dock, hidden, view: saved.view === 'icons' || saved.view === 'tiles' ? saved.view : '' }, lrow: lrows[0] || null, fresh, pend, pw };
 }
 
 function saveLayout() {
@@ -1371,7 +1448,8 @@ function tileText(it) {
   const a = it.app; let d = '', st = '';
   if (it.kind === 'app') {
     d = a.description || '';
-    st = !a.enabled ? 'Off' : a.maintenance ? 'Maintenance' : !it.ok ? 'Request access' : 'Open';
+    const pcfg = HM && HM.pw && HM.pw.apps[a.slug];
+    st = !a.enabled ? 'Off' : a.maintenance ? 'Maintenance' : !it.ok ? (pcfg ? priceText(pcfg) : 'Request access') : 'Open';
   } else if (it.kind === 'folder') { d = 'Users, apps, requests and settings'; st = it.badge ? it.badge + ' waiting' : 'Open'; }
   else d = it.id === 'sys:family' ? 'Your household and relatives' : 'Your preferences and account';
   return `<span class="ic-desc">${esc(d)}</span><span class="ic-state">${esc(st || 'Open')}</span>`;
@@ -1509,6 +1587,13 @@ function folderSheet() {
   openSheet(`<h2 style="margin:0 0 4px">Admin</h2><div class="folder-grid">${tools.join('')}</div>`);
   $('#sheet').querySelectorAll('a').forEach((a) => a.addEventListener('click', () => $('#sheet').close()));
 }
+const rand = (c) => 'R' + (c / 100).toFixed(c % 100 ? 2 : 0);
+const priceText = (c) => rand(c.price) + (c.mode === 'once' ? ' once' : ' for ' + c.days + ' days');
+function payBody(slug, renew) {
+  const c = HM.pw.apps[slug];
+  return `<div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn primary" data-pay="${esc(slug)}" data-scope="person">${renew ? 'Renew' : 'Pay'} ${esc(priceText(c))}</button>${c.householdPrice && HM.pw.household ? `<button class="btn" data-pay="${esc(slug)}" data-scope="household">Whole household: ${esc(rand(c.householdPrice))}${c.mode === 'once' ? '' : ' / ' + c.days + ' days'}</button>` : ''}</div>`
+    + (c.householdPrice && !HM.pw.household ? '<p class="muted small">Create a household under Family to pay once for everyone who lives with you.</p>' : '') + '<p class="muted small">Secure card payment by Yoco.</p>';
+}
 function infoSheet(slug, startEdit) {
   const it = HM.items['app:' + slug]; if (!it) return;
   const a = it.app, isAdmin = HM.isAdmin, reqs = HM.reqs;
@@ -1519,6 +1604,10 @@ function infoSheet(slug, startEdit) {
   else if (it.ok) body = /^https?:\/\//i.test(a.url || '') ? `<a class="btn primary" href="${esc(a.url)}" data-open="${esc(a.slug)}" target="_blank" rel="noopener">Open ${esc(a.name)}</a>` : '<span class="muted small">No address set yet</span>';
   else body = HM.reqs === null ? '<span class="muted small">Ask the admin for access</span>' : pend ? '<span class="chip warn">request pending</span>'
     : `<div class="req-row"><input data-msg="${esc(a.slug)}" placeholder="Why do you need it? (optional)" maxlength="300"><button class="btn small primary" data-req="${esc(a.slug)}">Request access</button></div>${denied ? '<div class="muted small" style="margin-top:6px">Your last request was denied.</div>' : ''}`;
+  const pcfg = HM.pw && HM.pw.ready && HM.pw.apps[a.slug];
+  if (!it.ok && a.enabled && !a.maintenance && pcfg) body = `<p>This app is a paid app: <b>${esc(priceText(pcfg))}</b>.</p>` + payBody(a.slug) + `<p class="muted small" style="margin-top:10px">Or ask the admin to unlock it for you.</p>` + body;
+  const mine = HM.pw && HM.pw.mine[a.slug];
+  if (it.ok && pcfg && mine && mine.until) body += `<p class="muted small" style="margin-top:10px">Your access runs until ${esc(fmtDay(mine.until))}.</p>` + payBody(a.slug, true);
   const desc = isAdmin
     ? `<div data-desc><textarea rows="3" maxlength="300" placeholder="What is this app for?" aria-label="Description for ${esc(a.name)}">${esc(a.description || '')}</textarea><div class="row" style="gap:6px;margin-top:6px"><button class="btn small" data-dsave="${esc(a.slug)}">Save description</button></div></div>`
     : `<p class="muted">${esc(a.description || '')}</p>`;
@@ -1533,6 +1622,8 @@ document.addEventListener('click', guard(async (e) => {
   if (hide && HM) { const id = hide.dataset.hide, l = HM.layout; l.order = l.order.filter((x) => x !== id); l.dock = l.dock.filter((x) => x !== id); if (!l.hidden.includes(id)) l.hidden.push(id); renderSb(); renderDock(); saveLayout(); return; }
   const show = e.target.closest('[data-show]');
   if (show && HM) { const id = show.dataset.show, l = HM.layout; l.hidden = l.hidden.filter((x) => x !== id); l.order.push(id); renderSb(); saveLayout(); return; }
+  const pay = e.target.closest('[data-pay]');
+  if (pay) { pay.disabled = true; try { const j = await acctFetch('/pay', { slug: pay.dataset.pay, scope: pay.dataset.scope }); location.href = j.redirectUrl; } catch (err) { pay.disabled = false; throw err; } return; }
   const ds = e.target.closest('[data-dsave]');
   if (ds) {
     const app = HM.apps.find((x) => x.slug === ds.dataset.dsave); if (!app) return;

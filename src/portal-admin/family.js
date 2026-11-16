@@ -255,6 +255,12 @@ async function circleIds(user) {
   const fam = await familyOf(user.id);
   if (fam) { (fam.members || []).forEach(m => out.add(m.id)); (fam.extended || []).forEach(m => out.add(m.id)); }
   for (const f of await extendedOf(user.id)) (f.members || []).forEach(m => out.add(m.id));
-  return { ids: out, familyIds: [...(fam ? [fam.id] : []), ...(await extendedOf(user.id)).map(f => f.id)] };
+  return { householdId: fam ? fam.id : "", ids: out, familyIds: [...(fam ? [fam.id] : []), ...(await extendedOf(user.id)).map(f => f.id)] };
 }
-module.exports = { circleIds, leaveExtended, setManager, linkedIds, mine, create, invite, respond, drop, setTier, addOrder, listOrders, removeOrder };
+// Current household member ids of one family record (used to keep a household's paid access in step with who lives there).
+async function memberIdsOf(familyId) {
+  await ensure();
+  try { const r = await pb.asSuper("GET", `${famBase}/records/${encodeURIComponent(clean(familyId))}`); return (await fixup(r)).members.map(m => m.id); }
+  catch (e) { if (e.status === 404) return []; throw e; }
+}
+module.exports = { memberIdsOf, circleIds, leaveExtended, setManager, linkedIds, mine, create, invite, respond, drop, setTier, addOrder, listOrders, removeOrder };

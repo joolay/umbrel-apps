@@ -55,3 +55,16 @@ Providers today:
 - **Birthdays** (built in): everyone in the person's circle: their household, its extended relatives, and the households they are extended family of. Only the day, month and the age they turn leave the server. A PocketBase superuser sees the ticker too, as the JoolzApp person with the same email address (if none exists, there is nothing to show).
 - **Organiser hook**: the planned Organiser app (family events, notices, school pick-up schedules) writes rows to a PocketBase collection `portal_events` and they appear with no change here.
   Fields: `title`, `start` (`YYYY-MM-DD` or `YYYY-MM-DD HH:MM`), `kind`, `sub`, `link`, `source`, `familyId` (a `joolz_families` id: shown to that family's circle) and/or `userIds` (comma-wrapped ids, e.g. `,u1,u2,`: shown to those people). A row with neither is shown to everyone. If the collection does not exist yet, nothing breaks.
+
+## Paid apps (Yoco)
+
+Admin > Paid apps locks an app behind a Yoco payment. It reuses the `portal.access` rows, so no other app needs changing: a locked app has an app-level
+`portal.access=false`, and each person who pays (or is chosen by the admin) gets a user-level `portal.access=true` plus a `portal.entitlement` row
+(`{until, via: yoco|admin|household, paymentId, payerId, familyId, amount}`). The admin always keeps access.
+
+- Per app (`app.paywall`, app scope): `{mode: once|period, days, price, householdPrice}` in cents. Yoco takes ZAR only, minimum R2.
+- Pay: `POST /pay {slug, scope: person|household}` creates a Yoco checkout and returns `redirectUrl`; the person returns to `#/paid/<slug>`, which polls `/pay/status`.
+- Unlock: Yoco calls `POST /yoco/webhook` (public listener, Standard Webhooks signature, `payment.succeeded`, our `metadata.kind = joolzapp-access`, amount must match). The redirect alone never unlocks.
+- The webhook needs the public (Funnel) address. Set it under Paid apps > Yoco, then Register webhook. Without it the admin can still unlock people by hand.
+- An hourly sweep expires passes and keeps household passes in step with the household's members.
+- Config lives in `portal_settings` (global): `yoco.secretKey`, `yoco.webhookSecret` (both secret) and `yoco.publicUrl`.
