@@ -378,5 +378,39 @@ module.exports = function makeClient(cfg) {
     } catch (e) { /* tidying is best effort */ }
     return { id: made.id };
   }
-  return { publishEvent, portalUrl, requestPasswordReset, setUserPrefs, portalAvailable, setPortalAccess, signupsOpen, enabled, PBError, login, verifyToken, createUser, listUsers, getUser, updateUser, updateAccess, deleteUser, countAdmins, findByEmail, firstAdmin, asSuper, superFetch, ensureSchema, collection: COLL, app: APP };
+  // ---- free trial counter, date of birth and the app's own per-person setting (moved here from the apps' own pocketbase.js) ----
+  const TRIAL_KEY = "trial.ai";
+  async function trialUsed(userId) {
+    const f = `scope = 'user' && user = '${esc(userId)}' && app = '${esc(APP)}' && key = '${TRIAL_KEY}'`;
+    try {
+      const j = await asSuper("GET", `/api/collections/portal_settings/records?page=1&perPage=1&filter=${q(f)}`);
+      const r = (j.items || [])[0]; return { id: r ? r.id : "", used: r ? Number(r.value) || 0 : 0 };
+    } catch (e) { if (e.status === 404) return { id: "", used: 0, noPortal: true }; throw e; }
+  }
+  async function trialBump(userId) {
+    const t = await trialUsed(userId); if (t.noPortal) return 0;
+    if (t.id) await asSuper("PATCH", `/api/collections/portal_settings/records/${t.id}`, { value: t.used + 1 });
+    else await asSuper("POST", "/api/collections/portal_settings/records", { scope: "user", user: userId, app: APP, key: TRIAL_KEY, value: 1, secret: false });
+    return t.used + 1;
+  }
+  async function setDob(id, dob) { await ensureSchema(); await asSuper("PATCH", rec("/" + encodeURIComponent(id)), { dob }); return null; }
+  // One "pref.<app>" row per person holds the app's own settings (Diner Bell's has always been called pref.diner). Stremio's holds its login, so it is marked secret.
+  const PREF_KEY = APP === "diner-bell" ? "pref.diner" : "pref." + APP, PREF_SECRET = APP === "stremio";
+  async function findAppPref(userId) {
+    const f = `scope = 'user' && user = '${esc(userId)}' && app = '${esc(APP)}' && key = '${PREF_KEY}'`;
+    return ((await asSuper("GET", `/api/collections/portal_settings/records?page=1&perPage=1&filter=${q(f)}`)).items || [])[0] || null;
+  }
+  async function getAppPref(userId) { const r = await findAppPref(userId); return r ? r.value : null; }
+  async function setAppPref(userId, value) {
+    const ex = await findAppPref(userId);
+    if (ex) await asSuper("PATCH", `/api/collections/portal_settings/records/${ex.id}`, { value });
+    else await asSuper("POST", "/api/collections/portal_settings/records", { scope: "user", user: userId, app: APP, key: PREF_KEY, value, secret: PREF_SECRET });
+    portalCache.delete("u:" + userId); return null;
+  }
+  async function clearAppPref(userId) {
+    const ex = await findAppPref(userId);
+    if (ex) await asSuper("DELETE", `/api/collections/portal_settings/records/${ex.id}`);
+    portalCache.delete("u:" + userId); return null;
+  }
+  return { trialUsed, trialBump, setDob, getAppPref, setAppPref, clearAppPref, publishEvent, portalUrl, requestPasswordReset, setUserPrefs, portalAvailable, setPortalAccess, signupsOpen, enabled, PBError, login, verifyToken, createUser, listUsers, getUser, updateUser, updateAccess, deleteUser, countAdmins, findByEmail, firstAdmin, asSuper, superFetch, ensureSchema, collection: COLL, app: APP };
 };

@@ -11,7 +11,7 @@ services:
       APP_PORT: 3897
 
   web:
-    image: ghcr.io/joolay/stremio:1.1.2
+    image: ghcr.io/joolay/stremio:1.1.3
     restart: on-failure
     # Lets the sync layer reach the PocketBase app (port 5400) published on this Umbrel.
     extra_hosts:

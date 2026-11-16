@@ -417,3 +417,30 @@ async function portalUrl() {
 }
 async function setDob(id, dob) { await ensureSchema(); await asSuper("PATCH", rec("/" + encodeURIComponent(id)), { dob }); }
 module.exports = { setDob, portalUrl, requestPasswordReset, trialUsed, trialBump, setUserPrefs, portalAvailable, setPortalAccess, signupsOpen, get enabled() { return isEnabled(); }, reload, PBError, login, verifyToken, createUser, listUsers, getUser, updateUser, updateAccess, deleteUser, countAdmins, findByEmail, firstAdmin, asSuper, superFetch, ensureSchema, collection: COLL, app: APP };
+
+// Portal API: when Portal Admin has given this app a key (Portal Admin > Changes), account, access and settings calls go through it and need
+// no PocketBase login here. Until then the functions above run as before. If Portal Admin can't be reached, refuses the key or is an older
+// version that lacks a function, and this app still has its own PocketBase login, the app quietly uses that instead (and says so once in the log).
+{
+  const legacy = module.exports, makePortal = require("./portal-client");
+  let portal = null, warned = false;
+  const portalOn = () => { if (!portal && process.env.POCKETBASE_PORTAL_URL && process.env.POCKETBASE_PORTAL_KEY) portal = makePortal(PBError); return !!portal; };
+  const legacyOn = () => !!legacy.enabled;
+  const portalFallback = e => !!e && (e.portalDenied || e.portalUnknown || e.status === 0) && legacyOn();
+  const merged = {};
+  for (const k of Object.keys(legacy)) if (!Object.getOwnPropertyDescriptor(legacy, k).get) merged[k] = legacy[k];
+  for (const fn of makePortal.FNS) if (typeof legacy[fn] === "function") merged[fn] = async (...a) => {
+    if (!portalOn()) return legacy[fn](...a);
+    try { return await portal.fns[fn](...a); }
+    catch (e) {
+      if (!portalFallback(e)) throw e;
+      if (!warned) { warned = true; console.warn("[pocketbase] Portal API not used (" + (e.status || 0) + " " + e.message + "); using this app's own PocketBase login instead"); }
+      return legacy[fn](...a);
+    }
+  };
+  Object.defineProperty(merged, "enabled", { enumerable: true, get: () => portalOn() || legacyOn() });
+  merged.reload = () => portalOn() || (legacy.reload ? (legacy.reload() || portalOn()) : legacyOn());
+  merged.portalOn = portalOn; merged.legacyOn = legacyOn; merged.portalFallback = portalFallback;
+  merged.portalCall = async (fn, args) => { if (!portalOn()) throw new PBError(503, "Portal API isn't set up for this app yet."); return portal.call(fn, args); };
+  module.exports = merged;
+}

@@ -1,6 +1,6 @@
 {
   "name": "listify",
-  "version": "1.0.9",
+  "version": "1.0.10",
   "private": true,
   "description": "Listify: checklists that follow your JoolzApp account.",
   "main": "server.js",
