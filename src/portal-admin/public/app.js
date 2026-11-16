@@ -230,16 +230,15 @@ $('#reset-form').onsubmit = async (e) => {
     $('#login-ok').textContent = 'Password updated. Sign in with your new password.';
   } catch (err) { $('#reset-err').textContent = err.message; }
 };
-const ADMIN_NAV = $('#nav').innerHTML;
 // People who sign in here are users of the JoolzApp apps, not admins, so the page is branded JoolzApp for them
 // and on the public address (the server tells us which one we are on through /config).
 function setBrand(name) { document.querySelectorAll('.brand span').forEach((n) => { n.textContent = name; }); document.title = name; }
 fetch('/config').then((r) => r.json()).then((c) => { state.public = !!c.public; if (state.public) setBrand('JoolzApp'); }).catch(() => {});
 function showShell() {
-  $('#nav').innerHTML = state.role === 'user' ? '<a href="#/home" data-route="home">Dashboard</a><a href="#/family" data-route="family">Family</a><a href="#/me" data-route="me">My settings</a>' : ADMIN_NAV;
   setBrand(state.role === 'user' || state.public ? 'JoolzApp' : 'Portal Admin');
   $('#login').classList.add('hidden'); $('#shell').classList.remove('hidden');
   $('#who').textContent = state.actor; route(); startDetecting();
+  homeModel().then((m) => { if (!HM) HM = m; renderDock(); }).catch(() => {});   // so the dock is there on every page
 }
 const SESSION_KEYS = ['token', 'actor', 'role', 'uid'];
 function saveSession(remember) { SESSION_KEYS.forEach((k) => { store.set('pa.' + k, state[k]); store.lset('pa.' + k, remember ? state[k] : null); }); }
@@ -287,10 +286,11 @@ $('#login-forgot').onclick = async (e) => {
 /* ---------- Router ---------- */
 window.addEventListener('hashchange', () => { if (resetToken()) return showReset(); state.token && route(); });
 function route() {
-  let [, view = 'overview', arg] = location.hash.split('/');
+  let [, view = 'home', arg] = location.hash.split('/');
   if (state.role === 'user') view = (view === 'me' || view === 'family') ? view : 'home';
-  const v = { home: viewHome, overview: viewOverview, global: viewGlobal, apps: viewApps, users: viewUsers, requests: viewRequests, cleanup: viewCleanup, audit: viewAudit, setup: viewSetup, me: viewMe, family: viewFamily }[view] || viewOverview;
-  document.querySelectorAll('#nav a').forEach((a) => a.classList.toggle('active', a.dataset.route === view));
+  const v = { home: viewHome, overview: viewOverview, global: viewGlobal, apps: viewApps, users: viewUsers, requests: viewRequests, cleanup: viewCleanup, audit: viewAudit, setup: viewSetup, me: viewMe, family: viewFamily }[view] || viewHome;
+  if (!v || v === viewHome) view = 'home';
+  setBar(view); $('#acct').open && $('#acct').close(); $('#sheet').open && $('#sheet').close();
   main().innerHTML = '<p class="muted">Loading…</p>';
   guard(async (a) => { if (await needDob()) return; await v(a); })(arg ? decodeURIComponent(arg) : undefined);
 }
@@ -1088,7 +1088,7 @@ async function profilePane(uid) {
 }
 
 async function viewFamily() {
-  main().innerHTML = '<h1>Family</h1><p class="sub">Linked across every JoolzApp app.</p><div id="pane-family"><p class="muted">Loading…</p></div>';
+  main().innerHTML = '<h1>Family</h1><p class="sub">Your household, and relatives linked across every JoolzApp app.</p><div id="pane-family"><p class="muted">Loading…</p></div>';
   await familyPane(state.uid);
 }
 
@@ -1114,28 +1114,34 @@ async function needDob() {
 async function familyPane(uid) {
   const box = $('#pane-family'); if (!box) return;
   let data; try { data = await acctFetch('/family'); } catch (e) { box.innerHTML = `<div class="card"><p class="muted">Families couldn't load: ${esc(e.message)}</p></div>`; return; }
-  const f = data.family, inv = data.invites || [];
-  const taken = f ? new Set([...f.members, ...f.invited].flatMap((m) => [m.id, (m.email || '').toLowerCase()])) : new Set();
+  const f = data.family, inv = data.invites || [], extIn = data.extendedIn || [];
+  const taken = f ? new Set([...f.members, ...(f.extended || []), ...f.invited].flatMap((m) => [m.id, (m.email || '').toLowerCase()])) : new Set();
   const people = f && f.canManage ? (await acctFetch('/family/users').catch(() => ({ users: [] }))).users.filter((u) => !taken.has(u.id) && !taken.has(u.email.toLowerCase())) : [];
   const act = async (body) => { try { const j = await acctFetch('/family', body); if (j.notice) toast(j.notice); familyPane(uid); } catch (e) { toast(e.message, true); } };
-  let h = inv.map((i) => `<div class="card"><b>${esc(i.ownerName || 'Someone')}</b> invited you to the <b>${esc(i.name)}</b> family.<div class="row" style="gap:8px;margin-top:8px"><button class="btn primary small" data-fa="yes" data-id="${esc(i.id)}">Join</button><button class="btn small" data-fa="no" data-id="${esc(i.id)}">Decline</button></div></div>`).join('');
-  if (!f) h += `<div class="card"><h2>Family</h2><p class="muted small">Link up with your family on JoolzApp. The link works in every JoolzApp app. Immediate family can share joint expenses; extended family (cousins, grandparents…) are linked for future apps.</p>
+  const relTxt = (r) => (r ? ' · ' + esc(r) : '');
+  let h = inv.map((i) => `<div class="card"><b>${esc(i.ownerName || 'Someone')}</b> invited you ${i.tier === 'extended' ? `as <b>extended family</b>${i.relation ? ' (' + esc(i.relation) + ')' : ''} of` : 'to join the household of'} the <b>${esc(i.name)}</b> family.${i.tier === 'extended' ? '<div class="muted small">You keep your own household. You can be extended family of as many families as you like.</div>' : ''}<div class="row" style="gap:8px;margin-top:8px"><button class="btn primary small" data-fa="yes" data-id="${esc(i.id)}">Join</button><button class="btn small" data-fa="no" data-id="${esc(i.id)}">Decline</button></div></div>`).join('');
+  if (!f) h += `<div class="card"><h2>Your household</h2><p class="muted small">A family on JoolzApp is one <b>household</b>: the people who live together and share family expenses. Create yours here, then invite the people who live with you. Relatives who live elsewhere, such as grandparents, are linked as <b>extended family</b> instead.</p>
     <form id="fam-new" class="row" style="gap:6px"><input name="name" placeholder="Family name (e.g. The Joolays)" maxlength="60" required><button class="btn primary">Create</button></form></div>`;
   else {
-    const row = (m, pending) => `<div class="row spread" style="padding:6px 0;border-top:1px solid var(--line,#0002)"><span class="${pending ? 'muted' : ''}">${esc(m.name)}${m.relation ? ' · ' + esc(m.relation) : ''}${m.id === f.owner ? ' <span class="chip">creator</span>' : m.manager ? ' <span class="chip">manager</span>' : ''}${m.id === uid ? ' <span class="muted">(you)</span>' : ''}${pending ? ' · invited' : ''}</span>
-      <span>${f.isOwner && m.id !== uid && !pending ? `<button class="btn small" data-fa="mgr" data-id="${esc(m.id)}" data-v="${m.manager ? '' : '1'}">${m.manager ? 'Remove manager' : 'Make manager'}</button> ` : ''}${f.canManage && m.id !== uid && m.id !== f.owner && !pending ? `<button class="btn small" data-fa="tier" data-id="${esc(m.id)}" data-v="${m.tier === 'extended' ? 'family' : 'extended'}">${m.tier === 'extended' ? 'Make immediate' : 'Make extended'}</button> ` : ''}${f.canManage && m.id !== uid && m.id !== f.owner && (f.isOwner || !m.manager) ? `<button class="btn small" data-fa="rm" data-id="${esc(m.id)}">${pending ? 'Cancel' : 'Remove'}</button>` : ''}</span></div>`;
-    const grp = (t, title, note) => { const ms = f.members.filter((m) => m.tier === t), ps = f.invited.filter((m) => m.tier === t); return `<h3>${title}</h3>${note ? `<p class="muted small">${note}</p>` : ''}${ms.map((m) => row(m, false)).join('')}${ps.map((m) => row(m, true)).join('')}${ms.length || ps.length ? '' : '<p class="muted small">Nobody yet.</p>'}`; };
-    h += `<div class="card"><h2>${esc(f.name)}</h2>${f.myTier === 'extended' ? '<p class="muted small">You are linked as extended family. Family expenses are only shared with immediate family.</p>' : ''}
-      ${grp('family', 'Immediate family', 'Shares joint expenses, such as family orders.')}${grp('extended', 'Extended family', '')}
-      ${f.canManage ? `<form id="fam-inv" class="kv" style="margin-top:12px"><label>Registered JoolzApp users<select name="pick"><option value="">Choose someone…</option>${people.map((u) => `<option value="${esc(u.email)}">${esc(u.name)} (${esc(u.email)})</option>`).join('')}</select></label><label>Or invite by email (they don't need an account yet)<input name="email" type="email"></label><label>Link as<select name="tier"><option value="family">Immediate family</option><option value="extended">Extended family</option></select></label><label>Relationship (optional)<input name="relation" maxlength="40" placeholder="cousin, grandmother…"></label><div><button class="btn primary small">Invite</button></div></form>` : ''}
+    const hrow = (m, pending) => `<div class="row spread" style="padding:6px 0;border-top:1px solid var(--line,#0002)"><span class="${pending ? 'muted' : ''}">${esc(m.name)}${relTxt(m.relation)}${m.id === f.owner ? ' <span class="chip">creator</span>' : m.manager ? ' <span class="chip">manager</span>' : ''}${m.id === uid ? ' <span class="muted">(you)</span>' : ''}${pending ? ` · invited${m.tier === 'extended' ? ' as extended family' : ''}` : ''}</span>
+      <span>${f.isOwner && m.id !== uid && !pending ? `<button class="btn small" data-fa="mgr" data-id="${esc(m.id)}" data-v="${m.manager ? '' : '1'}">${m.manager ? 'Remove manager' : 'Make manager'}</button> ` : ''}${f.canManage && m.id !== uid && m.id !== f.owner && !pending && !m.manager ? `<button class="btn small" data-fa="tier" data-id="${esc(m.id)}" data-v="extended">Moved out</button> ` : ''}${f.canManage && m.id !== uid && m.id !== f.owner && (f.isOwner || !m.manager) ? `<button class="btn small" data-fa="rm" data-id="${esc(m.id)}">${pending ? 'Cancel' : 'Remove'}</button>` : ''}</span></div>`;
+    const erow = (m) => `<div class="row spread" style="padding:6px 0;border-top:1px solid var(--line,#0002)"><span>${esc(m.name)}${relTxt(m.relation)}</span><span>${f.canManage ? `<button class="btn small" data-fa="tier" data-id="${esc(m.id)}" data-v="family">Lives with us now</button> <button class="btn small" data-fa="rm" data-id="${esc(m.id)}">Remove</button>` : ''}</span></div>`;
+    const homePend = f.invited.filter((m) => m.tier !== 'extended'), extPend = f.invited.filter((m) => m.tier === 'extended');
+    h += `<div class="card"><h2>${esc(f.name)}</h2>
+      <h3>Household</h3><p class="muted small">Everyone who lives together. They share family expenses, such as family orders.</p>
+      ${f.members.map((m) => hrow(m, false)).join('')}${homePend.map((m) => hrow(m, true)).join('')}
+      <h3>Extended family</h3><p class="muted small">Relatives with their own accounts, such as grandparents, aunts and cousins. They are linked to this family but do not share its expenses. One person can be extended family of many families. If someone moves in, choose "Lives with us now".</p>
+      ${(f.extended || []).map(erow).join('')}${extPend.map((m) => hrow(m, true)).join('')}${(f.extended || []).length || extPend.length ? '' : '<p class="muted small">Nobody yet.</p>'}
+      ${f.canManage ? `<form id="fam-inv" class="kv" style="margin-top:12px"><label>Registered JoolzApp users<select name="pick"><option value="">Choose someone…</option>${people.map((u) => `<option value="${esc(u.email)}">${esc(u.name)} (${esc(u.email)})</option>`).join('')}</select></label><label>Or invite by email (they don't need an account yet)<input name="email" type="email"></label><label>They<select name="tier"><option value="family">Live in my household (share expenses)</option><option value="extended">Are extended family (live elsewhere)</option></select></label><label>Relationship (optional)<input name="relation" maxlength="40" placeholder="wife, grandmother, uncle…"></label><div><button class="btn primary small">Invite</button></div></form>` : ''}
       ${f.isOwner ? '<p class="muted small">Tip: make someone a manager and they can invite, remove and move members too.</p>' : ''}
       ${f.canManage && !data.minor ? `<details style="margin-top:12px"><summary><b>Create an account for your child</b></summary><form id="fam-child" class="kv" style="margin-top:8px"><p class="muted small">For under-18s. You approve them automatically; an admin still has to approve the new account before it can be used.</p>
         <label>Child's name<input name="name" maxlength="80" required></label><label>Child's email (their sign-in)<input name="email" type="email" required autocomplete="off"></label>
         <label>Password (min 8)<input name="pw" type="password" minlength="8" required autocomplete="new-password"></label>
         <label>Date of birth<input name="dob" type="date" min="${new Date(Date.now() - 18 * 365.25 * 864e5).toISOString().slice(0, 10)}" max="${new Date().toISOString().slice(0, 10)}" required></label>
         <label>Relationship (optional)<input name="relation" maxlength="40" placeholder="son, daughter…"></label><div><button class="btn primary small">Create account</button></div></form></details>` : ''}
-      <p><button class="btn small" data-fa="leave">Leave this family</button></p></div>`;
+      <p><button class="btn small" data-fa="leave">Leave this household</button></p></div>`;
   }
+  if (extIn.length) h += `<div class="card"><h2>Extended family of</h2><p class="muted small">Families you are linked to as a relative. You can be linked to as many as you like, and you don't share their expenses.</p>${extIn.map((x) => `<div class="row spread" style="padding:6px 0;border-top:1px solid var(--line,#0002)"><span><b>${esc(x.name)}</b>${x.relation ? ' · you are ' + esc(x.relation) : ''}${x.ownerName ? ' <span class="muted small">(' + esc(x.ownerName) + ')</span>' : ''}</span><button class="btn small" data-fa="extleave" data-id="${esc(x.id)}">Leave</button></div>`).join('')}</div>`;
   box.innerHTML = h;
   if ($('#fam-new')) $('#fam-new').onsubmit = (e) => { e.preventDefault(); act({ action: 'create', name: e.target.name.value }); };
   if ($('#fam-inv')) $('#fam-inv').onsubmit = (e) => { e.preventDefault(); const f2 = e.target.elements; const em = (f2.pick.value || f2.email.value).trim(); if (!em) return toast('Choose someone or enter an email.', true); act({ action: 'invite', email: em, tier: f2.tier.value, relation: f2.relation.value }); };
@@ -1146,84 +1152,302 @@ async function familyPane(uid) {
     if (a === 'mgr') return act({ action: 'manager', memberId: id, on: !!v });
     if (a === 'tier') return act({ action: 'tier', memberId: id, tier: v });
     if (a === 'rm') return act({ action: 'remove', memberId: id });
-    if (a === 'leave' && confirm('Leave this family? Orders already filed stay with the family.')) return act({ action: 'leave' });
+    if (a === 'extleave') return act({ action: 'leaveExt', familyId: id });
+    if (a === 'leave' && confirm('Leave this household? Orders already filed stay with the family.')) return act({ action: 'leave' });
   };
 }
 
-// The landing page: every JoolzApp app as a tile. Open goes to the app (signed in already where the app supports it);
-// apps the person isn't approved for show a request form instead.
-async function viewHome() {
-  const uid = state.uid, isAdmin = state.role !== 'user';
-  const [apps, reqs, acc] = await Promise.all([
+/* ---------- Home screen (iPhone style) ---------- */
+// Every JoolzApp app is an icon. Family and My settings are icons too; an admin's tools live in an Admin folder.
+// Icons can be rearranged (long-press, or the pencil in the top bar), moved into the dock, or hidden. The layout is saved on the
+// person's JoolzApp account (one "pref.home.layout" row), so it follows them to every device and survives updates.
+const GRADS = [['#5b8cff', '#7c5cf0'], ['#fb923c', '#ec4899'], ['#10b981', '#0ea5e9'], ['#a855f7', '#6366f1'], ['#f43f5e', '#fb923c'], ['#14b8a6', '#22c55e'], ['#eab308', '#f97316'], ['#0ea5e9', '#6366f1']];
+const hashN = (s) => { let h = 0; for (const c of String(s)) h = (h * 31 + c.charCodeAt(0)) >>> 0; return h; };
+const GL = {
+  family: '<circle cx="9" cy="8" r="3.2"/><path d="M3.5 19c.4-3.4 2.7-5.2 5.5-5.2s5.1 1.8 5.5 5.2"/><circle cx="17" cy="9.5" r="2.4"/><path d="M16.5 14.2c2.4.1 4 1.6 4.3 4.3"/>',
+  me: '<path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2.2"/><circle cx="9" cy="17" r="2.2"/>',
+  overview: '<rect x="4" y="4" width="7" height="7" rx="2"/><rect x="13" y="4" width="7" height="7" rx="2"/><rect x="4" y="13" width="7" height="7" rx="2"/><rect x="13" y="13" width="7" height="7" rx="2"/>',
+  global: '<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.6 2.4 3.6 5.2 3.6 8.5s-1 6.1-3.6 8.5c-2.6-2.4-3.6-5.2-3.6-8.5s1-6.1 3.6-8.5z"/>',
+  apps: '<path d="M12 4l8 4.5-8 4.5-8-4.5z"/><path d="M4 12.5l8 4.5 8-4.5M4 16.5l8 4.5 8-4.5"/>',
+  users: '<circle cx="12" cy="8.5" r="3.5"/><path d="M5 20c.5-4 3.2-6 7-6s6.5 2 7 6"/>',
+  requests: '<path d="M4 13l2.5-7.5h11L20 13v5.5H4z"/><path d="M4 13h4.5l1 2.5h5l1-2.5H20"/>',
+  cleanup: '<path d="M5 7h14M10 7V4.5h4V7M7 7l1 12.5h8L17 7"/>',
+  audit: '<rect x="5" y="3.5" width="14" height="17" rx="2.5"/><path d="M8.5 8.5h7M8.5 12h7M8.5 15.5h4"/>',
+  setup: '<path d="M14.5 5a4 4 0 0 0-4.7 5.2L4 16l4 4 5.8-5.8A4 4 0 0 0 19 9.5l-2.6 2.6-2.6-.7-.7-2.6z"/>',
+};
+const svgG = (k) => `<svg viewBox="0 0 24 24" aria-hidden="true">${GL[k]}</svg>`;
+const ICON_X = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 12h12"/></svg>';
+const ICON_PEN = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 16.5V20h3.5L18.2 9.3l-3.5-3.5z"/></svg>';
+const ICON_ADD = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 6v12M6 12h12"/></svg>';
+const ICON_LOCK = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5.5" y="11" width="13" height="9" rx="2.5"/><path d="M8.5 11V8a3.5 3.5 0 0 1 7 0v3"/></svg>';
+const ICON_WARN = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 7v6M12 17h.01"/></svg>';
+const ADMIN_TOOLS = [
+  ['overview', 'Overview', ['#5b8cff', '#7c5cf0']], ['global', 'Global settings', ['#94a3b8', '#475569']], ['apps', 'Apps', ['#a855f7', '#6366f1']],
+  ['users', 'Users', ['#10b981', '#0ea5e9']], ['requests', 'Access requests', ['#f43f5e', '#fb923c']], ['cleanup', 'Cleanup', ['#14b8a6', '#22c55e']],
+  ['audit', 'Audit log', ['#eab308', '#f97316']], ['setup', 'Setup', ['#0ea5e9', '#6366f1']],
+];
+const VIEW_TITLES = { overview: 'Overview', global: 'Global settings', apps: 'Apps', users: 'Users', requests: 'Access requests', cleanup: 'Cleanup', audit: 'Audit log', setup: 'Setup & integration', me: 'My settings', family: 'Family' };
+const PROTECTED = new Set(['sys:me', 'sys:admin']);   // can't be hidden, so nobody loses the way back to their settings
+
+let HM = null, editing = false, saveChain = Promise.resolve();
+const isAdminRole = () => state.role !== 'user';
+
+async function homeModel() {
+  const uid = state.uid, isAdmin = isAdminRole();
+  const [apps, reqs, acc, lrows, ssoRows, pend] = await Promise.all([
     listAll('portal_apps', { sort: 'name' }),
     isAdmin ? Promise.resolve([]) : listAll('portal_requests', { filter: `user = ${fq(uid)}`, sort: '-created' }).catch(() => null),
     isAdmin ? Promise.resolve([]) : listAll('portal_settings', { filter: 'key = "portal.access"' }),
+    listAll('portal_settings', { filter: `scope = "user" && user = ${fq(uid)} && app = "" && key = "pref.home.layout"` }).catch(() => []),
+    listAll('portal_settings', { filter: 'scope = "app" && key = "app.sso"' }).catch(() => []),
+    isAdmin ? count('portal_requests', 'status = "pending"').catch(() => 0) : Promise.resolve(0),
   ]);
-  const ssoSlugs = new Set((await listAll('portal_settings', { filter: 'scope = "app" && key = "app.sso"' }).catch(() => [])).filter((r) => r.value === true).map((r) => r.app));
+  ssoSlugs = new Set(ssoRows.filter((r) => r.value === true).map((r) => r.app));
   const rank = (r) => r.scope === 'global' ? 0 : r.scope === 'app' ? 1 : (r.app ? 3 : 2);
   const allowed = (slug) => {
     if (isAdmin) return true;
     const rs = acc.filter((r) => r.scope === 'global' || (r.scope === 'app' && r.app === slug) || (r.scope === 'user' && (r.app === '' || r.app === slug))).sort((a, b) => rank(a) - rank(b));
     const last = rs[rs.length - 1]; return !(last && last.value === false);
   };
-  const userRow = acc.find((r) => r.scope === 'user' && r.app === ''), globalBlock = acc.find((r) => r.scope === 'global' && r.value === false);
-  const banner = isAdmin ? '' : userRow && userRow.value === false ? 'Your account access has been turned off. Contact the admin.' : (globalBlock && !userRow ? 'The admin approves access to each app separately. Request access to the apps you need below.' : '');
-  const tile = (a) => {
-    let body;
-    if (!a.enabled) body = '<span class="chip bad">unavailable</span>';
-    else if (allowed(a.slug)) {
-      const open = /^https?:\/\//i.test(a.url || '') ? `<a class="btn primary" href="${esc(a.url)}" data-open="${esc(a.slug)}" target="_blank" rel="noopener">Open</a>` : '<span class="muted small">No address set yet</span>';
-      body = `${a.maintenance ? `<span class="chip warn">maintenance</span> <span class="muted small">${esc(a.message || '')}</span>` : open}`;
-    } else {
-      const pend = reqs && reqs.find((r) => r.app === a.slug && r.status === 'pending'), denied = reqs && reqs.find((r) => r.app === a.slug && r.status === 'denied');
-      body = reqs === null ? '<span class="muted small">Ask the admin for access</span>' : pend ? '<span class="chip warn">request pending</span>'
-        : `<div class="req-row"><input data-msg="${esc(a.slug)}" placeholder="Why do you need it? (optional)" maxlength="300"><button class="btn small" data-req="${esc(a.slug)}">Request access</button></div>${denied ? '<div class="muted small">Your last request was denied.</div>' : ''}`;
-    }
-    return `<div class="tile${a.enabled ? '' : ' off'}"><div class="tile-head"><span class="tile-ic">${esc((a.name || '?').trim().charAt(0).toUpperCase())}</span><div style="min-width:0"><b>${esc(a.name)}</b><div class="muted small" data-desc="${esc(a.slug)}">${esc(a.description || '')}${isAdmin ? ` <button class="link" data-dedit="${esc(a.slug)}" title="Edit description">${a.description ? '✎ Edit' : '✎ Add a description'}</button>` : ''}</div></div></div><div class="tile-body">${body}</div></div>`;
-  };
-  // Parents: approve kids' accounts and settings here. Kids: see who has been asked.
+  const items = {};
+  apps.forEach((a) => { items['app:' + a.slug] = { id: 'app:' + a.slug, kind: 'app', name: a.name, app: a, grad: GRADS[hashN(a.slug) % GRADS.length], letter: (a.name || '?').trim().charAt(0).toUpperCase(), ok: allowed(a.slug) }; });
+  if (isAdmin) items['sys:admin'] = { id: 'sys:admin', kind: 'folder', name: 'Admin', grad: ['#64748b', '#334155'], badge: pend };
+  else {
+    items['sys:family'] = { id: 'sys:family', kind: 'sys', name: 'Family', glyph: 'family', grad: ['#fb7185', '#f59e0b'], href: '#/family' };
+    items['sys:me'] = { id: 'sys:me', kind: 'sys', name: 'Settings', glyph: 'me', grad: ['#94a3b8', '#475569'], href: '#/me' };
+  }
+  let saved = lrows[0] && lrows[0].value && typeof lrows[0].value === 'object' ? lrows[0].value : null;
+  if (!saved) { try { saved = JSON.parse(store.lget('pa.layout.' + uid) || 'null'); } catch { saved = null; } }
+  const fresh = !saved;
+  saved = saved || { order: [], dock: isAdmin ? ['sys:admin'] : ['sys:family', 'sys:me'], hidden: [] };
+  const seen = new Set(), keep = (arr, f = () => true) => (Array.isArray(arr) ? arr : []).filter((id) => items[id] && f(id) && !seen.has(id) && seen.add(id));
+  const dock = keep(saved.dock).slice(0, 4);
+  const hidden = keep(saved.hidden, (id) => !PROTECTED.has(id));
+  const order = keep(saved.order);
+  Object.keys(items).forEach((id) => { if (!seen.has(id)) { order.push(id); seen.add(id); } });   // new apps appear at the end
+  return { apps, reqs, items, ssoSlugs, isAdmin, uid, layout: { order, dock, hidden }, lrow: lrows[0] || null, fresh, pend };
+}
+
+function saveLayout() {
+  const l = HM.layout, uid = HM.uid;
+  store.lset('pa.layout.' + uid, JSON.stringify(l));
+  saveChain = saveChain.then(async () => {
+    try {
+      if (HM.lrow) HM.lrow = await api('PATCH', `/api/collections/portal_settings/records/${HM.lrow.id}`, { value: l });
+      else HM.lrow = await api('POST', '/api/collections/portal_settings/records', { scope: 'user', user: uid, app: '', key: 'pref.home.layout', value: l, secret: false });
+    } catch (e) { toast('Could not save your layout: ' + e.message, true); }
+  });
+}
+
+function tileInner(it) { return it.glyph ? svgG(it.glyph) : `<b>${esc(it.letter)}</b>`; }
+function folderMini() { return `<span class="mini">${ADMIN_TOOLS.slice(0, 4).map(([k, , g]) => `<i style="--c1:${g[0]};--c2:${g[1]}">${svgG(k)}</i>`).join('')}</span>`; }
+function iconHTML(it, o = {}) {
+  const a = it.app, c = `--c1:${it.grad[0]};--c2:${it.grad[1]};--d:${-(hashN(it.id) % 260)}ms`;
+  let tile, st = '';
+  if (it.kind === 'folder') tile = `<button class="ic-tile folder" data-folder="1" aria-label="Admin tools">${folderMini()}</button>`;
+  else if (it.kind === 'sys') tile = `<a class="ic-tile" href="${it.href}" draggable="false" aria-label="${esc(it.name)}">${tileInner(it)}</a>`;
+  else if (a.enabled && it.ok && !a.maintenance && /^https?:\/\//i.test(a.url || '')) tile = `<a class="ic-tile" href="${esc(a.url)}" data-open="${esc(a.slug)}" target="_blank" rel="noopener" draggable="false" aria-label="Open ${esc(a.name)}">${tileInner(it)}</a>`;
+  else tile = `<button class="ic-tile" data-info="${esc(a.slug)}" aria-label="${esc(a.name)}">${tileInner(it)}</button>`;
+  if (it.kind === 'app') {
+    if (!a.enabled) st = '';
+    else if (a.maintenance) st = `<span class="ic-st warn" title="Maintenance">${ICON_WARN}</span>`;
+    else if (!it.ok) st = `<span class="ic-st" title="Request access">${ICON_LOCK}</span>`;
+  }
+  const badge = it.badge ? `<span class="ic-badge">${it.badge > 9 ? '9+' : it.badge}</span>` : '';
+  const x = !o.tray && !PROTECTED.has(it.id) ? `<button class="ic-x" data-hide="${esc(it.id)}" aria-label="Hide ${esc(it.name)}">${ICON_X}</button>` : '';
+  const ed = !o.tray && isAdminRole() && it.kind === 'app' ? `<button class="ic-ed" data-edit-app="${esc(a.slug)}" aria-label="Edit ${esc(a.name)}">${ICON_PEN}</button>` : '';
+  const add = o.tray ? `<button class="ic-add" data-show="${esc(it.id)}" aria-label="Add ${esc(it.name)} back">${ICON_ADD}</button>` : '';
+  return `<div class="ic${a && !a.enabled ? ' off' : ''}" data-id="${esc(it.id)}" style="${c}"><div class="ic-w">${tile}${st}${badge}${x}${ed}${add}<span class="ic-label">${esc(it.name)}</span></div></div>`;
+}
+function renderTray() {
+  const l = HM.layout, hid = $('#hid'); if (!hid) return;
+  hid.hidden = !(editing && l.hidden.length);
+  hid.innerHTML = l.hidden.length ? `<h2>Hidden</h2><div class="sb">${l.hidden.map((id) => iconHTML(HM.items[id], { tray: true })).join('')}</div>` : '';
+}
+function renderSb() {
+  const sb = $('#sb'); if (!sb) return;
+  sb.innerHTML = HM.layout.order.map((id) => iconHTML(HM.items[id])).join('') || '<p class="muted">No apps have been added yet.</p>';
+  renderTray();
+}
+function renderDock() {
+  const d = $('#dock'); if (!d) return;
+  const l = HM && HM.layout; d.innerHTML = l ? l.dock.map((id) => iconHTML(HM.items[id])).join('') : '';
+  d.classList.toggle('few', !!l && l.dock.length < 4);
+}
+function setEditing(on) {
+  editing = !!on && !!$('#sb');
+  document.body.classList.toggle('editing', editing);
+  $('#tb-edit').hidden = editing || !$('#sb'); $('#tb-done').hidden = !editing;
+  if (HM) renderTray();
+}
+
+/* Drag to rearrange: pointer events, so it works with a finger and a mouse. Icons move between the grid and the dock (max 4). */
+let press = null, drag = null, suppress = false;
+const allIcons = () => [...document.querySelectorAll('#sb .ic, #dock .ic')];
+function flip(fn) {
+  const els = allIcons().filter((e) => e !== (drag && drag.ic)), before = new Map(els.map((e) => [e, e.getBoundingClientRect()]));
+  fn();
+  els.forEach((e) => { const b = before.get(e), a = e.getBoundingClientRect(), dx = b.left - a.left, dy = b.top - a.top; if (!dx && !dy) return;
+    e.style.transition = 'none'; e.style.transform = `translate(${dx}px,${dy}px)`; e.getBoundingClientRect(); e.style.transition = ''; e.style.transform = ''; });
+}
+function startDrag(e) {
+  const ic = press.ic, r = ic.getBoundingClientRect(), clone = ic.cloneNode(true);
+  clone.classList.add('drag-clone'); clone.style.width = r.width + 'px'; clone.querySelectorAll('button,a').forEach((x) => x.removeAttribute('href'));
+  document.body.appendChild(clone); ic.classList.add('ghost');
+  drag = { ic, clone, ox: e.clientX - r.left, oy: e.clientY - r.top }; suppress = true;
+}
+function moveDrag(e) {
+  drag.clone.style.transform = `translate3d(${e.clientX - drag.ox}px,${e.clientY - drag.oy}px,0)`;
+  if (e.clientY > innerHeight - 130) scrollBy(0, 12); else if (e.clientY < 110) scrollBy(0, -12);
+  const dock = $('#dock'), dr = dock.getBoundingClientRect(), inDock = e.clientX > dr.left - 8 && e.clientX < dr.right + 8 && e.clientY > dr.top - 14 && e.clientY < dr.bottom + 14;
+  const inDockNow = drag.ic.parentElement === dock, dockCount = [...dock.children].filter((c) => c !== drag.ic).length;
+  if (inDock && dockCount < 4) {
+    const sibs = [...dock.children].filter((c) => c !== drag.ic); let ref = null;
+    for (const s of sibs) { const r = s.getBoundingClientRect(); if (e.clientX < r.left + r.width / 2) { ref = s; break; } }
+    if (drag.ic.parentElement !== dock || drag.ic.nextSibling !== ref) flip(() => dock.insertBefore(drag.ic, ref));
+    return;
+  }
+  if (inDock && !inDockNow) return;
+  const sb = $('#sb'); let best = null, bd = 1e9;
+  for (const el of sb.querySelectorAll('.ic')) { if (el === drag.ic) continue; const r = el.getBoundingClientRect(), d = Math.hypot(e.clientX - (r.left + r.width / 2), e.clientY - (r.top + r.height / 2)); if (d < bd) { bd = d; best = { el, r }; } }
+  if (!best) { if (drag.ic.parentElement !== sb) flip(() => sb.appendChild(drag.ic)); return; }
+  if (bd > best.r.width * 0.95 && drag.ic.parentElement === sb) return;
+  const before = e.clientX < best.r.left + best.r.width / 2, ref = before ? best.el : best.el.nextSibling;
+  if (drag.ic.parentElement !== sb || drag.ic.nextSibling !== ref) flip(() => sb.insertBefore(drag.ic, ref));
+}
+function endDrag() {
+  if (drag) {
+    drag.clone.remove(); drag.ic.classList.remove('ghost');
+    const ids = (sel) => [...document.querySelectorAll(sel)].map((e) => e.dataset.id);
+    HM.layout.order = ids('#sb .ic'); HM.layout.dock = ids('#dock .ic').slice(0, 4);
+    renderDock(); saveLayout();
+  }
+  if (press) clearTimeout(press.t);
+  if (drag || (press && press.long)) { suppress = true; setTimeout(() => { suppress = false; }, 80); }
+  press = null; drag = null;
+}
+document.addEventListener('pointerdown', (e) => {
+  if (!$('#sb')) return;
+  const ic = e.target.closest('#sb .ic, #dock .ic');
+  if (!ic) { if (editing && !e.target.closest('.topbar,dialog,.hid,.ic')) setEditing(false); return; }
+  if (e.target.closest('.ic-x,.ic-ed,.ic-add') || e.target.closest('.hid')) return;
+  suppress = false; press = { ic, x: e.clientX, y: e.clientY, id: e.pointerId, long: false };
+  if (!editing) press.t = setTimeout(() => { if (press && !drag) { press.long = true; try { navigator.vibrate && navigator.vibrate(12); } catch {} setEditing(true); } }, 520);
+});
+document.addEventListener('pointermove', (e) => {
+  if (!press || e.pointerId !== press.id) return;
+  if (!drag) {
+    if (Math.hypot(e.clientX - press.x, e.clientY - press.y) < 8) return;
+    if (!editing) { clearTimeout(press.t); press = null; return; }   // it was a scroll, not a long press
+    startDrag(e);
+  }
+  moveDrag(e);
+});
+document.addEventListener('pointerup', endDrag);
+document.addEventListener('pointercancel', endDrag);
+document.addEventListener('contextmenu', (e) => { if (e.target.closest('.ic')) e.preventDefault(); });
+document.addEventListener('click', (e) => {
+  const ic = e.target.closest('.ic'); if (!ic) return;
+  if ((editing || suppress) && !e.target.closest('.ic-x,.ic-ed,.ic-add')) { e.preventDefault(); e.stopPropagation(); }
+}, true);
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && editing) setEditing(false); });
+
+/* ---------- Sheets (small dialogs over the home screen) ---------- */
+function openSheet(html) {
+  const d = $('#sheet');
+  d.innerHTML = `<button class="sheet-x" data-close aria-label="Close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button><div class="sheet-in">${html}</div>`;
+  if (!d.open) d.showModal();
+  return d;
+}
+document.addEventListener('click', (e) => {
+  if (e.target.closest('[data-close]')) { const d = e.target.closest('dialog'); d && d.close(); return; }
+  if (e.target.tagName === 'DIALOG') e.target.close();
+});
+function folderSheet() {
+  const tools = ADMIN_TOOLS.map(([k, name, g]) => iconHTML({ id: 'tool:' + k, kind: 'sys', name, glyph: k, grad: g, href: '#/' + k, badge: k === 'requests' ? HM.pend : 0 }, { tray: true, plain: true }).replace(/<button class="ic-add"[^>]*>.*?<\/button>/, ''));
+  openSheet(`<h2 style="margin:0 0 4px">Admin</h2><div class="folder-grid">${tools.join('')}</div>`);
+  $('#sheet').querySelectorAll('a').forEach((a) => a.addEventListener('click', () => $('#sheet').close()));
+}
+function infoSheet(slug, startEdit) {
+  const it = HM.items['app:' + slug]; if (!it) return;
+  const a = it.app, isAdmin = HM.isAdmin, reqs = HM.reqs;
+  const pend = reqs && reqs.find((r) => r.app === a.slug && r.status === 'pending'), denied = reqs && reqs.find((r) => r.app === a.slug && r.status === 'denied');
+  let body;
+  if (!a.enabled) body = '<span class="chip bad">unavailable</span>';
+  else if (a.maintenance) body = `<span class="chip warn">maintenance</span><p class="muted small">${esc(a.message || 'Back soon.')}</p>`;
+  else if (it.ok) body = /^https?:\/\//i.test(a.url || '') ? `<a class="btn primary" href="${esc(a.url)}" data-open="${esc(a.slug)}" target="_blank" rel="noopener">Open ${esc(a.name)}</a>` : '<span class="muted small">No address set yet</span>';
+  else body = HM.reqs === null ? '<span class="muted small">Ask the admin for access</span>' : pend ? '<span class="chip warn">request pending</span>'
+    : `<div class="req-row"><input data-msg="${esc(a.slug)}" placeholder="Why do you need it? (optional)" maxlength="300"><button class="btn small primary" data-req="${esc(a.slug)}">Request access</button></div>${denied ? '<div class="muted small" style="margin-top:6px">Your last request was denied.</div>' : ''}`;
+  const desc = isAdmin
+    ? `<div data-desc><textarea rows="3" maxlength="300" placeholder="What is this app for?" aria-label="Description for ${esc(a.name)}">${esc(a.description || '')}</textarea><div class="row" style="gap:6px;margin-top:6px"><button class="btn small" data-dsave="${esc(a.slug)}">Save description</button></div></div>`
+    : `<p class="muted">${esc(a.description || '')}</p>`;
+  const d = openSheet(`<div class="sheet-head"><span class="ic-tile" style="--c1:${it.grad[0]};--c2:${it.grad[1]}">${tileInner(it)}</span><h2>${esc(a.name)}</h2></div>${desc}<div style="margin-top:12px">${body}</div>`);
+  if (startEdit) { const t = d.querySelector('textarea'); t && t.focus(); }
+}
+document.addEventListener('click', guard(async (e) => {
+  const di = e.target.closest('[data-info]'); if (di && !editing) return infoSheet(di.dataset.info);
+  if (e.target.closest('[data-folder]') && !editing) return folderSheet();
+  const ea = e.target.closest('[data-edit-app]'); if (ea) return infoSheet(ea.dataset.editApp, true);
+  const hide = e.target.closest('[data-hide]');
+  if (hide && HM) { const id = hide.dataset.hide, l = HM.layout; l.order = l.order.filter((x) => x !== id); l.dock = l.dock.filter((x) => x !== id); if (!l.hidden.includes(id)) l.hidden.push(id); renderSb(); renderDock(); saveLayout(); return; }
+  const show = e.target.closest('[data-show]');
+  if (show && HM) { const id = show.dataset.show, l = HM.layout; l.hidden = l.hidden.filter((x) => x !== id); l.order.push(id); renderSb(); saveLayout(); return; }
+  const ds = e.target.closest('[data-dsave]');
+  if (ds) {
+    const app = HM.apps.find((x) => x.slug === ds.dataset.dsave); if (!app) return;
+    const val = ds.closest('[data-desc]').querySelector('textarea').value.trim().slice(0, 300);
+    await api('PATCH', `/api/collections/portal_apps/records/${app.id}`, { description: val });
+    await audit('app.update', app.slug, { description: val }); app.description = val; toast('Description saved'); return;
+  }
+  const rb = e.target.closest('button[data-req]');
+  if (rb) {
+    e.preventDefault(); const slug = rb.dataset.req, msg = $('#sheet').querySelector(`input[data-msg="${slug}"]`).value.trim();
+    await api('POST', '/api/collections/portal_requests/records', { user: state.uid, email: state.actor, app: slug, message: msg, status: 'pending' });
+    $('#sheet').close(); toast('Request sent'); route();
+  }
+}));
+$('#tb-edit').onclick = () => setEditing(true);
+$('#tb-done').onclick = () => setEditing(false);
+$('#tb-me').onclick = () => { $('#acct').showModal(); };
+$('#tb-back').onclick = () => { location.hash = '#/home'; };
+
+function setBar(view) {
+  const home = view === 'home', sh = $('#shell');
+  sh.classList.toggle('home-page', home); sh.classList.toggle('sub-page', !home);
+  $('#tb-back').hidden = home; $('#tb-brand').hidden = !home; $('#tb-title').hidden = home;
+  $('#tb-title').textContent = VIEW_TITLES[view] || '';
+  $('#tb-me').textContent = (state.actor || '?').trim().charAt(0).toUpperCase();
+  if (!home) { setEditing(false); $('#tb-edit').hidden = true; $('#tb-done').hidden = true; } else { $('#tb-edit').hidden = editing; }
+}
+
+// The landing page: apps as icons. Open goes to the app (signed in already where the app supports it);
+// apps the person isn't approved for open a small request form instead.
+async function viewHome() {
+  const uid = state.uid, isAdmin = isAdminRole();
+  HM = await homeModel();
   const g = isAdmin ? null : await fetch('/guardians', { headers: { authorization: state.token }, cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
   const fam = isAdmin ? null : await acctFetch('/family').catch(() => null);
-  const famInv = fam && fam.invites && fam.invites.length ? `<div class="card"><b>You've been invited to a family.</b> <a href="#/family">Open the Family page</a> to join or decline.</div>` : '';
+  if (fam && fam.invites && fam.invites.length && HM.items['sys:family']) HM.items['sys:family'].badge = fam.invites.length;
+  const acc = !isAdmin ? await listAll('portal_settings', { filter: 'key = "portal.access"' }).catch(() => []) : [];
+  const userRow = acc.find((r) => r.scope === 'user' && r.app === ''), globalBlock = acc.find((r) => r.scope === 'global' && r.value === false);
+  const banner = isAdmin ? '' : userRow && userRow.value === false ? 'Your account access has been turned off. Contact the admin.' : (globalBlock && !userRow ? 'The admin approves access to each app separately. Tap an app with a lock to request access.' : '');
+  const famInv = fam && fam.invites && fam.invites.length ? `<div class="card"><b>You've been invited to a family.</b> <a href="#/family">Open Family</a> to join or decline.</div>` : '';
   const guardCard = (!g ? '' : [
     g.minor && g.adminPending ? `<div class="card"><b>Your account is waiting for an admin to approve it.</b> Once they do, you can use the apps.</div>` : '',
     g.minor && g.parents.length && !g.adminPending ? `<div class="card"><b>Your account needs a parent's approval.</b> ${g.parents.map((p) => `${esc(p.name)}: ${p.status === 'approved' ? 'approved' : p.status === 'pending' ? 'waiting' : 'declined'}`).join(' · ')}</div>` : '',
     g.pending.length ? `<div class="card"><h2>Needs your approval</h2>${g.pending.map((x) => `<div class="row spread" style="padding:6px 0"><span>${esc(x.label)}</span><span><button class="btn primary small" data-gact="yes" data-id="${esc(x.id)}">Approve</button> <button class="btn small" data-gact="no" data-id="${esc(x.id)}">Decline</button></span></div>`).join('')}</div>` : '',
     g.kids.length ? `<div class="card"><h2>Kids you look after</h2>${g.kids.map((k) => `<div class="row spread" style="padding:6px 0"><span>${esc(k.childName)}</span><button class="btn small" data-gact="revoke" data-id="${esc(k.childId)}">Withdraw approval</button></div>`).join('')}</div>` : '',
   ].join('')) + famInv;
-  main().innerHTML = `<h1>Dashboard</h1><p class="sub">${isAdmin ? 'This is the page your users see.' : 'All your JoolzApp apps in one place. One account works in every one.'}</p>
-    ${banner ? `<div class="card"><span class="chip warn">${esc(banner)}</span></div>` : ''}${guardCard}
-    <div class="tiles">${apps.map(tile).join('') || '<p class="muted">No apps have been added yet.</p>'}</div>`;
-  bindOpen(main(), ssoSlugs);
+  main().innerHTML = `<div class="widgets">${banner ? `<div class="card"><span class="chip warn">${esc(banner)}</span></div>` : ''}${guardCard}</div><section id="sb" class="sb" aria-label="Apps"></section><section id="hid" class="hid" hidden></section>`;
+  renderSb(); renderDock(); setBar('home'); setEditing(editing);
   main().onclick = guard(async (e) => {
-    // Admins edit an app's description right on the Dashboard tile.
-    const de = e.target.closest('button[data-dedit]');
-    if (de) {
-      const slug = de.dataset.dedit, app = apps.find((x) => x.slug === slug), box = de.closest('[data-desc]'); if (!app || !box) return;
-      box.innerHTML = `<textarea rows="3" maxlength="300" style="width:100%" aria-label="Description for ${esc(app.name)}">${esc(app.description || '')}</textarea><div class="row" style="gap:6px;margin-top:6px"><button class="btn primary small" data-dsave="${esc(slug)}">Save</button><button class="btn small" data-dcancel="1">Cancel</button></div>`;
-      box.querySelector('textarea').focus(); return;
-    }
-    if (e.target.closest('button[data-dcancel]')) return route();
-    const ds = e.target.closest('button[data-dsave]');
-    if (ds) {
-      const app = apps.find((x) => x.slug === ds.dataset.dsave); if (!app) return;
-      const val = ds.closest('[data-desc]').querySelector('textarea').value.trim().slice(0, 300);
-      await api('PATCH', `/api/collections/portal_apps/records/${app.id}`, { description: val });
-      await audit('app.update', app.slug, { description: val }); toast('Description saved'); return route();
-    }
-    const gb = e.target.closest('button[data-gact]');
-    if (gb) {
-      e.preventDefault();
-      if (gb.dataset.gact === 'revoke' && !confirm('Withdraw your approval? They will be locked out of JoolzApp apps until a parent approves again.')) return;
-      const body = gb.dataset.gact === 'revoke' ? { action: 'revoke', childId: gb.dataset.id } : { action: 'decide', id: gb.dataset.id, approve: gb.dataset.gact === 'yes' };
-      const r = await fetch('/guardians', { method: 'POST', headers: { authorization: state.token, 'content-type': 'application/json' }, body: JSON.stringify(body) });
-      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).message || 'That did not work.');
-      toast('Done'); return route();
-    }
-    const b = e.target.closest('button[data-req]'); if (!b) return; e.preventDefault();
-    const slug = b.dataset.req; const msg = main().querySelector(`input[data-msg="${slug}"]`).value.trim();
-    await api('POST', '/api/collections/portal_requests/records', { user: uid, email: state.actor, app: slug, message: msg, status: 'pending' });
-    toast('Request sent'); route();
+    const gb = e.target.closest('button[data-gact]'); if (!gb) return;
+    e.preventDefault();
+    if (gb.dataset.gact === 'revoke' && !confirm('Withdraw your approval? They will be locked out of JoolzApp apps until a parent approves again.')) return;
+    const body = gb.dataset.gact === 'revoke' ? { action: 'revoke', childId: gb.dataset.id } : { action: 'decide', id: gb.dataset.id, approve: gb.dataset.gact === 'yes' };
+    const r = await fetch('/guardians', { method: 'POST', headers: { authorization: state.token, 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).message || 'That did not work.');
+    toast('Done'); return route();
   });
 }
 
