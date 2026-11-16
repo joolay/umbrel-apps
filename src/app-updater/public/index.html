@@ -52,6 +52,12 @@
         <span>Quiet hours for "Immediately" apps</span>
         <input id="qStart" type="time" step="60"> <span class="sub">to</span> <input id="qEnd" type="time" step="60">
       </div>
+      <div class="row ticker">
+        <label class="switch" title="Post a notice when an app has been updated"><input id="tickerSw" type="checkbox"><span></span></label>
+        <span>Announce updates in the dashboard news ticker <span class="sub">(everyone sees it, on the day it happens)</span></span>
+        <span id="tickerChip" class="chip"></span>
+      </div>
+      <p id="tickerNote" class="note" hidden></p>
       <p class="note">Nightly apps update once a night, in the hour after the nightly time. Immediately apps update as soon as umbrelOS lists the new version, unless quiet hours are on.</p>
     </section>
 

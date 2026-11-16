@@ -967,7 +967,7 @@ function evWhen(e, long) {
   const base = n === 0 ? 'Today' : n === 1 ? 'Tomorrow' : n < 7 && !long ? d.toLocaleDateString(undefined, { weekday: 'long' }) : dayTxt;
   return base + (e.time ? ' ' + e.time : '');
 }
-const evIcon = (e) => (e.kind === 'birthday' ? '🎂' : e.kind === 'pickup' ? '🚌' : e.kind === 'notice' ? '📣' : '📅');
+const evIcon = (e) => (e.kind === 'birthday' ? '🎂' : e.kind === 'pickup' ? '🚌' : e.kind === 'notice' ? '📣' : e.kind === 'update' ? '🔄' : '📅');
 function renderTicker() {
   const b = $('#tb-ticker'), t = $('#tk-track'); if (!b || !t) return;
   const show = !!selfId() && $('#shell').classList.contains('home-page') && !editing;

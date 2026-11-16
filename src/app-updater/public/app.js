@@ -105,12 +105,54 @@ function render() {
   $('#quietSw').checked = d.settings.quiet.enabled;
   $('#qStart').value = d.settings.quiet.start;
   $('#qEnd').value = d.settings.quiet.end;
+  const tk = d.settings.ticker || {};
+  $('#tickerSw').checked = !!tk.enabled;
+  const tc = $('#tickerChip'), tn = $('#tickerNote');
+  tc.textContent = tk.linked ? 'Linked to Portal Admin' : 'Not linked yet';
+  tc.className = 'chip ' + (tk.linked ? 'ok' : 'warn');
+  tn.hidden = !(tk.error || !tk.linked);
+  tn.textContent = tk.error ? 'Last notice failed: ' + tk.error
+    : 'To link it, open Portal Admin > Changes and apply "Portal API key for each app" and "Dashboard notices from apps". No restart is needed.';
 
-  $('#list').replaceChildren(...(d.apps.length ? d.apps.map(renderApp) : [h('div', { class: 'empty' }, d.umbrel.connected ? 'No apps found yet.' : 'Connect to umbrelOS to list your apps.')]));
+  $('#list').replaceChildren(...(d.apps.length ? renderGroups(d) : [h('div', { class: 'empty' }, d.umbrel.connected ? 'No apps found yet.' : 'Connect to umbrelOS to list your apps.')]));
 
   $('#log').replaceChildren(...(d.log.length
     ? d.log.map((e) => h('div', { class: e.level }, h('time', {}, when(e.t)), h('span', {}, e.message)))
     : [h('div', { class: 'sub' }, 'Nothing yet.')]));
+}
+
+/* Apps are grouped by the App Store they came from; each group collapses and expands, and the state is saved on the server. */
+function renderGroups(d) {
+  const groups = new Map();
+  for (const a of d.apps) {
+    const st = a.store || { id: 'other', name: 'Other apps' };
+    if (!groups.has(st.id)) groups.set(st.id, { id: st.id, name: st.name, apps: [] });
+    groups.get(st.id).apps.push(a);
+  }
+  const list = [...groups.values()].sort((x, y) =>
+    (x.id === 'other') - (y.id === 'other') ||
+    y.apps.filter((a) => a.update).length - x.apps.filter((a) => a.update).length ||
+    x.name.localeCompare(y.name));
+  return list.map((g) => {
+    const saved = d.settings.groupOpen && d.settings.groupOpen[g.id];
+    const open = typeof saved === 'boolean' ? saved : g.apps.some((a) => a.update); // first time: open only if something is waiting
+    const updates = g.apps.filter((a) => a.update).length;
+    const auto = g.apps.filter((a) => a.mode !== 'off').length;
+    const meta = [g.apps.length + (g.apps.length === 1 ? ' app' : ' apps'), auto ? auto + ' on auto-update' : ''].filter(Boolean).join(' · ');
+    return h('section', { class: 'group' + (open ? ' open' : '') },
+      h('button', { class: 'ghead', 'aria-expanded': String(open), onclick: () => toggleGroup(g.id, !open) },
+        h('span', { class: 'chev', 'aria-hidden': 'true' }, '▸'),
+        h('span', { class: 'gname' }, g.name),
+        h('span', { class: 'sub' }, meta),
+        updates ? h('span', { class: 'chip accent' }, updates + (updates === 1 ? ' update' : ' updates')) : null),
+      open ? h('div', { class: 'gbody' }, g.apps.map(renderApp)) : null);
+  });
+}
+
+async function toggleGroup(id, open) {
+  if (view.data) { view.data.settings.groupOpen = Object.assign({}, view.data.settings.groupOpen, { [id]: open }); render(); }
+  try { await api('/api/settings', { groupOpen: { id, open } }); } catch (err) { toast(err.message, true); }
+  view.lastJson = ''; refresh();
 }
 
 function renderApp(a) {
@@ -124,12 +166,12 @@ function renderApp(a) {
   const sub = [(a.version ? 'v' + a.version : 'version unknown'), a.detectedAt ? ' · found ' + when(a.detectedAt) : '', a.result && a.result.ok ? ' · updated ' + when(a.result.at) : ''].join('');
 
   const seg = h('div', { class: 'seg', role: 'group', 'aria-label': 'Auto-update mode' },
-    ['off', 'nightly', 'immediate'].map((m) => h('button', { class: a.mode === m ? 'on' : '', disabled: a.self, onclick: () => setMode(a, m) }, MODE_LABEL[m])));
+    ['off', 'nightly', 'immediate'].map((m) => h('button', { class: a.mode === m ? 'on' : '', onclick: () => setMode(a, m) }, MODE_LABEL[m])));
 
   return h('div', { class: 'card app' },
-    h('div', { class: 'id' }, h('div', { class: 'name' }, a.name), h('div', { class: 'sub' }, sub, a.self ? ' · this app (update by hand)' : '')),
+    h('div', { class: 'id' }, h('div', { class: 'name' }, a.name), h('div', { class: 'sub' }, sub)),
     h('div', { class: 'ctl' }, chips, seg,
-      h('button', { class: 'btn small primary', disabled: !a.update || a.busy || a.self, onclick: () => updateNow(a) }, 'Update now')));
+      h('button', { class: 'btn small primary', disabled: !a.update || a.busy, onclick: () => updateNow(a) }, 'Update now')));
 }
 
 async function setMode(a, mode) {
@@ -153,6 +195,7 @@ $('#pauseSw').addEventListener('change', (e) => save({ paused: !e.target.checked
 $('#nightly').addEventListener('change', (e) => e.target.value && save({ nightlyTime: e.target.value }));
 $('#tz').addEventListener('change', (e) => save({ timezone: e.target.value.trim() }));
 $('#poll').addEventListener('change', (e) => save({ pollSeconds: Number(e.target.value) }));
+$('#tickerSw').addEventListener('change', (e) => save({ ticker: { enabled: e.target.checked } }));
 $('#quietSw').addEventListener('change', (e) => save({ quiet: { enabled: e.target.checked } }));
 $('#qStart').addEventListener('change', (e) => e.target.value && save({ quiet: { start: e.target.value } }));
 $('#qEnd').addEventListener('change', (e) => e.target.value && save({ quiet: { end: e.target.value } }));

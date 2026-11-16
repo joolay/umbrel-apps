@@ -18,10 +18,20 @@ main{max-width:980px;margin:0 auto;padding:20px}
 
 .fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-top:14px}
 .fields label{display:flex;flex-direction:column;gap:5px;font-size:12.5px;color:var(--muted)}
-.quiet{margin-top:14px;font-size:14px}
+.quiet,.ticker{margin-top:14px;font-size:14px}
+.ticker .chip{margin-left:auto}
 .quiet input[type=time]{width:auto}
 
-.list{display:grid;gap:10px;margin-bottom:16px}
+.list{display:grid;gap:12px;margin-bottom:16px}
+.group{border-radius:var(--r)}
+.ghead{width:100%;display:flex;align-items:center;gap:10px;flex-wrap:wrap;text-align:left;font:inherit;color:var(--text);cursor:pointer;
+  background:var(--glass);border:1px solid var(--glass-line);border-radius:var(--r);padding:12px 14px;
+  -webkit-backdrop-filter:blur(18px) saturate(160%);backdrop-filter:blur(18px) saturate(160%)}
+.ghead:hover{border-color:var(--accent)}
+.ghead .gname{font-weight:650;flex:1 1 auto}
+.ghead .chev{display:inline-block;color:var(--accent);transition:transform .15s}
+.group.open .ghead .chev{transform:rotate(90deg)}
+.gbody{display:grid;gap:10px;margin-top:10px;padding-left:12px;border-left:2px solid color-mix(in srgb,var(--accent) 35%,transparent)}
 .app{padding:12px 14px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
 .app .id{flex:1 1 220px;min-width:0}
 .app .name{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

@@ -359,5 +359,23 @@ module.exports = function makeClient(cfg) {
       const v = (j.items || [])[0] && j.items[0].value; return typeof v === "string" && /^https?:\/\//i.test(v) ? v : "";
     })) || "";
   }
-  return { portalUrl, requestPasswordReset, setUserPrefs, portalAvailable, setPortalAccess, signupsOpen, enabled, PBError, login, verifyToken, createUser, listUsers, getUser, updateUser, updateAccess, deleteUser, countAdmins, findByEmail, firstAdmin, asSuper, superFetch, ensureSchema, collection: COLL, app: APP };
+  // A ticker notice from an app ("Portal Admin updated"). Everyone sees it on the dashboard on the day it is dated.
+  // The source is always the calling app, and an app's own notices older than a week are tidied away each time it posts.
+  async function publishEvent(ev) {
+    ev = ev || {};
+    const title = String(ev.title || "").trim().slice(0, 120);
+    if (!title) throw new PBError(400, "A notice needs a title");
+    const start = /^\d{4}-\d{2}-\d{2}( \d{2}:\d{2})?$/.test(String(ev.start || "")) ? String(ev.start) : new Date().toISOString().slice(0, 16).replace("T", " ");
+    const row = { title, sub: String(ev.sub || "").slice(0, 120), kind: /^[a-z]{2,20}$/.test(String(ev.kind || "")) ? ev.kind : "notice", start, link: "", source: APP };
+    let made;
+    try { made = await asSuper("POST", "/api/collections/portal_events/records", row); }
+    catch (e) { if (e.status === 404) throw new PBError(404, 'The portal_events collection does not exist yet. In Portal Admin > Changes, apply "Dashboard notices from apps".'); throw e; }
+    try {
+      const cut = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
+      const old = await asSuper("GET", `/api/collections/portal_events/records?perPage=50&filter=${q(`source = '${esc(APP)}' && start < '${cut}'`)}`);
+      for (const r of old.items || []) await asSuper("DELETE", `/api/collections/portal_events/records/${r.id}`);
+    } catch (e) { /* tidying is best effort */ }
+    return { id: made.id };
+  }
+  return { publishEvent, portalUrl, requestPasswordReset, setUserPrefs, portalAvailable, setPortalAccess, signupsOpen, enabled, PBError, login, verifyToken, createUser, listUsers, getUser, updateUser, updateAccess, deleteUser, countAdmins, findByEmail, firstAdmin, asSuper, superFetch, ensureSchema, collection: COLL, app: APP };
 };

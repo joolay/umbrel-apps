@@ -2,7 +2,7 @@ manifestVersion: 1
 id: joolay-portal-admin
 category: developer
 name: Portal Admin
-version: "0.21.3"
+version: "0.21.4"
 tagline: One admin panel for all your custom PocketBase apps
 description: >-
   A central admin panel for your custom apps that use PocketBase. Register each app, then manage
@@ -21,7 +21,7 @@ gallery: []
 path: ""
 defaultUsername: ""
 defaultPassword: ""
-releaseNotes: "New: Paid apps. The admin can lock an app behind a Yoco payment (one-off or for a number of days, with an optional household price); locked apps show a padlock and the price, and unlock automatically once paid. Make your own folders on the home screen and dock, dock icons grow under the mouse, and the dashboard has an animated background you can change in My settings. You can link a spouse (invite an existing account, or create theirs; an admin approves new accounts) and name and surname are required at sign-up. The admin is now also a regular JoolzApp person with the same features as everyone else. New navy-blue app icon, Umbrel app icons on tiles, and a scrolling Upcoming ticker in the top bar."
+releaseNotes: "New: apps can post a notice to the dashboard ticker (for example App Updater announcing that an app was updated). Apply \"Dashboard notices from apps\" under Changes to switch it on. Notices show with a refresh icon."
 submitter: joolay
 submission: https://github.com/joolay/umbrel-apps
 icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-portal-admin/icon.svg

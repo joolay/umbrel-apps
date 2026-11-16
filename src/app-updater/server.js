@@ -49,10 +49,13 @@ const DEFAULTS = {
   quiet: { enabled: false, start: '22:00', end: '06:00' }, // "Immediately" apps wait while this is active
   paused: false,
   pollSeconds: 60,
+  ticker: { enabled: false },  // announce finished updates in the JoolzApp dashboard news ticker (everyone sees it)
+  groupOpen: {},               // { storeId: true | false } expanded/collapsed state of each store group
   seen: {},                    // { appId: lastAnnouncedVersion }
 };
 const settings = Object.assign({}, DEFAULTS, readJson(SETTINGS_FILE, {}));
 settings.quiet = Object.assign({}, DEFAULTS.quiet, settings.quiet);
+settings.ticker = Object.assign({}, DEFAULTS.ticker, settings.ticker);
 const saveSettings = () => writeJson(SETTINGS_FILE, settings);
 
 // session.json holds the umbrelOS session token. When "stay connected" is chosen it also holds the
@@ -192,18 +195,80 @@ async function umbrelCall(proc, type, input, timeout) {
   }
 }
 
+/* ------------------------------ dashboard ticker -------------------------- */
+
+// Notices go through Portal API (inside Portal Admin), the same way the other JoolzApps talk to it, so this app holds no PocketBase login.
+// Portal Admin > Changes writes POCKETBASE_PORTAL_URL and POCKETBASE_PORTAL_KEY into this app's data folder (pocketbase.env);
+// the file is re-read on every call, so no restart is needed once it appears.
+const PORTAL_ENV = path.join(DATA_DIR, 'pocketbase.env');
+function portalConfig() {
+  try {
+    const kv = {};
+    for (const line of fs.readFileSync(PORTAL_ENV, 'utf8').split(/\r?\n/)) {
+      const m = line.match(/^\s*(POCKETBASE_PORTAL_(?:URL|KEY))\s*=\s*(.*?)\s*$/);
+      if (m) kv[m[1]] = m[2].replace(/^(["'])(.*)\1$/, '$2');
+    }
+    return kv.POCKETBASE_PORTAL_URL && kv.POCKETBASE_PORTAL_KEY ? { url: kv.POCKETBASE_PORTAL_URL.replace(/\/+$/, ''), key: kv.POCKETBASE_PORTAL_KEY } : null;
+  } catch { return null; }
+}
+
+async function portalCall(fn, args) {
+  const cfg = portalConfig();
+  if (!cfg) throw new Error('not linked to Portal Admin yet (apply "Portal API key for each app" under Portal Admin > Changes)');
+  let r;
+  try {
+    r = await fetch(cfg.url + '/app-api/call', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + cfg.key }, body: JSON.stringify({ fn, args }), signal: AbortSignal.timeout(20000) });
+  } catch (e) { throw new Error("can't reach Portal Admin at " + cfg.url + ' (' + ((e.cause && e.cause.code) || e.message) + ')'); }
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.message || 'Portal API error ' + r.status);
+  if (!j.ok) throw new Error(j.message || 'Portal API error');
+  return j.result;
+}
+
+// "YYYY-MM-DD HH:MM" in the chosen time zone: the form the ticker expects.
+function stamp() {
+  try {
+    const p = Object.fromEntries(new Intl.DateTimeFormat('en-GB', { timeZone: settings.timezone || 'UTC', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+      .formatToParts(new Date()).map((x) => [x.type, x.value]));
+    return p.year + '-' + p.month + '-' + p.day + ' ' + p.hour + ':' + p.minute;
+  } catch { return new Date().toISOString().slice(0, 16).replace('T', ' '); }
+}
+
+async function announce(item, from, to) {
+  if (!settings.ticker.enabled) return;
+  try {
+    await portalCall('publishEvent', [{
+      title: item.name + ' updated',
+      sub: from && to ? 'v' + from + ' → v' + to : to ? 'now v' + to : '',
+      kind: 'update',
+      start: stamp(),
+    }]);
+    status.ticker = { at: Date.now(), error: null };
+    addLog('info', 'Posted "' + item.name + ' updated" to the dashboard ticker', item.id);
+  } catch (err) {
+    status.ticker = { at: status.ticker.at, error: err.message };
+    addLog('error', 'Could not post to the dashboard ticker: ' + err.message, item.id);
+  }
+}
+
 /* ------------------------------ update detection -------------------------- */
 
 // Walks whatever umbrelOS returns for the store registry and collects { appId: version }.
-function collectVersions(node, map, depth) {
+// When `stores` is given it also records which store each app came from ({ id, name }).
+function collectVersions(node, map, depth, stores, store) {
   if (!node || depth > 6) return map;
-  if (Array.isArray(node)) { node.forEach((n) => collectVersions(n, map, depth + 1)); return map; }
+  if (Array.isArray(node)) { node.forEach((n) => collectVersions(n, map, depth + 1, stores, store)); return map; }
   if (typeof node === 'object') {
-    if (typeof node.id === 'string' && typeof node.version === 'string' && !node.apps) map.set(node.id, node.version);
-    for (const k of ['apps', 'registry']) if (node[k]) collectVersions(node[k], map, depth + 1);
+    if (typeof node.id === 'string' && typeof node.version === 'string' && !node.apps) {
+      map.set(node.id, node.version);
+      if (stores && store) stores.set(node.id, store);
+    }
+    const here = node.apps && typeof node.id === 'string' ? { id: node.id, name: prettyStore(node.name || node.id) } : store;
+    for (const k of ['apps', 'registry']) if (node[k]) collectVersions(node[k], map, depth + 1, stores, here);
   }
   return map;
 }
+const prettyStore = (v) => String(v).replace(/[-_]+/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase());
 
 const clean = (v) => String(v || '').trim().replace(/^v/i, '');
 function isNewer(latest, installed) {
@@ -218,7 +283,7 @@ function isNewer(latest, installed) {
 }
 
 const status = {
-  lastCheck: null, lastError: null, registryProc: null, registryCount: 0, busy: {}, lastResult: {}, failedAt: {}, detectedAt: {},
+  lastCheck: null, lastError: null, registryProc: null, registryCount: 0, stores: new Map(), ticker: { at: null, error: null }, busy: {}, lastResult: {}, failedAt: {}, detectedAt: {},
 };
 let installedCache = [];
 
@@ -226,8 +291,9 @@ async function fetchRegistry() {
   for (const proc of ['appStore.registry']) {
     try {
       const data = await umbrelCall(proc, 'query');
-      const map = collectVersions(data, new Map(), 0);
-      if (map.size) { status.registryProc = proc; status.registryCount = map.size; return map; }
+      const stores = new Map();
+      const map = collectVersions(data, new Map(), 0, stores, null);
+      if (map.size) { status.registryProc = proc; status.registryCount = map.size; status.stores = stores; return map; }
     } catch (err) {
       if (err.status === 401) throw err;
     }
@@ -239,13 +305,14 @@ async function fetchRegistry() {
 
 async function check() {
   const list = await umbrelCall('apps.list', 'query');
-  const installed = (Array.isArray(list) ? list : []).filter((a) => a && a.id && !a.error);
+  const installed = (Array.isArray(list) ? list : []).filter((a) => a && a.id && !a.error && a.id !== SELF_APP_ID); // this app never lists or updates itself
   const registry = await fetchRegistry();
   installedCache = installed.map((a) => {
     const latest = registry && registry.get(a.id) ? registry.get(a.id) : null;
     const flagged = typeof a.updateAvailable === 'boolean' ? a.updateAvailable : null; // newer umbrelOS builds may report it directly
     const update = flagged !== null ? flagged : !!(latest && a.version && isNewer(latest, a.version));
-    const item = { id: a.id, name: a.name || a.id, version: a.version || null, latest: latest || null, update, state: a.state || null };
+    const store = status.stores.get(a.id) || null;
+    const item = { id: a.id, name: a.name || a.id, version: a.version || null, latest: latest || null, update, state: a.state || null, store: store || { id: 'other', name: 'Other apps' } };
     if (update) {
       if (!status.detectedAt[a.id] || status.detectedAt[a.id].version !== (latest || '?')) {
         status.detectedAt[a.id] = { version: latest || '?', at: Date.now() };
@@ -320,6 +387,7 @@ function updateApp(item, reason) {
           status.lastResult[item.id] = { ok: true, at: Date.now(), from: before, to: a.version || null };
           addLog('ok', item.name + ' updated' + (a.version ? ' to ' + a.version : '') + ' (state: ' + (a.state || 'unknown') + ')', item.id);
           delete status.failedAt[item.id];
+          await announce(item, before, a.version || null);
           await check().catch(() => {});
           return;
         }
@@ -372,16 +440,15 @@ function snapshot() {
   const apps = installedCache.map((a) => ({
     ...a,
     mode: settings.apps[a.id] || 'off',
-    self: a.id === SELF_APP_ID,
     busy: !!status.busy[a.id] || a.state === 'updating',
     detectedAt: status.detectedAt[a.id] ? status.detectedAt[a.id].at : null,
     result: status.lastResult[a.id] || null,
-    waiting: a.update && !status.busy[a.id] && (settings.apps[a.id] || 'off') !== 'off' && a.id !== SELF_APP_ID && !allowedNow(a.id),
+    waiting: a.update && !status.busy[a.id] && (settings.apps[a.id] || 'off') !== 'off' && !allowedNow(a.id),
   }));
   apps.sort((a, b) => Number(b.update) - Number(a.update) || a.name.localeCompare(b.name));
   return {
     umbrel: { connected: !!umbrel.token || !!umbrel.password, signedIn: !!umbrel.token, remember: !!umbrel.password, base: umbrel.base, error: umbrel.error },
-    settings: { nightlyTime: settings.nightlyTime, timezone: settings.timezone, quiet: settings.quiet, paused: settings.paused, pollSeconds: settings.pollSeconds },
+    settings: { nightlyTime: settings.nightlyTime, timezone: settings.timezone, quiet: settings.quiet, paused: settings.paused, pollSeconds: settings.pollSeconds, groupOpen: settings.groupOpen, ticker: { enabled: settings.ticker.enabled, linked: !!portalConfig(), at: status.ticker.at, error: status.ticker.error } },
     apps,
     check: { at: status.lastCheck, error: status.lastError, registryProc: status.registryProc, registryCount: status.registryCount },
     log: log.slice(-60).reverse(),
@@ -470,6 +537,10 @@ const server = http.createServer(async (req, res) => {
       if (b.nightlyTime !== undefined) { if (!validTime(b.nightlyTime)) throw Object.assign(new Error('Use a time like 03:00'), { status: 400 }); settings.nightlyTime = b.nightlyTime.padStart(5, '0'); }
       if (b.timezone !== undefined) { if (b.timezone && !validZone(b.timezone)) throw Object.assign(new Error('Unknown time zone'), { status: 400 }); settings.timezone = b.timezone; }
       if (b.paused !== undefined) settings.paused = !!b.paused;
+      if (b.ticker && b.ticker.enabled !== undefined) settings.ticker.enabled = !!b.ticker.enabled;
+      if (b.groupOpen && typeof b.groupOpen.id === 'string' && b.groupOpen.id.length < 80) {
+        settings.groupOpen = Object.assign({}, settings.groupOpen, { [b.groupOpen.id]: !!b.groupOpen.open });
+      }
       if (b.pollSeconds !== undefined) settings.pollSeconds = Math.max(30, Math.min(3600, Number(b.pollSeconds) || 60));
       if (b.quiet) {
         const q = b.quiet;
