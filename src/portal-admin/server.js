@@ -290,7 +290,7 @@ async function accountRoutes(req, res, pathname) {
         const mineF = (await family.mine(user)).family;
         if (!mineF || !mineF.canManage) return out({ status: 400, message: 'Create a family first, or ask its creator to make you a manager.' });
         const email = String(b.email || '').trim().toLowerCase(), password = String(b.password || ''), name = String(b.name || '').trim().slice(0, 80), dob = String(b.dob || '').trim(), username = pbx.cleanUsername(b.username);
-        if (!name) return out({ status: 400, message: "Enter the child's name." });
+        if (!/\S\s+\S/.test(name)) return out({ status: 400, message: "Enter the child's name and surname." });
         if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return out({ status: 400, message: "Enter a valid email for the child's account." });
         if (password.length < 8 || password.length > 200) return out({ status: 400, message: 'Use a password of at least 8 characters.' });
         if (!guardians.validDob(dob) || guardians.ageOf(dob) >= 18) return out({ status: 400, message: "Enter the child's date of birth. This page is for under-18s; adults sign up themselves." });
@@ -354,6 +354,7 @@ async function signup(req, res) {
   try {
     if (!(await pbx.usersSchema())) return send(res, 403, { message: 'Sign-ups are currently closed. Ask the admin for an account.' });
     const email = String(b.email || '').trim().toLowerCase(), password = String(b.password || ''), name = String(b.name || '').trim().slice(0, 80), dob = String(b.dob || '').trim();
+    if (!/\S\s+\S/.test(name)) return send(res, 400, { message: 'Enter your name and surname.' });
     if (!validEmail(email)) return send(res, 400, { message: 'Enter a valid email address.' });
     if (password.length < 8 || password.length > 200) return send(res, 400, { message: 'Use a password of at least 8 characters.' });
     if (!guardians.validDob(dob)) return send(res, 400, { message: 'Enter your date of birth.' });

@@ -41,8 +41,8 @@
   <form id="signup-form" class="card login-card" autocomplete="on">
     <div class="brand big"><img src="icon.svg" alt="" width="40" height="40"><span>Portal Admin</span></div>
     <p class="muted">Create your <strong>JoolzApp</strong> account. One account works across all Joolzapp apps.</p>
-    <label>Name (optional)
-      <input id="signup-name" autocomplete="name">
+    <label>Name and surname
+      <input id="signup-name" autocomplete="name" placeholder="e.g. Zahir Joolay" minlength="3" maxlength="80" pattern=".*\S\s+\S.*" title="Enter your name and surname" required>
     </label>
     <label>Email
       <input id="signup-email" type="email" autocomplete="email" required>

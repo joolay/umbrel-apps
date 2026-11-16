@@ -689,7 +689,7 @@ async function userList(page = 1, search = '') {
 async function userDetail(id) {
   if (id === '__new') {
     main().innerHTML = `<div class="crumb"><a href="#/users">← Users</a></div><h1>Add user</h1><form id="f" class="card"><div class="kv">
-      <label>Email<input name="email" type="email" required></label><label>Name<input name="name"></label>
+      <label>Email<input name="email" type="email" required></label><label>Name and surname<input name="name" required pattern=".*\\S\\s+\\S.*" title="Enter a name and surname"></label>
       <label>Password (min 8)<input name="password" type="password" minlength="8" required></label></div>
       <label class="inline"><input type="checkbox" name="verified" checked> Mark as verified</label><button class="btn primary">Create user</button></form>`;
     $('#f').onsubmit = guard(async (e) => {
@@ -1230,7 +1230,7 @@ async function profilePane(uid) {
   const box = $('#pane-profile'); if (!box) return;
   const [me, g] = await Promise.all([api('GET', `/api/collections/${state.usersColl}/records/${uid}`).catch(() => ({})), acctFetch('/guardians').catch(() => ({ minor: false, parents: [] }))]);
   box.innerHTML = `<h2>Profile</h2>
-    <form id="pf-name" class="kv"><label>Name<input name="name" value="${esc(me.name || '')}" maxlength="80" autocomplete="name"></label><div><button class="btn primary small">Save name</button></div></form>
+    <form id="pf-name" class="kv"><label>Name and surname<input name="name" value="${esc(me.name || '')}" maxlength="80" autocomplete="name" required pattern=".*\\S\\s+\\S.*" title="Enter your name and surname"></label><div><button class="btn primary small">Save name</button></div></form>
     <p class="muted small">Email: <b>${esc(state.actor)}</b></p>
     ${'username' in me ? `<form id="pf-user" class="kv"><label>Username<input name="u" value="${esc(me.username || '')}" placeholder="Choose a username" autocapitalize="none" autocorrect="off" spellcheck="false" minlength="3" maxlength="30" required><span class="muted small">Sign in with your username or your email.</span></label><div><button class="btn primary small">Save username</button></div></form>` : ''}
     <h3>Change password</h3>
@@ -1322,7 +1322,7 @@ async function familyPane(uid) {
       ${f.canManage ? `<form id="fam-inv" class="kv" style="margin-top:12px"><label>Registered JoolzApp users<select name="pick"><option value="">Choose someone…</option>${people.map((u) => `<option value="${esc(u.email)}">${esc(u.name)} (${esc(u.email)})</option>`).join('')}</select></label><label>Or invite by email (they don't need an account yet)<input name="email" type="email"></label><label>They<select name="tier"><option value="family">Live in my household (share expenses)</option><option value="extended">Are extended family (live elsewhere)</option></select></label><label>Relationship (optional)<input name="relation" maxlength="40" placeholder="wife, grandmother, uncle…"></label><div><button class="btn primary small">Invite</button></div></form>` : ''}
       ${f.isOwner ? '<p class="muted small">Tip: make someone a manager and they can invite, remove and move members too.</p>' : ''}
       ${f.canManage && !data.minor ? `<details style="margin-top:12px"><summary><b>Create an account for your child</b></summary><form id="fam-child" class="kv" style="margin-top:8px"><p class="muted small">For under-18s. You approve them automatically; an admin still has to approve the new account before it can be used.</p>
-        <label>Child's name<input name="name" maxlength="80" required></label><label>Child's email (their sign-in)<input name="email" type="email" required autocomplete="off"></label>
+        <label>Child's name and surname<input name="name" maxlength="80" required pattern=".*\\S\\s+\\S.*" title="Enter a name and surname"></label><label>Child's email (their sign-in)<input name="email" type="email" required autocomplete="off"></label>
         <label>Password (min 8)<input name="pw" type="password" minlength="8" required autocomplete="new-password"></label>
         <label>Date of birth<input name="dob" type="date" min="${new Date(Date.now() - 18 * 365.25 * 864e5).toISOString().slice(0, 10)}" max="${new Date().toISOString().slice(0, 10)}" required></label>
         <label>Relationship (optional)<input name="relation" maxlength="40" placeholder="son, daughter…"></label><div><button class="btn primary small">Create account</button></div></form></details>` : ''}
