@@ -33,28 +33,44 @@ const publicUser = u => ({ id: u.id, email: u.email || "", name: u.name || "", i
 
 /* ---------- sessions ---------- */
 const tokenCache = new Map();
-function tokenOf(req) {
-  const h = String(req.headers["x-gd-token"] || ""); if (h) return h;
-  const m = String(req.headers.cookie || "").match(/(?:^|;\s*)gd_token=([^;]+)/); return m ? m[1] : "";
+// Header first (the page sends it), then the cookie. If the header copy has gone stale the cookie, which is renewed as you use the app, still works.
+function tokensOf(req) {
+  const out = [], h = String(req.headers["x-gd-token"] || "");
+  if (h) out.push(h);
+  const m = String(req.headers.cookie || "").match(/(?:^|;\s*)gd_token=([^;]+)/);
+  if (m && m[1] !== h) out.push(m[1]);
+  return out;
 }
-// "Remember me" keeps the sign-in for 14 days; otherwise the cookie lasts until the browser closes.
+// "Remember me" keeps the sign-in until 90 days after you last used the app; otherwise the cookie lasts until the browser closes.
 function setSessionCookie(req, res, token, remember) {
   if (remember === undefined) remember = /(?:^|;\s*)gd_rem=1/.test(String(req.headers.cookie || ""));
-  const secure = String(req.headers["x-forwarded-proto"] || "").includes("https") ? "; Secure" : "", age = remember ? `; Max-Age=${14 * 86400}` : "";
+  const secure = String(req.headers["x-forwarded-proto"] || "").includes("https") ? "; Secure" : "", age = remember ? `; Max-Age=${90 * 86400}` : "";
   res.setHeader("set-cookie", [`gd_token=${token}; Path=/; HttpOnly; SameSite=Lax${age}${secure}`, remember ? `gd_rem=1; Path=/; HttpOnly; SameSite=Lax${age}${secure}` : `gd_rem=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`]);
 }
 const clearSessionCookie = res => res.setHeader("set-cookie", ["gd_token=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0", "gd_rem=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0"]);
 async function withGuard(u) { if (u) u.guard = await guardians.statusOf(u).catch(() => ({ minor: guardians.isMinor(u), approved: !guardians.isMinor(u) })); return u; }
+// "Signed in for 90 days since you last used the app": every time PocketBase checks a token it hands back a fresh one, and the cookie is renewed
+// with it (at most once an hour). PocketBase's own token lifetime for the users collection is set to 90 days by Portal Admin > Changes.
+const tokenOf = req => tokensOf(req)[0] || "";
 async function currentUser(req) {
-  const t = tokenOf(req); if (!t) return null;
-  const c = tokenCache.get(t); if (c && Date.now() - c.at < 15000) return c.user;
-  try {
-    const j = await pb.verifyToken(t);
-    await withGuard(j.record);
-    tokenCache.set(t, { user: j.record, at: Date.now() });
-    if (tokenCache.size > 200) tokenCache.delete(tokenCache.keys().next().value);
-    return j.record;
-  } catch (e) { if (e instanceof pb.PBError && [400, 401, 403, 404].includes(e.status)) return null; throw e; }
+  let failure = null;
+  for (const t of tokensOf(req)) {
+    const c = tokenCache.get(t);
+    if (c && Date.now() - c.at < 15000) { if (c.user) { req._renew = c; return c.user; } continue; }
+    try {
+      const j = await pb.verifyToken(t);
+      await withGuard(j.record);
+      const e = { user: j.record, at: Date.now(), fresh: j.token, renewedAt: c && c.renewedAt || 0 };
+      tokenCache.set(t, e); req._renew = e;
+      if (tokenCache.size > 200) tokenCache.delete(tokenCache.keys().next().value);
+      return j.record;
+    } catch (e) {
+      if (e instanceof pb.PBError && [400, 401, 403, 404].includes(e.status)) { tokenCache.set(t, { user: null, at: Date.now() }); continue; }
+      failure = failure || e;
+    }
+  }
+  if (failure) throw failure;
+  return null;
 }
 const attempts = new Map();
 function throttled(req, key, max, windowMs) {
@@ -97,7 +113,7 @@ async function accountRoutes(req, res, p) {
     if (p === "/api/account/me" && req.method === "GET") {
       const u = await currentUser(req);
       if (!u) return send(res, 401, { code: "signin_required", message: "Sign in to continue." }), true;
-      setSessionCookie(req, res, tokenOf(req));
+      setSessionCookie(req, res, (req._renew && req._renew.fresh) || tokenOf(req));
       send(res, 200, { user: { ...publicUser(await withGuard(await pb.getUser(u.id))), portalUrl: await pb.portalUrl().catch(() => "") } }); return true;
     }
     if (p === "/api/account/logout" && req.method === "POST") { clearSessionCookie(res); send(res, 200, { ok: true }); return true; }
@@ -251,6 +267,14 @@ const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; ch
 const SETUP = "<!doctype html><meta name=viewport content='width=device-width'><meta http-equiv=refresh content=5><body style='font:16px system-ui;padding:2rem;max-width:34rem;margin:auto'><h1>Waiting for PocketBase</h1><p>Jolly Grocer isn't connected to PocketBase yet. Open Portal Admin and sign in when it asks; this page then starts on its own within a few seconds.</p></body>";
 
 const server = http.createServer(async (req, res) => {
+  { // renew the sign-in cookie when this request proved who the person is
+    const wh = res.writeHead;
+    res.writeHead = function (...a) {
+      const e = req._renew;
+      if (e && e.fresh && !res.headersSent && !res.getHeader("set-cookie") && Date.now() - e.renewedAt > 3600e3) { e.renewedAt = Date.now(); setSessionCookie(req, res, e.fresh); }
+      return wh.apply(this, a);
+    };
+  }
   try {
     const url = new URL(req.url, "http://x");
     const p = decodeURIComponent(url.pathname);

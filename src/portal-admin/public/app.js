@@ -165,6 +165,8 @@ async function boot() {
       } catch { state.token = ''; }
     }
   }
+  // Keep people signed in until 90 days after they last opened the dashboard: ask PocketBase for a fresh token each time it opens.
+  if (state.token && state.role === 'user') { try { const r = await api('POST', `/api/collections/${state.usersColl}/auth-refresh`); if (r.token) { state.token = r.token; saveSession(!!store.lget('pa.token')); } } catch {} }
   if (state.token) { try { await api('GET', '/api/collections/portal_apps/records?perPage=1').catch((e) => { if (e.status !== 404) throw e; }); return showShell(); } catch {} }
   showLogin();
 }
