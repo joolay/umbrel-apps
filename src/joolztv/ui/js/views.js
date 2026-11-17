@@ -231,7 +231,7 @@ var Views = (function () {
 
   /* "Who's watching?" */
   function picker() {
-    ++browseToken; Tmdb.forget();
+    ++browseToken; Tmdb.forget(); Dl.stop();
     var ps = Profiles.all(), h = '<div class="splash"><div class="picker"><h1>Who\'s watching?</h1><div class="ptiles">';
     ps.forEach(function (p) {
       h += '<div class="ptile f" data-act="selprofile" data-id="' + esc(p.id) + '"><div class="pav" style="background:' + esc(p.color) + '">' + avHtml(p) + '</div><div class="pn">' + esc(p.name) + '</div>' +
@@ -281,6 +281,7 @@ var Views = (function () {
     Api.setStreamBase('');
     Backend.household().then(function (h) { Profiles.setAll(h.profiles); Profiles.setManageable(h.manageable); Api.setPrefs(h.prefs); }).catch(function () {}).then(function () { return Tmdb.init(); }).then(function () {
       if (Store.active() !== id) return;
+      Dl.start();
       Sync.run(function () { var v = current(); if (v && PAGES.indexOf(v.name) >= 0 && v.name === 'home') page('home'); });
       if (!Api.quality()) return qualityStep(function () { page('home'); });          // a household set up before this question existed
       page('home');
@@ -484,6 +485,10 @@ var Views = (function () {
       }
     }
     var tslots = trows.map(function () { var s = document.createElement('div'); rows.appendChild(s); return s; });
+    if (kind === 'home' && Dl.ready().length) {
+      var slotR = document.createElement('div'); rows.insertBefore(slotR, rows.children[1] || null);
+      slotR.innerHTML = rowHtml('Ready to watch', Dl.ready().slice(0, 12).map(function (x) { return { type: x.type, id: x.imdb, name: x.name, poster: x.poster }; })); Nav.hydrate(); focusFirst();
+    }
     defs.forEach(function () { var s = document.createElement('div'); rows.appendChild(s); slots.push(s); });
     var pending = defs.length + trows.length;
     function done() { if (--pending === 0 && token === browseToken && !rows.querySelector('.row')) main.innerHTML = '<div class="empty">Nothing to show right now. Check your internet connection.</div>'; }
@@ -606,6 +611,28 @@ var Views = (function () {
       }
     } catch (e) { return toast('Could not open Netflix from here. ' + hint, 7000); }
     try { window.open('https://www.netflix.com/search?q=' + encodeURIComponent(title), '_blank'); } catch (e) { toast(hint, 6000); }
+  }
+  /* ---------- download ahead ---------- */
+  function dlButton(el) {
+    var b = el && el.querySelector('#dlbtn'), D = el && el._detail; if (!b || !D) return;
+    var j = Dl.forVideo(D.play.videoId || D.id);
+    b.textContent = !j ? 'Download ahead' : j.status === 'ready' ? '\u2713  Downloaded' : j.status === 'failed' ? 'Download failed, try again' : 'Downloading ' + Dl.pct(j) + '%';
+  }
+  Dl.onChange(function () { var v = current(); if (v && v.name === 'detail') dlButton(v.el); });
+  function dlAhead(el) {
+    var D = el._detail; if (!D) return;
+    var info = D.play, vid = info.videoId || D.id, j = Dl.forVideo(vid);
+    if (j && j.status !== 'failed') {
+      return menu(Dl.title(j), [{ label: j.status === 'ready' ? 'Remove from the downloads list (the file stays in the cache until it is needed)' : 'Cancel this download', k: 'x' }], function () { Dl.remove(j.id).then(function () { toast(j.status === 'ready' ? 'Removed' : 'Cancelled'); dlButton(el); }); }, Dl.state(j));
+    }
+    toast('Finding the best source\u2026', 15000);
+    Api.ensure().then(function () { return Api.getStreams(D.type, vid); }).then(function (res) {
+      var s = res.list[0]; if (!s || !s.infoHash) return toast('No source found to download', 5000);
+      return Dl.add({ imdb: D.id, type: D.type, videoId: vid, name: D.m.name, sub: info.sub || '', poster: D.m.poster || '', infoHash: s.infoHash, fileIdx: s.fileIdx == null ? -1 : s.fileIdx, region: Tmdb.region() }).then(function (r) {
+        toast((res.hasPreferred ? '' : res.preferred + ' is not available, so ') + 'downloading \u201c' + D.m.name + '\u201d' + (s._cat ? ' (' + s._cat + ')' : '') + '. You will be told here when it is ready.', 7000);
+        return Dl.refresh().then(function () { dlButton(el); });
+      });
+    }).catch(function (e) { toast(e.message || 'Could not start the download', 6000); });
   }
   function certChip(c) { return c && c.rating ? '<span class="chip cert">' + esc(c.rating) + '</span>' : ''; }
   function fmtDate(iso) {
@@ -803,9 +830,11 @@ var Views = (function () {
       '<div class="btns"><div class="btn primary f" data-act="play" data-k="' + k + '">' + playLabel + (isSeries && sub ? '  ' + sub : '') + '</div>' +
       '<div class="btn glass f" data-act="play" data-k="' + k2 + '">Choose source</div>' +
       '<div class="btn glass f" data-act="togglelib" id="libbtn">' + (MyList.has(id) ? '✓  In My List' : '+  My List') + '</div>' +
+      '<div class="btn glass f" data-act="dlahead" id="dlbtn">Download ahead</div>' +
       (Profiles.all().some(function (p) { return p.kid && Profiles.manageable().indexOf(p.id) >= 0; }) ? '<div class="btn glass f" data-act="kidsmenu">For kids</div>' : '') + '</div>';
     el.querySelector('.dtop').innerHTML = h;
-    el._detail = { type: type, id: id, m: m, S: S, base: baseInfo };
+    el._detail = { type: type, id: id, m: m, S: S, base: baseInfo, play: info };
+    Dl.refresh().then(function () { dlButton(el); });
     setArt(el, m.background || m.poster);
     if (isSeries) {
       var w = document.createElement('div'); w.className = 'eps-wrap';
@@ -901,6 +930,21 @@ var Views = (function () {
     else if (!Tmdb.on()) h += '<div class="hint">Titles with logos, cast, age ratings, trending lists and Discover switch on when a JoolzApp admin adds a TMDB key here.</div>';
     return h + '<div class="hint">This product uses the TMDB API but is not endorsed or certified by TMDB. Where-to-watch data is provided by JustWatch.</div>';
   }
+  function downloadsRows() {
+    var h = '<div class="lbl">Downloads and cache</div>', js = Dl.jobs();
+    h += '<div class="srow f" data-act="cachesize" id="cacherow">Streaming cache: <b>checking\u2026</b></div>';
+    if (!js.length) h += '<div class="hint">Nothing downloaded ahead. Open a title and choose \u201cDownload ahead\u201d: it is fetched in the background and you are told here when it is ready.</div>';
+    js.slice(0, 12).forEach(function (x) { h += '<div class="srow f" data-act="dljob" data-id="' + esc(x.id) + '">' + esc(Dl.title(x)) + ': <b>' + esc(Dl.state(x)) + '</b></div>'; });
+    return h;
+  }
+  function fillCacheRow() {
+    Backend.call('GET', '/api/server/cache').then(function (c) {
+      var row = document.getElementById('cacherow'); if (!row) return;
+      var gb = function (n) { return n === null || n === undefined ? 'unknown' : Number(n) === 0 ? 'none' : (Number(n) / 1073741824).toFixed(Number(n) % 1073741824 ? 1 : 0) + ' GB'; };
+      row.innerHTML = 'Streaming cache: <b>' + esc(gb(c.reported)) + '</b>' + (c.ok ? '' : (c.tried ? ' (50 GB was asked for and the server did not take it)' : '')) + (c.freeBytes ? ' \u00b7 ' + esc(Dl.fmtBytes(c.freeBytes)) + ' free on the server' : '');
+      row._cache = c;
+    }).catch(function () { var row = document.getElementById('cacherow'); if (row) row.innerHTML = 'Streaming cache: <b>could not be read</b>'; });
+  }
   function settingsPage() {
     ++browseToken;
     var pr = Profiles.active(), rep = Api.deviceReport();
@@ -918,6 +962,7 @@ var Views = (function () {
       '<div class="srow f" data-act="sublang2">Second language: <b>' + esc(subPrefs().lang2 ? Subs.langName(subPrefs().lang2) : 'None') + '</b></div>' +
       '<div class="srow f" data-act="subauto">Turn on the best matching subtitles automatically: <b>' + (subPrefs().auto ? 'ON' : 'OFF') + '</b></div>' +
       '<div class="srow f" data-act="subautosync">Auto-sync subtitles when they are turned on (uses your server\'s processor): <b>' + (subPrefs().autosync ? 'ON' : 'OFF') + '</b></div>' +
+      downloadsRows() +
       '<div class="lbl">Typing</div>' +
       '<div class="srow f" data-act="kbdmode">On-screen keyboard: <b>' + (Kbd.enabled() ? 'Big keys' : 'The TV\u2019s own keyboard') + '</b></div>' +
       '<div class="lbl">Playback</div>' +
@@ -929,6 +974,7 @@ var Views = (function () {
       '<div class="hint">JoolzTV ' + esc(window.FLIX_VERSION || '') + '. The top 3 sources by seeds are offered per resolution; posters come from Cinemeta and subtitles from OpenSubtitles. Video plays through your own streaming server behind your JoolzApp sign-in. You stay signed in while anyone in the household uses JoolzTV; after 90 days with no use everyone signs in again. ' + esc(Sync.status()) + '</div></div></div>';
     replaceAll('settings', h, { cls: 'noart', onBack: function () { page('home'); return true; } });
     Nav.first('.tab.on');
+    fillCacheRow(); Dl.refresh().then(function () { var v = current(); if (v && v.name === 'settings' && document.querySelectorAll('[data-act=dljob]').length !== Math.min(12, Dl.jobs().length)) settingsPage(); });
   }
 
   /* ---------- actions ---------- */
@@ -939,7 +985,14 @@ var Views = (function () {
     if (a === 'play') return playChecked(reg[+el.getAttribute('data-k')]);
     if (a === 'season') return renderEpisodes(current().el, +el.getAttribute('data-s'));
     if (a === 'speak') return speak();
+    if (a === 'cachesize') { var cc = el._cache; if (!cc) return; if (!cc.canSet) return toast('Only a JoolzApp admin can change the cache size', 4000);
+      return menu('Streaming cache size', cc.choices.map(function (g) { return { label: g + ' GB', g: g, selected: Math.round(Number(cc.reported) / 1073741824) === g }; }), function (o) {
+        Backend.call('PUT', '/api/server/cache', { gb: o.g }).then(function () { toast('Cache set to ' + o.g + ' GB', 3500); settingsPage(); }).catch(function (e) { toast(e.message, 8000); });
+      }, 'A cache is a ceiling, not a reserved space: the oldest films are dropped when it is full. Make sure the server has that much free disk.'); }
+    if (a === 'dljob') { var jb = null, jid = el.getAttribute('data-id'); Dl.jobs().forEach(function (x) { if (x.id === jid) jb = x; }); if (!jb) return;
+      return menu(Dl.title(jb), [{ label: 'Open the title', k: 'o' }, { label: jb.status === 'ready' || jb.status === 'failed' ? 'Remove from the list' : 'Cancel this download', k: 'x' }], function (o) { if (o.k === 'o') return detail(jb.type, jb.imdb, { name: jb.name, poster: jb.poster }); Dl.remove(jb.id).then(function () { settingsPage(); }); }, Dl.state(jb)); }
     if (a === 'detailback') return back();
+    if (a === 'dlahead') return dlAhead(current().el);
     if (a === 'netflix') return launchNetflix(el.getAttribute('data-title'));
     if (a === 'xtab') return xTab(current().el, el.getAttribute('data-t'));
     if (a === 'person') return personPage(el.getAttribute('data-id'));

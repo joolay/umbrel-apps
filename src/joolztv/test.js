@@ -8,6 +8,7 @@ fs.mkdirSync(path.join(dir, "devtest"), { recursive: true }); fs.writeFileSync(p
 const tmdbStub = require("./test/tmdb-stub.js").make(); tmdbStub.srv.listen(P + 2);
 const HASH = "a".repeat(40), BODY = Buffer.from("0123456789".repeat(100));
 
+const settingsVals = { cacheSize: 10 * 1073741824, serverVersion: "stub" };
 const upstream = http.createServer((q, r) => {
   if (q.url.indexOf("/" + HASH + "/") === 0) {
     const rg = /bytes=(\d+)-(\d*)/.exec(q.headers.range || "");
@@ -16,11 +17,14 @@ const upstream = http.createServer((q, r) => {
   }
   if (q.url.indexOf("/hlsv2/x/master.m3u8") === 0) { r.writeHead(200, { "content-type": "application/vnd.apple.mpegurl" }); return r.end("#EXTM3U\n#EXT-X-MEDIA:URI=\"/hlsv2/x/audio.m3u8\"\n/hlsv2/x/video.m3u8\nhttp://127.0.0.1:11470/hlsv2/x/other.m3u8\nrelative.m3u8\n"); }
   if (q.url.indexOf("/opensubHash") === 0) { r.writeHead(200, { "content-type": "application/json" }); return r.end('{"result":{"hash":"8e245d9679d31e12","size":1000}}'); }
-  if (q.url === "/settings") { r.writeHead(200, { "content-type": "application/json" }); return r.end("{}"); }
+  if (q.url === "/settings" && q.method === "POST") { const c = []; q.on("data", d => c.push(d)); q.on("end", () => { try { const v = JSON.parse(Buffer.concat(c).toString()); if (v.cacheSize <= 100 * 1073741824) settingsVals.cacheSize = v.cacheSize; } catch {} r.writeHead(200, { "content-type": "application/json" }); r.end("{}"); }); return; }
+  if (q.url === "/settings") { r.writeHead(200, { "content-type": "application/json" }); return r.end(JSON.stringify({ options: [], values: settingsVals })); }
+  if (q.url.indexOf("/" + "f".repeat(40) + "/") === 0) { r.writeHead(404); return r.end(); }
+  if (q.url.indexOf("/" + "c".repeat(40) + "/") === 0) { r.writeHead(200, { "content-type": "video/mp4", "content-length": 100000000 }); const iv = setInterval(() => { if (r.destroyed) return clearInterval(iv); r.write(Buffer.alloc(2000)); }, 40); r.on("close", () => clearInterval(iv)); return; }
   r.writeHead(200); r.end("SECRET-" + q.url);
 }).listen(U);
 
-const child = cp.spawn(process.execPath, [path.join(__dirname, "server.js")], { env: Object.assign({}, process.env, { NODE_ENV: "test", JTV_PB: path.join(__dirname, "test", "mock-pb.js"), PORT: P, DATA_DIR: dir, JTV_CACHE_MS: "0", INTRODB_URL: "http://127.0.0.1:9", TMDB_URL: "http://127.0.0.1:" + (P + 2), TMDB_IMG: "https://img.test/t/p/", CINEMETA_URL: "http://127.0.0.1:" + (P + 2), THEINTRODB_URL: "http://127.0.0.1:9", TMDB_URL: "http://127.0.0.1:" + (P + 2), TMDB_IMG: "https://img.test/t/p/", FFMPEG: "/nonexistent/ffmpeg", DEVTEST_DIR: path.join(dir, "devtest"), UI_DIST: path.join(dir, "dist"), STREAM_UPSTREAM: "http://127.0.0.1:" + U }), stdio: "ignore" });
+const child = cp.spawn(process.execPath, [path.join(__dirname, "server.js")], { env: Object.assign({}, process.env, { NODE_ENV: "test", JTV_PB: path.join(__dirname, "test", "mock-pb.js"), PORT: P, DATA_DIR: dir, JTV_CACHE_MS: "0", INTRODB_URL: "http://127.0.0.1:9", JTV_CACHE_APPLY: "1", TMDB_URL: "http://127.0.0.1:" + (P + 2), TMDB_IMG: "https://img.test/t/p/", CINEMETA_URL: "http://127.0.0.1:" + (P + 2), THEINTRODB_URL: "http://127.0.0.1:9", TMDB_URL: "http://127.0.0.1:" + (P + 2), TMDB_IMG: "https://img.test/t/p/", FFMPEG: "/nonexistent/ffmpeg", DEVTEST_DIR: path.join(dir, "devtest"), UI_DIST: path.join(dir, "dist"), STREAM_UPSTREAM: "http://127.0.0.1:" + U }), stdio: "ignore" });
 function req(method, p, body, headers) {
   return new Promise((res, rej) => {
     const r = http.request({ port: P, method, path: p, headers: Object.assign({ "content-type": "application/json" }, headers || {}) }, x => { const c = []; x.on("data", d => c.push(d)); x.on("end", () => { const t = Buffer.concat(c).toString(); let j = null; try { j = JSON.parse(t); } catch {} res({ code: x.statusCode, text: t, json: j, headers: x.headers }); }); });
@@ -212,6 +216,37 @@ const T = tok => ({ "x-jtv-token": tok });
   r = await chk(carol, "tt0111161"); ok(r.ok === false && r.reason === "age", "with the list off the age limit applies again (rated 15 for a 9-year-old)");
   r = await req("PATCH", "/api/household/profiles/" + vwp.id, { kid: true }, T(ann)); ok(r.code === 200 && r.json.profile.kid === true && r.json.profile.kidFlag === true, "a parent can flag a profile as a kids profile");
   r = await req("PATCH", "/api/household/profiles/" + vwp.id, { kid: false }, T(ann)); ok(r.json.profile.kid === false, "...and unflag it");
+  // the 50 GB cache and download ahead
+  r = await req("GET", "/api/server/cache", undefined, T(ann)); ok(r.code === 200 && r.json.reported === 50 * 1073741824 && r.json.ok === true && r.json.canSet === false && r.json.freeBytes > 0, "on start the cache was set to 50 GB and read back (" + (r.json.reported / 1073741824) + " GB, free disk reported)");
+  ok(settingsVals.cacheSize === 50 * 1073741824 && JSON.parse(fs.readFileSync(path.join(dir, "stream-settings.json"), "utf8")).done === true, "the streaming server really has 50 GB, and it is remembered so it is not forced again");
+  r = await req("PUT", "/api/server/cache", { gb: 25 }, T(ann)); ok(r.code === 403, "only an admin can change the cache");
+  r = await req("PUT", "/api/server/cache", { gb: 25 }, T(adm)); ok(r.code === 200 && settingsVals.cacheSize === 25 * 1073741824, "an admin sets 25 GB");
+  r = await req("PUT", "/api/server/cache", { gb: 7 }, T(adm)); ok(r.code === 400, "only the offered sizes");
+  r = await req("PUT", "/api/server/cache", { gb: 200 }, T(adm)); ok(r.code === 409 && /did not accept 200 GB/.test(r.json.message), "when the streaming server does not take a size, the answer says so (" + r.json.message + ")");
+  await req("PUT", "/api/server/cache", { gb: 50 }, T(adm));
+  r = await req("POST", "/api/downloads", { imdb: "tt0111161", type: "movie", name: "Shawshank", infoHash: HASH, fileIdx: 0, region: "GB" }); ok(r.code === 401, "download ahead needs a sign-in");
+  r = await req("POST", "/api/downloads", { imdb: "tt0111161", type: "movie", name: "Shawshank", infoHash: "nope", fileIdx: 0 }, T(ann)); ok(r.code === 400, "download ahead only takes a torrent source");
+  r = await req("POST", "/api/downloads", { imdb: "tt0111161", type: "movie", name: "Shawshank", infoHash: HASH, fileIdx: 0, region: "GB" }, T(ann)); ok(r.code === 201 && (r.json.job.status === "queued" || r.json.job.status === "downloading"), "a download is accepted (" + r.code + " " + r.text.slice(0, 100) + ")");
+  const jid = r.json.job.id; let job; for (let i = 0; i < 30; i++) { await new Promise(x => setTimeout(x, 150)); job = (await req("GET", "/api/downloads", undefined, T(ann))).json.jobs.filter(j => j.id === jid)[0]; if (job && job.status === "ready") break; }
+  ok(job && job.status === "ready" && job.bytes === 1000 && job.size === 1000 && job.name === "Shawshank" && job.notified === false, "it reads the whole file and becomes ready (" + (job && job.bytes) + " of " + (job && job.size) + " bytes)");
+  r = await req("POST", "/api/downloads", { imdb: "tt0111161", type: "movie", name: "Shawshank", infoHash: HASH, fileIdx: 0, region: "GB" }, T(ann)); ok(r.code === 200 && r.json.existing === true, "asking again for the same file does not start it twice");
+  r = await req("POST", "/api/downloads/" + jid + "/notified", {}, T(ann)); ok(r.code === 200, "a notice can be marked as shown");
+  r = await req("GET", "/api/downloads", undefined, T(ann)); ok(r.json.jobs[0].notified === true, "...and it stays marked");
+  r = await req("GET", "/api/downloads", undefined, T(carol)); ok(r.json.jobs.length === 0, "someone else does not see your downloads");
+  r = await req("DELETE", "/api/downloads/" + jid, undefined, T(carol)); ok(r.code === 404, "...and cannot remove them");
+  r = await req("POST", "/api/downloads", { imdb: "tt0000999", type: "movie", name: "Adult", infoHash: HASH, fileIdx: 0, region: "GB" }, T(ann)); ok(r.code === 403 && r.json.code === "adult", "an adult title is refused, even for an adult");
+  r = await req("POST", "/api/downloads", { imdb: "tt0111161", type: "movie", name: "Shawshank", infoHash: HASH, fileIdx: 0, region: "GB" }, T(carol)); ok(r.code === 403 && r.json.code === "age", "the age limit applies to downloads too (a 15 for a 9-year-old)");
+  r = await req("POST", "/api/downloads", { imdb: "tt0111161", type: "movie", name: "Bad file", infoHash: "f".repeat(40), fileIdx: 0, region: "GB" }, T(ann)); const fid = r.json.job.id; let fj; for (let i = 0; i < 20; i++) { await new Promise(x => setTimeout(x, 150)); fj = (await req("GET", "/api/downloads", undefined, T(ann))).json.jobs.filter(j => j.id === fid)[0]; if (fj && fj.status === "failed") break; }
+  ok(fj && fj.status === "failed" && /404/.test(fj.error), "a file the streaming server cannot give fails with a reason (" + (fj && fj.error) + ")");
+  r = await req("POST", "/api/downloads", { imdb: "tt0111161", type: "movie", name: "Long one", infoHash: "c".repeat(40), fileIdx: 0, region: "GB" }, T(ann)); const sid = r.json.job.id; await new Promise(x => setTimeout(x, 900));
+  let sj = (await req("GET", "/api/downloads", undefined, T(ann))).json.jobs.filter(j => j.id === sid)[0]; ok(sj.status === "downloading" && sj.bytes > 0 && sj.size === 100000000, "a long download shows progress (" + sj.bytes + " of " + sj.size + ")");
+  r = await req("POST", "/api/downloads", { imdb: "tt0111161", type: "movie", name: "Long two", infoHash: "c".repeat(40), fileIdx: 1, region: "GB" }, T(ann)); const sid2 = r.json.job.id;
+  r = await req("POST", "/api/downloads", { imdb: "tt0111161", type: "movie", name: "Long three", infoHash: "c".repeat(40), fileIdx: 2, region: "GB" }, T(ann)); ok(r.code === 201, "a third at the same time is accepted");
+  r = await req("POST", "/api/downloads", { imdb: "tt0111161", type: "movie", name: "Long four", infoHash: "c".repeat(40), fileIdx: 3, region: "GB" }, T(ann)); ok(r.code === 429, "a fourth at the same time is refused (3 per person)");
+  sj = (await req("GET", "/api/downloads", undefined, T(ann))).json.jobs; ok(sj.filter(j => j.status === "downloading").length === 2 && sj.filter(j => j.status === "queued").length === 1, "only 2 run at a time, the rest wait");
+  r = await req("DELETE", "/api/downloads/" + sid, undefined, T(ann)); ok(r.code === 200, "a running download can be cancelled"); await new Promise(x => setTimeout(x, 400));
+  sj = (await req("GET", "/api/downloads", undefined, T(ann))).json.jobs; ok(!sj.some(j => j.id === sid) && sj.filter(j => j.status === "downloading").length === 2, "it disappears and the waiting one takes its place");
+  for (const x of sj.filter(j => j.status === "downloading" || j.status === "queued")) await req("DELETE", "/api/downloads/" + x.id, undefined, T(ann));
   // UI build selection
   r = await req("GET", "/", undefined, { "user-agent": "Mozilla/5.0 (Web0S; Linux/SmartTV) AppleWebKit/537.36 Chrome/53.0.2785.34 Safari/537.36 WebAppManager" }); ok(r.text === "COMPAT" && /User-Agent/i.test(r.headers.vary), "LG webOS TV gets the compat build");
   r = await req("GET", "/", undefined, { "user-agent": "Mozilla/5.0 (Macintosh) AppleWebKit/537.36 Chrome/126.0 Safari/537.36" }); ok(r.text === "MODERN", "modern browser gets the modern build");

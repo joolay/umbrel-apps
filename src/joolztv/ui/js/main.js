@@ -1,5 +1,5 @@
 /* Boot + global key handling. */
-window.FLIX_VERSION = 'v1.6.0';
+window.FLIX_VERSION = 'v1.7.0';
 (function () {
   var KEYS = { 37: 'left', 38: 'up', 39: 'right', 40: 'down' };
   var BACK = { 8: 1, 27: 1, 461: 1, 10009: 1 };

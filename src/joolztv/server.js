@@ -23,7 +23,7 @@ const UPSTREAM = new URL(process.env.STREAM_UPSTREAM || "http://server:11470");
 const INTERNAL = process.env.STREAM_INTERNAL || "http://127.0.0.1:11470";   // how the streaming server reaches itself (for transcoding)
 const REQUIRE_ACCOUNTS = !/^(0|false|no)$/i.test(process.env.REQUIRE_ACCOUNTS || "1");
 const subsync = require("./subsync");
-const thumbs = require("./thumbs"), marks = require("./marks"), community = require("./community"), tmdb = require("./tmdb");
+const streamcfg = require("./streamcfg"), thumbs = require("./thumbs"), marks = require("./marks"), community = require("./community"), tmdb = require("./tmdb");
 const FFMPEG = process.env.FFMPEG || "ffmpeg", FFPROBE = process.env.FFPROBE || "ffprobe";
 const APP_NAME = process.env.POCKETBASE_APP_NAME || "JoolzTV";
 const MAX_PROFILES = 12, MAX_BODY = 2 * 1024 * 1024, MAX_RESUME = 200, MAX_LIST = 500, STREAM_TTL = 12 * 3600e3;
@@ -494,6 +494,92 @@ async function prefetchRoute(req, res, u) {
   finally { clearTimeout(timer); preBusy.delete(u.id); preActive--; }
 }
 
+/* ---------- the streaming server's cache (50 GB by default) ---------- */
+const STREAMCFG_FILE = path.join(DATA_DIR, "stream-settings.json");
+const CACHE_CHOICES_GB = [2, 5, 10, 25, 50, 100, 200];
+function freeBytes() { try { const st = fs.statfsSync(DATA_DIR); return st.bavail * st.bsize; } catch { return null; } }
+async function applyCacheAtStart() {                         // once: ask for 50 GB, read it back, remember what the server said
+  const done = readJson(STREAMCFG_FILE, null); if (done && done.done) return;
+  for (let i = 0; i < 40; i++) {
+    try {
+      const r = await streamcfg.setCache(UPSTREAM.origin, streamcfg.DEFAULT);
+      writeJson(STREAMCFG_FILE, Object.assign(r, { done: true, at: Date.now() })); console.log("streaming cache:", r.ok ? "50 GB set" : "the server reports " + r.reported); return;
+    } catch (e) { if (e.code === "refused") { writeJson(STREAMCFG_FILE, { requested: streamcfg.DEFAULT, reported: null, ok: false, refused: true, done: true, at: Date.now() }); return; } }
+    await new Promise(r => setTimeout(r, 15000));
+  }
+}
+if (!test || process.env.JTV_CACHE_APPLY) setTimeout(() => applyCacheAtStart().catch(() => {}), test ? 100 : 1500);
+async function cacheRoute(req, res, u) {
+  const saved = readJson(STREAMCFG_FILE, {});
+  if (req.method === "GET") {
+    let live = null; try { const v = await streamcfg.values(UPSTREAM.origin); live = v.cacheSize === undefined ? null : v.cacheSize; } catch {}
+    return send(res, 200, { requested: saved.requested || null, reported: live !== null ? live : (saved.reported === undefined ? null : saved.reported), ok: saved.ok === true, tried: !!saved.done, canSet: !!u.isAdmin, freeBytes: freeBytes(), choices: CACHE_CHOICES_GB });
+  }
+  if (!u.isAdmin) return send(res, 403, { code: "forbidden", message: "Only a JoolzApp admin can change the streaming cache." });
+  const body = await jsonBody(req), gb = Number(body.gb);
+  if (!CACHE_CHOICES_GB.includes(gb)) return send(res, 400, { code: "bad_request", message: "Pick one of the sizes." });
+  try {
+    const r = await streamcfg.setCache(UPSTREAM.origin, gb * streamcfg.GIB); writeJson(STREAMCFG_FILE, Object.assign(r, { done: true, at: Date.now() }));
+    if (!r.ok) return send(res, 409, { code: "not_accepted", message: "The streaming server did not accept " + gb + " GB. It reports " + (r.reported === null ? "nothing" : (Number(r.reported) / streamcfg.GIB).toFixed(1) + " GB") + ".", reported: r.reported });
+    return send(res, 200, { ok: true, reported: r.reported, freeBytes: freeBytes() });
+  } catch (e) { return send(res, 502, { code: "upstream", message: "The streaming server could not be reached." }); }
+}
+
+/* ---------- download ahead: the server reads a whole file from the streaming server and throws it away, so it is downloaded into the cache before anyone watches ---------- */
+const DL_FILE = path.join(DATA_DIR, "downloads.json");
+let dl = readJson(DL_FILE, { jobs: {} }); if (!dl.jobs) dl.jobs = {};
+const dlActive = new Map(); let dlSaveT = null;
+const dlSave = (now) => { clearTimeout(dlSaveT); const w = () => { try { writeJson(DL_FILE, dl); } catch {} }; if (now) w(); else dlSaveT = setTimeout(w, 3000); };
+Object.values(dl.jobs).forEach(j => { if (j.status === "downloading" || j.status === "queued") { j.status = "queued"; j.bytes = 0; } });
+const DL_ACTIVE_MAX = 2, DL_PER_USER = 3, DL_STORED = 40;
+const dlPub = j => ({ id: j.id, imdb: j.imdb, type: j.type, videoId: j.videoId, name: j.name, sub: j.sub, poster: j.poster, infoHash: j.infoHash, fileIdx: j.fileIdx, status: j.status, bytes: j.bytes || 0, size: j.size || 0, speed: j.speed || 0, error: j.error || "", created: j.created, done: j.done || 0, notified: !!j.notified });
+function dlPump() {
+  while (dlActive.size < DL_ACTIVE_MAX) { const j = Object.values(dl.jobs).filter(x => x.status === "queued").sort((a, b) => a.created - b.created)[0]; if (!j) break; dlRun(j); }
+}
+async function dlRun(j) {
+  const ac = new AbortController(); dlActive.set(j.id, ac); j.status = "downloading"; j.bytes = 0; j.error = ""; j.startedAt = Date.now(); dlSave(true);
+  let last = Date.now(), tick = Date.now(), tickBytes = 0, saved = 0;
+  const stall = setInterval(() => { if (Date.now() - last > 180000) { j.error = "stalled"; ac.abort(); } }, 10000);
+  try {
+    const r = await fetch(UPSTREAM.origin + "/" + j.infoHash + "/" + j.fileIdx, { signal: ac.signal });
+    if (!r.ok) throw Object.assign(new Error("The streaming server answered " + r.status), { code: "upstream" });
+    j.size = Number(r.headers.get("content-length")) || j.size || 0;
+    for await (const c of r.body) {
+      j.bytes += c.length; last = Date.now();
+      if (last - tick >= 2000) { j.speed = Math.round((j.bytes - tickBytes) / ((last - tick) / 1000)); tick = last; tickBytes = j.bytes; }
+      if (last - saved > 5000) { saved = last; dlSave(); }
+    }
+    if (j.size && j.bytes < j.size * 0.98) { j.status = "failed"; j.error = "ended early"; } else { j.status = "ready"; j.done = Date.now(); j.size = j.size || j.bytes; }
+  } catch (e) {
+    if (j.cancelled) j.status = "cancelled"; else { j.status = "failed"; j.error = j.error || (ac.signal.aborted ? "stalled" : String(e.message || "failed").slice(0, 120)); }
+  } finally { clearInterval(stall); j.speed = 0; dlActive.delete(j.id); if (j.status === "cancelled") delete dl.jobs[j.id]; dlSave(true); dlPump(); }
+}
+if (!test || process.env.JTV_DL_RESUME) setTimeout(dlPump, 4000);
+async function downloadsRoutes(req, res, p, u) {
+  const mine = () => Object.values(dl.jobs).filter(j => j.userId === u.id);
+  if (p === "/api/downloads" && req.method === "GET") return send(res, 200, { jobs: mine().sort((a, b) => b.created - a.created).map(dlPub) });
+  if (p === "/api/downloads" && req.method === "POST") {
+    const body = await jsonBody(req), f = fileOf(body), imdb = String(body.imdb || "");
+    if (!f || !/^tt\d{5,12}$/.test(imdb)) return send(res, 400, { code: "bad_request", message: "Needs a title and a torrent source." });
+    let dec; try { dec = await titleDecision(u, imdb, body.type === "series" ? "series" : "movie", /^[A-Z]{2}$/.test(body.region || "") ? body.region : ""); } catch { dec = { ok: false, message: "This title could not be checked right now." }; }
+    if (!dec.ok) return send(res, 403, { code: dec.reason || "not_allowed", message: dec.message });
+    const same = mine().filter(j => j.infoHash === f.key.split(":")[0] && String(j.fileIdx) === f.key.split(":")[1] && j.status !== "failed" && j.status !== "cancelled")[0];
+    if (same) return send(res, 200, { job: dlPub(same), existing: true });
+    if (mine().filter(j => j.status === "queued" || j.status === "downloading").length >= DL_PER_USER) return send(res, 429, { code: "too_many", message: "You can download " + DL_PER_USER + " things ahead at a time. Wait for one to finish or cancel one." });
+    const old = mine().filter(j => j.status !== "queued" && j.status !== "downloading").sort((a, b) => a.created - b.created); while (mine().length >= DL_STORED && old.length) delete dl.jobs[old.shift().id];
+    const id = crypto.randomBytes(6).toString("hex"), [hash, idx] = f.key.split(":");
+    dl.jobs[id] = { id, userId: u.id, imdb, type: body.type === "series" ? "series" : "movie", videoId: String(body.videoId || imdb).slice(0, 40), name: String(body.name || "").slice(0, 120), sub: String(body.sub || "").slice(0, 40), poster: /^https?:\/\/[^\s"'<>]{4,300}$/.test(body.poster || "") ? body.poster : "", infoHash: hash, fileIdx: +idx, status: "queued", bytes: 0, size: 0, created: Date.now() };
+    dlSave(true); dlPump(); return send(res, 201, { job: dlPub(dl.jobs[id]) });
+  }
+  const m = /^\/api\/downloads\/([a-f0-9]{12})(\/notified)?$/.exec(p), j = m && dl.jobs[m[1]];
+  if (m) {
+    if (!j || j.userId !== u.id) return send(res, 404, { code: "not_found", message: "No such download." });
+    if (m[2] && req.method === "POST") { j.notified = true; dlSave(); return send(res, 200, { ok: true }); }
+    if (req.method === "DELETE") { if (dlActive.has(j.id)) { j.cancelled = true; dlActive.get(j.id).abort(); } else delete dl.jobs[j.id]; dlSave(true); return send(res, 200, { ok: true }); }
+  }
+  return send(res, 404, { code: "not_found" });
+}
+
 /* ---------- streaming server behind the sign-in ---------- */
 const SECRET_FILE = path.join(DATA_DIR, "secret.key");
 let SECRET = (() => { try { const s = fs.readFileSync(SECRET_FILE, "utf8").trim(); if (s.length >= 32) return s; } catch {} const s = crypto.randomBytes(32).toString("hex"); fs.writeFileSync(SECRET_FILE, s, { mode: 0o600 }); return s; })();
@@ -646,6 +732,8 @@ const server = http.createServer(async (req, res) => {
       if ((p === "/api/state" && req.method === "GET") || (p === "/api/sync" && req.method === "POST")) return await syncRoutes(req, res, p, u);
       if (p === "/api/subs/sync" && req.method === "POST") return await subsSync(req, res, u);
       if (p === "/api/thumb" && req.method === "GET") return await thumbRoute(req, res, u);
+      if (p === "/api/server/cache" && (req.method === "GET" || req.method === "PUT")) return await cacheRoute(req, res, u);
+      if (p.startsWith("/api/downloads")) return await downloadsRoutes(req, res, p, u);
       if (p === "/api/prefetch" && req.method === "POST") return await prefetchRoute(req, res, u);
       if (p.startsWith("/api/marks/")) return await marksRoutes(req, res, p, u);
       if (p.startsWith("/api/tmdb/")) return await tmdbRoutes(req, res, p, u);
