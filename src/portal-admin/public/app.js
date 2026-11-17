@@ -247,15 +247,19 @@ async function showShell() {
   homeModel().then((m) => { if (!HM) HM = m; renderDock(); }).catch(() => {});   // so the dock is there on every page
   if (selfId()) { seedRegional().then(loadDatePref).catch(loadDatePref); loadAppearance(); }
   loadEvents();
-  if (state.role !== 'user' && !state.public && state.pid) rememberAdminUrl().catch(() => {});
+  if (state.role !== 'user' && !state.public) rememberAdminUrl().catch(() => {});
 }
-// Portal Admin notes its own address on the admin's account (a private pref.* row), so JoolzApp Portal can show them an Admin icon.
+// Portal Admin notes its own address on every admin's account (a private pref.* row each), so JoolzApp Portal can show them an Admin icon.
 async function rememberAdminUrl() {
-  const f = `scope = "user" && user = ${fq(state.pid)} && app = "" && key = "pref.adminUrl"`;
-  const r = (await api('GET', `/api/collections/portal_settings/records?perPage=1&filter=${q(f)}`)).items[0];
-  if (r && r.value === location.origin) return;
-  if (r) await api('PATCH', `/api/collections/portal_settings/records/${r.id}`, { value: location.origin });
-  else await api('POST', '/api/collections/portal_settings/records', { scope: 'user', user: state.pid, app: '', key: 'pref.adminUrl', value: location.origin, secret: false });
+  const admins = new Set((await listAll(state.usersColl, { filter: 'isAdmin = true', max: 50 }).catch(() => [])).map((u) => u.id)); if (state.pid) admins.add(state.pid);
+  if (!admins.size) return;
+  const rows = await listAll('portal_settings', { filter: 'scope = "user" && app = "" && key = "pref.adminUrl"' });
+  for (const id of admins) {
+    const r = rows.find((x) => x.user === id);
+    if (r && r.value === location.origin) continue;
+    if (r) await api('PATCH', `/api/collections/portal_settings/records/${r.id}`, { value: location.origin }).catch(() => {});
+    else await api('POST', '/api/collections/portal_settings/records', { scope: 'user', user: id, app: '', key: 'pref.adminUrl', value: location.origin, secret: false }).catch(() => {});
+  }
 }
 const SESSION_KEYS = ['token', 'actor', 'role', 'uid', 'pid'];
 // The JoolzApp person behind this sign-in. A regular user is themselves; the PocketBase superuser is the account with the same email (if any),
