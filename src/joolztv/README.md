@@ -76,3 +76,7 @@ Optional. A JoolzApp admin pastes a TMDB key in Settings (stored in `<data>/tmdb
   Honest limits: the check is made by the app before starting a title, not by the streaming proxy, and TV rows cannot be filtered by rating (TMDB offers that for films only). Without a key age limits cannot be applied.
 - Attribution ("This product uses the TMDB API but is not endorsed or certified by TMDB.") is in Settings.
 - Tests: `test-tmdb.js` and the TMDB block of `test.js` run against `test/tmdb-stub.js`, a stand-in made from the documented response shapes. Checked once against the live API with a real key: details, logos, ratings, lists, discover, people, collections, seasons and both key types (v3 key and v4 token) work. Keyword ids: 179430 = aftercreditsstinger, 179431 = duringcreditsstinger.
+
+## Skipping with the rewind / forward buttons and keys
+One tap (or one press of OK on the button, an arrow on the progress bar, or the remote's rewind / fast-forward key) = one jump: 10 s for the buttons and arrows, 30 s for the remote's keys. Hold it and it jumps again every second.
+Going forward, the repeated jumps stop at the end of what is already downloaded into the player (a short message says so); a single tap is never limited. Going back is never limited. Holding OK on any other control does not repeat it.

@@ -317,10 +317,19 @@ var Player = (function () {
     if (!S || S.v.paused || Views.hasMenu()) return;
     S.ui = false; S.el.querySelector('.pov').style.display = 'none'; skipsUi(); Nav.set(S.el.querySelector('#seek'), true);
   }
-  function seekBy(sec) {
+  /* One tap = one jump. Holding the button or key keeps jumping once a second (rep = a repeat of a hold); going forward, the repeats stop where the download ends. */
+  function seekBy(sec, rep) {
     if (!S || !isFinite(S.v.duration)) return;
-    S.v.currentTime = Math.max(0, Math.min(S.v.duration - 2, S.v.currentTime + sec)); update(); showUi(); say('');
+    var v = S.v, t = v.currentTime, to = Math.max(0, Math.min(v.duration - 2, t + sec));
+    if (rep && sec > 0) {
+      var lim = bufEnd(v) - 1.5;
+      if (to > lim) to = lim;
+      if (to <= t + 0.5) { if (!S.holdToast || Date.now() - S.holdToast > 3000) { S.holdToast = Date.now(); Views.toast('That is as far as is downloaded so far', 2500); } return; }
+    }
+    S.lastJump = Date.now(); v.currentTime = to; update(); showUi(); say('');
   }
+  var holdT = null, holdOn = false;
+  function holdStop() { clearTimeout(holdT); clearInterval(holdT); holdT = null; }
   function toggle() { if (!S) return; if (S.failed) return pickSource(); if (S.hold) return release('you chose to start'); if (S.v.paused) S.v.play(); else S.v.pause(); }
 
   /* ---- menus ---- */
@@ -451,7 +460,11 @@ var Player = (function () {
     if (!el || !S) return;
     var a = el.getAttribute('data-pact');
     if (a === 'skipgo') { doSkip(); return; }
-    if (a === 'toggle') toggle(); else if (a === 'back10') seekBy(-10); else if (a === 'fwd10') seekBy(10);
+    var rep = !!window.JTV_REPEAT;                                         // the key is being held down (remote)
+    if (rep && a !== 'back10' && a !== 'fwd10') return;                    // holding OK must not toggle play/pause again and again
+    if ((a === 'back10' || a === 'fwd10') && holdOn) { holdOn = false; return; }      // the click that ends a screen hold is not another jump
+    if ((a === 'back10' || a === 'fwd10') && rep && S.lastJump && Date.now() - S.lastJump < 1000) return;
+    if (a === 'toggle') toggle(); else if (a === 'back10') seekBy(-10, rep); else if (a === 'fwd10') seekBy(10, rep);
     else if (a === 'speed') pickSpeed(); else if (a === 'subs') pickSubs(); else if (a === 'sources') pickSource();
     showUi(true);
   });
@@ -459,24 +472,36 @@ var Player = (function () {
     if (S && e.target.id === 'seek' && S.v.duration) { var r = e.target.getBoundingClientRect(); S.v.currentTime = (e.clientX - r.left) / r.width * S.v.duration; showUi(); }
   });
 
+  /* holding a skip button with a mouse or finger: after a short hold it keeps jumping every second */
+  function holdBegin(e) {
+    var el = e.target.closest ? e.target.closest('[data-pact=back10],[data-pact=fwd10]') : null; if (!el || !S) return;
+    var sec = el.getAttribute('data-pact') === 'back10' ? -10 : 10; holdStop(); holdOn = false;
+    holdT = setTimeout(function () { holdOn = true; if (S) seekBy(sec, false); holdT = setInterval(function () { if (!S) return holdStop(); seekBy(sec, true); }, 1000); }, 600);
+  }
+  document.addEventListener('mousedown', holdBegin); document.addEventListener('touchstart', holdBegin);
+  document.addEventListener('mouseup', holdStop); document.addEventListener('touchend', holdStop); document.addEventListener('touchcancel', holdStop);
+  document.addEventListener('mouseleave', holdStop);
+
   /* key handling: returns true when the key was consumed */
   function key(code, e) {
     if (!S || Views.hasMenu() || Views.current().name !== 'player') return false;
     if (S.upnext) { if (code === 13) { playNext(); return true; } return false; }
     var cur = Nav.cur(), onSeek = !cur || cur.id === 'seek' || !S.ui;
     if (code === 415 || code === 19 || code === 179) { if (code === 415 && !S.v.paused) return true; if (code === 19 && S.v.paused) return true; toggle(); return true; }
-    if (code === 412) { seekBy(-30); return true; }
-    if (code === 417) { seekBy(30); return true; }
+    var held = !!(e && e.repeat), gate = held && S.lastJump && Date.now() - S.lastJump < 1000;
+    if (code === 412) { if (!gate) seekBy(-30, held); return true; }
+    if (code === 417) { if (!gate) seekBy(30, held); return true; }
     if (code === 413) { Views.back(); return true; }
     if (!S.ui && (code === 38 || code === 40)) { showUi(true); Nav.set(S.el.querySelector('#seek'), true); return true; }
     if (code === 13) {
+      if (e && e.repeat && onSeek) return true;                                // holding OK on the bar does not toggle play/pause again and again
       if (S.skip && !S.skip.hidden && onSeek && doSkip()) return true;           // OK presses the button while it is showing (unless a control has the focus)
       if (!S.ui) { toggle(); showUi(true); return true; }
       if (onSeek) { toggle(); return true; }
       return false;
     }
     if (code === 37 || code === 39) {
-      if (onSeek) { seekBy(code === 37 ? -10 : 10); return true; }
+      if (onSeek) { if (!gate) seekBy(code === 37 ? -10 : 10, held); return true; }
       showUi(true); Nav.move(code === 37 ? 'left' : 'right'); return true;
     }
     if (code === 40 && cur && cur.id === 'seek') { showUi(true); Nav.set(S.el.querySelector('#bplay')); return true; }

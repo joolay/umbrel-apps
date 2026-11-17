@@ -31,7 +31,8 @@ window.FLIX_VERSION = 'v1.3.0';
       var c = Nav.cur();
       if (!c) return;
       if (c.tagName === 'INPUT') { c.focus(); return; }
-      if (c.hasAttribute('data-act')) Views.act(c); else c.click();
+      window.JTV_REPEAT = !!e.repeat;
+      try { if (c.hasAttribute('data-act')) Views.act(c); else c.click(); } finally { window.JTV_REPEAT = false; }
       return;
     }
     if (BACK[code]) { e.preventDefault(); if (!Views.back()) { try { window.close(); } catch (x) {} } return; }
