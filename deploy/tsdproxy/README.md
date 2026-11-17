@@ -9,7 +9,7 @@ the store is what publishes it**. No per-app Tailscale steps.
 | `https://joolzapp.<tailnet>.ts.net` | JoolzApp Portal: the home screen (its own app; Portal Admin is never published) | 3886 |
 | `https://shutterworth.<tailnet>.ts.net` | ShutterWorth | 3882 |
 | `https://diner-bell.<tailnet>.ts.net` | Diner Bell | 3894 |
-| `https://listify.<tailnet>.ts.net` | Listify | 3898 |
+| `https://listify.<tailnet>.ts.net` | Listify | 3887 |
 
 ## One-time setup (Umbrel, over SSH)
 Needs (already done): HTTPS certificates on, `tag:public` with the `funnel` attribute in your policy, and a reusable auth key tagged `tag:public`.

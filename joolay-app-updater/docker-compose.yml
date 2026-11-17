@@ -10,7 +10,7 @@ services:
       PROXY_AUTH_ADD: "true"
 
   web:
-    image: ghcr.io/joolay/app-updater:1.0.2
+    image: ghcr.io/joolay/app-updater:1.0.3
     restart: on-failure
     stop_grace_period: 10s
     volumes:
@@ -23,3 +23,5 @@ services:
       - UMBREL_URL=${UMBREL_URL:-}
       # Lets Portal Admin find this app and give it a Portal API key (used to post update notices to the dashboard ticker).
       - POCKETBASE_APP_ID=app-updater
+      # Owner-only tool, opened from Umbrel: no icon on the JoolzApp home screen.
+      - JOOLZAPP_DASHBOARD=hidden

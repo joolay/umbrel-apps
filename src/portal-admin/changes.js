@@ -32,6 +32,8 @@ module.exports = function makeChanges({ pbx, installedApps, APPS_DIR, DATA_DIR, 
       fs.writeFileSync(tmp, [...keep, ...Object.entries(kv).map(([k, v]) => k + '=' + v), ''].join('\n'), { mode: 0o600 });
       fs.renameSync(tmp, file);
     },
+    // Portal Admin's own copy of the superuser login (its data folder). The apps' copies must never be removed before this exists.
+    ownLoginSaved() { const e = (() => { try { return parseEnv(fs.readFileSync(path.join(DATA_DIR, 'pocketbase.env'), 'utf8')); } catch { return {}; } })(); return !!(e.POCKETBASE_SUPERUSER_EMAIL && e.POCKETBASE_SUPERUSER_PASSWORD); },
     // Take keys out of <app data>/pocketbase.env, keeping every other line.
     unsetEnv(app, keys) {
       const data = dataDirOf(app), file = path.join(data, 'pocketbase.env');

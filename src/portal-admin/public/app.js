@@ -168,6 +168,8 @@ async function boot() {
   // Keep people signed in until 90 days after they last opened the dashboard: ask PocketBase for a fresh token each time it opens.
   // (in the background, so the dashboard opens without waiting for it)
   if (state.token && state.role === 'user') (async () => { try { const r = await api('POST', `/api/collections/${state.usersColl}/auth-refresh`); if (r.token) { state.token = r.token; saveSession(!!store.lget('pa.token')); } if (store.lget('pa.seen') !== new Date().toISOString().slice(0, 10)) { await acctFetch('/api/active', {}); store.lset('pa.seen', new Date().toISOString().slice(0, 10)); } } catch {} })();
+  // Portal Admin behind Umbrel's login: no second sign-in. The server hands over an admin session (it refuses anywhere else).
+  if ((!state.token || state.role === 'user') && !store.get('pa.noauto') && await autoLogin()) return showShell();
   if (state.token) { try { await api('GET', '/api/collections/portal_apps/records?perPage=1').catch((e) => { if (e.status !== 404) throw e; }); return showShell(); } catch {} }
   showLogin();
 }
@@ -271,7 +273,20 @@ async function resolvePid() {
   try { const r = await api('GET', `/api/collections/${state.usersColl}/records?perPage=1&filter=${q('email = ' + fq(String(state.actor || '').toLowerCase()))}`); state.pid = (r.items[0] && r.items[0].id) || ''; saveSession(!!store.lget('pa.remember')); } catch { /* no linked account */ }
 }
 function saveSession(remember) { SESSION_KEYS.forEach((k) => { store.set('pa.' + k, state[k]); store.lset('pa.' + k, remember ? state[k] : null); }); }
-function logout() { SESSION_KEYS.forEach((k) => { state[k] = ''; store.set('pa.' + k, null); store.lset('pa.' + k, null); }); state.role = 'admin'; state.pidTried = false; showLogin(); }
+function logout() { SESSION_KEYS.forEach((k) => { state[k] = ''; store.set('pa.' + k, null); store.lset('pa.' + k, null); }); state.role = 'admin'; state.pidTried = false; if (!store.get('pa.noauto')) autoLogin().then((ok) => (ok ? showShell() : showLogin())); else showLogin(); }
+let autoTried = 0;
+async function autoLogin() {
+  if (Date.now() - autoTried < 30000) return false;   // never loop if the session it hands over doesn't work
+  try {
+    const c = await (await fetch('/config')).json(); if (!c.autoLogin) return false;
+    autoTried = Date.now();
+    const r = await fetch('/auto-login', { method: 'POST' }); if (!r.ok) return false;
+    const j = await r.json(); if (!j.token) return false;
+    state.pid = ''; state.pidTried = false;
+    Object.assign(state, { token: j.token, actor: j.email, role: 'admin', uid: j.id || '' }); saveSession(false);
+    return true;
+  } catch { return false; }
+}
 async function signIn(identity, password) {
   identity = String(identity || '').trim(); if (!identity.includes('@')) identity = identity.toLowerCase();   // usernames are saved in lower case
   let adminBlocked = false;
@@ -287,7 +302,7 @@ async function signIn(identity, password) {
     throw err;
   }
 }
-$('#logout').onclick = logout;
+$('#logout').onclick = () => { store.set('pa.noauto', '1'); logout(); };   // a real sign-out stays signed out in this tab (so you can sign in as someone else)
 $('#login-form').onsubmit = async (e) => {
   e.preventDefault(); $('#login-err').textContent = '';
   try {
@@ -475,7 +490,10 @@ async function detectApps() {
     // Apps added before their address was known get it filled in now (an address you set yourself is never changed).
     for (const e of existing) { if (e.url) continue; const m = d.apps.find((x) => x.slug === e.slug), u = m && urlFor(m); if (u) { await api('PATCH', `/api/collections/portal_apps/records/${e.id}`, { url: u }).catch(() => {}); await audit('app.url', e.slug, { url: u, detected: true }); } }
     const added = [], pending = [];
+    // Owner-only tools (JOOLZAPP_DASHBOARD=hidden in their compose file) have no icon on the home screen: never added, and taken off if they were added before.
+    for (const a of d.apps) { if (!a.noDash || !a.slug) continue; const e = existing.find((x) => x.slug === a.slug); if (e) { await api('DELETE', `/api/collections/portal_apps/records/${e.id}`).catch(() => {}); await audit('app.hidden', a.slug, { reason: 'owner-only tool' }); HM = null; } }
     for (const a of d.apps) {
+      if (a.noDash) continue;
       if (a.slug) {
         if (have.has(a.slug)) continue;
         try {
