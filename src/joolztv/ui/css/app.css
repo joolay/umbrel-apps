@@ -197,3 +197,6 @@ body.pointer { cursor: pointer; }
 .pphoto { float: left; width: 240px; height: 240px; border-radius: 120px; margin-right: 40px; } .ptext { overflow: hidden; max-width: 1300px; } .ptext .desc { max-height: 150px; font-size: 24px; }
 .gl { font-size: 24px; font-weight: 700; color: var(--dim); text-transform: uppercase; letter-spacing: 1.2px; margin: 8px 0 14px 4px; } .prow { white-space: nowrap; overflow: hidden; margin-bottom: 20px; }
 .grid .btn#gmore { margin: 10px 0 40px 0; } #gmoreh .btn { margin: 0 0 60px 0; }
+.tprev { position: absolute; bottom: 336px; width: 300px; padding: 12px 12px 8px 12px; border-radius: 26px; text-align: center; z-index: 6; box-shadow: 0 14px 40px rgba(0,0,0,.5); }
+.tprev .timg { width: 276px; height: 155px; border-radius: 16px; background-color: #0e1118; background-size: contain; background-repeat: no-repeat; background-position: center; }
+.tprev .tt { font-size: 26px; font-weight: 700; margin-top: 8px; }

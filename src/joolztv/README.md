@@ -80,3 +80,9 @@ Optional. A JoolzApp admin pastes a TMDB key in Settings (stored in `<data>/tmdb
 ## Skipping with the rewind / forward buttons and keys
 One tap (or one press of OK on the button, an arrow on the progress bar, or the remote's rewind / fast-forward key) = one jump: 10 s for the buttons and arrows, 30 s for the remote's keys. Hold it and it jumps again every second.
 Going forward, the repeated jumps stop at the end of what is already downloaded into the player (a short message says so); a single tap is never limited. Going back is never limited. Holding OK on any other control does not repeat it.
+
+## Seek preview pictures
+While a film plays, the player asks the server (`thumbs.js`, `GET /api/thumb`, ffmpeg) for one small picture every 10 seconds (the skip increment), closest to the playhead first. It only asks for parts of the file that this player has already loaded or played (tracked from the video's buffered ranges),
+so nothing is pulled from the torrent ahead of the film; it pauses while the player is buffering, backs off when the server is busy (2 at a time, 1 per person, 500 kept in memory), and stops for the session if the server has no ffmpeg.
+Every jump (tap, hold, arrow on the bar, remote key) shows a small glass card above the bar with the picture nearest to where you land and the time; it fades after 1.7 s. Hovering the bar with a mouse shows the same for that spot. Files shorter than a minute get no pictures.
+Caveat: some files (MKV with the index at the end) make ffmpeg read the end of the file for the first picture, as the browser does when seeking; that is the only read outside the loaded part.

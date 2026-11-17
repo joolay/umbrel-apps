@@ -128,6 +128,11 @@ const T = tok => ({ "x-jtv-token": tok });
   r = await req("POST", "/api/marks/lookup", { imdb: "tt0944947", season: 1, duration: 3000 }, T(ann)); ok(r.code === 400, "lookup: season without episode is refused");
   r = await req("POST", "/api/marks/lookup", { imdb: "tt0944947", season: 1, episode: 1, duration: 3000 }, T(ann)); ok(r.code === 502 && r.json.code === "unreachable", "lookup: the databases being down is a clear answer (here they are unreachable on purpose)");
   r = await req("GET", "/api/marks/show?id=tt0944947", undefined, T(ann)); ok(r.code === 404, "no household-marked intros: the databases and the file's chapters are the only sources");
+  // seek preview pictures
+  r = await req("GET", "/api/thumb?hash=" + HASH + "&idx=0&t=10"); ok(r.code === 401, "thumb needs a sign-in");
+  r = await req("GET", "/api/thumb?hash=nope&idx=0&t=10", undefined, T(ann)); ok(r.code === 400, "thumb only takes a torrent source");
+  r = await req("GET", "/api/thumb?hash=" + HASH + "&idx=0&t=-5", undefined, T(ann)); ok(r.code === 400, "thumb: a negative time is refused");
+  r = await req("GET", "/api/thumb?hash=" + HASH + "&idx=0&t=10", undefined, T(ann)); ok(r.code === 503 && r.json.code === "thumbs_unavailable", "thumb: missing ffmpeg gives a clear answer");
   // TMDB: key, details, lists, parental limits
   r = await req("GET", "/api/tmdb/status", undefined, T(ann)); ok(r.json.enabled === false && r.json.canSetKey === false, "TMDB starts off (no key); an ordinary member cannot set one");
   r = await req("GET", "/api/tmdb/title?imdb=tt0111161", undefined, T(ann)); ok(r.code === 503 && r.json.code === "tmdb_off", "without a key the TMDB routes say so (the app falls back to Cinemeta)");

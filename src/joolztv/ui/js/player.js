@@ -12,7 +12,7 @@ var Player = (function () {
     if (S) close();
     var h = '<video id="pv" preload="auto"></video><div class="pspin" style="display:none"></div><div class="pmsg" style="display:none"></div><div class="skips" id="skips"></div>' +
       '<div class="pov"><div class="ptop"><div class="t1">' + Views.esc(info.title || '') + '</div><div class="t2">' + Views.esc([info.sub, info.epTitle].filter(Boolean).join(' · ')) + '</div><div class="pmode glass" id="pmode"></div></div>' +
-      '<div class="pbar glass"><div class="seek f" id="seek"><div class="buf"></div><div class="pos"></div><div class="knob"></div></div>' +
+      '<div class="tprev glass" id="tprev" style="display:none"><div class="timg img" id="timg"></div><div class="tt" id="ttime"></div></div><div class="pbar glass"><div class="seek f" id="seek"><div class="buf"></div><div class="pos"></div><div class="knob"></div></div>' +
       '<div class="times"><span id="tcur">0:00</span><span id="tdur">0:00</span></div>' +
       '<div class="pctl"><span class="cbtn ic f" data-pact="back10" aria-label="Back 10 seconds">' + ICON.back + '</span><span class="cbtn ic big f" data-pact="toggle" id="bplay" aria-label="Play or pause">' + ICON.pause + '</span><span class="cbtn ic f" data-pact="fwd10" aria-label="Forward 10 seconds">' + ICON.fwd + '</span>' +
       '<span class="cbtn f" data-pact="speed">Speed 1x</span><span class="cbtn f" data-pact="subs">Subtitles</span><span class="cbtn f" data-pact="sources">Sources</span>' + '</div></div></div>';
@@ -285,7 +285,7 @@ var Player = (function () {
     if (buf && v.buffered && v.buffered.length) { var e = v.buffered.end(v.buffered.length - 1); buf.style.width = Math.min(100, e / d * 100) + '%'; }
     $('#tcur').textContent = Views.fmtTime(t * 1000); $('#tdur').textContent = '-' + Views.fmtTime(Math.max(0, d - t) * 1000);
     if (Date.now() - S.lastSave > 10000 && !v.paused) save();
-    marksTick(t, d);
+    marksTick(t, d); thumbPump();
   }
   function save(done) {
     if (!S || !S.v || !isFinite(S.v.duration) || !S.v.duration) return;
@@ -300,6 +300,7 @@ var Player = (function () {
     save();
     if (S.upnext) clearInterval(S.upnext.timer);
     var v = S.v; clearInterval(S.bufT); clearTimeout(S.statsT); clearInterval(S.tick); clearTimeout(S.uiT); clearTimeout(S.buffT); clearTimeout(S.watchdog); clearTimeout(S.decodeT1); clearTimeout(S.decodeT2); clearTimeout(S.okT); clearTimeout(S.flowT);
+    try { for (var tk in (S.thumbs || {})) URL.revokeObjectURL(S.thumbs[tk]); } catch (e) {}
     try { v.pause(); v.removeAttribute('src'); v.load(); } catch (e) {}
     S = null;
     if (window.Sync) Sync.run();
@@ -326,7 +327,56 @@ var Player = (function () {
       if (to > lim) to = lim;
       if (to <= t + 0.5) { if (!S.holdToast || Date.now() - S.holdToast > 3000) { S.holdToast = Date.now(); Views.toast('That is as far as is downloaded so far', 2500); } return; }
     }
-    S.lastJump = Date.now(); v.currentTime = to; update(); showUi(); say('');
+    S.lastJump = Date.now(); v.currentTime = to; update(); showUi(); say(''); previewAt(to);
+  }
+  /* ---- seek preview pictures ---- */
+  /* Pictures are made on the server (ffmpeg), one every 10 s, only for parts of the file that this player has already loaded (so nothing is
+     pulled from the torrent ahead of the film), closest to the playhead first. A jump shows the picture of where you land. */
+  var THUMB_STEP = 10;
+  function seenUpdate(v) {
+    var seen = S.seen || (S.seen = []), b = v.buffered;
+    for (var i = 0; i < b.length; i++) {
+      var a = b.start(i), e = b.end(i), merged = false;
+      for (var k = 0; k < seen.length; k++) if (a <= seen[k][1] + 0.5 && e >= seen[k][0] - 0.5) { seen[k][0] = Math.min(seen[k][0], a); seen[k][1] = Math.max(seen[k][1], e); merged = true; break; }
+      if (!merged) seen.push([a, e]);
+    }
+  }
+  function thumbPump() {
+    var sess = S; if (!sess || sess.thumbOff || sess.thumbBusy || sess.hold || sess.rebuf || sess.failed || sess.ended) return;
+    var v = sess.v, f = fileKey(sess.streams[sess.idx]); if (!f || !isFinite(v.duration) || v.duration < 60 || Date.now() < (sess.thumbNext || 0)) return;
+    seenUpdate(v);
+    var th = sess.thumbs || (sess.thumbs = {}), bad = sess.thumbBad || (sess.thumbBad = {}), t = v.currentTime, best = -1, bd = 1e9;
+    sess.seen.forEach(function (r) {
+      for (var g = Math.ceil((r[0] + 1) / THUMB_STEP) * THUMB_STEP; g <= r[1] - 2; g += THUMB_STEP) {
+        if (th[g] || bad[g]) continue;
+        var d = Math.abs(g - t); if (d < bd) { bd = d; best = g; }
+      }
+    });
+    if (best < 0) return;
+    sess.thumbBusy = true; var g0 = best;
+    fetch('/api/thumb?hash=' + f.infoHash + '&idx=' + f.fileIdx + '&t=' + g0, { headers: { 'x-jtv-token': Backend.token() || '' } }).then(function (r) {
+      if (r.status === 503) { sess.thumbOff = true; throw 0; }
+      if (r.status === 429) { sess.thumbNext = Date.now() + 5000; throw 0; }
+      if (!r.ok) { (sess.thumbBad || (sess.thumbBad = {}))[g0] = 1; throw 0; }
+      return r.blob();
+    }).then(function (blob) {
+      if (!blob || S !== sess) return;
+      try { sess.thumbs[g0] = URL.createObjectURL(blob); } catch (e) {}
+      sess.thumbNext = Date.now() + 900;
+    }).catch(function () {}).then(function () { sess.thumbBusy = false; });
+  }
+  function thumbNear(time) {
+    var th = S.thumbs || {}, g = Math.round(time / THUMB_STEP) * THUMB_STEP;
+    return th[g] || th[g - THUMB_STEP] || th[g + THUMB_STEP] || '';
+  }
+  function previewAt(time, keep) {
+    var el = $('#tprev'), d = S && S.v.duration; if (!el || !isFinite(d) || !d) return;
+    var pct = Math.max(0, Math.min(1, time / d)), left = 210 + 54 + pct * 1392 - 150;
+    var img = $('#timg'), url = thumbNear(time);
+    img.style.backgroundImage = url ? 'url("' + url + '")' : ''; img.style.opacity = url ? '1' : '.25';
+    $('#ttime').textContent = Views.fmtTime(time * 1000);
+    el.style.left = Math.max(40, Math.min(1920 - 340, left)) + 'px'; el.style.display = 'block';
+    clearTimeout(S.prevT); if (!keep) S.prevT = setTimeout(function () { var e2 = S && $('#tprev'); if (e2) e2.style.display = 'none'; }, 1700);
   }
   var holdT = null, holdOn = false;
   function holdStop() { clearTimeout(holdT); clearInterval(holdT); holdT = null; }
@@ -467,6 +517,10 @@ var Player = (function () {
     if (a === 'toggle') toggle(); else if (a === 'back10') seekBy(-10, rep); else if (a === 'fwd10') seekBy(10, rep);
     else if (a === 'speed') pickSpeed(); else if (a === 'subs') pickSubs(); else if (a === 'sources') pickSource();
     showUi(true);
+  });
+  document.addEventListener('mousemove', function (e) {
+    if (!S || !e.target || e.target.id !== 'seek' || !S.v.duration) return;
+    var r = e.target.getBoundingClientRect(); previewAt(Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) * S.v.duration);
   });
   document.addEventListener('click', function (e) {
     if (S && e.target.id === 'seek' && S.v.duration) { var r = e.target.getBoundingClientRect(); S.v.currentTime = (e.clientX - r.left) / r.width * S.v.duration; showUi(); }

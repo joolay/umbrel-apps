@@ -23,7 +23,7 @@ const UPSTREAM = new URL(process.env.STREAM_UPSTREAM || "http://server:11470");
 const INTERNAL = process.env.STREAM_INTERNAL || "http://127.0.0.1:11470";   // how the streaming server reaches itself (for transcoding)
 const REQUIRE_ACCOUNTS = !/^(0|false|no)$/i.test(process.env.REQUIRE_ACCOUNTS || "1");
 const subsync = require("./subsync");
-const marks = require("./marks"), community = require("./community"), tmdb = require("./tmdb");
+const thumbs = require("./thumbs"), marks = require("./marks"), community = require("./community"), tmdb = require("./tmdb");
 const FFMPEG = process.env.FFMPEG || "ffmpeg", FFPROBE = process.env.FFPROBE || "ffprobe";
 const APP_NAME = process.env.POCKETBASE_APP_NAME || "JoolzTV";
 const MAX_PROFILES = 12, MAX_BODY = 2 * 1024 * 1024, MAX_RESUME = 200, MAX_LIST = 500, STREAM_TTL = 12 * 3600e3;
@@ -378,6 +378,24 @@ async function playCheck(req, res, u) {
   } catch (e) { if (e.code === "not_found") return send(res, 200, { ok: false, reason: "unrated", limit, message: "This title could not be age-checked, so it is not available on a profile with an age limit." }); return tmdbErr(res, e); }
 }
 
+/* ---------- seek preview pictures: one small picture at a time, only for parts of the file the player has already loaded ---------- */
+const thumbCache = new Map(); let thumbActive = 0; const thumbBusy = new Set();
+async function thumbRoute(req, res, u) {
+  const q = new URL(req.url, "http://x").searchParams, f = fileOf({ infoHash: q.get("hash"), fileIdx: q.get("idx") }), t = parseInt(q.get("t"), 10);
+  if (!f || !(t >= 0 && t < 86400)) return send(res, 400, { code: "bad_request", message: "Needs a torrent source and a time." });
+  const hit = thumbCache.get(f.key + ":" + t);
+  const out = b => { res.writeHead(200, { "content-type": "image/jpeg", "cache-control": "private, max-age=86400", "content-length": b.length }); res.end(b); };
+  if (hit) return out(hit);
+  if (thumbBusy.has(u.id) || thumbActive >= 2) return send(res, 429, { code: "busy", message: "Busy." });
+  thumbBusy.add(u.id); thumbActive++;
+  try { const b = await thumbs.frame(f.url, t, { ffmpeg: FFMPEG }); if (thumbCache.size > 500) thumbCache.delete(thumbCache.keys().next().value); thumbCache.set(f.key + ":" + t, b); return out(b); }
+  catch (e) {
+    if (e.code === "no_ffmpeg") return send(res, 503, { code: "thumbs_unavailable", message: "Previews need ffmpeg." });
+    if (e.code === "no_frame" || e.code === "timeout") return send(res, 422, { code: "no_frame", message: "No picture there." });
+    console.error("thumb:", e.message); return send(res, 500, { code: "error", message: "Could not make a preview." });
+  } finally { thumbBusy.delete(u.id); thumbActive--; }
+}
+
 /* ---------- streaming server behind the sign-in ---------- */
 const SECRET_FILE = path.join(DATA_DIR, "secret.key");
 let SECRET = (() => { try { const s = fs.readFileSync(SECRET_FILE, "utf8").trim(); if (s.length >= 32) return s; } catch {} const s = crypto.randomBytes(32).toString("hex"); fs.writeFileSync(SECRET_FILE, s, { mode: 0o600 }); return s; })();
@@ -529,6 +547,7 @@ const server = http.createServer(async (req, res) => {
       if (!profileOf(hh(), u.id) && !u.isAdmin) return send(res, 403, { code: "not_in_household", message: "This account isn't part of this household." });
       if ((p === "/api/state" && req.method === "GET") || (p === "/api/sync" && req.method === "POST")) return await syncRoutes(req, res, p, u);
       if (p === "/api/subs/sync" && req.method === "POST") return await subsSync(req, res, u);
+      if (p === "/api/thumb" && req.method === "GET") return await thumbRoute(req, res, u);
       if (p.startsWith("/api/marks/")) return await marksRoutes(req, res, p, u);
       if (p.startsWith("/api/tmdb/")) return await tmdbRoutes(req, res, p, u);
       if (p === "/api/play-check" && req.method === "POST") return await playCheck(req, res, u);
