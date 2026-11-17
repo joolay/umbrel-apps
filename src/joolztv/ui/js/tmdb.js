@@ -1,6 +1,6 @@
 /* TMDB through the JoolzTV server (the key never leaves the server). Everything here quietly does nothing when the server has no key. ES5. */
 var Tmdb = (function () {
-  var on = false, canKey = false, limit = null, mem = {}, known = false;
+  var src = '', on = false, canKey = false, limit = null, mem = {}, known = false;
   var COUNTRIES = [['ZA', 'South Africa'], ['GB', 'United Kingdom'], ['US', 'United States'], ['AU', 'Australia'], ['CA', 'Canada'], ['IE', 'Ireland'], ['NZ', 'New Zealand'], ['DE', 'Germany'], ['FR', 'France'], ['NL', 'Netherlands'], ['ES', 'Spain'], ['IT', 'Italy'], ['PT', 'Portugal']];
   var LOCALES = [['en-GB', 'English (UK)'], ['en-US', 'English (US)'], ['en-ZA', 'English (South Africa)'], ['af-ZA', 'Afrikaans'], ['fr-FR', 'French'], ['de-DE', 'German'], ['es-ES', 'Spanish'], ['pt-PT', 'Portuguese'], ['nl-NL', 'Dutch'], ['it-IT', 'Italian']];
   function prefs() { return Api.prefs(); }
@@ -25,10 +25,10 @@ var Tmdb = (function () {
     return p;
   }
   function init() {
-    return Backend.call('GET', '/api/tmdb/status', undefined, undefined, 8000).then(function (j) { on = !!j.enabled; canKey = !!j.canSetKey; limit = j.limit == null ? null : j.limit; known = true; }).catch(function (e) { on = false; if (e && e.status !== 401) known = true; }).then(function () { return Policy.init(); });
+    return Backend.call('GET', '/api/tmdb/status', undefined, undefined, 8000).then(function (j) { on = !!j.enabled; canKey = !!j.canSetKey; src = j.source || ''; limit = j.limit == null ? null : j.limit; known = true; }).catch(function (e) { on = false; if (e && e.status !== 401) known = true; }).then(function () { return Policy.init(); });
   }
   return {
-    init: init, known: function () { return known; }, forget: function () { known = false; }, on: function () { return on; }, canKey: function () { return canKey; }, limit: function () { return limit; }, restricted: function () { return limit !== null; },
+    init: init, known: function () { return known; }, forget: function () { known = false; }, on: function () { return on; }, canKey: function () { return canKey; }, source: function () { return src; }, limit: function () { return limit; }, restricted: function () { return limit !== null; },
     region: region, locale: locale, COUNTRIES: COUNTRIES, LOCALES: LOCALES,
     title: function (type, imdb) { return get('/api/tmdb/title', { type: type, imdb: imdb }, 600000); },
     season: function (tmdb, n) { return get('/api/tmdb/season', { tmdb: tmdb, season: n }, 600000); },

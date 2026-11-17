@@ -1,6 +1,6 @@
 // TMDB (themoviedb.org) as a second source of film and TV information: artwork and logos, summaries in your language, age ratings,
 // cast, collections, recommendations, trending / popular / now playing lists, discover by genre and year, people, episode stills.
-// The key stays on this server (env TMDB_KEY or <data>/tmdb.key); the TV never sees it. Without a key every function reports "off" and the app carries on with Cinemeta.
+// The key stays on this server (Portal Admin > App keys, else env TMDB_KEY or <data>/tmdb.key); the TV never sees it. Without a key every function reports "off" and the app carries on with Cinemeta.
 "use strict";
 const fs = require("fs");
 const API = process.env.TMDB_URL || "https://api.themoviedb.org/3";
@@ -8,16 +8,26 @@ const IMG = process.env.TMDB_IMG || "https://image.tmdb.org/t/p/";
 let keyFile = null, memKey = (process.env.TMDB_KEY || "").trim();
 const cache = new Map();
 
-function configure(file) { keyFile = file; if (!memKey) { try { memKey = fs.readFileSync(file, "utf8").trim(); } catch {} } }
-function setKey(k) {                                  // admin pastes a key in Settings; it is stored on the server only
+let portalKey = "", secretFn = null, lastPull = 0;
+const theKey = () => portalKey || memKey;               // the key saved in Portal Admin > App keys wins over the local one
+function configure(file, fn) { keyFile = file; secretFn = fn || null; if (!memKey) { try { memKey = fs.readFileSync(file, "utf8").trim(); } catch {} } }
+async function refreshKey(force) {                      // re-read the PocketBase-held key at most every 5 minutes; failures keep the last good value
+  if (!secretFn || (!force && Date.now() - lastPull < 300e3)) return;
+  lastPull = Date.now();
+  try { const v = String(await secretFn("tmdb") || "").trim(); if (v !== portalKey) { portalKey = /^[\w.\-]{16,900}$/.test(v) ? v : ""; cache.clear(); } } catch { lastPull = Date.now() - 270e3; }
+}
+const keySource = () => portalKey ? "portal" : memKey ? "local" : "none";
+function setKey(k) {
+  if (portalKey) throw Object.assign(new Error("The TMDB key is managed in Portal Admin > App keys."), { code: "bad_key" });                                  // admin pastes a key in Settings; it is stored on the server only
   k = String(k || "").trim();
   if (k && !/^[\w.\-]{16,800}$/.test(k)) throw Object.assign(new Error("That does not look like a TMDB key."), { code: "bad_key" });
   memKey = k; cache.clear();
   if (keyFile) { if (k) fs.writeFileSync(keyFile, k, { mode: 0o600 }); else { try { fs.unlinkSync(keyFile); } catch {} } }
 }
-const enabled = () => !!memKey;
+const enabled = () => !!theKey();
 
 async function call(path, params, ttl = 12 * 3600e3) {
+  await refreshKey(); const memKey = theKey();
   if (!memKey) throw Object.assign(new Error("TMDB is not set up"), { code: "off" });
   const q = new URLSearchParams(params || {}); const bearer = memKey.indexOf(".") > 0;       // a v4 read token is a JWT, a v3 key is plain hex
   if (!bearer) q.set("api_key", memKey);
@@ -188,4 +198,4 @@ async function ageOf({ imdb, type, region }) {
   const d = await call("/" + t + "/" + f.tmdb, { append_to_response: t === "tv" ? "content_ratings" : "release_dates" }, 7 * 864e5);
   return pickCert(d, t, region);
 }
-module.exports = { adultOf, adultReason, collections, FRANCHISES, configure, setKey, enabled, find, title, season, list, genres, discover, person, search, collection, resolve, ageOf, certAge, pickCert, LISTS };
+module.exports = { adultOf, adultReason, collections, FRANCHISES, configure, setKey, enabled, refreshKey, keySource, find, title, season, list, genres, discover, person, search, collection, resolve, ageOf, certAge, pickCert, LISTS };

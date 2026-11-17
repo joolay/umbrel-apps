@@ -334,7 +334,7 @@ window.addEventListener('hashchange', () => { if (resetToken()) return showReset
 function route() {
   let [, view = 'home', arg] = location.hash.split('/');
   if (state.role === 'user') view = (view === 'me' || view === 'family' || view === 'paid') ? view : 'home';
-  const v = { home: viewHome, overview: viewOverview, global: viewGlobal, apps: viewApps, users: viewUsers, requests: viewRequests, cleanup: viewCleanup, audit: viewAudit, changes: viewChanges, setup: viewSetup, me: viewMe, family: viewFamily, paywall: viewPaywall, paid: viewPaid }[view] || viewHome;
+  const v = { home: viewHome, overview: viewOverview, global: viewGlobal, apps: viewApps, users: viewUsers, requests: viewRequests, cleanup: viewCleanup, audit: viewAudit, changes: viewChanges, setup: viewSetup, me: viewMe, family: viewFamily, paywall: viewPaywall, keys: viewKeys, paid: viewPaid }[view] || viewHome;
   if (!v || v === viewHome) view = 'home';
   setBar(view); $('#acct').open && $('#acct').close(); $('#sheet').open && $('#sheet').close();
   main().innerHTML = '<p class="muted">Loading…</p>';
@@ -1078,6 +1078,22 @@ async function viewPaid(slug) {
   const b = $('#paid-again'); if (b) b.onclick = () => viewPaid(slug);
 }
 const toCents = (v) => { const n = parseFloat(String(v).replace(',', '.')); return isFinite(n) && n > 0 ? Math.round(n * 100) : null; };
+/* ---------- App keys: API keys an app needs (JoolzTV's TMDB key), saved once here and never shown again ---------- */
+async function viewKeys() {
+  const j = await acctFetch('/admin/app-keys');
+  const chip = (ok, t) => `<span class="chip ${ok ? 'ok' : 'warn'}">${esc(t)}</span>`;
+  main().innerHTML = `<h1>App keys</h1><p class="sub">Some apps need a key of your own, for example JoolzTV's TMDB key. Paste it here once. It is stored in PocketBase where only the admin can read it, the app asks for it when it needs it, and it is never shown again or kept in the app's files. Everyone who installs the app enters their own.</p>
+    ${j.apps.length ? j.apps.map((a) => a.keys.map((k) => `<div class="card" data-app="${esc(a.slug)}" data-name="${esc(k.name)}"><div class="row spread"><h2>${esc(a.name)}: ${esc(k.label)}</h2>${chip(k.has, k.has ? 'Saved' : 'Not set')}</div>
+      <p class="muted small">${esc(k.help)} ${k.link ? `<a href="${esc(k.link)}" target="_blank" rel="noopener">Get a key</a>` : ''}</p>
+      <form class="kv keyform"><label>${esc(k.label)}<input name="value" type="password" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="${k.has ? 'Saved. Paste a new one to replace it.' : 'Paste the key here'}"></label>
+      <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn primary">Save</button>${k.has ? '<button type="button" class="btn keyclear">Remove</button>' : ''}</div></form></div>`).join('')).join('') : '<div class="card"><p class="muted">None of your installed apps needs a key of its own yet.</p></div>'}`;
+  const send = guard(async (card, value, msg) => { await acctFetch('/admin/app-keys', { app: card.dataset.app, name: card.dataset.name, value }); toast(msg); viewKeys(); });
+  main().querySelectorAll('.keyform').forEach((form) => {
+    const card = form.closest('[data-app]');
+    form.onsubmit = (e) => { e.preventDefault(); const v = form.elements.value.value.trim(); if (!v) return toast('Paste the key first'); send(card, v, 'Key saved'); };
+    const clr = form.querySelector('.keyclear'); if (clr) clr.onclick = () => { if (confirm('Remove this key? The app will stop using it until you add one again.')) send(card, '', 'Key removed'); };
+  });
+}
 async function viewPaywall() {
   const j = await acctFetch('/admin/paywall'), apps = await listAll('portal_apps', { sort: 'name' });
   const y = j.yoco, origin = location.origin;
@@ -1455,6 +1471,7 @@ const GL = {
   overview: '<rect x="4" y="4" width="7" height="7" rx="2"/><rect x="13" y="4" width="7" height="7" rx="2"/><rect x="4" y="13" width="7" height="7" rx="2"/><rect x="13" y="13" width="7" height="7" rx="2"/>',
   global: '<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.6 2.4 3.6 5.2 3.6 8.5s-1 6.1-3.6 8.5c-2.6-2.4-3.6-5.2-3.6-8.5s1-6.1 3.6-8.5z"/>',
   paywall: '<rect x="3.5" y="6" width="17" height="12" rx="2.5"/><path d="M3.5 10.5h17M7 14.5h3.5"/>',
+  keys: '<circle cx="8.5" cy="15.5" r="3.8"/><path d="M11.4 12.7 19.5 4.5M16.5 7.5l2.5 2.5M14 10l2 2"/>',
   apps: '<path d="M12 4l8 4.5-8 4.5-8-4.5z"/><path d="M4 12.5l8 4.5 8-4.5M4 16.5l8 4.5 8-4.5"/>',
   users: '<circle cx="12" cy="8.5" r="3.5"/><path d="M5 20c.5-4 3.2-6 7-6s6.5 2 7 6"/>',
   requests: '<path d="M4 13l2.5-7.5h11L20 13v5.5H4z"/><path d="M4 13h4.5l1 2.5h5l1-2.5H20"/>',
@@ -1472,9 +1489,9 @@ const ICON_WARN = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 7v6M
 const ADMIN_TOOLS = [
   ['overview', 'Overview', ['#5b8cff', '#7c5cf0']], ['global', 'Global settings', ['#94a3b8', '#475569']], ['apps', 'Apps', ['#a855f7', '#6366f1']],
   ['users', 'Users', ['#10b981', '#0ea5e9']], ['requests', 'Access requests', ['#f43f5e', '#fb923c']], ['cleanup', 'Cleanup', ['#14b8a6', '#22c55e']],
-  ['paywall', 'Paid apps', ['#22c55e', '#0ea5e9']], ['audit', 'Audit log', ['#eab308', '#f97316']], ['changes', 'Changes', ['#8b5cf6', '#ec4899']], ['setup', 'Setup', ['#0ea5e9', '#6366f1']],
+  ['paywall', 'Paid apps', ['#22c55e', '#0ea5e9']], ['keys', 'App keys', ['#f59e0b', '#ef4444']], ['audit', 'Audit log', ['#eab308', '#f97316']], ['changes', 'Changes', ['#8b5cf6', '#ec4899']], ['setup', 'Setup', ['#0ea5e9', '#6366f1']],
 ];
-const VIEW_TITLES = { overview: 'Overview', global: 'Global settings', apps: 'Apps', users: 'Users', requests: 'Access requests', cleanup: 'Cleanup', audit: 'Audit log', changes: 'PocketBase changes', setup: 'Setup & integration', me: 'My settings', family: 'Family', paywall: 'Paid apps', paid: 'Payment' };
+const VIEW_TITLES = { overview: 'Overview', global: 'Global settings', apps: 'Apps', users: 'Users', requests: 'Access requests', cleanup: 'Cleanup', audit: 'Audit log', changes: 'PocketBase changes', setup: 'Setup & integration', me: 'My settings', family: 'Family', paywall: 'Paid apps', keys: 'App keys', paid: 'Payment' };
 const PROTECTED = new Set(['sys:me', 'sys:admin']);
 const canFolder = (id) => !PROTECTED.has(id) && !String(id).startsWith('folder:');   // folders hold apps and Family, never nest, never hide the way back to Settings/Admin   // can't be hidden, so nobody loses the way back to their settings
 

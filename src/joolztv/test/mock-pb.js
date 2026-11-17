@@ -26,3 +26,8 @@ exports.verifyToken = async token => {
 };
 exports.getUser = async id => { if (!users[id]) throw new PBError(404, "no such user"); const r = rec(users[id]); if (users[id].readonly) r.portal.readonly = true; return r; };
 exports.requestPasswordReset = async () => {};
+// App keys saved in "Portal Admin > App keys": test.js writes them to <DATA_DIR>/portal-secrets.json
+const fs = require("fs"), path = require("path");
+const secrets = () => { try { return JSON.parse(fs.readFileSync(path.join(process.env.DATA_DIR || ".", "portal-secrets.json"), "utf8")); } catch { return {}; } };
+exports.portalOn = () => Object.keys(secrets()).length > 0;
+exports.portalCall = async (fn, a) => { if (fn === "appSecret") return secrets()[a[0]] || ""; throw new PBError(404, "no " + fn); };

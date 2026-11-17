@@ -927,6 +927,7 @@ var Views = (function () {
         '<div class="srow f" data-act="tlocale">Language of titles and summaries: <b>' + esc(localeName(Tmdb.locale())) + '</b></div>';
     }
     if (Tmdb.canKey()) h += '<input id="tmdbkey" class="field f" type="password" placeholder="' + (Tmdb.on() ? 'TMDB key saved. Paste a new one to replace it' : 'Paste the TMDB key to switch this on') + '" autocomplete="off"><div class="srow f" data-act="savetmdb">Save the TMDB key</div>';
+    else if (Tmdb.source() === 'portal') h += '<div class="hint">The TMDB key is kept safely in Portal Admin (App keys).</div>';
     else if (!Tmdb.on()) h += '<div class="hint">Titles with logos, cast, age ratings, trending lists and Discover switch on when a JoolzApp admin adds a TMDB key here.</div>';
     return h + '<div class="hint">This product uses the TMDB API but is not endorsed or certified by TMDB. Where-to-watch data is provided by JustWatch.</div>';
   }

@@ -14,6 +14,7 @@ const guardians = require('./guardians');
 const family = require('./family');
 const events = require('./events');
 const paywall = require('./paywall');
+const appkeys = require('./appkeys');
 const makeChanges = require('./changes');
 const makeAppApi = require('./appapi');
 const CHILD_REQ = '__child_account__', SPOUSE_REQ = '__spouse_account__';
@@ -467,6 +468,16 @@ const handle = async (req, res) => {
       const me = tok ? await pbx.userFromToken(tok).catch(() => null) : null;
       if (!me) return send(res, 401, { message: 'Sign in first.' });
       await appapi.touchActive(me.id).catch(() => {}); return send(res, 200, { ok: true });
+    }
+    if (pathname === '/admin/app-keys') {                                  // API keys apps need (JoolzTV's TMDB key): admin only, never sent back
+      if (isPublicRequest(req)) return send(res, 403, { message: 'Only available from your home network or tailnet.' });
+      const tok = String(req.headers.authorization || '');
+      if (!tok || !(await pbx.isSuperuser(tok))) return send(res, 401, { message: 'Admin only.' });
+      try {
+        if (req.method === 'GET') return send(res, 200, await appkeys.adminView());
+        if (req.method !== 'POST') return send(res, 405, { message: 'Method not allowed' });
+        return send(res, 200, await appkeys.adminAction(JSON.parse(await readBody(req))));
+      } catch (e) { return send(res, e.status || 500, { message: String(e.message || e) }); }
     }
     if (pathname === '/admin/inactive/notice') {
       if (isPublicRequest(req)) return send(res, 403, { message: 'Only available from your home network or tailnet.' });

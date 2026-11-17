@@ -153,6 +153,11 @@ const T = tok => ({ "x-jtv-token": tok });
   r = await req("PUT", "/api/tmdb/key", { key: "goodkey1234567890abcd" }, T(adm)); ok(r.code === 200 && r.json.enabled === true, "an admin sets the key");
   ok(fs.existsSync(path.join(dir, "tmdb.key")) && (fs.statSync(path.join(dir, "tmdb.key")).mode & 0o077) === 0, "the key is stored on the server, readable by the server only");
   r = await req("GET", "/api/tmdb/status", undefined, T(adm)); ok(r.json.enabled === true && r.json.canSetKey === true && !/goodkey/.test(r.text), "the key is never sent back");
+  // the key saved in Portal Admin > App keys takes over and cannot be changed from the app
+  fs.writeFileSync(path.join(dir, "portal-secrets.json"), JSON.stringify({ tmdb: "portalkey1234567890abcd" }));
+  r = await req("GET", "/api/tmdb/status", undefined, T(adm)); ok(r.json.enabled === true && r.json.source === "portal" && r.json.canSetKey === false && !/portalkey/.test(r.text), "a Portal Admin key is used, shown as managed there, and never sent back");
+  r = await req("PUT", "/api/tmdb/key", { key: "goodkey1234567890abcd" }, T(adm)); ok(r.code === 400 && /Portal Admin/.test(r.json.message), "the in-app key cannot override the Portal Admin key");
+  fs.unlinkSync(path.join(dir, "portal-secrets.json")); await req("GET", "/api/tmdb/status", undefined, T(adm));
   r = await req("GET", "/api/tmdb/title?imdb=tt0111161&type=movie&locale=en-GB&region=ZA", undefined, T(ann)); ok(r.code === 200 && r.json.name === "The Shawshank Redemption" && r.json.cert.rating === "16" && !/goodkey/.test(r.text), "title details for the person's country (key not leaked)");
   r = await req("GET", "/api/tmdb/title?imdb=nope", undefined, T(ann)); ok(r.code === 400, "a bad id is refused");
   r = await req("GET", "/api/tmdb/title?imdb=tt9999999&type=movie", undefined, T(ann)); ok(r.code === 404, "an unknown title is a clean 404");

@@ -412,5 +412,12 @@ module.exports = function makeClient(cfg) {
     if (ex) await asSuper("DELETE", `/api/collections/portal_settings/records/${ex.id}`);
     portalCache.delete("u:" + userId); return null;
   }
-  return { trialUsed, trialBump, setDob, getAppPref, setAppPref, clearAppPref, publishEvent, portalUrl, requestPasswordReset, setUserPrefs, portalAvailable, setPortalAccess, signupsOpen, enabled, PBError, login, verifyToken, createUser, listUsers, getUser, updateUser, updateAccess, deleteUser, countAdmins, findByEmail, firstAdmin, asSuper, superFetch, ensureSchema, collection: COLL, app: APP };
+  // An app's own keys (for example JoolzTV's TMDB key), saved by the admin in Portal Admin > App keys as hidden `secret.<name>` settings. Each app can only ever read its own.
+  async function appSecret(name) {
+    name = String(name || ""); if (!/^[a-z0-9._-]{1,40}$/.test(name)) return "";
+    const f = `scope = 'app' && app = '${esc(APP)}' && key = 'secret.${esc(name)}'`;
+    const j = await asSuper("GET", `/api/collections/portal_settings/records?page=1&perPage=1&filter=${q(f)}`);
+    const r = (j.items || [])[0]; return r && typeof r.value === "string" ? r.value : "";
+  }
+  return { appSecret, trialUsed, trialBump, setDob, getAppPref, setAppPref, clearAppPref, publishEvent, portalUrl, requestPasswordReset, setUserPrefs, portalAvailable, setPortalAccess, signupsOpen, enabled, PBError, login, verifyToken, createUser, listUsers, getUser, updateUser, updateAccess, deleteUser, countAdmins, findByEmail, firstAdmin, asSuper, superFetch, ensureSchema, collection: COLL, app: APP };
 };

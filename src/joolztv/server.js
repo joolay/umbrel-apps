@@ -28,7 +28,8 @@ const FFMPEG = process.env.FFMPEG || "ffmpeg", FFPROBE = process.env.FFPROBE || 
 const APP_NAME = process.env.POCKETBASE_APP_NAME || "JoolzTV";
 const MAX_PROFILES = 12, MAX_BODY = 2 * 1024 * 1024, MAX_RESUME = 200, MAX_LIST = 500, STREAM_TTL = 12 * 3600e3;
 const USERS_DIR = path.join(DATA_DIR, "users");
-tmdb.configure(path.join(DATA_DIR, "tmdb.key"));
+tmdb.configure(path.join(DATA_DIR, "tmdb.key"), async name => (pb.portalOn && pb.portalOn() && pb.portalCall ? pb.portalCall("appSecret", [name]) : ""));
+tmdb.refreshKey(true).catch(() => {});
 fs.mkdirSync(USERS_DIR, { recursive: true });
 
 /* ---------- small helpers ---------- */
@@ -389,9 +390,10 @@ const tmdbErr = (res, e) => {
 const idOk = v => /^\d{1,9}$/.test(String(v || ""));
 async function tmdbRoutes(req, res, p, u) {
   const url = new URL(req.url, "http://x"), q = url.searchParams, l = loc(url);
-  if (p === "/api/tmdb/status") return send(res, 200, { enabled: tmdb.enabled(), canSetKey: !!u.isAdmin, limit: tmdb.enabled() ? ageLimitOf(hh(), u) : null });
+  if (p === "/api/tmdb/status") { await tmdb.refreshKey(!!u.isAdmin); return send(res, 200, { enabled: tmdb.enabled(), source: tmdb.keySource(), canSetKey: !!u.isAdmin && tmdb.keySource() !== "portal", limit: tmdb.enabled() ? ageLimitOf(hh(), u) : null }); }
   if (p === "/api/tmdb/key" && req.method === "PUT") {
     if (!u.isAdmin) return send(res, 403, { code: "forbidden", message: "Only a JoolzApp admin can set the TMDB key." });
+    await tmdb.refreshKey(true);
     try { tmdb.setKey((await jsonBody(req)).key); } catch (e) { if (e.code === "bad_key") return send(res, 400, { code: "bad_request", message: e.message }); throw e; }
     return send(res, 200, { enabled: tmdb.enabled() });
   }
