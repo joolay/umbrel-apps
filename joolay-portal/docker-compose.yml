@@ -1,0 +1,26 @@
+# JoolzApp Portal: the home screen everyone uses. Source: src/portal-admin/portal.js.
+# It runs from the SAME image as Portal Admin (one build, one version, the two always match) but starts a different, much smaller
+# program: no admin pages, no PocketBase superuser login, no access to other apps' folders. Keep the image tag equal to
+# `version` in umbrel-app.yml AND to Portal Admin's version.
+services:
+  app_proxy:
+    environment:
+      APP_HOST: joolay-portal_web_1
+      APP_PORT: 3000
+      # No Umbrel login: people sign in with their JoolzApp account.
+      PROXY_AUTH_ADD: "false"
+
+  web:
+    image: ghcr.io/joolay/portal-admin:0.22.0
+    command: ["node", "portal.js"]
+    restart: on-failure
+    stop_grace_period: 10s
+    # Reaches PocketBase (port 5400) and Portal Admin's apps-only port (3899) on this Umbrel.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      # Holds one small file, pocketbase.env, with this app's Portal API key. Portal Admin writes it by itself.
+      - ${APP_DATA_DIR}/data:/data
+    environment:
+      - POCKETBASE_APP_ID=portal
+      - PB_URL=${PB_URL:-}

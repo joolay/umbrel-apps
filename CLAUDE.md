@@ -15,6 +15,16 @@ Everything is managed here; never create a separate repo for a new app.
 Apps backed by PocketBase should read config via the Portal Admin settings (`src/portal-admin`).
 ShutterWorth (`src/shutterworth`) and Portal Admin (`src/portal-admin`) both follow this layout.
 
+## JoolzApp Portal and Portal Admin: two apps, one image
+The home screen people use is its own store app, `joolay-portal` ("JoolzApp Portal"), and it is the one that faces the internet.
+It has no `src/portal` folder: its compose file runs the **Portal Admin image** with `command: ["node", "portal.js"]` (source `src/portal-admin/portal.js`),
+so the dashboard UI (`src/portal-admin/public`) exists once and the two apps can never drift apart.
+- Releasing Portal Admin means bumping BOTH manifests to the same version: `joolay-portal-admin/*` and `joolay-portal/*` (image tag `ghcr.io/joolay/portal-admin:<version>` in both).
+- `portal.js` holds no PocketBase login and serves only: the static UI, `/pb/*` (people's own calls; admin APIs and superuser tokens refused) and a fixed list of
+  routes passed to Portal Admin's apps-only port as `/user/<route>` with the Portal's own Portal API key (`VIA_ADMIN` in `portal.js` = `PORTAL_ROUTES` in `server.js`; keep them equal).
+  Portal Admin always treats those as public, user-only requests. A new server route the dashboard needs must be added to both lists.
+- Portal Admin gives the Portal its key by itself (`linkPortal` in `changes.js`), never a superuser or service login, and hides it from app lists, Connect and Changes.
+
 ## JoolzApp-account apps and pocketbase.env
 Any `joolay-*` app that signs people in with the JoolzApp account declares `POCKETBASE_APP_ID=<slug>` in its compose file and reads
 `<app data>/data/pocketbase.env` (copy `src/jolly-grocer/pocketbase.js`, the newest version). Portal Admin writes that file, and only after
