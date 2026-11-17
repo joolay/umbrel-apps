@@ -16,6 +16,15 @@ async function stale(c) {   // apps whose saved service login is missing or no l
   for (const a of c.apps()) { const e = c.readEnv(a); if (!(await c.loginWorks(SVC, e.POCKETBASE_SERVICE_EMAIL, e.POCKETBASE_SERVICE_PASSWORD, { retry: false }))) out.push(a); }
   return out;
 }
+// Create (or reset) one app's limited login and save it in its data folder. Also used for apps installed later (linkNewApps in changes.js).
+async function giveLogin(c, a) {
+  const pw = c.password(), em = email(a.slug);
+  const f = await c.pb('GET', `/api/collections/${SVC}/records?page=1&perPage=1&filter=${encodeURIComponent(`appId = '${c.esc(a.slug)}'`)}`);
+  const rec = (f.items || [])[0];
+  if (rec) await c.pb('PATCH', `/api/collections/${SVC}/records/${rec.id}`, { password: pw, passwordConfirm: pw });
+  else await c.pb('POST', `/api/collections/${SVC}/records`, { email: em, password: pw, passwordConfirm: pw, appId: a.slug, emailVisibility: false, verified: true });
+  c.setEnv(a, { POCKETBASE_SERVICE_EMAIL: em, POCKETBASE_SERVICE_PASSWORD: pw });
+}
 module.exports = {
   id: '001-app-service-accounts',
   title: 'Limited login for each app',
@@ -41,15 +50,9 @@ module.exports = {
     const ac = await c.getCollection('app_access');
     if (ac) { const patch = {}; for (const [k, v] of Object.entries(R)) if ((ac[k] ?? null) !== v) patch[k] = v; if (Object.keys(patch).length) await c.pb('PATCH', '/api/collections/app_access', patch); }
     else notes.push('app_access is missing, so its rules were not changed.');
-    for (const a of await stale(c)) {
-      const pw = c.password(), em = email(a.slug);
-      const f = await c.pb('GET', `/api/collections/${SVC}/records?page=1&perPage=1&filter=${encodeURIComponent(`appId = '${c.esc(a.slug)}'`)}`);
-      const rec = (f.items || [])[0];
-      if (rec) await c.pb('PATCH', `/api/collections/${SVC}/records/${rec.id}`, { password: pw, passwordConfirm: pw });
-      else await c.pb('POST', `/api/collections/${SVC}/records`, { email: em, password: pw, passwordConfirm: pw, appId: a.slug, emailVisibility: false, verified: true });
-      c.setEnv(a, { POCKETBASE_SERVICE_EMAIL: em, POCKETBASE_SERVICE_PASSWORD: pw });
-    }
+    for (const a of await stale(c)) await giveLogin(c, a);
     notes.push('The superuser login is still in each app. It is removed in a later change, after the apps are updated to use these logins.');
     return notes;
   },
 };
+module.exports.giveLogin = giveLogin;

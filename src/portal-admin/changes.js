@@ -77,6 +77,20 @@ module.exports = function makeChanges({ pbx, installedApps, APPS_DIR, DATA_DIR, 
       }));
       return { changes: out, history: history().slice(0, 20) };
     },
+    // A JoolzApp app installed after the security changes were applied gets the same as the others had from them: its own limited
+    // login and a Portal API key, written into its data folder as soon as it appears. It never gets the superuser login (Apps > Connect
+    // is still there for an older app that can't work without it). Does nothing until "Limited login for each app" has been applied.
+    async linkNewApps() {
+      const fresh = ctx.apps().filter((a) => a.env === 'missing'); if (!fresh.length) return [];
+      if (!(await ctx.getCollection('app_service'))) return [];
+      const done = [], giveLogin = require('./changes/001-app-service-accounts').giveLogin;
+      for (const a of fresh) {
+        await giveLogin(ctx, a);
+        ctx.setEnv(a, { POCKETBASE_PORTAL_URL: ctx.portalApiUrl, POCKETBASE_PORTAL_KEY: appKeys.issue(a.slug) });
+        done.push(a.name || a.slug);
+      }
+      return done;
+    },
     // JoolzApp Portal (the internet-facing home screen app) needs only a Portal API key. Give it one as soon as it is installed and
     // whenever its file has none that still works. Returns a line for the log when it did something.
     linkPortal() {
