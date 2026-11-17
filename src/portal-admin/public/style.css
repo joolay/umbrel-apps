@@ -183,3 +183,20 @@ dialog#sheet,dialog#acct{position:fixed;margin:auto;width:min(440px,calc(100vw -
 :root[data-motion="still"] #bg i{animation:none}
 .ic-tile.folder .mini i b{color:#fff}
 .ic-tile.folder .mini:empty{border:2px dashed rgba(127,127,127,.45);border-radius:10px;margin:10px;width:calc(100% - 20px);height:calc(100% - 20px);padding:0}
+
+/* ---------- Crisp glass icons ----------
+   App artwork is shown as it is: no white gloss wash over it, no coloured glow, a thin edge and a tight neutral shadow.
+   Tiles without artwork (Family, Settings, Admin, apps with only a letter) are tinted glass: you can see the background through them. */
+.ic-tile{background:linear-gradient(150deg,color-mix(in srgb,var(--c1) 58%,transparent),color-mix(in srgb,var(--c2) 58%,transparent));
+  -webkit-backdrop-filter:blur(16px) saturate(190%);backdrop-filter:blur(16px) saturate(190%);
+  border:1px solid rgba(255,255,255,.42);box-shadow:0 4px 12px rgba(15,23,42,.14),inset 0 1px 0 rgba(255,255,255,.35)}
+.ic-tile::before{display:none}
+.ic-tile b{text-shadow:none;font-weight:650}
+.ic-tile svg{filter:none;stroke-width:1.9}
+.ic-tile:has(.ic-img){background:none;border:0;-webkit-backdrop-filter:none;backdrop-filter:none;box-shadow:0 3px 10px rgba(15,23,42,.22),0 0 0 .5px rgba(15,23,42,.18)}
+.ic-label{text-shadow:none;font-weight:550;letter-spacing:.01em}
+.ic-tile.folder{box-shadow:0 4px 12px rgba(15,23,42,.14),inset 0 1px 0 rgba(255,255,255,.4)}
+.ic-tile.folder .mini i{background:linear-gradient(150deg,color-mix(in srgb,var(--c1) 80%,transparent),color-mix(in srgb,var(--c2) 80%,transparent))}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .ic-tile:not(:has(.ic-img)){border-color:rgba(255,255,255,.16);box-shadow:0 4px 12px rgba(0,0,0,.32),inset 0 1px 0 rgba(255,255,255,.14)}}
+:root[data-theme="dark"] .ic-tile:not(:has(.ic-img)){border-color:rgba(255,255,255,.16);box-shadow:0 4px 12px rgba(0,0,0,.32),inset 0 1px 0 rgba(255,255,255,.14)}
+.brand img{border-radius:24%;box-shadow:0 2px 6px rgba(15,23,42,.22)}   /* the icon file is a full square (the system rounds it on a phone); round it here too */
