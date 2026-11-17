@@ -1,1 +1,1 @@
-{ "name": "app-updater", "version": "1.0.2", "private": true, "main": "server.js" }
+{ "name": "app-updater", "version": "1.0.3", "private": true, "main": "server.js" }

@@ -104,6 +104,19 @@ function isPublicRequest(req) {
   const xff = String(req.headers['x-forwarded-for'] || '').split(',').map((x) => x.trim()).filter(Boolean);
   return xff.some((a) => !isPrivateAddr(a));
 }
+// True only for a request that came through Umbrel's login proxy for this app (the app_proxy container, which checks Umbrel's
+// session before passing anything on), is not public, and when Portal Admin has a saved PocketBase login to use.
+const dns = require('dns');
+const APP_PROXY_HOST = process.env.APP_PROXY_HOST || 'joolay-portal-admin_app_proxy_1';
+const AUTO_LOGIN = !/^(0|false|no|off)$/i.test(String(process.env.AUTO_LOGIN || ''));
+let proxyIps = { at: 0, v: [] };
+async function behindUmbrelLogin(req) {
+  if (!AUTO_LOGIN || req.publicPort || req.portalClientIp || isPublicRequest(req)) return false;
+  if (Date.now() - proxyIps.at > 60000) { let v = []; try { v = (await dns.promises.lookup(APP_PROXY_HOST, { all: true })).map((a) => a.address); } catch {} proxyIps = { at: Date.now(), v }; }
+  const from = String(req.socket.remoteAddress || '').replace(/^::ffff:/, '');
+  if (!proxyIps.v.includes(from)) return false;
+  const c = pbx.creds(); return !!(c.email && c.pass);
+}
 function isSuperuserToken(auth) {
   try {
     const tok = String(auth || '').replace(/^Bearer\s+/i, '');
@@ -168,11 +181,13 @@ function installedApps() {
       let compose = ''; try { compose = fs.readFileSync(path.join(APPS_DIR, dir, 'docker-compose.yml'), 'utf8'); } catch {}
       const id = yamlKey(yml, 'id') || dir;
       const slug = ((compose.match(/POCKETBASE_APP_ID["']?\s*[=:]\s*["']?([A-Za-z0-9_-]{1,48})/) || [])[1] || '').toLowerCase();
+      // An app that sets JOOLZAPP_DASHBOARD=hidden is a tool for the server's owner (opened from Umbrel): it gets its Portal API key but no icon on the JoolzApp home screen.
+      const noDash = /JOOLZAPP_DASHBOARD["']?\s*[=:]\s*["']?hidden\b/i.test(compose);
       const pbName = ((compose.match(/POCKETBASE_APP_NAME["']?\s*[=:]\s*["']?([^"'\r\n]{1,80})/) || [])[1] || '').trim();
       const dataDir = path.join(APPS_DIR, dir, 'data');
       let env = 'no-data-dir';
       try { if (fs.statSync(dataDir).isDirectory()) env = fs.existsSync(path.join(dataDir, 'pocketbase.env')) ? 'present' : 'missing'; } catch {}
-      apps.push({ dir, env, id, name: yamlKey(yml, 'name') || id, version: yamlKey(yml, 'version'), tagline: yamlKey(yml, 'tagline'), category: yamlKey(yml, 'category'), port: Number(yamlKey(yml, 'port')) || 0, funnel: ((compose.match(/tsdproxy\.name["']?\s*[=:]\s*["']?([a-z0-9-]{1,63})/i) || [])[1] || '').toLowerCase(), slug, pbName, pocketbase: xPocketbaseFile(path.join(APPS_DIR, dir)) || xPocketbase(compose) });
+      apps.push({ dir, env, noDash, id, name: yamlKey(yml, 'name') || id, version: yamlKey(yml, 'version'), tagline: yamlKey(yml, 'tagline'), category: yamlKey(yml, 'category'), port: Number(yamlKey(yml, 'port')) || 0, funnel: ((compose.match(/tsdproxy\.name["']?\s*[=:]\s*["']?([a-z0-9-]{1,63})/i) || [])[1] || '').toLowerCase(), slug, pbName, pocketbase: xPocketbaseFile(path.join(APPS_DIR, dir)) || xPocketbase(compose) });
     }
     out = { available: true, apps: apps.sort((a, b) => a.name.localeCompare(b.name)) };
   } catch { out = { available: false, apps: [] }; }
@@ -480,7 +495,19 @@ const handle = async (req, res) => {
 
     if (pathname === '/config') {
       if (req.method !== 'GET') return send(res, 405, { message: 'Method not allowed' });
-      return send(res, 200, { pbUrl: currentPbUrl(), locked: true, custom: !!(ENV_PB_URL && normaliseUrl(ENV_PB_URL)), public: isPublicRequest(req) });
+      return send(res, 200, { pbUrl: currentPbUrl(), locked: true, custom: !!(ENV_PB_URL && normaliseUrl(ENV_PB_URL)), public: isPublicRequest(req), autoLogin: await behindUmbrelLogin(req) });
+    }
+    // No second sign-in for the admin: whoever reaches this address has already passed Umbrel's own login (and Tailscale, from outside),
+    // so the page is handed an admin session made with the login Portal Admin keeps. Strictly for requests that came through Umbrel's
+    // login proxy for this app; anything else (another container, the old dashboard port, JoolzApp Portal's pass-through) gets nothing.
+    if (pathname === '/auto-login') {
+      if (req.method !== 'POST') return send(res, 405, { message: 'Method not allowed' });
+      if (!(await behindUmbrelLogin(req))) return send(res, 403, { message: 'Not available here.' });
+      const c = pbx.creds(), body = { identity: c.email, password: c.pass };
+      try {
+        let j; try { j = await pbx.raw('POST', '/api/collections/_superusers/auth-with-password', { body }); } catch (e) { if (e.status !== 404) throw e; j = await pbx.raw('POST', '/api/admins/auth-with-password', { body }); }
+        return send(res, 200, { token: j.token, email: (j.record || j.admin || {}).email || c.email, id: (j.record || j.admin || {}).id || '' });
+      } catch (e) { return send(res, 502, { message: "Portal Admin's saved PocketBase login no longer works. Sign in with the current one." }); }
     }
 
     if (pathname === '/umbrel-apps') {

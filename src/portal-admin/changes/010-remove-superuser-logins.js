@@ -21,6 +21,7 @@ module.exports = {
   },
   async apply(c) {
     const first = await earlierLeft(c); if (first) throw new Error(`Apply "${first}" first.`);
+    if (!c.ownLoginSaved()) throw new Error("Portal Admin doesn't have its own copy of the login yet. Open Portal Admin's home screen once, then try again.");
     const done = [];
     for (const a of holders(c)) if (atLeast(a.version, NEEDS[a.slug])) { c.unsetEnv(a, KEYS); done.push(a.name); }
     return done.length ? [`Removed from: ${done.join(', ')}. Restart those apps (or the server) so they also forget the login they already loaded.`] : ['Nothing could be removed yet. Update the apps listed, then come back.'];

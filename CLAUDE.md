@@ -8,6 +8,8 @@ Everything is managed here; never create a separate repo for a new app.
 2. Store entry: `joolay-<name>/` with `umbrel-app.yml` (`id: joolay-<name>`), `docker-compose.yml`, `icon.svg`.
    - compose `web.image` must be `ghcr.io/joolay/<name>:<version>`, equal to `version` in `umbrel-app.yml`.
    - `app_proxy` uses `APP_HOST: joolay-<name>_web_1`. Pick an unused `port`.
+   - Ports must be unique across the WHOLE store: every `port:` in `umbrel-app.yml` and every host port published in a compose file (`"<host>:<container>"`) share one pool. Check with `grep -rn 'port:' joolay-*/umbrel-app.yml; grep -rn '"[0-9]*:[0-9]*"' joolay-*/docker-compose.yml` before picking one. A clash stops whichever app starts second.
+   - An owner-only tool that should not get an icon on the JoolzApp home screen sets `JOOLZAPP_DASHBOARD=hidden` in its compose environment.
 3. `.github/workflows/build-images.yml` auto-discovers `src/*/Dockerfile`, builds multi-arch, and pushes the image from `main` and `claude/**` branches (so the image exists before the manifest lands on `main`).
 4. Releasing an update: bump `version` in `umbrel-app.yml` AND the compose image tag (and `package.json` if present), update `releaseNotes`.
 5. The store only updates when the change is on `main`. Develop on the assigned `claude/...` branch, wait for the build to be green, then open a PR / merge when the user asks.
