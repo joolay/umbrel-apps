@@ -19,7 +19,7 @@ const upstream = http.createServer((q, r) => {
   r.writeHead(200); r.end("SECRET-" + q.url);
 }).listen(U);
 
-const child = cp.spawn(process.execPath, [path.join(__dirname, "server.js")], { env: Object.assign({}, process.env, { NODE_ENV: "test", JTV_PB: path.join(__dirname, "test", "mock-pb.js"), PORT: P, DATA_DIR: dir, JTV_CACHE_MS: "0", FFMPEG: "/nonexistent/ffmpeg", DEVTEST_DIR: path.join(dir, "devtest"), UI_DIST: path.join(dir, "dist"), STREAM_UPSTREAM: "http://127.0.0.1:" + U }), stdio: "ignore" });
+const child = cp.spawn(process.execPath, [path.join(__dirname, "server.js")], { env: Object.assign({}, process.env, { NODE_ENV: "test", JTV_PB: path.join(__dirname, "test", "mock-pb.js"), PORT: P, DATA_DIR: dir, JTV_CACHE_MS: "0", INTRODB_URL: "http://127.0.0.1:9", THEINTRODB_URL: "http://127.0.0.1:9", FFMPEG: "/nonexistent/ffmpeg", DEVTEST_DIR: path.join(dir, "devtest"), UI_DIST: path.join(dir, "dist"), STREAM_UPSTREAM: "http://127.0.0.1:" + U }), stdio: "ignore" });
 function req(method, p, body, headers) {
   return new Promise((res, rej) => {
     const r = http.request({ port: P, method, path: p, headers: Object.assign({ "content-type": "application/json" }, headers || {}) }, x => { const c = []; x.on("data", d => c.push(d)); x.on("end", () => { const t = Buffer.concat(c).toString(); let j = null; try { j = JSON.parse(t); } catch {} res({ code: x.statusCode, text: t, json: j, headers: x.headers }); }); });
@@ -122,8 +122,10 @@ const T = tok => ({ "x-jtv-token": tok });
   r = await req("POST", "/api/marks/scan", { infoHash: HASH, fileIdx: 0 }); ok(r.code === 401, "scan needs a sign-in");
   r = await req("POST", "/api/marks/scan", { infoHash: "nothex", fileIdx: 0 }, T(ann)); ok(r.code === 400, "scan only takes a torrent source");
   r = await req("POST", "/api/marks/scan", { infoHash: HASH, fileIdx: 0 }, T(ann)); ok(r.code === 422 && r.json.code === "unreadable", "a file that is not a video gives a clear 'could not read' (not a crash)");
-  r = await req("POST", "/api/marks/tail", { infoHash: HASH, fileIdx: 0, from: 5000, duration: 100 }, T(ann)); ok(r.code === 400, "tail: a position past the end is refused");
-  r = await req("POST", "/api/marks/tail", { infoHash: HASH, fileIdx: 0, from: 100, duration: 7000 }, T(ann)); ok(r.code === 503 && r.json.code === "marks_unavailable", "tail: missing ffmpeg gives a clear answer");
+  r = await req("POST", "/api/marks/lookup", { imdb: "tt0944947", season: 1, episode: 1, duration: 3000 }); ok(r.code === 401, "lookup needs a sign-in");
+  r = await req("POST", "/api/marks/lookup", { imdb: "x", duration: 3000 }, T(ann)); ok(r.code === 400, "lookup: only real titles");
+  r = await req("POST", "/api/marks/lookup", { imdb: "tt0944947", season: 1, duration: 3000 }, T(ann)); ok(r.code === 400, "lookup: season without episode is refused");
+  r = await req("POST", "/api/marks/lookup", { imdb: "tt0944947", season: 1, episode: 1, duration: 3000 }, T(ann)); ok(r.code === 502 && r.json.code === "unreachable", "lookup: the databases being down is a clear answer (here they are unreachable on purpose)");
   r = await req("GET", "/api/marks/show?id=tt0944947", undefined, T(ann)); ok(r.code === 200 && r.json.intro === null, "no intro marked yet");
   r = await req("PUT", "/api/marks/show", { id: "tt0944947", intro: { start: 62, end: 20 } }, T(ann)); ok(r.code === 400, "an intro that ends before it starts is refused");
   r = await req("PUT", "/api/marks/show", { id: "tt0944947", intro: { start: 62.04, end: 150 } }, T(ann)); ok(r.code === 200 && r.json.intro.start === 62 && r.json.intro.end === 150, "the household's intro mark is saved");

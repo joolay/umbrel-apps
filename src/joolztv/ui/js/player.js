@@ -179,34 +179,30 @@ var Player = (function () {
      The server finds them; the player only shows one small button at the right moment (OK on the remote presses it). */
   function showIdOf(info) { var id = String((info && (info.videoId || info.id)) || '').split(':')[0]; return /^tt\d{5,12}$/.test(id) ? id : ''; }
   function fileKey(s) { return s && s.infoHash ? { infoHash: s.infoHash, fileIdx: s.fileIdx == null ? -1 : s.fileIdx } : null; }
+  /* Where the skip points come from, in this order: the community databases (by IMDb id, season and episode), the file's own chapters, an intro the household marked for the show. */
   function loadMarks() {
     var sess = S, s = sess.streams[sess.idx], f = fileKey(s); if (!f) return;
     var key = f.infoHash + ':' + f.fileIdx; if (sess.marksFor === key) return;
-    sess.marksFor = key; var M = sess.marks = { intro: null, introFrom: '', credits: null, scenes: [], tailAsked: false, tailAt: 0, done: {} };
-    Backend.call('POST', '/api/marks/scan', f, undefined, 30000).then(function (r) {
-      if (S !== sess || sess.marks !== M) return;
-      if (r.intro) { M.intro = r.intro; M.introFrom = 'file'; }
-      if (r.credits) M.credits = r.credits;
-      M.scenes = r.scenes || []; M.chapters = !!r.hasChapters;
-    }).catch(function () {}).then(function () {
-      var show = showIdOf(sess.info);
-      if (S !== sess || sess.marks !== M || M.intro || sess.info.type !== 'series' || !show) return;
-      return Backend.call('GET', '/api/marks/show?id=' + show).then(function (j) { if (S === sess && sess.marks === M && !M.intro && j.intro) { M.intro = j.intro; M.introFrom = 'show'; } }).catch(function () {});
-    });
-  }
-  /* the end: when about 20 minutes are left, ask the server to look at the rest of the picture (unless the download is too slow to spare the data) */
-  function askTail(t, d) {
-    var sess = S, M = sess.marks, f = fileKey(sess.streams[sess.idx]); if (!M || !f || M.tailAsked || d < 600) return;
-    if (Date.now() < M.tailAt || t < d - 1200) return;
-    if (sess.buf && sess.buf.plan && sess.buf.plan.slow) return;
-    if (M.chapters && M.credits && M.scenes.length) return;                                  // the file's own chapters already say it all
-    M.tailAsked = true;
-    var from = M.credits ? Math.max(t, M.credits.start - 12) : Math.max(t, d - 900);
-    Backend.call('POST', '/api/marks/tail', { infoHash: f.infoHash, fileIdx: f.fileIdx, from: from, duration: d }, undefined, 130000).then(function (r) {
-      if (S !== sess || sess.marks !== M) return;
-      if (!M.credits && r.creditsStart != null) M.credits = { start: r.creditsStart };
+    sess.marksFor = key; var M = sess.marks = { intro: null, introFrom: '', credits: null, scenes: [], done: {} };
+    var info = sess.info, show = showIdOf(info), mm = /^[^:]*:(\d+):(\d+)$/.exec(info.videoId || ''), series = info.type === 'series' && !!mm;
+    function live() { return S === sess && sess.marks === M; }
+    function take(r, from) {
+      if (!live() || !r) return;
+      if (!M.intro && r.intro) { M.intro = r.intro; M.introFrom = from; }
+      if (!M.credits && r.credits) M.credits = r.credits;
       (r.scenes || []).forEach(function (x) { if (M.scenes.indexOf(x) < 0) M.scenes.push(x); }); M.scenes.sort(function (a, b) { return a - b; });
-    }).catch(function (e) { if (S === sess && sess.marks === M && e.status === 429) { M.tailAsked = false; M.tailAt = Date.now() + 60000; } });
+    }
+    var dur = isFinite(sess.v.duration) ? sess.v.duration : 0;
+    (show ? Backend.call('POST', '/api/marks/lookup', { imdb: show, season: series ? +mm[1] : null, episode: series ? +mm[2] : null, duration: dur }, undefined, 20000).then(function (r) { take(r, 'community'); }).catch(function () {}) : Promise.resolve())
+      .then(function () {
+        if (!live() || (M.intro && M.credits)) return;
+        return Backend.call('POST', '/api/marks/scan', f, undefined, 30000).then(function (r) {                // the file's own chapters
+          take({ intro: r.intro, credits: r.credits, scenes: r.scenes }, 'file');
+        }).catch(function () {});
+      }).then(function () {
+        if (!live() || M.intro || !series || !show) return;
+        return Backend.call('GET', '/api/marks/show?id=' + show).then(function (j) { if (live() && !M.intro && j.intro) { M.intro = j.intro; M.introFrom = 'show'; } }).catch(function () {});
+      });
   }
   function wantSkip(t, d) {
     var M = S.marks; if (!M) return null;
@@ -220,7 +216,6 @@ var Player = (function () {
   }
   function marksTick(t, d) {
     if (!S.marks || S.hold || S.upnext) return;
-    askTail(t, d);
     var w = wantSkip(t, d), K = S.skip, el = $('#skips'); if (!el) return;
     if (!w) { if (K) { S.skip = null; el.innerHTML = ''; } return; }
     if (!K || K.kind !== w.kind) {
@@ -250,7 +245,7 @@ var Player = (function () {
       if (S.markA === undefined || t - S.markA < 5) return Views.toast('First choose "Intro starts here" at the start of the intro.', 6000);
       var intro = { start: S.markA, end: t }; S.markA = undefined;
       Backend.call('PUT', '/api/marks/show', { id: show, intro: intro }).then(function (r) { if (S.marks) { S.marks.intro = r.intro; S.marks.introFrom = 'show'; S.marks.done = {}; } Views.toast('Saved. "Skip intro" now appears on every episode of this show.', 6000); }).catch(function (e) { Views.toast(e.message, 6000); });
-    }, 'Shows keep the same opening every episode. Mark it once and everyone in the household gets the button.');
+    }, 'Use this only when the community databases have no intro for the show. Mark it once and everyone in the household gets the button on every episode.');
   }
 
   /* ---- smart buffering ---- */

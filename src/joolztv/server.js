@@ -23,7 +23,7 @@ const UPSTREAM = new URL(process.env.STREAM_UPSTREAM || "http://server:11470");
 const INTERNAL = process.env.STREAM_INTERNAL || "http://127.0.0.1:11470";   // how the streaming server reaches itself (for transcoding)
 const REQUIRE_ACCOUNTS = !/^(0|false|no)$/i.test(process.env.REQUIRE_ACCOUNTS || "1");
 const subsync = require("./subsync");
-const marks = require("./marks");
+const marks = require("./marks"), community = require("./community");
 const FFMPEG = process.env.FFMPEG || "ffmpeg", FFPROBE = process.env.FFPROBE || "ffprobe";
 const APP_NAME = process.env.POCKETBASE_APP_NAME || "JoolzTV";
 const MAX_PROFILES = 12, MAX_BODY = 2 * 1024 * 1024, MAX_RESUME = 200, MAX_LIST = 500, STREAM_TTL = 12 * 3600e3;
@@ -278,9 +278,9 @@ async function subsSync(req, res, u) {
   } finally { syncing.delete(u.id); syncActive--; }
 }
 
-/* ---------- skip intro / credit scenes: what the file says (chapters), what the tail of it looks like, and intros the household marked ---------- */
+/* ---------- skip intro / credit scenes: the community databases, else the file's chapters, else an intro the household marked ---------- */
 const MARKS_FILE = path.join(DATA_DIR, "marks.json");
-const marksCache = new Map(); let marksActive = 0; const marksBusy = new Set();
+const marksCache = new Map(); let marksActive = 0;
 const cacheGet = k => { const e = marksCache.get(k); return e && Date.now() - e.at < 6 * 3600e3 ? e.v : null; };
 const cacheSet = (k, v) => { if (marksCache.size > 300) marksCache.delete(marksCache.keys().next().value); marksCache.set(k, { at: Date.now(), v }); };
 function fileOf(body) {
@@ -301,14 +301,13 @@ async function marksRoutes(req, res, p, u) {
     marksActive++;
     try { const r = await marks.chapters(f.url, { ffprobe: FFPROBE }); cacheSet("c:" + f.key, r); return send(res, 200, r); } catch (e) { return markErr(res, e); } finally { marksActive--; }
   }
-  if (p === "/api/marks/tail" && req.method === "POST") {                      // where the credits start and whether a scene follows: looks at the picture from `from` to the end
-    const body = await jsonBody(req), f = fileOf(body), from = +body.from, duration = +body.duration;
-    if (!f || !(duration >= 60 && duration <= 40000) || !(from >= 0 && from < duration)) return send(res, 400, { code: "bad_request", message: "Needs a torrent source and the position." });
-    const key = "t:" + f.key + ":" + Math.floor(from / 120), hit = cacheGet(key); if (hit) return send(res, 200, hit);
-    if (marksBusy.has(u.id)) return send(res, 429, { code: "busy", message: "Already looking at a file for you." });
-    if (marksActive >= 2) return send(res, 429, { code: "busy", message: "Busy. Try again shortly." });
-    marksBusy.add(u.id); marksActive++;
-    try { const r = await marks.tail(f.url, { from, duration, ffmpeg: FFMPEG }); cacheSet(key, r); return send(res, 200, r); } catch (e) { return markErr(res, e); } finally { marksBusy.delete(u.id); marksActive--; }
+  if (p === "/api/marks/lookup" && req.method === "POST") {                    // what the community skip databases know about this film / episode
+    const body = await jsonBody(req), imdb = String(body.imdb || ""), duration = +body.duration || 0;
+    const season = body.season == null ? null : parseInt(body.season, 10), episode = body.episode == null ? null : parseInt(body.episode, 10);
+    if (!/^tt\d{5,12}$/.test(imdb) || (season !== null && !(season >= 0 && season < 10000)) || (episode !== null && !(episode >= 0 && episode < 10000)) || (season === null) !== (episode === null)) return send(res, 400, { code: "bad_request", message: "Unknown title." });
+    const key = "l:" + imdb + ":" + season + ":" + episode + ":" + Math.round(duration / 60), hit = cacheGet(key); if (hit) return send(res, 200, hit);
+    try { const r = await community.lookup({ imdb, season, episode, duration }); cacheSet(key, r); return send(res, 200, r); }
+    catch (e) { if (e.code === "unreachable") return send(res, 502, { code: "unreachable", message: "The skip databases could not be reached." }); return markErr(res, e); }
   }
   if (p === "/api/marks/show") {                                              // the intro the household marked for a show (same timing offered on every episode)
     const m = readJson(MARKS_FILE, { shows: {} }); if (!m.shows) m.shows = {};

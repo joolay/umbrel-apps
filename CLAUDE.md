@@ -69,3 +69,6 @@ The top bar of the JoolzApp home screen scrolls upcoming events. Apps that own d
 
 ## Paid apps
 Admin > Paid apps (Yoco) locks an app behind payment using the existing `portal.access` rows, so apps need no changes. Details: `src/portal-admin/README.md`, "Paid apps (Yoco)".
+
+## Look for an existing community add-on or service first
+Before building a feature from scratch (skip intro/credits, subtitles, metadata, ...), search for a community Stremio add-on or public community database that already provides it, and say what was found. Build our own only when nothing usable exists, and keep it as the fallback.

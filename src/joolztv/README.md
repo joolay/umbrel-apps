@@ -59,11 +59,10 @@ Playback waits for a buffer sized to the torrent's current download speed (from 
 Speeds 0.75x to 1.75x keep the voice pitch (`preservesPitch`). The player verifies the device really changed speed and, if not, reverts to 1x with a message.
 
 ## Skip intro and credit scenes
-One small glass button at the bottom right (OK on the remote presses it; it fades after 10 s and returns with the controls). Nothing is guessed from sound; the server (`marks.js`, needs ffmpeg) works it out like this:
-- **Intro**: chapters inside the file named Intro / Opening / OP / Title sequence (ffprobe, `POST /api/marks/scan`). If the file has none and it is a series, the intro the household marked for the show is used
-  (player > Skip points > "Intro starts here" / "Intro ends here", kept in `marks.json`, one mark serves every episode and every member; view-only accounts cannot change it).
-- **Credits and scenes**: chapters named Credits / Ending / Post-credits scene / Epilogue; otherwise, when about 20 minutes are left, the server looks at the rest of the picture (`POST /api/marks/tail`): one tiny frame every 6 s, labelled
-  credits-like (dark with few bright spots) or picture. A run of at least 48 s of credits-like frames is the credits; 15 s or more of picture inside or after it is a mid- or end-credit scene ("Skip to extra scene"). With no scene, a series shows "Next episode" while the credits roll.
-- Skipped when the download is slower than the film plays (so it never competes with playback). Two files at a time, one per person, results cached for 6 hours.
-- The canvas is not used: webOS draws hardware video as black in a canvas, so the picture is read on the server.
-- Limit: the picture check is a heuristic tested on synthetic films (`test-marks.js`); a very long dark scene near the end could be taken for credits. It has not been run on real films yet.
+One small glass button at the bottom right (OK on the remote presses it; it fades after 10 s and returns with the controls): "Skip intro", "Skip to extra scene", or "Next episode" while a series' credits roll. Nothing is detected here; the points come, in this order, from:
+1. **Community databases**, asked through the server (`community.js`, `POST /api/marks/lookup`; only the IMDb id, season and episode are sent, as the client name "JoolzTV", anonymous reads, answers cached 6 h):
+   [IntroDB](https://introdb.app) (`api.introdb.app/segments`: intro, recap, outro, post-credit scene) and [TheIntroDB](https://theintrodb.org) (`api.theintrodb.org/v4/media`: intro, recap, credits, preview). The answers are merged and thrown out when they make no sense for the file's length.
+   Credits that stop and start again leave a gap, and that gap is taken as a mid-credits scene. TheIntroDB's "preview" is not used (its own example puts it 28 minutes into a film).
+2. **The file's own chapters** (ffprobe, `POST /api/marks/scan`): Intro / Opening / Credits / Post-credits scene.
+3. **An intro the household marked** for the show (player > Skip points, `marks.json`; view-only accounts cannot change it), used only when 1 and 2 have no intro.
+Limit: the databases are community-filled, so coverage varies by title and some entries disagree. Test: `test-community.js` (stand-in services using real response shapes), `test-marks.js` (chapters).
