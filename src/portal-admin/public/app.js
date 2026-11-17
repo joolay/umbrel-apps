@@ -1962,3 +1962,25 @@ async function portalConfig(pb, slug) {
 }
 
 boot();
+
+// iPhone browsers sometimes leave the page shifted up after the keyboard closes, after returning to the tab, or after the address bar
+// shrinks: the top bar slides out of view and an empty band shows under the dock. Put the page back whenever that can have happened,
+// unless someone is typing.
+(function keepViewportInPlace() {
+  const typing = () => { const a = document.activeElement; return !!a && (/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) || a.isContentEditable); };
+  let t = 0;
+  function settle() {
+    clearTimeout(t);
+    t = setTimeout(() => {
+      if (typing()) return;
+      const max = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+      const vv = window.visualViewport, shifted = vv && vv.scale <= 1.01 && vv.offsetTop > 1;
+      if (shifted || window.scrollY > max) window.scrollTo(0, Math.min(window.scrollY, max));
+    }, 120);
+  }
+  document.addEventListener('focusout', settle);
+  window.addEventListener('pageshow', settle);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) settle(); });
+  window.addEventListener('orientationchange', settle);
+  if (window.visualViewport) { window.visualViewport.addEventListener('resize', settle); window.visualViewport.addEventListener('scroll', settle); }
+})();
