@@ -15,7 +15,7 @@ const RESERVED = [
   ['portal.access', 'boolean', 'false blocks a user (all apps, or one app) from using the app'],
   ['portal.editor', 'boolean', 'true makes a user an Editor: can edit, confirm and re-render shared resources in every app'],
   ['portal.readonly', 'boolean', 'true stops a user changing shared resources (menus, logos, uploads) in any app; they can still use the app'],
-  ['portal.url', 'string', 'Address of this dashboard, used by the "Back to Dashboard" button in apps (blank = same address with port 3892)'],
+  ['portal.url', 'string', 'Address of this dashboard, used by the "Back to Dashboard" button in apps (blank = same address with port 3886)'],
 ];
 
 /* ---------- API ---------- */

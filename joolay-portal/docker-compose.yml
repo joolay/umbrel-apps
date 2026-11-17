@@ -11,13 +11,21 @@ services:
       PROXY_AUTH_ADD: "false"
 
   web:
-    image: ghcr.io/joolay/portal-admin:0.22.1
+    image: ghcr.io/joolay/portal-admin:0.23.0
     command: ["node", "portal.js"]
     restart: on-failure
     stop_grace_period: 10s
     # Reaches PocketBase (port 5400) and Portal Admin's apps-only port (3899) on this Umbrel.
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    # The public JoolzApp address (https://joolzapp.<tailnet>.ts.net via TSDProxy + Funnel, see deploy/tsdproxy) and, on the
+    # home network, http://<umbrel>:3886. TSDProxy reads the labels below.
+    ports:
+      - "3886:3000"
+    labels:
+      tsdproxy.enable: "true"
+      tsdproxy.name: "joolzapp"
+      tsdproxy.port.1: "443/https:3886/http, no_autodetect, tailscale_funnel"
     volumes:
       # Holds one small file, pocketbase.env, with this app's Portal API key. Portal Admin writes it by itself.
       - ${APP_DATA_DIR}/data:/data

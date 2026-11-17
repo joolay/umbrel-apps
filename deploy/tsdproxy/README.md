@@ -6,7 +6,7 @@ the store is what publishes it**. No per-app Tailscale steps.
 
 | Public address | App | Host port |
 |---|---|---|
-| `https://joolzapp.<tailnet>.ts.net` | Portal Admin: the Dashboard (user-only port) | 3892 |
+| `https://joolzapp.<tailnet>.ts.net` | JoolzApp Portal: the home screen (its own app; Portal Admin is never published) | 3886 |
 | `https://shutterworth.<tailnet>.ts.net` | ShutterWorth | 3882 |
 | `https://diner-bell.<tailnet>.ts.net` | Diner Bell | 3894 |
 | `https://listify.<tailnet>.ts.net` | Listify | 3898 |

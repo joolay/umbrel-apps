@@ -78,7 +78,7 @@
   function syncDash() {
     const b = document.getElementById("dashBtn"); if (!b) return;
     b.hidden = !user;
-    b.onclick = () => { const t = getToken(), base = (user && user.portalUrl) || (location.protocol + "//" + location.hostname + ":3892/"); location.href = base + (t ? "#sso=" + encodeURIComponent(t) : ""); };
+    b.onclick = () => { const t = getToken(), base = (user && user.portalUrl) || (location.protocol + "//" + location.hostname + ":3886/"); location.href = base + (t ? "#sso=" + encodeURIComponent(t) : ""); };
   }
   function renderAccount() {
     syncDash();
