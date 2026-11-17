@@ -64,5 +64,4 @@ One small glass button at the bottom right (OK on the remote presses it; it fade
    [IntroDB](https://introdb.app) (`api.introdb.app/segments`: intro, recap, outro, post-credit scene) and [TheIntroDB](https://theintrodb.org) (`api.theintrodb.org/v4/media`: intro, recap, credits, preview). The answers are merged and thrown out when they make no sense for the file's length.
    Credits that stop and start again leave a gap, and that gap is taken as a mid-credits scene. TheIntroDB's "preview" is not used (its own example puts it 28 minutes into a film).
 2. **The file's own chapters** (ffprobe, `POST /api/marks/scan`): Intro / Opening / Credits / Post-credits scene.
-3. **An intro the household marked** for the show (player > Skip points, `marks.json`; view-only accounts cannot change it), used only when 1 and 2 have no intro.
 Limit: the databases are community-filled, so coverage varies by title and some entries disagree. Test: `test-community.js` (stand-in services using real response shapes), `test-marks.js` (chapters).

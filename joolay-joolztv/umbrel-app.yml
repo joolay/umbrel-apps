@@ -26,6 +26,6 @@ icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-joolztv/i
 path: ""
 defaultUsername: ""
 defaultPassword: ""
-releaseNotes: "Skip buttons now use the community skip databases (IntroDB and TheIntroDB) for intros, credits and credit scenes, with the file's chapters and an intro your household marks as fallbacks. Also: Sources screen and filters, preferred quality, household-wide sign-in, profile pictures."
+releaseNotes: "Skip buttons now use the community skip databases (IntroDB and TheIntroDB) for intros, credits and credit scenes, with the file's own chapters as a fallback. Also: Sources screen and filters, preferred quality, household-wide sign-in, profile pictures."
 submitter: joolay
 submission: https://github.com/joolay/umbrel-apps

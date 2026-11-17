@@ -13,7 +13,7 @@ var Player = (function () {
       '<div class="pbar glass"><div class="seek f" id="seek"><div class="buf"></div><div class="pos"></div><div class="knob"></div></div>' +
       '<div class="times"><span id="tcur">0:00</span><span id="tdur">0:00</span></div>' +
       '<div class="pctl"><span class="cbtn f" data-pact="back10">⏪ 10</span><span class="cbtn big f" data-pact="toggle" id="bplay">❚❚</span><span class="cbtn f" data-pact="fwd10">10 ⏩</span>' +
-      '<span class="cbtn f" data-pact="speed">Speed 1x</span><span class="cbtn f" data-pact="subs">Subtitles</span><span class="cbtn f" data-pact="sources">Sources</span>' + (info.type === 'series' && showIdOf(info) ? '<span class="cbtn f" data-pact="skippoints">Skip points</span>' : '') + '</div></div></div>';
+      '<span class="cbtn f" data-pact="speed">Speed 1x</span><span class="cbtn f" data-pact="subs">Subtitles</span><span class="cbtn f" data-pact="sources">Sources</span>' + '</div></div></div>';
     var el = Views.mount('player', h, { cls: 'player', onBack: function () { close(); Views.pop(); return true; }, onClose: cleanup });
     S = { el: el, info: info, v: el.querySelector('#pv'), learnedFor: {}, buf: { speed: 0, peers: 0, len: 0, fill: null }, hold: false, streams: [], groups: [], idx: -1, tried: {}, rate: 1, subs: null, ui: true, uiT: null, lastSave: 0, tick: null, buffT: null, ended: false, gotTime: false };
     keepPitch(S.v);
@@ -179,16 +179,16 @@ var Player = (function () {
      The server finds them; the player only shows one small button at the right moment (OK on the remote presses it). */
   function showIdOf(info) { var id = String((info && (info.videoId || info.id)) || '').split(':')[0]; return /^tt\d{5,12}$/.test(id) ? id : ''; }
   function fileKey(s) { return s && s.infoHash ? { infoHash: s.infoHash, fileIdx: s.fileIdx == null ? -1 : s.fileIdx } : null; }
-  /* Where the skip points come from, in this order: the community databases (by IMDb id, season and episode), the file's own chapters, an intro the household marked for the show. */
+  /* Where the skip points come from, in this order: the community databases (by IMDb id, season and episode), the file's own chapters. */
   function loadMarks() {
     var sess = S, s = sess.streams[sess.idx], f = fileKey(s); if (!f) return;
     var key = f.infoHash + ':' + f.fileIdx; if (sess.marksFor === key) return;
-    sess.marksFor = key; var M = sess.marks = { intro: null, introFrom: '', credits: null, scenes: [], done: {} };
+    sess.marksFor = key; var M = sess.marks = { intro: null, credits: null, scenes: [], done: {} };
     var info = sess.info, show = showIdOf(info), mm = /^[^:]*:(\d+):(\d+)$/.exec(info.videoId || ''), series = info.type === 'series' && !!mm;
     function live() { return S === sess && sess.marks === M; }
     function take(r, from) {
       if (!live() || !r) return;
-      if (!M.intro && r.intro) { M.intro = r.intro; M.introFrom = from; }
+      if (!M.intro && r.intro) { M.intro = r.intro; }
       if (!M.credits && r.credits) M.credits = r.credits;
       (r.scenes || []).forEach(function (x) { if (M.scenes.indexOf(x) < 0) M.scenes.push(x); }); M.scenes.sort(function (a, b) { return a - b; });
     }
@@ -199,9 +199,6 @@ var Player = (function () {
         return Backend.call('POST', '/api/marks/scan', f, undefined, 30000).then(function (r) {                // the file's own chapters
           take({ intro: r.intro, credits: r.credits, scenes: r.scenes }, 'file');
         }).catch(function () {});
-      }).then(function () {
-        if (!live() || M.intro || !series || !show) return;
-        return Backend.call('GET', '/api/marks/show?id=' + show).then(function (j) { if (live() && !M.intro && j.intro) { M.intro = j.intro; M.introFrom = 'show'; } }).catch(function () {});
       });
   }
   function wantSkip(t, d) {
@@ -234,20 +231,6 @@ var Player = (function () {
     if (w.next) { S.upnext = { n: w.next, left: 0 }; playNext(); return true; }
     try { S.v.currentTime = w.to; } catch (e) {} S.skip = null; var el = $('#skips'); if (el) el.innerHTML = ''; update(); return true;
   }
-  function pickSkipPoints() {
-    var M = S.marks || {}, show = showIdOf(S.info), t = S.v.currentTime, opts = [];
-    opts.push({ label: 'Intro starts here (' + Views.fmtTime(t * 1000) + ')', k: 'a' });
-    opts.push({ label: 'Intro ends here (' + Views.fmtTime(t * 1000) + ')', k: 'b' });
-    if (M.introFrom === 'show') opts.push({ label: 'Forget the saved intro for this show', k: 'x' });
-    Views.menu('Skip points for this show', opts, function (o) {
-      if (o.k === 'a') { S.markA = t; return Views.toast('Intro start set. Now play to where it ends and choose "Intro ends here".', 6000); }
-      if (o.k === 'x') return Backend.call('DELETE', '/api/marks/show?id=' + show).then(function () { if (S.marks) { S.marks.intro = null; S.marks.introFrom = ''; } Views.toast('Saved intro removed'); }).catch(function (e) { Views.toast(e.message, 5000); });
-      if (S.markA === undefined || t - S.markA < 5) return Views.toast('First choose "Intro starts here" at the start of the intro.', 6000);
-      var intro = { start: S.markA, end: t }; S.markA = undefined;
-      Backend.call('PUT', '/api/marks/show', { id: show, intro: intro }).then(function (r) { if (S.marks) { S.marks.intro = r.intro; S.marks.introFrom = 'show'; S.marks.done = {}; } Views.toast('Saved. "Skip intro" now appears on every episode of this show.', 6000); }).catch(function (e) { Views.toast(e.message, 6000); });
-    }, 'Use this only when the community databases have no intro for the show. Mark it once and everyone in the household gets the button on every episode.');
-  }
-
   /* ---- smart buffering ---- */
   function bufMode() { return Store.get('bufmode', 'auto'); }
   function bufEnd(v) { var t = v.currentTime, b = v.buffered; for (var i = 0; i < b.length; i++) if (b.start(i) <= t + 0.4 && b.end(i) >= t) return b.end(i); return t; }
@@ -466,7 +449,7 @@ var Player = (function () {
     if (!el || !S) return;
     var a = el.getAttribute('data-pact');
     if (a === 'skipgo') { doSkip(); return; }
-    if (a === 'skippoints') pickSkipPoints(); else if (a === 'toggle') toggle(); else if (a === 'back10') seekBy(-10); else if (a === 'fwd10') seekBy(10);
+    if (a === 'toggle') toggle(); else if (a === 'back10') seekBy(-10); else if (a === 'fwd10') seekBy(10);
     else if (a === 'speed') pickSpeed(); else if (a === 'subs') pickSubs(); else if (a === 'sources') pickSource();
     showUi(true);
   });

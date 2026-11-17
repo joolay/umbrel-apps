@@ -126,13 +126,7 @@ const T = tok => ({ "x-jtv-token": tok });
   r = await req("POST", "/api/marks/lookup", { imdb: "x", duration: 3000 }, T(ann)); ok(r.code === 400, "lookup: only real titles");
   r = await req("POST", "/api/marks/lookup", { imdb: "tt0944947", season: 1, duration: 3000 }, T(ann)); ok(r.code === 400, "lookup: season without episode is refused");
   r = await req("POST", "/api/marks/lookup", { imdb: "tt0944947", season: 1, episode: 1, duration: 3000 }, T(ann)); ok(r.code === 502 && r.json.code === "unreachable", "lookup: the databases being down is a clear answer (here they are unreachable on purpose)");
-  r = await req("GET", "/api/marks/show?id=tt0944947", undefined, T(ann)); ok(r.code === 200 && r.json.intro === null, "no intro marked yet");
-  r = await req("PUT", "/api/marks/show", { id: "tt0944947", intro: { start: 62, end: 20 } }, T(ann)); ok(r.code === 400, "an intro that ends before it starts is refused");
-  r = await req("PUT", "/api/marks/show", { id: "tt0944947", intro: { start: 62.04, end: 150 } }, T(ann)); ok(r.code === 200 && r.json.intro.start === 62 && r.json.intro.end === 150, "the household's intro mark is saved");
-  r = await req("GET", "/api/marks/show?id=tt0944947", undefined, T(carol)); ok(r.json.intro && r.json.intro.end === 150, "every member gets it for the next episode");
-  r = await req("PUT", "/api/marks/show", { id: "../x", intro: { start: 1, end: 60 } }, T(ann)); ok(r.code === 400, "only real titles can be marked");
-  r = await req("PUT", "/api/marks/show", { id: "tt0944947", intro: { start: 1, end: 60 } }, T(vw)); ok(r.code === 403, "a view-only account cannot change the mark");
-  r = await req("DELETE", "/api/marks/show?id=tt0944947", undefined, T(ann)); ok(r.code === 200 && r.json.intro === null, "a mark can be removed");
+  r = await req("GET", "/api/marks/show?id=tt0944947", undefined, T(ann)); ok(r.code === 404, "no household-marked intros: the databases and the file's chapters are the only sources");
   // UI build selection
   r = await req("GET", "/", undefined, { "user-agent": "Mozilla/5.0 (Web0S; Linux/SmartTV) AppleWebKit/537.36 Chrome/53.0.2785.34 Safari/537.36 WebAppManager" }); ok(r.text === "COMPAT" && /User-Agent/i.test(r.headers.vary), "LG webOS TV gets the compat build");
   r = await req("GET", "/", undefined, { "user-agent": "Mozilla/5.0 (Macintosh) AppleWebKit/537.36 Chrome/126.0 Safari/537.36" }); ok(r.text === "MODERN", "modern browser gets the modern build");

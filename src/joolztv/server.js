@@ -278,8 +278,7 @@ async function subsSync(req, res, u) {
   } finally { syncing.delete(u.id); syncActive--; }
 }
 
-/* ---------- skip intro / credit scenes: the community databases, else the file's chapters, else an intro the household marked ---------- */
-const MARKS_FILE = path.join(DATA_DIR, "marks.json");
+/* ---------- skip intro / credit scenes: the community databases, else the file's chapters ---------- */
 const marksCache = new Map(); let marksActive = 0;
 const cacheGet = k => { const e = marksCache.get(k); return e && Date.now() - e.at < 6 * 3600e3 ? e.v : null; };
 const cacheSet = (k, v) => { if (marksCache.size > 300) marksCache.delete(marksCache.keys().next().value); marksCache.set(k, { at: Date.now(), v }); };
@@ -308,21 +307,6 @@ async function marksRoutes(req, res, p, u) {
     const key = "l:" + imdb + ":" + season + ":" + episode + ":" + Math.round(duration / 60), hit = cacheGet(key); if (hit) return send(res, 200, hit);
     try { const r = await community.lookup({ imdb, season, episode, duration }); cacheSet(key, r); return send(res, 200, r); }
     catch (e) { if (e.code === "unreachable") return send(res, 502, { code: "unreachable", message: "The skip databases could not be reached." }); return markErr(res, e); }
-  }
-  if (p === "/api/marks/show") {                                              // the intro the household marked for a show (same timing offered on every episode)
-    const m = readJson(MARKS_FILE, { shows: {} }); if (!m.shows) m.shows = {};
-    if (req.method === "GET") { const id = new URL(req.url, "http://x").searchParams.get("id") || ""; return send(res, 200, { intro: (m.shows[id] || {}).intro || null }); }
-    if (req.method === "PUT" || req.method === "DELETE") {
-      if (u.portal && u.portal.readonly && !u.isAdmin) return send(res, 403, { code: "view_only", message: "Your account is view-only, so it cannot change this." });
-      const body = req.method === "PUT" ? await jsonBody(req) : {}, id = String(body.id || new URL(req.url, "http://x").searchParams.get("id") || "");
-      if (!/^tt\d{5,12}$/.test(id)) return send(res, 400, { code: "bad_request", message: "Unknown title." });
-      if (req.method === "DELETE") { delete m.shows[id]; writeJson(MARKS_FILE, m); return send(res, 200, { intro: null }); }
-      const a = +(body.intro && body.intro.start), b = +(body.intro && body.intro.end);
-      if (!(a >= 0 && b > a && b - a >= 5 && b - a <= 300 && b < 36000)) return send(res, 400, { code: "bad_request", message: "The intro must last between 5 seconds and 5 minutes." });
-      if (Object.keys(m.shows).length > 2000) delete m.shows[Object.keys(m.shows)[0]];
-      m.shows[id] = { intro: { start: Math.round(a * 10) / 10, end: Math.round(b * 10) / 10 }, ts: Date.now() }; writeJson(MARKS_FILE, m);
-      return send(res, 200, { intro: m.shows[id].intro });
-    }
   }
   return send(res, 404, { code: "not_found" });
 }
