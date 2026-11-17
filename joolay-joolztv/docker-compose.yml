@@ -1,0 +1,50 @@
+# JoolzTV: a TV-style front end (web) that signs people in with their JoolzApp account, plus the Stremio streaming server (server).
+# Source: src/joolztv in this repo, built by .github/workflows/build-images.yml. Keep the `web` image tag equal to `version` in umbrel-app.yml.
+# Replaces the old Stremio app. The streaming server is NOT published anywhere: video only reaches people through the web container, which
+# checks their sign-in first (the /s/<token>/ proxy). Its config and cache live in <app data>/stremio and survive updates.
+# Put the PocketBase login in <app data>/data/pocketbase.env, or let Portal Admin link the app (see CLAUDE.md).
+services:
+  app_proxy:
+    environment:
+      APP_HOST: joolay-joolztv_web_1
+      APP_PORT: 3900
+      # No Umbrel login for this app: JoolzTV locks itself behind the JoolzApp account (the TV launcher cannot use Umbrel's login).
+      PROXY_AUTH_ADD: "false"
+
+  web:
+    image: ghcr.io/joolay/joolztv:1.0.0
+    restart: on-failure
+    stop_grace_period: 1m
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    # Public address https://joolztv.<tailnet>.ts.net via TSDProxy + Funnel (see deploy/tsdproxy). Safe to publish: every route except
+    # /healthz, the page itself and sign-in needs a signed-in household member.
+    ports:
+      - "3901:3900"
+    labels:
+      tsdproxy.enable: "true"
+      tsdproxy.name: "joolztv"
+      tsdproxy.port.1: "443/https:3901/http, no_autodetect, tailscale_funnel"
+    volumes:
+      - ${APP_DATA_DIR}/data:/data
+    environment:
+      - POCKETBASE_APP_ID=joolztv
+      - POCKETBASE_APP_NAME=JoolzTV
+      # Refuse to show anything until PocketBase accounts are working.
+      - REQUIRE_ACCOUNTS=1
+      - STREAM_UPSTREAM=http://server:11470
+      # How the streaming server reaches its own files when it transcodes
+      - STREAM_INTERNAL=http://127.0.0.1:11470
+
+  server:
+    image: tsaridas/stremio-docker:latest
+    restart: on-failure
+    environment:
+      NO_CORS: "1"
+      # Avoids SSDP errors inside Docker.
+      CASTING_DISABLED: "1"
+    # Intel iGPU passthrough so the streaming server can offer hardware (VAAPI) transcode profiles.
+    devices:
+      - /dev/dri:/dev/dri
+    volumes:
+      - ${APP_DATA_DIR}/stremio:/root/.stremio-server

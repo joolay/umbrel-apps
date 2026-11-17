@@ -1,0 +1,30 @@
+manifestVersion: 1
+id: joolay-joolztv
+category: media
+name: JoolzTV
+version: "1.0.0"
+tagline: A glassy, Apple TV style front end for your streaming server, behind your JoolzApp account
+description: >-
+  JoolzTV gives your TV, phone and computer a clean, glassy Apple TV style interface. It includes its own Stremio streaming server and replaces the old Stremio app.
+
+
+  It finds sources with Torrentio, shows the top 3 by seeds in 4K, 1080p, 720p and other, and plays them through the built-in streaming server.
+
+
+  A household has up to 12 profiles, one JoolzApp account each, with their own My List and watch progress. Set it up once with your JoolzApp account (a first-run wizard), then pick who is watching. Sign-ins last 90 days since you last used the app.
+
+
+  Reach it at https://joolztv.<your tailnet>.ts.net or from the JoolzApp dashboard. The streaming server is never exposed directly: video only plays for signed-in household members. You are responsible for what you stream and for following the laws that apply to you.
+developer: joolay
+website: https://github.com/joolay/umbrel-apps
+dependencies: []
+repo: https://github.com/joolay/umbrel-apps
+support: https://github.com/joolay/umbrel-apps/issues
+port: 3900
+gallery: []
+path: ""
+defaultUsername: ""
+defaultPassword: ""
+releaseNotes: "First release: Apple TV style glass interface, JoolzApp account per profile (up to 12 per household), Torrentio sources (top 3 by seeds per resolution), built-in streaming server behind the sign-in. Replaces the Stremio app."
+submitter: joolay
+submission: https://github.com/joolay/umbrel-apps
