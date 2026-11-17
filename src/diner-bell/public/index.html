@@ -42,6 +42,13 @@ input[type=text],input[type=password],select,input[type=url],input[type=tel],inp
 textarea{min-height:90px;resize:vertical}
 label.drop{display:block;border:2px dashed var(--line);border-radius:var(--r);padding:28px 12px;text-align:center;color:var(--mute)}
 label.drop b{display:block;color:var(--ink);font-size:17px;margin-bottom:4px}
+.shots{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:10px}
+.shot{position:relative;aspect-ratio:3/4;border-radius:14px;overflow:hidden;background:var(--line)}
+.shot img{width:100%;height:100%;object-fit:cover;display:block}
+.shot span{position:absolute;left:6px;bottom:6px;min-width:22px;height:22px;padding:0 6px;border-radius:99px;background:rgba(0,0,0,.6);color:#fff;font:600 12px/22px system-ui;text-align:center}
+.shot .x{position:absolute;right:6px;top:6px;width:28px;height:28px;border-radius:99px;border:0;background:rgba(0,0,0,.6);color:#fff;font-size:18px;line-height:28px;padding:0;cursor:pointer}
+.shot.add{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;background:none;border:2px dashed var(--line);color:var(--mute);font-size:13px;cursor:pointer}
+.shot.add b{font-size:28px;font-weight:500;color:var(--ink);line-height:1}
 .tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin:14px 0 4px}
 .tile{position:relative;display:flex;flex-direction:column;justify-content:flex-end;align-items:flex-start;gap:4px;min-height:92px;padding:12px 14px;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:var(--r);text-align:left;font:700 16px system-ui;line-height:1.2;box-shadow:0 1px 3px #0001}
 .tile:active{transform:scale(.98)}
@@ -174,6 +181,9 @@ try { const raw = localStorage.getItem(KEY); if (raw) S = Object.assign(S, JSON.
 let view = 'home';         // home | add | menu | summary | orders | history | spend | settings
 let spendPeriod = 6, spendCur = '', scope = 'me';   // scope: me (personal orders) | family
 let curId = null, addTab = 'photo', busy = null, error = '', query = '', openCat = null;
+// Photos of a menu are collected first (one page per photo is fine) and only read when the person taps "Read menu".
+const MAX_SHOTS = 6; let shots = [];
+function clearShots() { shots.forEach(p => URL.revokeObjectURL(p.url)); shots = []; }
 let sample = true, canImages = true;
 let me = null, ai = { configured: true, isAdmin: false }, pushT = null, editMode = false, restEdit = false, instrOpen = false;
 let P = { tip: null, order: [], branch: {}, view: 'auto' };   // this person's Diner Bell settings, saved on their JoolzApp account
@@ -391,7 +401,11 @@ function homeHTML() {
 function addHTML() {
   const T = (k, l) => `<button class="${addTab === k ? 'on' : ''}" data-a="tab" data-k="${k}">${l}</button>`;
   let body = '';
-  if (addTab === 'photo') body = `<label class="drop"><b>📷 Take or choose photos</b>Multiple pages are fine<input id="f-photo" type="file" accept="image/*" multiple hidden></label>`;
+  if (addTab === 'photo') body = shots.length
+    ? `<div class="shots">${shots.map((p, i) => `<div class="shot"><img src="${p.url}" alt="Page ${i + 1}"><span>${i + 1}</span><button class="x" data-a="shot-del" data-i="${i}" aria-label="Remove page ${i + 1}">×</button></div>`).join('')}${shots.length < MAX_SHOTS ? `<label class="shot add"><b>+</b>Add page<input id="f-photo" type="file" accept="image/*" multiple hidden></label>` : ''}</div>
+       <p class="mute">${shots.length} of up to ${MAX_SHOTS} pages. Add every page of the menu, then read them together.</p>
+       <div class="row" style="gap:8px"><button class="btn" data-a="go-shots">Read menu (${shots.length} ${shots.length === 1 ? 'page' : 'pages'})</button><button class="btn sec" data-a="shots-clear">Start over</button></div>`
+    : `<label class="drop"><b>📷 Take or choose photos</b>One page at a time is fine: add them all, then read the menu<input id="f-photo" type="file" accept="image/*" multiple hidden></label>`;
   if (addTab === 'pdf') body = `<label class="drop"><b>📄 Choose a PDF menu</b>Up to 6 pages are read<input id="f-pdf" type="file" accept="application/pdf" hidden></label>`;
   if (addTab === 'url') body = `<input id="f-url" type="url" placeholder="https://restaurant.com/menu" inputmode="url"><p class="mute">Not every site can be read. If this fails, screenshot the menu page or use the Paste tab.</p><button class="btn" data-a="go-url">Read menu</button>`;
   if (addTab === 'text') body = `<textarea id="f-text" placeholder="Paste the menu text here…" style="min-height:160px"></textarea><div style="height:10px"></div><button class="btn" data-a="go-text">Read menu</button>`;
@@ -875,7 +889,10 @@ document.addEventListener('click', async e => {
     catch (e) { toast(e.message); }
     return;
   }
-  if (a === 'add') { addTab = 'photo'; busy = null; return go('add'); }
+  if (a === 'add') { addTab = 'photo'; busy = null; clearShots(); return go('add'); }
+  if (a === 'shot-del') { const p = shots.splice(+el.dataset.i, 1)[0]; if (p) URL.revokeObjectURL(p.url); error = ''; return render(); }
+  if (a === 'shots-clear') { clearShots(); error = ''; return render(); }
+  if (a === 'go-shots') { if (shots.length) ingest({ images: shots.map(p => p.file), fromShots: true }); return; }
   if (a === 'tab') { addTab = el.dataset.k; error = ''; return render(); }
   if (a === 'open') { if (editMode) return; markSeen(id); return go('menu', id); }
   if (a === 'cat') { openCat = el.dataset.cat; return keepTop(); }
@@ -967,7 +984,12 @@ document.addEventListener('input', e => {
 document.addEventListener('change', e => {
   const t = e.target;
   if ((t.id === 'f-logo' || t.id === 'f-logo-m') && t.files.length) { const id = t.id === 'f-logo' ? t.dataset.id : curId; setLogo(id, t.files[0]); return; }
-  if (t.id === 'f-photo' && t.files.length) ingest({ images: [...t.files].slice(0, 6) });
+  if (t.id === 'f-photo' && t.files.length) {
+    const room = MAX_SHOTS - shots.length, add = [...t.files].filter(f => /^image\//.test(f.type) || !f.type);
+    add.slice(0, room).forEach(f => shots.push({ file: f, url: URL.createObjectURL(f) }));
+    error = add.length > room ? `Only ${MAX_SHOTS} pages can be read at once, so the extra ${add.length - room === 1 ? 'photo was' : 'photos were'} left out.` : '';
+    t.value = ''; render();
+  }
   if (t.id === 'f-pdf' && t.files.length) ingest({ pdf: t.files[0] });
   if (t.dataset && t.dataset.plink != null) { const c = cart(); c.pids ||= []; c.pids[+t.dataset.plink] = t.value; save(); refreshBill(); }
   if (t.dataset && t.dataset.pname != null) render();   // refresh chip labels after editing a name
@@ -1050,6 +1072,7 @@ async function ingest(src) {
     const r = res.menu, ix = S.restaurants.findIndex(x => x.id === r.id);
     if (keep.length) api('api/menus/' + r.id + '/sources', { method: 'POST', body: JSON.stringify({ items: keep }) }).catch(() => {});   // the original material is archived with the menu
     if (ix >= 0) { S.restaurants[ix] = r; S.carts[r.id] = {}; S.hidden = (S.hidden || []).filter(x => x !== r.id); } else S.restaurants.unshift(r);
+    if (src.fromShots) clearShots();
     markSeen(r.id); busy = null; go('menu', r.id);
     toast(res.merged ? `${r.name} is already in the archive, so this is now its latest version` : body.images ? 'Menu added. Check the prices: stylised fonts can be misread (hold an item to fix it).' : 'Menu added to the shared archive');
   } catch (e) {
