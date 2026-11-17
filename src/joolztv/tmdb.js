@@ -76,7 +76,7 @@ async function title({ imdb, tmdb, type, locale, region }) {
   const logos = ((d.images && d.images.logos) || []).slice().sort((a, b) => (b.vote_average || 0) - (a.vote_average || 0));
   const logo = logos.filter(l => l.iso_639_1 === (locale || "en").slice(0, 2))[0] || logos.filter(l => l.iso_639_1 === "en")[0] || logos[0];
   const kw = ((d.keywords && (d.keywords.keywords || d.keywords.results)) || []);
-  const stinger = { during: kw.some(k => k.id === 179430 || /during.?credits?\s*stinger/i.test(k.name)), after: kw.some(k => k.id === 179431 || /after.?credits?\s*stinger/i.test(k.name)) };
+  const stinger = { during: kw.some(k => k.id === 179431 || /during.?credits?\s*stinger/i.test(k.name)), after: kw.some(k => k.id === 179430 || /after.?credits?\s*stinger/i.test(k.name)) };
   const crew = (d.credits && d.credits.crew) || [], dir = crew.filter(c => c.job === "Director").slice(0, 2).map(c => ({ id: c.id, name: c.name }));
   const creators = (d.created_by || []).slice(0, 2).map(c => ({ id: c.id, name: c.name }));
   const ne = d.next_episode_to_air;
@@ -112,13 +112,19 @@ async function genres({ type, locale }) {
   const t = type === "series" || type === "tv" ? "tv" : "movie", d = await call("/genre/" + t + "/list", clean({ language: locale || "en-US" }), 7 * 864e5);
   return (d.genres || []).map(g => ({ id: g.id, name: g.name }));
 }
+/* TMDB filters films by a rating NAME ("PG"), in its own order for each country; turn an age into the strictest-fitting highest name (age 9 in the UK: "PG") */
+async function maxCert(region, age) {
+  const d = await call("/certification/movie/list", {}, 7 * 864e5), all = d.certifications || {}, reg = all[region] ? region : "GB";
+  const rows = (all[reg] || []).slice().sort((a, b) => a.order - b.order).filter(c => { const a = certAge(reg, c.certification); return a !== null && a <= age; });
+  return { region: reg, cert: rows.length ? rows[rows.length - 1].certification : ((all[reg] || []).slice().sort((a, b) => a.order - b.order)[0] || {}).certification || "" };
+}
 const SORTS = { popular: "popularity.desc", rating: "vote_average.desc", newest: "primary_release_date.desc", az: "original_title.asc" };
 async function discover({ type, genre, year, sort, locale, region, page, maxAge }) {
   const t = type === "series" || type === "tv" ? "tv" : "movie", s = SORTS[sort] || SORTS.popular;
   const p = clean({ language: locale || "en-US", page: page || 1, with_genres: /^\d+$/.test(String(genre || "")) ? genre : undefined,
     sort_by: t === "tv" ? s.replace("primary_release_date", "first_air_date").replace("original_title", "name") : s, "vote_count.gte": sort === "rating" ? 200 : undefined });
   if (/^\d{4}$/.test(String(year || ""))) p[t === "tv" ? "first_air_date_year" : "primary_release_year"] = year;
-  if (t === "movie" && maxAge != null) { p.certification_country = region || "GB"; p["certification.lte"] = maxAge; }      // a limit: only films rated for that age
+  if (t === "movie" && maxAge != null) { const c = await maxCert(region || "GB", maxAge); if (c.cert) { p.certification_country = c.region; p["certification.lte"] = c.cert; } }      // a limit: only films rated for that age
   const d = await call("/discover/" + t, p, 3600e3);
   return { items: (d.results || []).filter(x => x.poster_path).map(x => card(x, t)), pages: Math.min(d.total_pages || 1, 500) };
 }

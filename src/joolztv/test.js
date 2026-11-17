@@ -154,7 +154,7 @@ const T = tok => ({ "x-jtv-token": tok });
   r = await req("POST", "/api/play-check", { imdb: "tt0111161", type: "movie", region: "GB" }, T(carol)); ok(r.json.ok === false && r.json.reason === "age" && /15/.test(r.json.message) && r.json.limit === 9, "an account that JoolzApp says is 9 cannot play a 15 (" + r.json.message + ")");
   r = await req("POST", "/api/play-check", { imdb: "tt0000777", type: "movie", region: "GB" }, T(carol)); ok(r.json.ok === true, "...but can play a U");
   r = await req("POST", "/api/play-check", { imdb: "tt0000888", type: "movie", region: "GB" }, T(carol)); ok(r.json.ok === false && r.json.reason === "unrated", "an unrated title is not available under a limit");
-  r = await req("GET", "/api/tmdb/discover?type=movie", undefined, T(carol)); ok(r.json.items.length === 1 && tmdbStub.hits.some(h => /certification.lte=9/.test(h)), "browsing for that account only asks for age-appropriate films");
+  r = await req("GET", "/api/tmdb/discover?type=movie", undefined, T(carol)); ok(r.json.items.length === 1 && tmdbStub.hits.some(h => /certification.lte=PG(&|$)/.test(h)), "browsing for that account only asks for age-appropriate films");
   const vwp = (await req("GET", "/api/household", undefined, T(vw))).json.profiles.filter(p => p.self)[0];
   r = await req("PATCH", "/api/household/profiles/" + vwp.id, { maxAge: 7 }, T(vw)); ok(r.code === 403, "a profile cannot set its own age limit");
   r = await req("PATCH", "/api/household/profiles/" + vwp.id, { maxAge: 5 }, T(ann)); ok(r.code === 400, "only the offered age limits are accepted");
