@@ -1,6 +1,8 @@
 /* Player: finds sources, picks the best, plays through the signed-in streaming proxy, glass TV controls. */
 var Player = (function () {
   var S = null;   // active session
+  /* control icons: drawn here (not emoji, which TVs colour in orange) and filled with the button's own text colour */
+  var ICON = { back: '<svg class="ico" viewBox="0 0 48 48" width="46" height="46"><g fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M24.4 14.9 L17.0 13.9 L19.8 6.9"/><path d="M17.0 13.9 A14 14 0 1 1 10.1 27.2"/></g><text x="24" y="31" text-anchor="middle" font-size="13.5" font-weight="800" fill="currentColor" style="font-family:inherit">10</text></svg>', fwd: '<svg class="ico" viewBox="0 0 48 48" width="46" height="46"><g transform="matrix(-1 0 0 1 48 0)" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M24.4 14.9 L17.0 13.9 L19.8 6.9"/><path d="M17.0 13.9 A14 14 0 1 1 10.1 27.2"/></g><text x="24" y="31" text-anchor="middle" font-size="13.5" font-weight="800" fill="currentColor" style="font-family:inherit">10</text></svg>', play: '<svg class="ico" viewBox="0 0 48 48" width="46" height="46"><path d="M17 11.5v25a1.6 1.6 0 0 0 2.4 1.4l21-12.5a1.6 1.6 0 0 0 0-2.8l-21-12.5A1.6 1.6 0 0 0 17 11.5z" fill="currentColor"/></svg>', pause: '<svg class="ico" viewBox="0 0 48 48" width="46" height="46"><rect x="13" y="11" width="7.5" height="26" rx="2.6" fill="currentColor"/><rect x="27.5" y="11" width="7.5" height="26" rx="2.6" fill="currentColor"/></svg>' };
 
   function $(sel) { return S && S.el.querySelector(sel); }
   function say(msg) { var m = $('.pmsg'); if (m) { m.textContent = msg || ''; m.style.display = msg ? 'block' : 'none'; } }
@@ -12,7 +14,7 @@ var Player = (function () {
       '<div class="pov"><div class="ptop"><div class="t1">' + Views.esc(info.title || '') + '</div><div class="t2">' + Views.esc([info.sub, info.epTitle].filter(Boolean).join(' · ')) + '</div><div class="pmode glass" id="pmode"></div></div>' +
       '<div class="pbar glass"><div class="seek f" id="seek"><div class="buf"></div><div class="pos"></div><div class="knob"></div></div>' +
       '<div class="times"><span id="tcur">0:00</span><span id="tdur">0:00</span></div>' +
-      '<div class="pctl"><span class="cbtn f" data-pact="back10">⏪ 10</span><span class="cbtn big f" data-pact="toggle" id="bplay">❚❚</span><span class="cbtn f" data-pact="fwd10">10 ⏩</span>' +
+      '<div class="pctl"><span class="cbtn ic f" data-pact="back10" aria-label="Back 10 seconds">' + ICON.back + '</span><span class="cbtn ic big f" data-pact="toggle" id="bplay" aria-label="Play or pause">' + ICON.pause + '</span><span class="cbtn ic f" data-pact="fwd10" aria-label="Forward 10 seconds">' + ICON.fwd + '</span>' +
       '<span class="cbtn f" data-pact="speed">Speed 1x</span><span class="cbtn f" data-pact="subs">Subtitles</span><span class="cbtn f" data-pact="sources">Sources</span>' + '</div></div></div>';
     var el = Views.mount('player', h, { cls: 'player', onBack: function () { close(); Views.pop(); return true; }, onClose: cleanup });
     S = { el: el, info: info, v: el.querySelector('#pv'), learnedFor: {}, buf: { speed: 0, peers: 0, len: 0, fill: null }, hold: false, streams: [], groups: [], idx: -1, tried: {}, rate: 1, subs: null, ui: true, uiT: null, lastSave: 0, tick: null, buffT: null, ended: false, gotTime: false };
@@ -172,7 +174,7 @@ var Player = (function () {
   function keepPitch(v) { try { v.preservesPitch = true; } catch (e) {} try { v.webkitPreservesPitch = true; } catch (e) {} try { v.mozPreservesPitch = true; } catch (e) {} }
   function setRate(r) { var v = S.v; S.rate = r; keepPitch(v); try { v.defaultPlaybackRate = r; } catch (e) {} try { v.playbackRate = r; } catch (e) {} keepPitch(v); }
   function reapplyRate() { if (S && S.v) { keepPitch(S.v); if (Math.abs(S.v.playbackRate - S.rate) > 0.01) { try { S.v.playbackRate = S.rate; } catch (e) {} } } }
-  function setPlayLabel() { var b = $('#bplay'); if (b && S) b.textContent = S.v.paused ? '▶' : '❚❚'; }
+  function setPlayLabel() { var b = $('#bplay'); if (b && S) b.innerHTML = S.v.paused ? ICON.play : ICON.pause; }
 
   /* ---- skip intro, and the credit scene after the credits ---- */
   /* What is known about this file: the intro (from its chapters, or marked once for the show), where the credits start, and any mid-/end-credit scenes.
