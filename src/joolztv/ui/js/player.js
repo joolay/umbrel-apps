@@ -341,29 +341,32 @@ var Player = (function () {
       if (!merged) seen.push([a, e]);
     }
   }
+  /* Order of work: 1) pictures for what is already loaded, nearest the playhead first (this is the starting buffer, so it comes first and never waits);
+     2) the rest of the file, but only while the download is comfortably faster than the film plays and the buffer ahead is healthy, so the torrent keeps feeding playback first. */
   function thumbPump() {
-    var sess = S; if (!sess || sess.thumbOff || sess.thumbBusy || sess.hold || sess.rebuf || sess.failed || sess.ended) return;
+    var sess = S; if (!sess || sess.thumbOff || sess.hold || sess.rebuf || sess.failed || sess.ended) return;
     var v = sess.v, f = fileKey(sess.streams[sess.idx]); if (!f || !isFinite(v.duration) || v.duration < 60 || Date.now() < (sess.thumbNext || 0)) return;
+    var ahead = bufEnd(v) - v.currentTime; if (ahead < 5 || (sess.thumbN || 0) >= 2) return;        // never compete with the start of playback
     seenUpdate(v);
-    var th = sess.thumbs || (sess.thumbs = {}), bad = sess.thumbBad || (sess.thumbBad = {}), t = v.currentTime, best = -1, bd = 1e9;
-    sess.seen.forEach(function (r) {
-      for (var g = Math.ceil((r[0] + 1) / THUMB_STEP) * THUMB_STEP; g <= r[1] - 2; g += THUMB_STEP) {
-        if (th[g] || bad[g]) continue;
-        var d = Math.abs(g - t); if (d < bd) { bd = d; best = g; }
-      }
-    });
-    if (best < 0) return;
-    sess.thumbBusy = true; var g0 = best;
-    fetch('/api/thumb?hash=' + f.infoHash + '&idx=' + f.fileIdx + '&t=' + g0, { headers: { 'x-jtv-token': Backend.token() || '' } }).then(function (r) {
+    var th = sess.thumbs || (sess.thumbs = {}), bad = sess.thumbBad || (sess.thumbBad = {}), fly = sess.thumbFly || (sess.thumbFly = {}), t = v.currentTime;
+    var plan = sess.buf && sess.buf.plan, far = !!(plan && !plan.slow && plan.ratio >= 3 && ahead >= 20), bestL = -1, dL = 1e9, bestF = -1, dF = 1e9;
+    for (var g = 0; g <= v.duration - 3; g += THUMB_STEP) {
+      if (th[g] || bad[g] || fly[g]) continue;
+      var d = g >= t ? g - t : (t - g) * 1.3, loaded = sess.seen.some(function (r) { return g >= r[0] + 1 && g <= r[1] - 2; });
+      if (loaded) { if (d < dL) { dL = d; bestL = g; } } else if (d < dF) { dF = d; bestF = g; }
+    }
+    var pick = bestL >= 0 ? bestL : (far ? bestF : -1); if (pick < 0) return;
+    var loadedPick = pick === bestL;
+    sess.thumbN = (sess.thumbN || 0) + 1; fly[pick] = 1; sess.thumbNext = Date.now() + (loadedPick ? 150 : 700);
+    fetch('/api/thumb?hash=' + f.infoHash + '&idx=' + f.fileIdx + '&t=' + pick, { headers: { 'x-jtv-token': Backend.token() || '' } }).then(function (r) {
       if (r.status === 503) { sess.thumbOff = true; throw 0; }
-      if (r.status === 429) { sess.thumbNext = Date.now() + 5000; throw 0; }
-      if (!r.ok) { (sess.thumbBad || (sess.thumbBad = {}))[g0] = 1; throw 0; }
+      if (r.status === 429) { sess.thumbNext = Date.now() + 4000; throw 0; }
+      if (!r.ok) { sess.thumbBad[pick] = 1; throw 0; }
       return r.blob();
     }).then(function (blob) {
       if (!blob || S !== sess) return;
-      try { sess.thumbs[g0] = URL.createObjectURL(blob); } catch (e) {}
-      sess.thumbNext = Date.now() + 900;
-    }).catch(function () {}).then(function () { sess.thumbBusy = false; });
+      try { sess.thumbs[pick] = URL.createObjectURL(blob); } catch (e) {}
+    }).catch(function () {}).then(function () { sess.thumbN--; delete sess.thumbFly[pick]; });
   }
   function thumbNear(time) {
     var th = S.thumbs || {}, g = Math.round(time / THUMB_STEP) * THUMB_STEP;

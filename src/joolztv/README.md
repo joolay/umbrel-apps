@@ -82,10 +82,12 @@ One tap (or one press of OK on the button, an arrow on the progress bar, or the 
 Going forward, the repeated jumps stop at the end of what is already downloaded into the player (a short message says so); a single tap is never limited. Going back is never limited. Holding OK on any other control does not repeat it.
 
 ## Seek preview pictures
-While a film plays, the player asks the server (`thumbs.js`, `GET /api/thumb`, ffmpeg) for one small picture every 10 seconds (the skip increment), closest to the playhead first. It only asks for parts of the file that this player has already loaded or played (tracked from the video's buffered ranges),
-so nothing is pulled from the torrent ahead of the film; it pauses while the player is buffering, backs off when the server is busy (2 at a time, 1 per person, 500 kept in memory), and stops for the session if the server has no ffmpeg.
-Every jump (tap, hold, arrow on the bar, remote key) shows a small glass card above the bar with the picture nearest to where you land and the time; it fades after 1.7 s. Hovering the bar with a mouse shows the same for that spot. Files shorter than a minute get no pictures.
-Caveat: some files (MKV with the index at the end) make ffmpeg read the end of the file for the first picture, as the browser does when seeking; that is the only read outside the loaded part.
+The player builds a picture every 10 seconds for the whole file (the skip increment), made on the server (`thumbs.js`, `GET /api/thumb`, ffmpeg), in this order:
+1. **What is already loaded, nearest the playhead first** (the starting buffer; played parts and the part ahead). Ahead is favoured over behind. This never waits and never starts until the film is playing with at least 5 s buffered.
+2. **The rest of the file, only while the download is at least 3x faster than the film plays**, the buffer ahead is 20 s or more and nothing is rebuffering, so the torrent keeps feeding playback first. On a slow source the pictures stay inside the loaded part.
+Two at a time per person (3 on the server, 2500 kept in memory), it pauses while buffering and stops for the session if the server has no ffmpeg. Every jump (tap, hold, arrow on the bar, remote key) shows a small glass card above the bar with the picture nearest to where you land and the time; hovering the bar with a mouse shows the same. Files shorter than a minute get none.
+Honest limits: pictures for the part not yet downloaded make the streaming server fetch a little from there (ffmpeg reads about one keyframe interval plus the index per picture, roughly 1 to 3 MB each, so a two-hour film is on the order of 1 to 2 GB across all pictures), which is why that part waits for a fast download. Some files (MKV with the index at the end) make ffmpeg read the end of the file for the first picture.
+Tested with a stand-in streaming server at 10x and 1.5x real time: fast = all pictures within 26 s, starting from the playhead; slow = only the loaded part. Not tested on a real torrent.
 
 ## Voice search
 Search has a microphone ("Speak") button next to the box. webOS gives web apps no direct microphone access on most TVs (LG's own Voice Search is a system feature and is not handed to apps), so it works two ways:

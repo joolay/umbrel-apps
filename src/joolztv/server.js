@@ -379,21 +379,21 @@ async function playCheck(req, res, u) {
 }
 
 /* ---------- seek preview pictures: one small picture at a time, only for parts of the file the player has already loaded ---------- */
-const thumbCache = new Map(); let thumbActive = 0; const thumbBusy = new Set();
+const thumbCache = new Map(); let thumbActive = 0; const thumbBusy = new Map();
 async function thumbRoute(req, res, u) {
   const q = new URL(req.url, "http://x").searchParams, f = fileOf({ infoHash: q.get("hash"), fileIdx: q.get("idx") }), t = parseInt(q.get("t"), 10);
   if (!f || !(t >= 0 && t < 86400)) return send(res, 400, { code: "bad_request", message: "Needs a torrent source and a time." });
   const hit = thumbCache.get(f.key + ":" + t);
   const out = b => { res.writeHead(200, { "content-type": "image/jpeg", "cache-control": "private, max-age=86400", "content-length": b.length }); res.end(b); };
   if (hit) return out(hit);
-  if (thumbBusy.has(u.id) || thumbActive >= 2) return send(res, 429, { code: "busy", message: "Busy." });
-  thumbBusy.add(u.id); thumbActive++;
-  try { const b = await thumbs.frame(f.url, t, { ffmpeg: FFMPEG }); if (thumbCache.size > 500) thumbCache.delete(thumbCache.keys().next().value); thumbCache.set(f.key + ":" + t, b); return out(b); }
+  if ((thumbBusy.get(u.id) || 0) >= 2 || thumbActive >= 3) return send(res, 429, { code: "busy", message: "Busy." });
+  thumbBusy.set(u.id, (thumbBusy.get(u.id) || 0) + 1); thumbActive++;
+  try { const b = await thumbs.frame(f.url, t, { ffmpeg: FFMPEG }); if (thumbCache.size > 2500) thumbCache.delete(thumbCache.keys().next().value); thumbCache.set(f.key + ":" + t, b); return out(b); }
   catch (e) {
     if (e.code === "no_ffmpeg") return send(res, 503, { code: "thumbs_unavailable", message: "Previews need ffmpeg." });
     if (e.code === "no_frame" || e.code === "timeout") return send(res, 422, { code: "no_frame", message: "No picture there." });
     console.error("thumb:", e.message); return send(res, 500, { code: "error", message: "Could not make a preview." });
-  } finally { thumbBusy.delete(u.id); thumbActive--; }
+  } finally { const n = (thumbBusy.get(u.id) || 1) - 1; if (n > 0) thumbBusy.set(u.id, n); else thumbBusy.delete(u.id); thumbActive--; }
 }
 
 /* ---------- streaming server behind the sign-in ---------- */
