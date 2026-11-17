@@ -149,7 +149,7 @@ body.pointer { cursor: pointer; }
 .pmode { position: absolute; right: 90px; top: 64px; padding: 9px 24px; border-radius: 26px; font-size: 22px; font-weight: 600; display: none; }
 .pbar { position: absolute; left: 210px; bottom: 60px; width: 1500px; height: 260px; border-radius: 52px; padding: 34px 54px 0 54px; }
 .seek { position: relative; height: 12px; border-radius: 6px; background: rgba(255,255,255,.28); margin: 10px 0 10px 0; }
-.seek.focus { height: 18px; margin: 7px 0 7px 0; box-shadow: 0 0 0 4px rgba(255,255,255,.35); }
+.seek.focus .knob { box-shadow: 0 0 0 9px rgba(150,155,168,.6), 0 4px 14px rgba(0,0,0,.5); }          /* focused: the bar stays thin, a grey halo shows around the position dot instead */
 .seek .buf { position: absolute; left: 0; top: 0; width: 100%; height: 100%; border-radius: 6px; overflow: hidden; }
 .seek .bseg { position: absolute; top: 0; height: 100%; background: rgba(255,255,255,.35); }
 .seek .pos { position: absolute; left: 0; top: 0; height: 100%; border-radius: 6px; background: #fff; }
