@@ -22,6 +22,7 @@ repo: https://github.com/joolay/umbrel-apps
 support: https://github.com/joolay/umbrel-apps/issues
 port: 3900
 gallery: []
+icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-joolztv/icon.svg
 path: ""
 defaultUsername: ""
 defaultPassword: ""
