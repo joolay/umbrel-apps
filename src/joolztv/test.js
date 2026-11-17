@@ -20,7 +20,7 @@ const upstream = http.createServer((q, r) => {
   r.writeHead(200); r.end("SECRET-" + q.url);
 }).listen(U);
 
-const child = cp.spawn(process.execPath, [path.join(__dirname, "server.js")], { env: Object.assign({}, process.env, { NODE_ENV: "test", JTV_PB: path.join(__dirname, "test", "mock-pb.js"), PORT: P, DATA_DIR: dir, JTV_CACHE_MS: "0", INTRODB_URL: "http://127.0.0.1:9", TMDB_URL: "http://127.0.0.1:" + (P + 2), TMDB_IMG: "https://img.test/t/p/", THEINTRODB_URL: "http://127.0.0.1:9", TMDB_URL: "http://127.0.0.1:" + (P + 2), TMDB_IMG: "https://img.test/t/p/", FFMPEG: "/nonexistent/ffmpeg", DEVTEST_DIR: path.join(dir, "devtest"), UI_DIST: path.join(dir, "dist"), STREAM_UPSTREAM: "http://127.0.0.1:" + U }), stdio: "ignore" });
+const child = cp.spawn(process.execPath, [path.join(__dirname, "server.js")], { env: Object.assign({}, process.env, { NODE_ENV: "test", JTV_PB: path.join(__dirname, "test", "mock-pb.js"), PORT: P, DATA_DIR: dir, JTV_CACHE_MS: "0", INTRODB_URL: "http://127.0.0.1:9", TMDB_URL: "http://127.0.0.1:" + (P + 2), TMDB_IMG: "https://img.test/t/p/", CINEMETA_URL: "http://127.0.0.1:" + (P + 2), THEINTRODB_URL: "http://127.0.0.1:9", TMDB_URL: "http://127.0.0.1:" + (P + 2), TMDB_IMG: "https://img.test/t/p/", FFMPEG: "/nonexistent/ffmpeg", DEVTEST_DIR: path.join(dir, "devtest"), UI_DIST: path.join(dir, "dist"), STREAM_UPSTREAM: "http://127.0.0.1:" + U }), stdio: "ignore" });
 function req(method, p, body, headers) {
   return new Promise((res, rej) => {
     const r = http.request({ port: P, method, path: p, headers: Object.assign({ "content-type": "application/json" }, headers || {}) }, x => { const c = []; x.on("data", d => c.push(d)); x.on("end", () => { const t = Buffer.concat(c).toString(); let j = null; try { j = JSON.parse(t); } catch {} res({ code: x.statusCode, text: t, json: j, headers: x.headers }); }); });
@@ -153,7 +153,7 @@ const T = tok => ({ "x-jtv-token": tok });
   r = await req("GET", "/api/tmdb/title?imdb=tt9999999&type=movie", undefined, T(ann)); ok(r.code === 404, "an unknown title is a clean 404");
   r = await req("GET", "/api/tmdb/title?imdb=tt0111161&locale=../../x&region=zz", undefined, T(ann)); ok(r.code === 200, "bad locale/region are ignored, not passed on");
   ok(!tmdbStub.hits.some(h => /\.\.\//.test(h)), "nothing from the query string is passed to TMDB unchecked");
-  r = await req("GET", "/api/tmdb/list?kind=trending&type=movie", undefined, T(ann)); ok(r.code === 200 && r.json.items.length === 3, "trending list");
+  r = await req("GET", "/api/tmdb/list?kind=trending&type=movie", undefined, T(ann)); ok(r.code === 200 && r.json.items.length >= 3 && !r.json.items.some(x => x.name === "Flagged Adult"), "trending list (adult-flagged titles left out)");
   r = await req("GET", "/api/tmdb/season?tmdb=1396&season=1", undefined, T(ann)); ok(r.code === 200 && r.json.episodes.length === 2, "season stills");
   r = await req("GET", "/api/tmdb/person?id=504", undefined, T(ann)); ok(r.code === 200 && r.json.name === "Tim Robbins", "person");
   r = await req("GET", "/api/tmdb/person?id=abc", undefined, T(ann)); ok(r.code === 400, "person id is a number");
@@ -177,6 +177,41 @@ const T = tok => ({ "x-jtv-token": tok });
   r = await req("PATCH", "/api/household/profiles/" + vwp.id, { maxAge: null }, T(ann)); ok(r.code === 200 && r.json.profile.maxAge === null, "the limit can be removed");
   r = await req("PUT", "/api/household/prefs", { region: "za" }, T(ann)); ok(r.code === 400, "region must be a two-letter country code");
   r = await req("PUT", "/api/household/prefs", { region: "ZA", locale: "en-GB" }, T(ann)); ok(r.code === 200 && r.json.prefs.region === "ZA" && r.json.prefs.locale === "en-GB", "the household's country and language are saved");
+  // the global adult block (everyone) and parent-only kid controls
+  const chk = async (tok, imdb) => (await req("POST", "/api/title-check", { imdb, type: "movie", region: "GB" }, T(tok))).json;
+  r = await chk(ann, "tt0000999"); ok(r.ok === false && r.reason === "adult", "a title TMDB flags adult is blocked, even for the owner");
+  r = await chk(adm, "tt0000998"); ok(r.ok === false && r.reason === "adult", "a softcore keyword blocks it, even for an admin");
+  r = await chk(ann, "tt0000997"); ok(r.ok === false && r.reason === "adult", "an adults-only rating (UK R18) blocks it");
+  r = await chk(ann, "tt0000996"); ok(r.ok === false && r.reason === "adult", "Cinemeta's Adult genre blocks it when TMDB knows nothing");
+  r = await chk(ann, "tt0000995"); ok(r.ok === true, "an ordinary 18-rated 'erotic thriller' is not treated as porn");
+  r = await chk(ann, "tt0111161"); ok(r.ok === true, "an ordinary film is fine for an adult");
+  r = await req("GET", "/api/state", undefined, T(carol));
+  r = await req("GET", "/api/household", undefined, T(ann)); const carolId = r.json.profiles.filter(x => x.kid)[0] && r.json.profiles.filter(x => x.kid)[0].id;
+  ok(!!carolId && r.json.manageable.includes(carolId), "the household owner who is the kid's guardian can manage the kid's profile");
+  r = await req("GET", "/api/household", undefined, T(vw)); ok(r.json.manageable.length === 0, "another adult in the household manages nobody");
+  r = await req("GET", "/api/household", undefined, T(carol)); ok(r.json.manageable.length === 0, "a kid manages nobody");
+  r = await req("PATCH", "/api/household/profiles/" + carolId, { maxAge: 7 }, T(carol)); ok(r.code === 403, "a kid cannot change their own age limit");
+  r = await req("PATCH", "/api/household/profiles/" + carolId, { mode: "allow" }, T(vw)); ok(r.code === 403, "another adult cannot change a kid's list mode");
+  r = await req("GET", "/api/household/profiles/" + carolId + "/titles", undefined, T(vw)); ok(r.code === 403, "another adult cannot even read a kid's list");
+  r = await req("PUT", "/api/household/profiles/" + carolId + "/titles", { add: [{ imdb: "tt0111161", name: "Shawshank" }] }, T(carol)); ok(r.code === 403, "a kid cannot edit their own list");
+  r = await req("PUT", "/api/household/profiles/" + carolId + "/titles", { add: [{ imdb: "bad", name: "x" }] }, T(ann)); ok(r.code === 400, "titles must be real IMDb ids");
+  r = await req("PATCH", "/api/household/profiles/" + carolId, { mode: "sometimes" }, T(ann)); ok(r.code === 400, "the list mode must be off, block or allow");
+  r = await req("PUT", "/api/household/profiles/" + carolId + "/titles", { add: [{ imdb: "tt0000777", name: "Little Bear Adventures", type: "movie", poster: "https://img.test/p.jpg" }, { imdb: "tt0000999", name: "Flagged Adult" }] }, T(ann)); ok(r.code === 200 && r.json.titles.length === 2, "a parent adds titles to a kid's list");
+  r = await req("PATCH", "/api/household/profiles/" + carolId, { mode: "allow" }, T(ann)); ok(r.code === 200 && r.json.profile.mode === "allow" && r.json.profile.titleCount === 2, "a parent turns on 'only allow these'");
+  r = await chk(carol, "tt0000777"); ok(r.ok === true, "allow-list: a listed title plays");
+  r = await chk(carol, "tt0111161"); ok(r.ok === false && r.reason === "not_allowed", "allow-list: anything else is refused");
+  r = await chk(carol, "tt0000999"); ok(r.ok === false && r.reason === "adult", "allow-list: a listed title that is adult is still blocked (the adult block comes first)");
+  r = await req("GET", "/api/policy", undefined, T(carol)); ok(r.json.kid === true && r.json.mode === "allow" && r.json.allowed.length === 2 && r.json.limit === 9, "the kid's policy: kid, allow-list with its titles, age limit 9");
+  r = await req("GET", "/api/policy", undefined, T(ann)); ok(r.json.kid === false && r.json.mode === "off" && r.json.allowed.length === 0, "an adult's policy has no restrictions");
+  r = await req("PUT", "/api/household/profiles/" + carolId + "/titles", { add: [{ imdb: "tt0111161", name: "Shawshank" }], remove: ["tt0000999", "tt0000777"] }, T(ann)); ok(r.json.titles.length === 1 && r.json.titles[0].imdb === "tt0111161", "titles can be removed (and added in the same call)");
+  r = await chk(carol, "tt0111161"); ok(r.ok === true, "a parent-allowed title is not held back by the age limit (a 15 for a 9-year-old)");
+  r = await req("PATCH", "/api/household/profiles/" + carolId, { mode: "block" }, T(ann)); ok(r.json.profile.mode === "block", "a parent switches to 'block these'");
+  r = await chk(carol, "tt0111161"); ok(r.ok === false && r.reason === "blocked", "block-list: a listed title is refused");
+  r = await chk(carol, "tt0000777"); ok(r.ok === true, "block-list: an unlisted title that the age limit allows plays");
+  r = await req("PATCH", "/api/household/profiles/" + carolId, { mode: "off" }, T(ann)); ok(r.json.profile.mode === "off", "list off again");
+  r = await chk(carol, "tt0111161"); ok(r.ok === false && r.reason === "age", "with the list off the age limit applies again (rated 15 for a 9-year-old)");
+  r = await req("PATCH", "/api/household/profiles/" + vwp.id, { kid: true }, T(ann)); ok(r.code === 200 && r.json.profile.kid === true && r.json.profile.kidFlag === true, "a parent can flag a profile as a kids profile");
+  r = await req("PATCH", "/api/household/profiles/" + vwp.id, { kid: false }, T(ann)); ok(r.json.profile.kid === false, "...and unflag it");
   // UI build selection
   r = await req("GET", "/", undefined, { "user-agent": "Mozilla/5.0 (Web0S; Linux/SmartTV) AppleWebKit/537.36 Chrome/53.0.2785.34 Safari/537.36 WebAppManager" }); ok(r.text === "COMPAT" && /User-Agent/i.test(r.headers.vary), "LG webOS TV gets the compat build");
   r = await req("GET", "/", undefined, { "user-agent": "Mozilla/5.0 (Macintosh) AppleWebKit/537.36 Chrome/126.0 Safari/537.36" }); ok(r.text === "MODERN", "modern browser gets the modern build");

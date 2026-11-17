@@ -68,7 +68,7 @@ var Api = (function () {
   }
   function fetchCatalog(def, extra) {
     var url = def.base + '/catalog/' + def.type + '/' + encodeURIComponent(def.id) + (extra ? '/' + extra : '') + '.json';
-    return getJSON(url).then(function (r) { return r.metas || []; });
+    return getJSON(url).then(function (r) { return Policy.cleanMetas(r.metas || []); });
   }
   function search(q) {
     var jobs = [];
@@ -142,6 +142,7 @@ var Api = (function () {
     found.forEach(function (s) {
       if (s._q.score <= -400 || !s.infoHash && !s.url) return;
       if (/\bcam\b|camrip|hdcam|telesync|hdts|telecine/.test(((s.title || '') + (s.name || '')).toLowerCase())) return;
+      if (/\b(xxx|porn|nsfw|hentai|pornhub)\b/i.test((s.title || '') + ' ' + (s.name || '') + ' ' + ((s.behaviorHints && s.behaviorHints.filename) || ''))) return;       // adult material is never offered
       var key = (s.infoHash || s.url) + ':' + (s.fileIdx == null ? '' : s.fileIdx);
       if (seen[key]) return; seen[key] = 1;
       s._cat = categoryOf(s); by[s._cat].push(s);

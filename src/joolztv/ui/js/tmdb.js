@@ -25,7 +25,7 @@ var Tmdb = (function () {
     return p;
   }
   function init() {
-    return Backend.call('GET', '/api/tmdb/status', undefined, undefined, 8000).then(function (j) { on = !!j.enabled; canKey = !!j.canSetKey; limit = j.limit == null ? null : j.limit; known = true; }).catch(function (e) { on = false; if (e && e.status !== 401) known = true; });
+    return Backend.call('GET', '/api/tmdb/status', undefined, undefined, 8000).then(function (j) { on = !!j.enabled; canKey = !!j.canSetKey; limit = j.limit == null ? null : j.limit; known = true; }).catch(function (e) { on = false; if (e && e.status !== 401) known = true; }).then(function () { return Policy.init(); });
   }
   return {
     init: init, known: function () { return known; }, forget: function () { known = false; }, on: function () { return on; }, canKey: function () { return canKey; }, limit: function () { return limit; }, restricted: function () { return limit !== null; },

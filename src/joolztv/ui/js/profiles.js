@@ -6,6 +6,8 @@ var Profiles = (function () {
   function get(id) { var l = all(); for (var i = 0; i < l.length; i++) if (l[i].id === id) return l[i]; return null; }
   function active() { var id = Store.active(); return id ? get(id) : null; }
   function setActive(id) { Store.setActive(id); }
+  function manageable() { return Store.get('manageable', []) || []; }
+  function setManageable(l) { Store.set('manageable', l || []); }
   function max() { return (window.JTV && JTV.maxProfiles) || 12; }
-  return { all: all, setAll: setAll, get: get, active: active, setActive: setActive, max: max, COLORS: COLORS };
+  return { manageable: manageable, setManageable: setManageable, all: all, setAll: setAll, get: get, active: active, setActive: setActive, max: max, COLORS: COLORS };
 })();

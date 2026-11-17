@@ -11,7 +11,7 @@ const path = require("path");
 const crypto = require("crypto");
 const test = process.env.NODE_ENV === "test";
 const pb = test && process.env.JTV_PB ? require(path.resolve(process.env.JTV_PB)) : require("./pocketbase");
-const guardians = test && process.env.JTV_PB ? { ageOf: u => (u.age == null ? null : u.age), isMinor: u => u.age != null && u.age < 18, statusOf: async u => ({ minor: u.age != null && u.age < 18, approved: true }) } : require("./guardians");
+const guardians = test && process.env.JTV_PB ? { ageOf: u => (u.age == null ? null : u.age), isMinor: u => u.age != null && u.age < 18, statusOf: async u => ({ minor: u.age != null && u.age < 18, approved: true, parents: u.hasParent ? [{ name: "P", status: "approved" }] : [] }), inbox: async u => ({ pending: [], kids: (u.kids || []).map(id => ({ childId: id })) }) } : require("./guardians");
 const activity = test && process.env.JTV_PB ? { touch() {} } : require("./activity");
 
 const PORT = +process.env.PORT || 3900;
@@ -93,6 +93,7 @@ async function sessionUser(t) {
   if (me ? householdIdle(h, s.userId) : Date.now() - s.iat > SESSION_MS) return null;       // 90 days without any use
   let u; try { u = await pb.getUser(s.userId); } catch (e) { if (e instanceof pb.PBError && [400, 401, 403, 404].includes(e.status)) return null; throw e; }
   if (!u) return null;
+  await withGuard(u);                                      // minor or not (the kid rules need it)
   touchHousehold(h, s.userId); rememberPhoto(h, u);
   return u;
 }
@@ -143,8 +144,31 @@ const profileOf = (h, userId) => live(h).filter(p => p.userId === userId)[0] || 
 const COLORS = ["#0a84ff", "#30d158", "#ff9f0a", "#bf5af2", "#ff375f", "#64d2ff", "#ffd60a", "#ac8e68", "#5e5ce6", "#32ade6", "#ff6482", "#63e6be"];
 const AV_RE = /^a(0[1-9]|1\d|2[0-4])$/;                                    // the 24 built-in pictures (a01..a24, drawn in the app)
 const nextAvatar = list => { const used = list.map(x => x.avatar); for (let i = 1; i <= 24; i++) { const id = "a" + String(i).padStart(2, "0"); if (!used.includes(id)) return id; } return "a" + String(1 + list.length % 24).padStart(2, "0"); };
-const pubProfile = (p, selfId) => ({ id: p.id, name: p.name, color: p.color, owner: !!p.owner, self: p.userId === selfId, avatar: p.avatar || "", hasPhoto: !!p.photo, maxAge: p.maxAge == null ? null : p.maxAge });
+const pubProfile = (p, selfId) => ({ id: p.id, name: p.name, color: p.color, owner: !!p.owner, self: p.userId === selfId, avatar: p.avatar || "", hasPhoto: !!p.photo, maxAge: p.maxAge == null ? null : p.maxAge, kid: isKid(p), kidFlag: !!p.kid, mode: p.mode || "off", titleCount: Object.keys(p.titles || {}).length });
 const AGE_LIMITS = [7, 10, 13, 16];
+/* ---------- parents: who may change a kid's limits ---------- */
+const isKid = p => !!(p.kid || p.minor);
+const isMinorUser = u => !!(u && u.guard && u.guard.minor);
+const kidsCache = new Map(), guardCache = new Map();
+async function kidsOf(u) {                                 // the JoolzApp accounts this person looks after as a guardian
+  const c = kidsCache.get(u.id); if (c && Date.now() - c.at < 60000) return c.v;
+  let v = new Set(); try { const r = await guardians.inbox(u); v = new Set(((r && r.kids) || []).map(k => k.childId)); } catch {}
+  kidsCache.set(u.id, { at: Date.now(), v }); return v;
+}
+async function hasGuardian(target) {                       // does the kid's JoolzApp account have a guardian linked?
+  const c = guardCache.get(target.userId); if (c && Date.now() - c.at < 300000) return c.v;
+  let v = false; try { const ku = await pb.getUser(target.userId); const st = await guardians.statusOf(ku); v = !!(st && st.parents && st.parents.length); } catch {}
+  guardCache.set(target.userId, { at: Date.now(), v }); return v;
+}
+/* parent accounts only: an adult household member who is the kid's JoolzApp guardian, a JoolzApp admin, or the household owner when the kid has no guardian linked.
+   Never the kid, never another kid, never any other adult. */
+async function canManage(h, u, target) {
+  if (!target || target.deleted || isMinorUser(u)) return false;
+  if (u.isAdmin) return true;
+  const me = profileOf(h, u.id); if (!me || target.userId === u.id) return false;
+  if ((await kidsOf(u)).has(target.userId)) return true;
+  return !!me.owner && !(await hasGuardian(target));
+}
 /* the photo on the person's JoolzApp account, as a small picture the app can show before anyone has signed in on a device */
 const photoCache = new Map();
 const photoFile = u => { const f = String(u && (u.avatar || u.photo) || ""); return /^[\w.\-]{1,200}$/.test(f) ? f : ""; };
@@ -159,9 +183,9 @@ async function photoOf(userId, file) {
   } catch {}
   if (photoCache.size > 100) photoCache.clear(); photoCache.set(key, out); return out;
 }
-function rememberPhoto(h, u) {                  // keeps note of which profiles have a JoolzApp photo (checked whenever that person signs in or is seen)
-  const me = profileOf(h, u.id), f = photoFile(u); if (!me || (me.photo || "") === f) return;
-  me.photo = f; writeJson(HH_FILE, h);
+function rememberPhoto(h, u) {                  // keeps note of which profiles have a JoolzApp photo and whether the account is a minor (checked whenever that person signs in or is seen)
+  const me = profileOf(h, u.id), f = photoFile(u), minor = !!(u.guard && u.guard.minor); if (!me || ((me.photo || "") === f && !!me.minor === minor)) return;
+  me.photo = f; me.minor = minor; writeJson(HH_FILE, h);
 }
 const withPhotos = async (list, selfId) => Promise.all(list.map(async x => Object.assign(pubProfile(x, selfId), { photo: x.photo ? await photoOf(x.userId, x.photo) : "" })));
 
@@ -181,7 +205,8 @@ async function householdRoutes(req, res, p) {
     const u = await requireUser(req, res); if (!u) return;
     if (!profileOf(h, u.id) && !u.isAdmin) return send(res, 403, { code: "not_in_household", message: "This account isn't part of this household. Ask a household member to add you." });
     rememberPhoto(h, u);
-    return send(res, 200, { empty: false, max: MAX_PROFILES, profiles: await withPhotos(live(h), u.id), prefs: h.prefs || {} });
+    const manageable = []; for (const x of live(h)) if (await canManage(h, u, x)) manageable.push(x.id);
+    return send(res, 200, { empty: false, max: MAX_PROFILES, profiles: await withPhotos(live(h), u.id), prefs: h.prefs || {}, manageable });
   }
   if (p === "/api/household/prefs" && req.method === "PUT") {
     const u = await requireUser(req, res); if (!u) return;
@@ -211,10 +236,28 @@ async function householdRoutes(req, res, p) {
     const now = Date.now(), id = crypto.randomBytes(5).toString("hex");
     const name = String(body.name || j.record.name || email.split("@")[0]).trim().slice(0, 16) || "Profile";
     const used = list.map(x => x.color), color = /^#[0-9a-f]{6}$/i.test(body.color || "") ? body.color : (COLORS.filter(c => used.indexOf(c) < 0)[0] || COLORS[list.length % COLORS.length]);
-    h.profiles[id] = { id, userId: j.record.id, name, color, owner: !list.length, created: now, ts: now, avatar: nextAvatar(list), photo: photoFile(j.record) };
+    h.profiles[id] = { id, userId: j.record.id, name, color, owner: !list.length, created: now, ts: now, avatar: nextAvatar(list), photo: photoFile(j.record), minor: isMinorUser(j.record) };
     writeJson(HH_FILE, h);
     touchHousehold(h, j.record.id);
     return send(res, 201, { profile: pubProfile(h.profiles[id], j.record.id), token: mintSession(j.record.id), user: publicUser(j.record), profiles: await withPhotos(live(h), j.record.id) });
+  }
+  const tm = /^\/api\/household\/profiles\/([a-f0-9]{4,20})\/titles$/.exec(p);
+  if (tm && (req.method === "GET" || req.method === "PUT")) {                       // a kid's list of blocked or allowed titles: parent accounts only
+    const u = await requireUser(req, res); if (!u) return;
+    const target = h.profiles[tm[1]]; if (!target || target.deleted) return send(res, 404, { code: "not_found", message: "No such profile." });
+    if (!(await canManage(h, u, target))) return send(res, 403, { code: "forbidden", message: "Only a parent or guardian of this profile can see or change its list." });
+    target.titles = target.titles || {};
+    if (req.method === "PUT") {
+      const body = await jsonBody(req);
+      for (const id of Array.isArray(body.remove) ? body.remove.slice(0, 200) : []) delete target.titles[String(id)];
+      for (const t of Array.isArray(body.add) ? body.add.slice(0, 50) : []) {
+        const imdb = String(t && t.imdb || ""); if (!/^tt\d{5,12}$/.test(imdb)) return send(res, 400, { code: "bad_request", message: "Unknown title." });
+        if (!target.titles[imdb] && Object.keys(target.titles).length >= 400) return send(res, 409, { code: "list_full", message: "The list can hold 400 titles." });
+        target.titles[imdb] = { name: String(t.name || "").slice(0, 120), type: t.type === "series" ? "series" : "movie", poster: /^https:\/\/[^\s"'<>]{4,300}$/.test(t.poster || "") ? t.poster : "", ts: Date.now() };
+      }
+      target.ts = Date.now(); writeJson(HH_FILE, h);
+    }
+    return send(res, 200, { mode: target.mode || "off", titles: Object.keys(target.titles).map(k => Object.assign({ imdb: k }, target.titles[k])).sort((a, b) => b.ts - a.ts) });
   }
   const m = /^\/api\/household\/profiles\/([a-f0-9]{4,20})$/.exec(p);
   if (m && (req.method === "PATCH" || req.method === "DELETE")) {
@@ -226,10 +269,17 @@ async function householdRoutes(req, res, p) {
       const body = await jsonBody(req);
       if (typeof body.name === "string" && body.name.trim()) target.name = body.name.trim().slice(0, 16);
       if (/^#[0-9a-f]{6}$/i.test(body.color || "")) target.color = body.color;
-      if (body.maxAge !== undefined) {                                    // the age limit: set by the household owner (or a JoolzApp admin), never by the person it applies to
-        if (!(u.isAdmin || (me && me.owner))) return send(res, 403, { code: "forbidden", message: "Only the household owner can set an age limit." });
-        if (body.maxAge !== null && !AGE_LIMITS.includes(body.maxAge)) return send(res, 400, { code: "bad_request", message: "Pick one of the age limits." });
-        if (body.maxAge === null) delete target.maxAge; else target.maxAge = body.maxAge;
+      if (body.maxAge !== undefined || body.mode !== undefined || body.kid !== undefined) {         // a kid's limits: parent accounts only (never the kid, never other adults)
+        if (!(await canManage(h, u, target))) return send(res, 403, { code: "forbidden", message: "Only a parent or guardian of this profile can change its limits." });
+        if (body.kid !== undefined) { if (typeof body.kid !== "boolean") return send(res, 400, { code: "bad_request", message: "Kid profile: on or off." }); if (body.kid) target.kid = true; else delete target.kid; }
+        if (body.maxAge !== undefined) {
+          if (body.maxAge !== null && !AGE_LIMITS.includes(body.maxAge)) return send(res, 400, { code: "bad_request", message: "Pick one of the age limits." });
+          if (body.maxAge === null) delete target.maxAge; else target.maxAge = body.maxAge;
+        }
+        if (body.mode !== undefined) {
+          if (!["off", "block", "allow"].includes(body.mode)) return send(res, 400, { code: "bad_request", message: "Pick off, block or allow." });
+          if (body.mode === "off") delete target.mode; else target.mode = body.mode;
+        }
       }
       if (body.avatar !== undefined) {
         if (body.avatar === "photo" ? !target.photo : !(body.avatar === "" || AV_RE.test(body.avatar))) return send(res, 400, { code: "bad_request", message: body.avatar === "photo" ? "That account has no JoolzApp photo." : "Pick one of the built-in pictures." });
@@ -365,18 +415,47 @@ async function tmdbRoutes(req, res, p, u) {
     return send(res, 404, { code: "not_found" });
   } catch (e) { return tmdbErr(res, e); }
 }
-/* before a title starts: is it allowed for this profile? (age limit from the household owner, or the account's own age) */
-async function playCheck(req, res, u) {
-  const body = await jsonBody(req), h = hh(), limit = ageLimitOf(h, u);
-  if (limit === null || !tmdb.enabled()) return send(res, 200, { ok: true, limit });
-  const imdb = String(body.imdb || ""), region = /^[A-Z]{2}$/.test(body.region || "") ? body.region : "";
-  if (!/^tt\d{5,12}$/.test(imdb)) return send(res, 200, { ok: true, limit });
+/* ---------- what this profile may watch: the global adult block (everyone), then the kid rules ---------- */
+const adultCache = new Map();
+const CINEMETA = process.env.CINEMETA_URL || "https://v3-cinemeta.strem.io";
+async function cinemetaAdult(imdb, type) {                // without TMDB: Cinemeta's own genres
   try {
-    const c = await tmdb.ageOf({ imdb, type: body.type, region });
-    if (!c || c.age === null) return send(res, 200, { ok: false, reason: "unrated", limit, message: "This title has no age rating, so it is not available on a profile with an age limit." });
-    if (c.age > limit) return send(res, 200, { ok: false, reason: "age", limit, rating: c.rating, message: "Rated " + c.rating + ". This profile is limited to ages " + limit + " and under." });
-    return send(res, 200, { ok: true, limit, rating: c.rating });
-  } catch (e) { if (e.code === "not_found") return send(res, 200, { ok: false, reason: "unrated", limit, message: "This title could not be age-checked, so it is not available on a profile with an age limit." }); return tmdbErr(res, e); }
+    const r = await fetch(CINEMETA + "/meta/" + (type === "series" ? "series" : "movie") + "/" + imdb + ".json", { headers: { "user-agent": "JoolzTV" }, signal: AbortSignal.timeout(6000) });
+    if (!r.ok) return null; const j = await r.json(), g = (j.meta && j.meta.genres) || [];
+    return { adult: g.some(x => /^adult$/i.test(String(x))), why: "Adult genre", cert: null };
+  } catch { return null; }
+}
+/* {adult, why, cert} for everyone, or null when nothing can say */
+async function adultDecision(imdb, type) {
+  const hit = adultCache.get(imdb); if (hit && Date.now() - hit.at < 7 * 864e5) return hit.v;
+  let v = null;
+  if (tmdb.enabled()) { try { v = await tmdb.adultOf({ imdb, type }); } catch (e) { if (e.code !== "not_found") v = null; } }
+  if (!v || !v.adult) { const c = await cinemetaAdult(imdb, type); if (c && c.adult) v = c; else if (!v) v = c; }
+  if (adultCache.size > 3000) adultCache.delete(adultCache.keys().next().value); adultCache.set(imdb, { at: Date.now(), v }); return v;
+}
+const NOT_ADULT_OK = { ok: true };
+async function titleDecision(u, imdb, type, region) {
+  const adult = await adultDecision(imdb, type);
+  if (adult && adult.adult) return { ok: false, reason: "adult", message: "This title is blocked on JoolzTV for everyone (adult content)." };
+  const h = hh(), me = profileOf(h, u.id), limit = ageLimitOf(h, u), mode = me && isKid(me) ? (me.mode || "off") : "off", listed = !!(me && me.titles && me.titles[imdb]);
+  if (mode === "allow") { if (listed) return { ok: true, limit, rating: adult && adult.cert ? adult.cert.rating : undefined }; return { ok: false, reason: "not_allowed", message: "Only titles chosen by your parents are available on this profile." }; }
+  if (mode === "block" && listed) return { ok: false, reason: "blocked", message: "Your parents have blocked this title." };
+  if (limit === null || !tmdb.enabled()) return { ok: true, limit };
+  try {
+    const c = await tmdb.ageOf({ imdb, type, region });
+    if (!c || c.age === null) return { ok: false, reason: "unrated", limit, message: "This title has no age rating, so it is not available on a profile with an age limit." };
+    if (c.age > limit) return { ok: false, reason: "age", limit, rating: c.rating, message: "Rated " + c.rating + ". This profile is limited to ages " + limit + " and under." };
+    return { ok: true, limit, rating: c.rating };
+  } catch (e) { if (e.code === "not_found") return { ok: false, reason: "unrated", limit, message: "This title could not be age-checked, so it is not available on a profile with an age limit." }; throw e; }
+}
+async function playCheck(req, res, u) {                 // POST /api/title-check and /api/play-check
+  const body = await jsonBody(req), imdb = String(body.imdb || ""), region = /^[A-Z]{2}$/.test(body.region || "") ? body.region : "";
+  if (!/^tt\d{5,12}$/.test(imdb)) return send(res, 200, { ok: true });
+  try { return send(res, 200, await titleDecision(u, imdb, body.type === "series" ? "series" : "movie", region)); } catch (e) { return tmdbErr(res, e); }
+}
+function policyRoute(res, u) {                           // what this profile's home and search must respect
+  const h = hh(), me = profileOf(h, u.id), kid = !!(me && isKid(me)), mode = kid ? (me.mode || "off") : "off";
+  send(res, 200, { kid, mode, limit: ageLimitOf(h, u), allowed: mode === "allow" ? Object.keys(me.titles || {}).map(k => Object.assign({ imdb: k }, me.titles[k])) : [] });
 }
 
 /* ---------- seek preview pictures: one small picture at a time, only for parts of the file the player has already loaded ---------- */
@@ -570,7 +649,8 @@ const server = http.createServer(async (req, res) => {
       if (p === "/api/prefetch" && req.method === "POST") return await prefetchRoute(req, res, u);
       if (p.startsWith("/api/marks/")) return await marksRoutes(req, res, p, u);
       if (p.startsWith("/api/tmdb/")) return await tmdbRoutes(req, res, p, u);
-      if (p === "/api/play-check" && req.method === "POST") return await playCheck(req, res, u);
+      if ((p === "/api/play-check" || p === "/api/title-check") && req.method === "POST") return await playCheck(req, res, u);
+      if (p === "/api/policy" && req.method === "GET") return policyRoute(res, u);
       if (p === "/api/stream-token" && req.method === "POST") { const m = mintStream(u.id); return send(res, 200, { st: m.st, exp: m.exp }); }
       return send(res, 404, { code: "not_found" });
     }

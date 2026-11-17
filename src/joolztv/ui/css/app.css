@@ -207,3 +207,4 @@ body.pointer { cursor: pointer; }
 .ccap small { display: block; font-size: 18px; font-weight: 600; color: var(--dim); margin-top: 3px; }
 .tab { white-space: nowrap; }
 .tabbar.many { width: 1200px; margin-left: -600px; } .tabbar.many .tab { padding: 0 6px; font-size: 25px; }
+.plabel { font-size: 21px; font-weight: 700; color: var(--dim); text-transform: uppercase; letter-spacing: 1.2px; margin: 18px 0 4px 6px; } .plabel2 { font-size: 21px; color: var(--dim); margin: 10px 0 0 10px; }

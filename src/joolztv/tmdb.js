@@ -58,7 +58,27 @@ function pickCert(d, type, region) {
   return null;
 }
 
+/* ---- the global adult block: porn and erotica, for everyone ---- */
+const ADULT_KEYWORDS = /^(erotic|erotica|erotic movie|softcore|pornography|gay pornography|lesbian pornography|trans pornography|gonzo pornography|alt pornography|bisexual pornography|child pornography|sexploitation|hentai|xxx|xxx cinema|adult film)$/i;
+const ADULT_CERTS = { GB: ["R18"], ZA: ["X18", "XX", "XXX"], US: ["X", "XXX"], AU: ["X18+", "RC"], NZ: ["R18"], DE: ["SPIO/JK"], FR: ["X"] };
+function adultReason(d, type) {                     // d: a TMDB movie / tv record fetched with keywords and ratings; returns "" or why
+  if (d.adult === true) return "flagged adult by TMDB";
+  const kw = (d.keywords && (d.keywords.keywords || d.keywords.results)) || [];
+  const hit = kw.filter(k => ADULT_KEYWORDS.test(String(k.name || "").trim()))[0]; if (hit) return "keyword: " + hit.name;
+  const rows = type === "tv" ? ((d.content_ratings && d.content_ratings.results) || []).map(x => [x.iso_3166_1, x.rating])
+    : ((d.release_dates && d.release_dates.results) || []).map(x => [x.iso_3166_1, (x.release_dates || []).map(y => y.certification).filter(Boolean)]);
+  for (const [reg, c] of rows) { const list = (ADULT_CERTS[reg] || []).map(v => v.toUpperCase().replace(/\s+/g, "")); for (const v of [].concat(c)) if (v && list.indexOf(String(v).toUpperCase().replace(/\s+/g, "")) >= 0) return "rated " + v + " (" + reg + ")"; }
+  return "";
+}
+/* is this title adult? {adult, why} or null when TMDB does not know it */
+async function adultOf({ imdb, type }) {
+  const f = await find(imdb).catch(e => { if (e.code === "not_found") return null; throw e; }); if (!f) return null;
+  const d = await call("/" + f.type + "/" + f.tmdb, { append_to_response: f.type === "tv" ? "keywords,content_ratings" : "keywords,release_dates" }, 7 * 864e5);
+  const why = adultReason(d, f.type); return { adult: !!why, why, cert: pickCert(d, f.type, "GB") };
+}
+
 /* ---- normalising ---- */
+const isAdultCard = x => x.adult === true;
 const card = (x, type) => ({ tmdb: x.id, type: (x.media_type || type) === "tv" ? "series" : "movie", name: x.title || x.name || "", poster: img(x.poster_path, "w342"), background: img(x.backdrop_path, "w780"),
   year: String(x.release_date || x.first_air_date || "").slice(0, 4), rating: x.vote_average ? Math.round(x.vote_average * 10) / 10 : null, description: x.overview || "" });
 const STINGER = /credits?\s*stinger|post.?credits?\s*scene|mid.?credits?\s*scene/i;
@@ -89,7 +109,7 @@ async function title({ imdb, tmdb, type, locale, region }) {
     cast: ((d.credits && d.credits.cast) || []).slice(0, 14).map(c => ({ id: c.id, name: c.name, role: c.character || "", photo: img(c.profile_path, "w185") })),
     directors: dir.length ? dir : creators, directorLabel: dir.length ? "Directed by" : "Created by",
     collection: d.belongs_to_collection ? { id: d.belongs_to_collection.id, name: d.belongs_to_collection.name } : null,
-    similar: ((d.recommendations && d.recommendations.results) || []).filter(x => x.poster_path).slice(0, 18).map(x => card(x, t)),
+    similar: ((d.recommendations && d.recommendations.results) || []).filter(x => x.poster_path && !isAdultCard(x)).slice(0, 18).map(x => card(x, t)),
     seasons: t === "tv" ? (d.seasons || []).filter(s => s.season_number > 0).map(s => ({ n: s.season_number, name: s.name, episodes: s.episode_count })) : [],
     nextEpisode: ne ? { season: ne.season_number, episode: ne.episode_number, name: ne.name || "", air: ne.air_date || "" } : null,
     network: (d.networks && d.networks[0] && d.networks[0].name) || "", stinger
@@ -106,7 +126,7 @@ const LISTS = {
 async function list({ kind, type, locale, region, page }) {
   const t = type === "series" || type === "tv" ? "tv" : "movie", def = LISTS[t][kind]; if (!def) throw Object.assign(new Error("unknown list"), { code: "bad_request" });
   const d = await call(def[0], clean({ language: locale || "en-US", region: def[1] ? region : undefined, page: page || 1 }), 3600e3);
-  return { items: (d.results || []).filter(x => x.poster_path).map(x => card(x, t)), pages: d.total_pages || 1 };
+  return { items: (d.results || []).filter(x => x.poster_path && !isAdultCard(x)).map(x => card(x, t)), pages: d.total_pages || 1 };
 }
 async function genres({ type, locale }) {
   const t = type === "series" || type === "tv" ? "tv" : "movie", d = await call("/genre/" + t + "/list", clean({ language: locale || "en-US" }), 7 * 864e5);
@@ -121,16 +141,16 @@ async function maxCert(region, age) {
 const SORTS = { popular: "popularity.desc", rating: "vote_average.desc", newest: "primary_release_date.desc", az: "original_title.asc" };
 async function discover({ type, genre, year, sort, locale, region, page, maxAge }) {
   const t = type === "series" || type === "tv" ? "tv" : "movie", s = SORTS[sort] || SORTS.popular;
-  const p = clean({ language: locale || "en-US", page: page || 1, with_genres: /^\d+$/.test(String(genre || "")) ? genre : undefined,
+  const p = clean({ include_adult: "false", language: locale || "en-US", page: page || 1, with_genres: /^\d+$/.test(String(genre || "")) ? genre : undefined,
     sort_by: t === "tv" ? s.replace("primary_release_date", "first_air_date").replace("original_title", "name") : s, "vote_count.gte": sort === "rating" ? 200 : undefined });
   if (/^\d{4}$/.test(String(year || ""))) p[t === "tv" ? "first_air_date_year" : "primary_release_year"] = year;
   if (t === "movie" && maxAge != null) { const c = await maxCert(region || "GB", maxAge); if (c.cert) { p.certification_country = c.region; p["certification.lte"] = c.cert; } }      // a limit: only films rated for that age
   const d = await call("/discover/" + t, p, 3600e3);
-  return { items: (d.results || []).filter(x => x.poster_path).map(x => card(x, t)), pages: Math.min(d.total_pages || 1, 500) };
+  return { items: (d.results || []).filter(x => x.poster_path && !isAdultCard(x)).map(x => card(x, t)), pages: Math.min(d.total_pages || 1, 500) };
 }
 async function person({ id, locale }) {
   const d = await call("/person/" + id, clean({ language: locale || "en-US", append_to_response: "combined_credits" }));
-  const seen = {}, known = ((d.combined_credits && d.combined_credits.cast) || []).filter(x => x.poster_path && (x.media_type === "movie" || x.media_type === "tv") && !seen[x.media_type + x.id] && (seen[x.media_type + x.id] = 1))
+  const seen = {}, known = ((d.combined_credits && d.combined_credits.cast) || []).filter(x => x.poster_path && !isAdultCard(x) && (x.media_type === "movie" || x.media_type === "tv") && !seen[x.media_type + x.id] && (seen[x.media_type + x.id] = 1))
     .sort((a, b) => (b.vote_count || 0) - (a.vote_count || 0)).slice(0, 40).map(x => Object.assign(card(x, x.media_type), { role: x.character || "" }));
   return { id: d.id, name: d.name, bio: (d.biography || "").slice(0, 900), born: d.birthday || "", place: d.place_of_birth || "", photo: img(d.profile_path, "w342"), department: d.known_for_department || "", known };
 }
@@ -138,11 +158,11 @@ async function search({ q, locale }) {
   const d = await call("/search/multi", clean({ query: String(q || "").slice(0, 100), language: locale || "en-US", include_adult: "false" }), 1800e3);
   const r = d.results || [];
   return { people: r.filter(x => x.media_type === "person" && x.profile_path).slice(0, 12).map(x => ({ id: x.id, name: x.name, photo: img(x.profile_path, "w185"), department: x.known_for_department || "" })),
-    titles: r.filter(x => (x.media_type === "movie" || x.media_type === "tv") && x.poster_path).slice(0, 24).map(x => card(x, x.media_type)) };
+    titles: r.filter(x => (x.media_type === "movie" || x.media_type === "tv") && x.poster_path && !isAdultCard(x)).slice(0, 24).map(x => card(x, x.media_type)) };
 }
 async function collection({ id, locale }) {
   const d = await call("/collection/" + id, clean({ language: locale || "en-US" }));
-  return { id: d.id, name: d.name, overview: d.overview || "", poster: img(d.poster_path, "w342"), background: img(d.backdrop_path, "w780"), items: (d.parts || []).filter(x => x.poster_path).sort((a, b) => String(a.release_date).localeCompare(String(b.release_date))).map(x => card(x, "movie")) };
+  return { id: d.id, name: d.name, overview: d.overview || "", poster: img(d.poster_path, "w342"), background: img(d.backdrop_path, "w780"), items: (d.parts || []).filter(x => x.poster_path && !isAdultCard(x)).sort((a, b) => String(a.release_date).localeCompare(String(b.release_date))).map(x => card(x, "movie")) };
 }
 /* well-known film franchises (TMDB collection ids), shown in this order; ones TMDB no longer has are skipped */
 const FRANCHISES = [10, 1241, 119, 121938, 86311, 531241, 284433, 748, 645, 87359, 328, 9485, 263, 2344, 10194, 2150, 295, 131635, 84, 1575, 8091, 528, 173710, 151, 8650, 404609, 86066, 8354, 5039, 1570, 91361, 556, 1733, 2980, 8945, 2602, 33514, 230, 1565, 34055, 86027, 2806];
@@ -166,4 +186,4 @@ async function ageOf({ imdb, type, region }) {
   const d = await call("/" + t + "/" + f.tmdb, { append_to_response: t === "tv" ? "content_ratings" : "release_dates" }, 7 * 864e5);
   return pickCert(d, t, region);
 }
-module.exports = { collections, FRANCHISES, configure, setKey, enabled, find, title, season, list, genres, discover, person, search, collection, resolve, ageOf, certAge, pickCert, LISTS };
+module.exports = { adultOf, adultReason, collections, FRANCHISES, configure, setKey, enabled, find, title, season, list, genres, discover, person, search, collection, resolve, ageOf, certAge, pickCert, LISTS };

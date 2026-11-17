@@ -36,7 +36,10 @@ var Views = (function () {
   var app = document.getElementById('app'), stack = [], reg = [], seq = 0, menuEl = null, menuPrev = null, toastT = null, browseToken = 0, infoT = null;
   var TABS = [['home', 'Home'], ['movie', 'Movies'], ['series', 'TV Shows'], ['library', 'My List'], ['search', 'Search']];
   var PAGES = ['home', 'movie', 'series', 'library', 'search', 'discover', 'collections', 'settings'];
-  function tabs() { return Tmdb.on() ? TABS.slice(0, 4).concat([['discover', 'Discover']], Tmdb.restricted() ? [] : [['collections', 'Collections']], TABS.slice(4)) : TABS; }
+  function tabs() {
+    if (Policy.onlyAllowed()) return [['home', 'Home'], ['library', 'My List'], ['search', 'Search']];      // a profile that only gets what its parents chose
+    return Tmdb.on() ? TABS.slice(0, 4).concat([['discover', 'Discover']], Tmdb.restricted() ? [] : [['collections', 'Collections']], TABS.slice(4)) : TABS;
+  }
 
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function toast(msg, ms) {
@@ -276,7 +279,7 @@ var Views = (function () {
     Store.setActive(id);
     if (token) Backend.setToken(token); else Backend.setToken(Store.getFor(id, 'token', null) || Backend.token());
     Api.setStreamBase('');
-    Backend.household().then(function (h) { Profiles.setAll(h.profiles); Api.setPrefs(h.prefs); }).catch(function () {}).then(function () { return Tmdb.init(); }).then(function () {
+    Backend.household().then(function (h) { Profiles.setAll(h.profiles); Profiles.setManageable(h.manageable); Api.setPrefs(h.prefs); }).catch(function () {}).then(function () { return Tmdb.init(); }).then(function () {
       if (Store.active() !== id) return;
       Sync.run(function () { var v = current(); if (v && PAGES.indexOf(v.name) >= 0 && v.name === 'home') page('home'); });
       if (!Api.quality()) return qualityStep(function () { page('home'); });          // a household set up before this question existed
@@ -301,6 +304,11 @@ var Views = (function () {
     h += '</div><div class="btn primary f pbtn2" data-act="membersdone">Done</div></div></div>';
     replaceAll('members', h, { onBack: function () { page('home'); return true; } });
     Nav.set(Nav.root().querySelector('.ptile'));
+    Backend.household().then(function (hh) {                      // who may manage whom (parents) is decided on the server
+      var changed = JSON.stringify(hh.manageable || []) !== JSON.stringify(Profiles.manageable());
+      Profiles.setAll(hh.profiles); Profiles.setManageable(hh.manageable);
+      if (changed && current() && current().name === 'members') members(firstRun);
+    }).catch(function () {});
   }
   function addMember() {
     formView('addmember', 'Add a household member', 'Each profile is one JoolzApp account. Enter that person\'s JoolzApp email and password. They stay signed in as long as anyone in the household keeps using JoolzTV.',
@@ -323,7 +331,7 @@ var Views = (function () {
       '<div class="pav" style="width:150px;height:150px;border-radius:75px;margin:0 auto 18px;background:' + esc(p.color) + '">' + avHtml(p) + '</div>' +
       '<input id="nm" class="field f" maxlength="16" placeholder="Name" autocomplete="off" value="' + esc(p.name) + '">' +
       '<div class="btn glass f" data-act="pickavatar" data-id="' + esc(id) + '">Change picture</div>' +
-      (Tmdb.on() && (Profiles.active() && Profiles.active().owner) ? '<div class="btn glass f" data-act="agelimit" data-id="' + esc(id) + '">Age limit: ' + (p.maxAge ? 'up to ' + p.maxAge : 'none') + '</div>' : '') +
+      parentRows(p) +
       '<div class="btn primary f" data-act="saveprofile" data-id="' + esc(id) + '">Save</div>' +
       (Profiles.all().length > 1 ? '<div class="btn glass f" data-act="delprofile" data-id="' + esc(id) + '">Remove from household</div>' : '') +
       '<div class="btn glass f" data-act="membersback">Back</div></div></div>';
@@ -345,6 +353,80 @@ var Views = (function () {
       toast('Picture changed'); editProfile(id);
     }).catch(function (e) { ferr(e.message); });
   }
+  /* kid controls: parent accounts only (the server checks too) */
+  var MODE_NAMES = { off: 'Off', block: 'Block the titles on the list', allow: 'Only the titles on the list' };
+  function parentRows(p) {
+    if (Profiles.manageable().indexOf(p.id) < 0) return '';
+    var h = '<div class="plabel">Parental controls</div>';
+    if (p.kidFlag || !p.kid) h += '<div class="btn glass f" data-act="kidflag" data-id="' + esc(p.id) + '">Kids profile: ' + (p.kid ? 'On' : 'Off') + '</div>';
+    else h += '<div class="plabel2">Kids profile: On (this JoolzApp account is under 18)</div>';
+    if (!p.kid) return h;
+    if (Tmdb.on()) h += '<div class="btn glass f" data-act="agelimit" data-id="' + esc(p.id) + '">Age limit: ' + (p.maxAge ? 'up to ' + p.maxAge : 'none') + '</div>';
+    h += '<div class="btn glass f" data-act="listmode" data-id="' + esc(p.id) + '">Title list: ' + esc(MODE_NAMES[p.mode || 'off']) + '</div>' +
+      '<div class="btn glass f" data-act="titles" data-id="' + esc(p.id) + '">Manage the title list (' + (p.titleCount || 0) + ')</div>';
+    return h;
+  }
+  function patchKid(id, patch, msg) {
+    Backend.setKidMode(id, patch).then(function (r) {
+      Profiles.setAll(Profiles.all().map(function (x) { if (x.id === id) { for (var k in r.profile) if (k !== 'photo') x[k] = r.profile[k]; } return x; }));
+      toast(msg || 'Saved', 2500); editProfile(id);
+    }).catch(function (e) { toast(e.message, 5000); });
+  }
+  /* the list: search to add, tap a listed title to remove */
+  function titlesPage(id) {
+    var p = Profiles.get(id); if (!p) return;
+    var el = mount('titles', '<div class="art-shade"></div>' + topbar('') + '<div class="vs" id="main"><div class="grid"><div class="gh"><h1>' + esc(p.name) + '\u2019s list</h1><div class="desc" style="max-height:none;font-size:24px">' +
+      (p.mode === 'allow' ? 'Only these titles are available to ' + esc(p.name) + '.' : p.mode === 'block' ? 'These titles are blocked for ' + esc(p.name) + '.' : 'The list is off. Turn it on under Title list in the profile.') +
+      ' Choose a listed title to remove it.</div><div class="sbar" style="margin-top:14px"><input id="tq" class="field f" type="text" style="width:760px" placeholder="Search a title to add" autocomplete="off" spellcheck="false"></div></div>' +
+      '<div class="gl">Search results</div><div id="tres"></div><div class="gl">On the list</div><div id="tlist"><div class="skel">Loading\u2026</div></div></div></div>', { cls: 'noart' });
+    Nav.hydrate(); Nav.first('#tq');
+    function drawList(titles) {
+      var box = document.getElementById('tlist'); if (!box) return;
+      box.innerHTML = titles.length ? titles.map(function (t) { return '<div class="card f" data-act="rmtitle" data-id="' + esc(id) + '" data-imdb="' + esc(t.imdb) + '"><div class="img" data-bg="' + esc(t.poster || '') + '"></div><div class="ccap">' + esc(t.name || t.imdb) + '<small>Remove</small></div></div>'; }).join('') : '<div class="skel">Nothing on the list yet.</div>';
+      Nav.hydrate();
+    }
+    el._draw = drawList; el._pid = id;
+    Backend.getTitles(id).then(function (r) { drawList(r.titles); }).catch(function (e) { var b = document.getElementById('tlist'); if (b) b.innerHTML = '<div class="skel">' + esc(e.message) + '</div>'; });
+    var q = document.getElementById('tq'), last = '';
+    q.addEventListener('input', function () {
+      clearTimeout(q._t); q._t = setTimeout(function () {
+        var v = q.value.trim(); if (v.length < 2 || v === last) return; last = v;
+        Api.ensure().then(function () { return Api.search(v); }).then(function (metas) {
+          var box = document.getElementById('tres'); if (!box) return;
+          box.innerHTML = Policy.cleanMetas(metas).slice(0, 18).map(function (m) { return '<div class="card f" data-act="addtitle" data-id="' + esc(id) + '" data-k="' + ref({ imdb: m.id, name: m.name, type: m.type, poster: m.poster }) + '"><div class="img" data-bg="' + esc(m.poster || '') + '"></div><div class="ccap">' + esc(m.name) + '<small>Add</small></div></div>'; }).join('') || '<div class="skel">No results.</div>';
+          Nav.hydrate();
+        }).catch(function () {});
+      }, 800);
+    });
+  }
+  function listEdit(id, body, msg) {
+    Backend.putTitles(id, body).then(function (r) {
+      Profiles.setAll(Profiles.all().map(function (x) { if (x.id === id) x.titleCount = r.titles.length; return x; }));
+      var v = current(); if (v && v.el._draw && v.el._pid === id) v.el._draw(r.titles);
+      toast(msg, 2500);
+    }).catch(function (e) { toast(e.message, 5000); });
+  }
+  /* on a title page: add it to a kid's list (parents) */
+  function kidsMenu(type, id, m) {
+    var kids = Profiles.all().filter(function (p) { return p.kid && Profiles.manageable().indexOf(p.id) >= 0; });
+    if (!kids.length) return toast('No kids profiles to manage');
+    Promise.all(kids.map(function (k) { return Backend.getTitles(k.id).then(function (r) { return { k: k, mode: r.mode, listed: r.titles.some(function (t) { return t.imdb === id; }) }; }); })).then(function (st) {
+      var opts = [];
+      st.forEach(function (x) {
+        if (x.listed) opts.push({ label: 'Remove from ' + x.k.name + '\u2019s list', act: 'rm', k: x.k });
+        else if (x.mode === 'allow') opts.push({ label: 'Allow for ' + x.k.name, act: 'add', k: x.k });
+        else if (x.mode === 'block') opts.push({ label: 'Block for ' + x.k.name, act: 'add', k: x.k });
+        else { opts.push({ label: 'Block for ' + x.k.name + ' (turns on their block list)', act: 'block', k: x.k }); opts.push({ label: 'Allow for ' + x.k.name + ' (turns on \u201conly the titles on the list\u201d)', act: 'allow', k: x.k }); }
+      });
+      menu('For kids', opts, function (o) {
+        var entry = { imdb: id, name: m.name, type: type, poster: m.poster || '' };
+        if (o.act === 'rm') return listEdit(o.k.id, { remove: [id] }, 'Removed from ' + o.k.name + '\u2019s list');
+        var after = function () { listEdit(o.k.id, { add: [entry] }, o.act === 'allow' || (o.act === 'add' && st.filter(function (x) { return x.k.id === o.k.id; })[0].mode === 'allow') ? 'Allowed for ' + o.k.name : 'Blocked for ' + o.k.name); };
+        if (o.act === 'block' || o.act === 'allow') return Backend.setKidMode(o.k.id, { mode: o.act }).then(function (r) { Profiles.setAll(Profiles.all().map(function (x) { if (x.id === o.k.id) x.mode = r.profile.mode; return x; })); after(); }).catch(function (e) { toast(e.message, 5000); });
+        after();
+      }, 'Only parents see this. Block lists hide a title from that profile; allow lists give the profile only the titles on the list.');
+    }).catch(function (e) { toast(e.message, 5000); });
+  }
   function saveProfile(id) {
     var nm = val('nm'); if (!nm) return ferr('Enter a name.');
     Backend.renameProfile(id, nm).then(function (r) {
@@ -364,6 +446,7 @@ var Views = (function () {
     closeMenu(true);
     if (!Tmdb.known() && Backend.token()) return Tmdb.init().then(function () { page(kind); });          // is TMDB set up? (asked once after signing in)
     if (kind === 'search') return searchPage();
+    if (Policy.onlyAllowed() && kind !== 'home' && kind !== 'library') return page('home');
     if (kind === 'settings') return settingsPage();
     if (kind === 'discover') return discoverPage();
     if (kind === 'collections') return collectionsPage();
@@ -381,6 +464,7 @@ var Views = (function () {
     });
   }
   function buildBrowse(kind, el, token) {
+    if (Policy.onlyAllowed()) return buildAllowed(el, token);
     var main = el.querySelector('#main'), defs = Api.catalogDefs().filter(function (d) { return kind === 'home' || d.type === kind; }).slice(0, 10), trows = Tmdb.on() ? tmdbRows(kind) : [];
     if (Tmdb.on() && Tmdb.restricted()) defs = [];                // a profile with an age limit only sees rows that TMDB has filtered for it
     main.innerHTML = '<div id="rows"></div>';
@@ -417,6 +501,14 @@ var Views = (function () {
       }).catch(function () {}).then(done);
     });
     Nav.hydrate();
+  }
+  /* a profile that only gets what its parents chose: one grid of those titles */
+  function buildAllowed(el, token) {
+    var main = el.querySelector('#main'), items = Policy.allowed();
+    if (!items.length) { main.innerHTML = '<div class="empty">Nothing here yet. Ask a parent to choose some titles for you.</div>'; return; }
+    main.innerHTML = '<div id="rows">' + rowHtml('Chosen for you', items.map(function (i) { return { type: i.type, id: i.imdb, name: i.name, poster: i.poster, description: '' }; })) + '</div>';
+    Nav.hydrate();
+    var c = main.querySelector('.card'); if (c) { Nav.set(c); showInfo(reg[+c.getAttribute('data-k')]); }
   }
   function buildLibrary(el, token) {
     var main = el.querySelector('#main'), items = MyList.items();
@@ -463,7 +555,8 @@ var Views = (function () {
     res.innerHTML = '<div class="skel">Searching…</div>';
     var people = Tmdb.on() ? Tmdb.search(q).then(function (r) { return r.people || []; }).catch(function () { return []; }) : Promise.resolve([]);
     Promise.all([Api.ensure().then(function () { return Api.search(q); }), people]).then(function (all) {
-      var metas = all[0], ppl = all[1];
+      var metas = Policy.cleanMetas(all[0]), ppl = Policy.onlyAllowed() ? [] : all[1];
+      if (Policy.onlyAllowed()) metas = metas.filter(function (m) { return Policy.isAllowed(m.id); });
       if (!document.getElementById('res')) return;
       if (!metas.length && !ppl.length) { res.innerHTML = '<div class="skel">No results for “' + esc(q) + '”.</div>'; return; }
       var h = ''; if (ppl.length) h += '<div class="gl">People</div><div class="prow">' + ppl.map(personCard).join('') + '</div><div class="gl">Titles</div>';
@@ -491,10 +584,10 @@ var Views = (function () {
   /* age limit and the like: check before a title starts */
   function playChecked(info) {
     var id = info.id || '';
-    if (info._direct || !Tmdb.on() || !Tmdb.restricted() || !/^tt\d+$/.test(id)) return Player.open(info);
-    Tmdb.playCheck(id, info.type).then(function (r) {
+    if (info._direct || !/^tt\d+$/.test(id)) return Player.open(info);
+    Policy.check(id, info.type).then(function (r) {
       if (r.ok) return Player.open(info);
-      menu('Not available on this profile', [{ label: 'OK' }], function () {}, r.message || 'This title is not suitable for this profile.');
+      menu('Not available', [{ label: 'OK' }], function () {}, r.message || 'This title is not available on this profile.');
     });
   }
   function personCard(p) {
@@ -637,12 +730,21 @@ var Views = (function () {
     var el = mount('detail', '<div class="art img"></div><div class="art-shade"></div><div class="dtop"><h1>' + esc(seed && seed.name || '') + '</h1><div class="chips"><span class="chip">Loading…</span></div></div>', { cls: 'noart' });
     setArt(el, seed && (seed.background || seed.poster));
     Nav.hydrate();
-    Api.ensure().then(function () { return Api.getMeta(type, id); }).then(function (m) {
+    Api.ensure().then(function () { return Promise.all([Api.getMeta(type, id), /^tt\d+$/.test(id) ? Policy.check(id, type) : { ok: true }]); }).then(function (r) {
+      var m = r[0], dec = r[1];
       if (current().el !== el) return;
+      if (Policy.adultMeta(m)) dec = { ok: false, reason: 'adult', message: 'This title is blocked on JoolzTV for everyone (adult content).' };
+      if (!dec.ok) return renderBlocked(el, m, dec);
       renderDetail(el, type, id, m);
     }).catch(function (e) {
       var d = el.querySelector('.dtop'); if (d) d.innerHTML = '<h1>' + esc(seed && seed.name || '') + '</h1><div class="chips"><span class="chip">Could not load details: ' + esc(e.message) + '</span></div>';
     });
+  }
+  function renderBlocked(el, m, dec) {
+    var d = el.querySelector('.dtop');
+    d.innerHTML = '<h1>' + esc(m && m.name || '') + '</h1><div class="chips"><span class="chip cert">Not available</span></div><div class="desc">' + esc(dec.message || 'This title is not available on this profile.') + '</div>' +
+      '<div class="btns"><div class="btn primary f" data-act="detailback">Back</div></div>';
+    Nav.hydrate(); Nav.first('.btn');
   }
   function seasonsOf(m) {
     var by = {};
@@ -679,7 +781,8 @@ var Views = (function () {
     var h = '<h1>' + esc(m.name) + '</h1><div class="chips">' + meta1(m) + '</div><div class="desc">' + esc(m.description || '') + '</div>' +
       '<div class="btns"><div class="btn primary f" data-act="play" data-k="' + k + '">' + playLabel + (isSeries && sub ? '  ' + sub : '') + '</div>' +
       '<div class="btn glass f" data-act="play" data-k="' + k2 + '">Choose source</div>' +
-      '<div class="btn glass f" data-act="togglelib" id="libbtn">' + (MyList.has(id) ? '✓  In My List' : '+  My List') + '</div></div>';
+      '<div class="btn glass f" data-act="togglelib" id="libbtn">' + (MyList.has(id) ? '✓  In My List' : '+  My List') + '</div>' +
+      (Profiles.all().some(function (p) { return p.kid && Profiles.manageable().indexOf(p.id) >= 0; }) ? '<div class="btn glass f" data-act="kidsmenu">For kids</div>' : '') + '</div>';
     el.querySelector('.dtop').innerHTML = h;
     el._detail = { type: type, id: id, m: m, S: S, base: baseInfo };
     setArt(el, m.background || m.poster);
@@ -813,6 +916,7 @@ var Views = (function () {
     if (a === 'play') return playChecked(reg[+el.getAttribute('data-k')]);
     if (a === 'season') return renderEpisodes(current().el, +el.getAttribute('data-s'));
     if (a === 'speak') return speak();
+    if (a === 'detailback') return back();
     if (a === 'xtab') return xTab(current().el, el.getAttribute('data-t'));
     if (a === 'person') return personPage(el.getAttribute('data-id'));
     if (a === 'collection') return collectionPage(el.getAttribute('data-id'));
@@ -864,6 +968,12 @@ var Views = (function () {
     if (a === 'tregion') return menu('Country', Tmdb.COUNTRIES.map(function (c) { return { label: c[1], c: c[0], selected: c[0] === Tmdb.region() }; }), function (o) { savePrefs({ region: o.c }, function () { settingsPage(); }); });
     if (a === 'tlocale') return menu('Language of titles and summaries', Tmdb.LOCALES.map(function (c) { return { label: c[1], c: c[0], selected: c[0] === Tmdb.locale() }; }), function (o) { savePrefs({ locale: o.c }, function () { settingsPage(); }); });
     if (a === 'savetmdb') { var tk = val('tmdbkey'); if (!tk) return toast('Paste the TMDB key first'); return Tmdb.setKey(tk).then(function (j) { toast(j.enabled ? 'TMDB is on' : 'TMDB is off', 4000); settingsPage(); }).catch(function (e) { toast(e.message, 6000); }); }
+    if (a === 'kidflag') { var kp = Profiles.get(el.getAttribute('data-id')); return patchKid(kp.id, { kid: !kp.kid }, kp.kid ? 'No longer a kids profile' : 'Marked as a kids profile'); }
+    if (a === 'listmode') { var lp = Profiles.get(el.getAttribute('data-id')); return menu('Title list for ' + lp.name, [['off', 'Off'], ['block', 'Block the titles on the list'], ['allow', 'Only allow the titles on the list']].map(function (m) { return { label: m[1], m: m[0], selected: (lp.mode || 'off') === m[0] }; }), function (o) { patchKid(lp.id, { mode: o.m }, 'Saved'); }, 'With "Only allow", the profile\u2019s home shows just the listed titles and everything else is refused. Adult titles are blocked for everyone whatever the list says.'); }
+    if (a === 'titles') return titlesPage(el.getAttribute('data-id'));
+    if (a === 'addtitle') { var tm = reg[+el.getAttribute('data-k')]; return listEdit(el.getAttribute('data-id'), { add: [tm] }, 'Added ' + tm.name); }
+    if (a === 'rmtitle') return listEdit(el.getAttribute('data-id'), { remove: [el.getAttribute('data-imdb')] }, 'Removed');
+    if (a === 'kidsmenu') { var dv = current().el._detail; return kidsMenu(dv.type, dv.id, dv.m); }
     if (a === 'agelimit') { var pid = el.getAttribute('data-id'); return menu('Age limit for this profile', [{ label: 'No limit', v: null }, { label: 'Up to age 7', v: 7 }, { label: 'Up to age 10', v: 10 }, { label: 'Up to age 13', v: 13 }, { label: 'Up to age 16', v: 16 }], function (o) {
       Backend.setMaxAge(pid, o.v).then(function (r) { Profiles.setAll(Profiles.all().map(function (x) { if (x.id === pid) x.maxAge = r.profile.maxAge; return x; })); toast(o.v === null ? 'Age limit removed' : 'Age limit set', 3000); editProfile(pid); }).catch(function (e) { toast(e.message, 5000); }); }, 'Titles rated above this age are hidden and will not play on this profile. Accounts that JoolzApp knows are under 18 are limited to their own age automatically.'); }
     if (a === 'playmode') { var order = ['auto', 'direct', 'transcode']; Store.set('playback', order[(order.indexOf(playMode()) + 1) % 3]); return settingsPage(); }
