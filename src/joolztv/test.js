@@ -158,6 +158,8 @@ const T = tok => ({ "x-jtv-token": tok });
   r = await req("GET", "/api/tmdb/person?id=504", undefined, T(ann)); ok(r.code === 200 && r.json.name === "Tim Robbins", "person");
   r = await req("GET", "/api/tmdb/person?id=abc", undefined, T(ann)); ok(r.code === 400, "person id is a number");
   r = await req("GET", "/api/tmdb/search?q=t", undefined, T(ann)); ok(r.code === 200 && r.json.people.length === 0, "a one-letter search asks nothing");
+  r = await req("GET", "/api/tmdb/collections", undefined, T(ann)); ok(r.code === 200 && r.json.collections.length === 2, "collections list");
+  r = await req("GET", "/api/tmdb/collections?q=bear", undefined, T(ann)); ok(r.json.collections.length === 1, "collections search");
   r = await req("GET", "/api/tmdb/resolve?tmdb=1396&type=series", undefined, T(ann)); ok(r.json.imdb === "tt0903747", "resolve a TMDB id to an IMDb id");
   r = await req("GET", "/api/tmdb/title?imdb=tt0111161"); ok(r.code === 401, "TMDB routes need a sign-in");
   // age limits

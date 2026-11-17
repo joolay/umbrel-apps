@@ -35,8 +35,8 @@ var MyList = (function () {
 var Views = (function () {
   var app = document.getElementById('app'), stack = [], reg = [], seq = 0, menuEl = null, menuPrev = null, toastT = null, browseToken = 0, infoT = null;
   var TABS = [['home', 'Home'], ['movie', 'Movies'], ['series', 'TV Shows'], ['library', 'My List'], ['search', 'Search']];
-  var PAGES = ['home', 'movie', 'series', 'library', 'search', 'discover', 'settings'];
-  function tabs() { return Tmdb.on() ? TABS.slice(0, 4).concat([['discover', 'Discover']], TABS.slice(4)) : TABS; }
+  var PAGES = ['home', 'movie', 'series', 'library', 'search', 'discover', 'collections', 'settings'];
+  function tabs() { return Tmdb.on() ? TABS.slice(0, 4).concat([['discover', 'Discover']], Tmdb.restricted() ? [] : [['collections', 'Collections']], TABS.slice(4)) : TABS; }
 
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function toast(msg, ms) {
@@ -112,7 +112,7 @@ var Views = (function () {
     return bits.join('');
   }
   function topbar(active) {
-    var pr = Profiles.active(), h = '<div class="top"><div class="brand">Joolz<b>TV</b></div><div class="tabbar glass">';
+    var pr = Profiles.active(), h = '<div class="top"><div class="brand">Joolz<b>TV</b></div><div class="tabbar glass' + (tabs().length > 5 ? ' many' : '') + '">';
     tabs().forEach(function (t) { h += '<div class="tab f' + (t[0] === active ? ' on' : '') + '" data-act="page" data-p="' + t[0] + '">' + t[1] + '</div>'; });
     h += '</div>';
     if (pr) h += '<div class="who glass f" data-act="avatarmenu"><span class="av" style="position:relative;overflow:hidden;background:' + esc(pr.color) + '">' + avHtml(pr) + '</span>' + esc(pr.name) + '</div>';
@@ -366,6 +366,7 @@ var Views = (function () {
     if (kind === 'search') return searchPage();
     if (kind === 'settings') return settingsPage();
     if (kind === 'discover') return discoverPage();
+    if (kind === 'collections') return collectionsPage();
     var token = ++browseToken, browse = kind !== 'library';
     replaceAll(kind, '<div class="art img"></div><div class="art-shade"></div>' + topbar(kind) + (browse ? '<div id="info"></div>' : '') +
       '<div class="vs' + (browse ? ' rows snap' : '') + '" id="main"><div class="loading">Loading…</div></div>', { cls: 'noart', onBack: function () { if (kind !== 'home') { page('home'); return true; } return false; } });
@@ -405,7 +406,7 @@ var Views = (function () {
     trows.forEach(function (r, i) {
       r.load().then(function (items) {
         if (token !== browseToken || !items.length) return;
-        tslots[i].innerHTML = rowHtml(r.title, items.map(tmdbMeta)); Nav.hydrate(); focusFirst();
+        tslots[i].innerHTML = r.cols ? '<div class="row"><h2>' + esc(r.title) + '</h2><div class="hs">' + items.map(colCard).join('') + '<span class="pad-end"></span></div></div>' : rowHtml(r.title, items.map(tmdbMeta)); Nav.hydrate(); focusFirst();
       }).catch(function () {}).then(done);
     });
     defs.forEach(function (d, i) {
@@ -479,7 +480,7 @@ var Views = (function () {
     function D(title, t, genre) { rows.push({ title: title, load: function () { return Tmdb.discover({ type: t, genre: genre, sort: 'popular' }).then(function (r) { return r.items; }); } }); }
     if (Tmdb.restricted()) { if (kind !== 'series') D('Films for you', 'movie'); if (kind !== 'movie') D('Kids’ TV', 'series', 10762); return rows; }
     if (kind === 'home') { L('Trending films', 'trending', 'movie'); L('Trending TV', 'trending', 'series'); L('Now in cinemas', 'now', 'movie'); L('Coming soon', 'soon', 'movie'); }
-    else if (kind === 'movie') { L('Trending today', 'trending', 'movie'); L('Popular', 'popular', 'movie'); L('Top rated', 'top', 'movie'); L('Now in cinemas', 'now', 'movie'); L('Coming soon', 'soon', 'movie'); }
+    else if (kind === 'movie') { rows.push({ title: 'Collections', cols: true, load: function () { return Tmdb.collections().then(function (r) { return r.collections.slice(0, 16); }); } }); L('Trending today', 'trending', 'movie'); L('Popular', 'popular', 'movie'); L('Top rated', 'top', 'movie'); L('Now in cinemas', 'now', 'movie'); L('Coming soon', 'soon', 'movie'); }
     else { L('Trending today', 'trending', 'series'); L('Popular', 'popular', 'series'); L('Top rated', 'top', 'series'); L('On the air', 'now', 'series'); L('Airing today', 'soon', 'series'); }
     return rows;
   }
@@ -581,6 +582,26 @@ var Views = (function () {
   function collectionPage(id) {
     toast('Loading…', 6000);
     Tmdb.collection(id).then(function (c) { gridView('collection', '<div class="ptext"><h1>' + esc(c.name) + '</h1><div class="desc">' + esc(c.overview) + '</div></div>', c.items, false); }).catch(function () { toast('Could not load that collection', 4000); });
+  }
+  /* ---------- Collections: film franchises (Star Wars, Harry Potter, ...) ---------- */
+  function colCard(c) {
+    return '<div class="card f" data-act="collection" data-id="' + esc(c.id) + '"><div class="img" data-bg="' + esc(c.poster || '') + '"></div><div class="ccap">' + esc(c.name.replace(/ Collection$/, '')) + (c.count ? '<small>' + c.count + ' films</small>' : '') + '</div></div>';
+  }
+  function collectionsPage() {
+    var token = ++browseToken;
+    replaceAll('collections', '<div class="art-shade"></div>' + topbar('collections') + '<div class="vs" id="main"><div class="grid" id="gridp"><div class="gh"><h1>Collections</h1><div class="sbar"><input id="cq" class="field f" type="text" style="width:700px" placeholder="Search collections (Bond, Toy Story)" autocomplete="off" spellcheck="false"></div></div><div id="gcards"><div class="skel">Loading…</div></div></div></div>',
+      { cls: 'noart', onBack: function () { page('home'); return true; } });
+    Nav.first('.tab.on');
+    function load(q) {
+      Tmdb.collections(q).then(function (r) {
+        if (token !== browseToken) return;
+        var box = document.getElementById('gcards'); if (!box) return;
+        box.innerHTML = r.collections.length ? r.collections.map(colCard).join('') : '<div class="skel">No collections found.</div>'; Nav.hydrate();
+      }).catch(function (e) { var b = document.getElementById('gcards'); if (b) b.innerHTML = '<div class="skel">Could not load: ' + esc(e.message) + '</div>'; });
+    }
+    var cq = document.getElementById('cq'), last = '';
+    cq.addEventListener('input', function () { clearTimeout(cq._t); cq._t = setTimeout(function () { var v = cq.value.trim(); if (v !== last && (v.length >= 2 || !v)) { last = v; load(v); } }, 700); });
+    load('');
   }
   var DISC = { type: 'movie', genre: '', genreName: 'Any genre', year: '', sort: 'popular', page: 1 };
   var SORT_NAMES = { popular: 'Most popular', rating: 'Highest rated', newest: 'Newest', az: 'A to Z' };

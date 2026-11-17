@@ -142,7 +142,18 @@ async function search({ q, locale }) {
 }
 async function collection({ id, locale }) {
   const d = await call("/collection/" + id, clean({ language: locale || "en-US" }));
-  return { id: d.id, name: d.name, overview: d.overview || "", items: (d.parts || []).filter(x => x.poster_path).sort((a, b) => String(a.release_date).localeCompare(String(b.release_date))).map(x => card(x, "movie")) };
+  return { id: d.id, name: d.name, overview: d.overview || "", poster: img(d.poster_path, "w342"), background: img(d.backdrop_path, "w780"), items: (d.parts || []).filter(x => x.poster_path).sort((a, b) => String(a.release_date).localeCompare(String(b.release_date))).map(x => card(x, "movie")) };
+}
+/* well-known film franchises (TMDB collection ids), shown in this order; ones TMDB no longer has are skipped */
+const FRANCHISES = [10, 1241, 119, 121938, 86311, 531241, 284433, 748, 645, 87359, 328, 9485, 263, 2344, 10194, 2150, 295, 131635, 84, 1575, 8091, 528, 173710, 151, 8650, 404609, 86066, 8354, 5039, 1570, 91361, 556, 1733, 2980, 8945, 2602, 33514, 230, 1565, 34055, 86027, 2806];
+const colCard = c => ({ id: c.id, name: c.name || "", poster: img(c.poster_path, "w342"), count: c.parts ? c.parts.length : null });
+async function collections({ q, locale }) {
+  q = String(q || "").trim().slice(0, 80);
+  if (q.length >= 2) { const d = await call("/search/collection", clean({ query: q, language: locale || "en-US" }), 1800e3); return (d.results || []).filter(c => c.poster_path).slice(0, 40).map(colCard); }
+  const key = "franchises:" + (locale || "en-US"), hit = cache.get(key); if (hit && Date.now() - hit.at < 12 * 3600e3) return hit.v;
+  const out = new Array(FRANCHISES.length); let next = 0;
+  await Promise.all(Array.from({ length: 6 }, async () => { while (next < FRANCHISES.length) { const i = next++; try { out[i] = colCard(await call("/collection/" + FRANCHISES[i], clean({ language: locale || "en-US" }), 7 * 864e5)); } catch (e) { if (e.code === "off" || e.code === "bad_key") throw e; } } }));
+  const v = out.filter(c => c && c.poster); cache.set(key, { at: Date.now(), v }); return v;
 }
 async function resolve({ tmdb, type }) {
   const t = type === "series" || type === "tv" ? "tv" : "movie", d = await call("/" + t + "/" + tmdb + "/external_ids", {}, 30 * 864e5);
@@ -155,4 +166,4 @@ async function ageOf({ imdb, type, region }) {
   const d = await call("/" + t + "/" + f.tmdb, { append_to_response: t === "tv" ? "content_ratings" : "release_dates" }, 7 * 864e5);
   return pickCert(d, t, region);
 }
-module.exports = { configure, setKey, enabled, find, title, season, list, genres, discover, person, search, collection, resolve, ageOf, certAge, pickCert, LISTS };
+module.exports = { collections, FRANCHISES, configure, setKey, enabled, find, title, season, list, genres, discover, person, search, collection, resolve, ageOf, certAge, pickCert, LISTS };

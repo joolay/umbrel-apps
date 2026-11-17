@@ -36,6 +36,7 @@ var Tmdb = (function () {
     genres: function (type) { return get('/api/tmdb/genres', { type: type }, 3600000); },
     discover: function (o) { return get('/api/tmdb/discover', o, 300000); },
     person: function (id) { return get('/api/tmdb/person', { id: id }, 600000); },
+    collections: function (q) { return get('/api/tmdb/collections', q ? { q: q } : {}, q ? 300000 : 3600000); },
     collection: function (id) { return get('/api/tmdb/collection', { id: id }, 600000); },
     search: function (q) { return get('/api/tmdb/search', { q: q }, 300000); },
     resolve: function (tmdb, type) { return get('/api/tmdb/resolve', { tmdb: tmdb, type: type }, 3600000); },

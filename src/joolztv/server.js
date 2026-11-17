@@ -358,6 +358,7 @@ async function tmdbRoutes(req, res, p, u) {
     if (p === "/api/tmdb/genres") return send(res, 200, { genres: await tmdb.genres({ type: q.get("type") || "movie", locale: l.locale }) });
     if (p === "/api/tmdb/discover") return send(res, 200, await tmdb.discover({ type: q.get("type") || "movie", genre: q.get("genre"), year: q.get("year"), sort: q.get("sort"), locale: l.locale, region: l.region, page: Math.min(+q.get("page") || 1, 50), maxAge: limit }));
     if (p === "/api/tmdb/person") { if (!idOk(q.get("id"))) return send(res, 400, { code: "bad_request", message: "Unknown person." }); return send(res, 200, await tmdb.person({ id: q.get("id"), locale: l.locale })); }
+    if (p === "/api/tmdb/collections") return send(res, 200, { collections: await tmdb.collections({ q: q.get("q"), locale: l.locale }) });
     if (p === "/api/tmdb/collection") { if (!idOk(q.get("id"))) return send(res, 400, { code: "bad_request", message: "Unknown collection." }); return send(res, 200, await tmdb.collection({ id: q.get("id"), locale: l.locale })); }
     if (p === "/api/tmdb/search") { const s = String(q.get("q") || "").trim(); if (s.length < 2) return send(res, 200, { people: [], titles: [] }); return send(res, 200, await tmdb.search({ q: s, locale: l.locale })); }
     if (p === "/api/tmdb/resolve") { if (!idOk(q.get("tmdb"))) return send(res, 400, { code: "bad_request", message: "Unknown title." }); return send(res, 200, await tmdb.resolve({ tmdb: q.get("tmdb"), type: q.get("type") || "movie" })); }
