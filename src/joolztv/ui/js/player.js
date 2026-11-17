@@ -15,7 +15,8 @@ var Player = (function () {
       '<div class="pctl"><span class="cbtn f" data-pact="back10">⏪ 10</span><span class="cbtn big f" data-pact="toggle" id="bplay">❚❚</span><span class="cbtn f" data-pact="fwd10">10 ⏩</span>' +
       '<span class="cbtn f" data-pact="speed">Speed 1x</span><span class="cbtn f" data-pact="subs">Subtitles</span><span class="cbtn f" data-pact="sources">Sources</span></div></div></div>';
     var el = Views.mount('player', h, { cls: 'player', onBack: function () { close(); Views.pop(); return true; }, onClose: cleanup });
-    S = { el: el, info: info, v: el.querySelector('#pv'), learnedFor: {}, streams: [], groups: [], idx: -1, tried: {}, rate: 1, subs: null, ui: true, uiT: null, lastSave: 0, tick: null, buffT: null, ended: false, gotTime: false };
+    S = { el: el, info: info, v: el.querySelector('#pv'), learnedFor: {}, buf: { speed: 0, peers: 0, len: 0, fill: null }, hold: false, streams: [], groups: [], idx: -1, tried: {}, rate: 1, subs: null, ui: true, uiT: null, lastSave: 0, tick: null, buffT: null, ended: false, gotTime: false };
+    keepPitch(S.v);
     bind();
     Nav.set(el.querySelector('#seek'), true);
     showUi();
@@ -67,7 +68,10 @@ var Player = (function () {
     v.src = url; v.playbackRate = 1; S.rate = 1;
     try { v.defaultPlaybackRate = 1; } catch (e) {}
     v.load();
-    var p = v.play(); if (p && p.catch) p.catch(function () {});
+    // smart buffering: let the download get ahead first, by as much as the measured speed calls for, then play
+    S.buf = { speed: 0, peers: 0, len: 0, fill: null, lastEnd: 0, lastT: 0, lastGrow: Date.now() };
+    S.hold = bufMode() !== 'off' && !s._direct; S.rebuf = false; S.holdAt = Date.now(); S.autoPaused = S.hold; S.graceUntil = 0;
+    if (S.hold) { spin('Buffering…'); pollStats(true); } else { var p = v.play(); if (p && p.catch) p.catch(function () {}); }
     // data is arriving (the first 64 KB can be read) but the TV never opens the file: an unsupported container or codec, not a slow download
     if (!hls && !s._direct) S.flowT = setTimeout(function () {
       var sess = S; if (!sess || sess.idx !== i || sess.metaOk || sess.hls) return;
@@ -124,7 +128,7 @@ var Player = (function () {
     });
     v.addEventListener('waiting', function () { if (!alive()) return; clearTimeout(sess.buffT); sess.buffT = setTimeout(function () { if (alive() && !v.paused) spin('Buffering…'); }, 700); });
     v.addEventListener('canplay', function () { if (alive()) { clearTimeout(sess.buffT); spin(''); } });
-    v.addEventListener('pause', function () { if (alive()) { setPlayLabel(); showUi(true); save(); } });
+    v.addEventListener('pause', function () { if (alive() && !sess.autoPaused) { setPlayLabel(); showUi(true); save(); } });
     v.addEventListener('play', function () { if (alive()) setPlayLabel(); });
     v.addEventListener('seeked', function () { if (alive()) reapplyRate(); });
     v.addEventListener('ended', function () {
@@ -140,7 +144,12 @@ var Player = (function () {
       fetch(src, { headers: { Range: 'bytes=0-1' } }).then(function (r) { if (alive() && sess.idx === idx) next(msg, r.ok); }, function () { if (alive() && sess.idx === idx) next(msg, false); });
     });
     sess.tick = setInterval(function () { if (alive()) update(); }, 500);
-    sess.watchdog = setTimeout(function () { if (alive() && !sess.gotTime && !sess.failed && sess.streams.length) next('Taking too long to start'); }, 45000);
+    sess.watchdog = setTimeout(function wd() {
+      if (!alive() || sess.gotTime || sess.failed || !sess.streams.length) return;
+      if (sess.hold && Date.now() - (sess.buf.lastGrow || 0) < 15000) { sess.watchdog = setTimeout(wd, 15000); return; }   // still filling the buffer on purpose
+      next('Taking too long to start');
+    }, 45000);
+    sess.bufT = setInterval(function () { if (alive()) bufTick(); }, 500);
   }
   function startUpNext(n) {
     S.upnext = { n: n, left: 8 };
@@ -153,8 +162,55 @@ var Player = (function () {
     var info = Object.assign({}, S.info, S.upnext.n); delete info.pick; info.startMs = 0; delete info._direct;
     close(); Views.pop(); open(info);
   }
-  function reapplyRate() { if (S && S.v && Math.abs(S.v.playbackRate - S.rate) > 0.01) { try { S.v.playbackRate = S.rate; } catch (e) {} } }
+  /* faster playback with matching audio: the sound speeds up with the picture but keeps its pitch (no chipmunk voices) */
+  function keepPitch(v) { try { v.preservesPitch = true; } catch (e) {} try { v.webkitPreservesPitch = true; } catch (e) {} try { v.mozPreservesPitch = true; } catch (e) {} }
+  function setRate(r) { var v = S.v; S.rate = r; keepPitch(v); try { v.defaultPlaybackRate = r; } catch (e) {} try { v.playbackRate = r; } catch (e) {} keepPitch(v); }
+  function reapplyRate() { if (S && S.v) { keepPitch(S.v); if (Math.abs(S.v.playbackRate - S.rate) > 0.01) { try { S.v.playbackRate = S.rate; } catch (e) {} } } }
   function setPlayLabel() { var b = $('#bplay'); if (b && S) b.textContent = S.v.paused ? '▶' : '❚❚'; }
+
+  /* ---- smart buffering ---- */
+  function bufMode() { return Store.get('bufmode', 'auto'); }
+  function bufEnd(v) { var t = v.currentTime, b = v.buffered; for (var i = 0; i < b.length; i++) if (b.start(i) <= t + 0.4 && b.end(i) >= t) return b.end(i); return t; }
+  function pollStats(first) {                                   // the torrent's live download speed and peers, from the streaming server
+    var sess = S; if (!sess) return; clearTimeout(sess.statsT);
+    var st = sess.streams[sess.idx], url = st && Api.statsUrl(st);
+    if (url) Api.getJSON(url, 3000).then(function (j) {
+      if (S !== sess || !j) return;
+      var sp = +(j.downloadSpeed != null ? j.downloadSpeed : j.speed), B = sess.buf;
+      if (isFinite(sp)) B.speed = B.speed ? B.speed * 0.5 + sp * 0.5 : sp;           // smoothed, so one quiet second doesn't swing the plan
+      B.peers = +(j.unchoked != null ? j.unchoked : j.peers) || B.peers; B.len = +(j.streamLen || j.length) || B.len;
+    }).catch(function () {});
+    sess.statsT = setTimeout(function () { if (S === sess) pollStats(); }, sess.hold ? 2000 : 6000);
+  }
+  function release(why) {
+    if (!S || !S.hold) return;
+    S.hold = false; S.autoPaused = false; S.rebuf = false; S.graceUntil = Date.now() + 5000; spin('');
+    var p = S.v.play(); if (p && p.catch) p.catch(function () {});
+  }
+  function bufMsg(ahead, target, plan) {
+    var B = S.buf, bits = [Math.round(ahead) + ' of ' + target + ' s buffered'];
+    if (B.speed > 0) bits.push(Buf.fmtSpeed(B.speed)); if (B.peers) bits.push(B.peers + ' peers');
+    return (S.rebuf ? 'Rebuilding the buffer…' : 'Buffering…') + '\n' + bits.join(' · ') + (plan.slow ? '\nThis source downloads slower than it plays. Choose Sources for one with more seeds or a lower resolution.' : '');
+  }
+  function bufTick() {
+    var v = S.v, B = S.buf, mode = bufMode(); if (!v || S.failed || S.upnext || S.ended) return;
+    if (mode === 'off') { if (S.hold) release('off'); return; }
+    var now = Date.now(), dur = v.duration, end = bufEnd(v), ahead = Math.max(0, end - v.currentTime);
+    if (B.lastT) { var dt = (now - B.lastT) / 1000; if (dt >= 0.4) { var g = Math.max(0, (end - B.lastEnd) / dt); B.fill = B.fill == null ? g : B.fill * 0.7 + g * 0.3; if (end > B.lastEnd + 0.05) B.lastGrow = now; B.lastEnd = end; B.lastT = now; } }
+    else { B.lastT = now; B.lastEnd = end; B.lastGrow = now; }
+    if (!isFinite(dur) || !dur) return;                                               // not opened yet
+    var st = S.streams[S.idx], size = (st && st.behaviorHints && st.behaviorHints.videoSize) || B.len || 0;
+    var plan = Buf.plan({ bitrate: size ? size / dur : 0, speed: B.speed, fill: B.fill, duration: dur, mode: mode, hls: S.hls }), nearEnd = end >= dur - 1; B.plan = plan;
+    if (S.hold) {
+      var target = S.rebuf ? plan.resumeSecs : plan.startSecs, waited = (now - S.holdAt) / 1000;
+      var idle = v.networkState === 1 && waited > 4 && ahead >= 3;                    // the browser has stopped fetching: its own buffer limit is reached
+      if (ahead >= target || nearEnd || waited >= plan.maxWait || idle) return release();
+      spin(bufMsg(ahead, target, plan));
+    } else if (!v.paused && !v.seeking && S.gotTime && now > S.graceUntil && !nearEnd && ahead < plan.lowSecs && (B.fill == null || B.fill < 1.1)) {
+      S.hold = true; S.rebuf = true; S.rebufs = (S.rebufs || 0) + 1; S.holdAt = now; S.autoPaused = true; v.pause();       // running dry: stop, rebuild a bigger cushion, then carry on smoothly (instead of stuttering)
+      spin(bufMsg(ahead, plan.resumeSecs, plan));
+    }
+  }
 
   function update() {
     var v = S.v, d = v.duration, t = v.currentTime;
@@ -177,7 +233,7 @@ var Player = (function () {
     if (!S) return;
     save();
     if (S.upnext) clearInterval(S.upnext.timer);
-    var v = S.v; clearInterval(S.tick); clearTimeout(S.uiT); clearTimeout(S.buffT); clearTimeout(S.watchdog); clearTimeout(S.decodeT1); clearTimeout(S.decodeT2); clearTimeout(S.okT); clearTimeout(S.flowT);
+    var v = S.v; clearInterval(S.bufT); clearTimeout(S.statsT); clearInterval(S.tick); clearTimeout(S.uiT); clearTimeout(S.buffT); clearTimeout(S.watchdog); clearTimeout(S.decodeT1); clearTimeout(S.decodeT2); clearTimeout(S.okT); clearTimeout(S.flowT);
     try { v.pause(); v.removeAttribute('src'); v.load(); } catch (e) {}
     S = null;
     if (window.Sync) Sync.run();
@@ -199,7 +255,7 @@ var Player = (function () {
     if (!S || !isFinite(S.v.duration)) return;
     S.v.currentTime = Math.max(0, Math.min(S.v.duration - 2, S.v.currentTime + sec)); update(); showUi(); say('');
   }
-  function toggle() { if (!S) return; if (S.failed) return pickSource(); if (S.v.paused) S.v.play(); else S.v.pause(); }
+  function toggle() { if (!S) return; if (S.failed) return pickSource(); if (S.hold) return release('you chose to start'); if (S.v.paused) S.v.play(); else S.v.pause(); }
 
   /* ---- menus ---- */
   function pickSource() {
@@ -217,11 +273,18 @@ var Player = (function () {
     }, 'If a source will not play, try a different resolution.');
   }
   function pickSpeed() {
-    var rates = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
-    Views.menu('Playback speed', rates.map(function (r) { return { label: r + 'x', selected: r === S.rate }; }), function (o, i) {
-      S.rate = rates[i]; S.v.defaultPlaybackRate = S.rate; S.v.playbackRate = S.rate;
-      var b = $('[data-pact=speed]'); if (b) b.textContent = 'Speed ' + S.rate + 'x';
-      setTimeout(function () { if (S && Math.abs(S.v.playbackRate - S.rate) > 0.01) Views.toast('This TV cannot play at ' + S.rate + 'x'); }, 800);
+    var rates = [0.75, 1, 1.25, 1.5, 1.75];
+    Views.menu('Playback speed', rates.map(function (r) { return { label: r + 'x' + (r > 1 ? '  (sound speeds up, same pitch)' : ''), selected: r === S.rate }; }), function (o, i) {
+      var sess = S, r = rates[i], v = S.v, t0 = v.currentTime, w0 = Date.now(), paused = v.paused;
+      setRate(r);
+      var b = $('[data-pact=speed]'); if (b) b.textContent = 'Speed ' + r + 'x';
+      if (r === 1 || paused || S.hold) return;
+      // check the device really runs at that speed (some TVs ignore it); if not, go back to normal speed instead of leaving picture and sound out of step
+      setTimeout(function () {
+        if (S !== sess || sess.rate !== r || v.paused || sess.hold || v.seeking) return;
+        var wall = (Date.now() - w0) / 1000, ran = (v.currentTime - t0) / wall;
+        if (wall > 1.5 && ran < r * 0.75) { setRate(1); var bb = $('[data-pact=speed]'); if (bb) bb.textContent = 'Speed 1x'; Views.toast('This device cannot play at ' + r + 'x, so it is back to normal speed', 5000); }
+      }, 3500);
     });
   }
   /* ---- subtitles matched to the file being watched ---- */
@@ -352,5 +415,5 @@ var Player = (function () {
     return false;
   }
 
-  return { open: open, key: key, close: close, active: function () { return !!S; } };
+  return { open: open, key: key, close: close, active: function () { return !!S; }, stats: function () { return S ? { rebufs: S.rebufs || 0, hold: !!S.hold, plan: S.buf && S.buf.plan || null, speed: S.buf && S.buf.speed } : null; } };
 })();

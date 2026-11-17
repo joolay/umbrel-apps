@@ -48,3 +48,9 @@ Blur-behind ("glass") is added only where `backdrop-filter` exists; the TV gets 
 npm install && npm test          # builds, then runs server tests (mock JoolzApp accounts + fake streaming server) and guard tests
 ```
 Compose + manifest: `joolay-joolztv/`. Version in `umbrel-app.yml` must equal the `web` image tag.
+
+## Smart buffering
+Playback waits for a buffer sized to the torrent's current download speed (from Stremio `stats.json`, or the measured fill rate when stats are missing): fast downloads start almost at once (5 s), slow ones buffer up to 60 s, never more than 90 s. After a stall a larger buffer is rebuilt. Settings > Buffering: Quick start / Balanced / Safe. Logic and tests: `ui/js/buffer.js`, `test-buffer.js`.
+
+## Faster playback with matching audio
+Speeds 0.75x to 1.75x keep the voice pitch (`preservesPitch`). The player verifies the device really changed speed and, if not, reverts to 1x with a message.

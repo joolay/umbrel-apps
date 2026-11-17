@@ -60,6 +60,7 @@ const T = tok => ({ "x-jtv-token": tok });
   r = await req("GET", "/s/" + st + "/" + HASH + "/0"); ok(r.code === 200 && r.text.length === 1000, "stream proxied");
   r = await req("GET", "/s/" + st + "/" + HASH + "/0", undefined, { range: "bytes=10-19" }); ok(r.code === 206 && r.text === "0123456789" && /bytes 10-19\/1000/.test(r.headers["content-range"]), "range requests (seeking) work");
   r = await req("GET", "/s/" + st.slice(0, -2) + "xx/" + HASH + "/0"); ok(r.code === 401, "tampered stream token refused");
+  r = await req("GET", "/s/" + st + "/" + HASH + "/0/stats.json"); ok(r.code === 200, "torrent speed (stats.json) reachable through the signed-in proxy for smart buffering");
   r = await req("GET", "/s/" + st + "/proxy/secret"); ok(r.code === 404 && r.text.indexOf("SECRET") < 0, "only torrent/hls paths reach the streaming server");
   r = await req("GET", "/s/" + st + "/hlsv2/x/master.m3u8"); ok(r.text.indexOf("/s/" + st + "/hlsv2/x/video.m3u8") >= 0 && r.text.indexOf('URI="/s/' + st + '/hlsv2/x/audio.m3u8"') >= 0 && r.text.indexOf("127.0.0.1") < 0 && /\nrelative\.m3u8\n/.test(r.text), "HLS playlists rewritten to stay behind the sign-in");
   r = await req("GET", "/s/" + st + "/opensubHash?videoUrl=" + encodeURIComponent("http://127.0.0.1:11470/" + HASH + "/0")); ok(r.code === 200 && r.json.result.hash, "subtitle fingerprint of a streamed file works through the proxy");

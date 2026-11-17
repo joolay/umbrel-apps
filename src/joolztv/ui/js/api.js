@@ -275,13 +275,14 @@ var Api = (function () {
     var id = Math.random().toString(36).slice(2) + Date.now().toString(36);
     return server() + '/hlsv2/' + id + '/master.m3u8?mediaURL=' + encodeURIComponent(src) + '&videoCodecs=' + video.join(',') + '&audioCodecs=' + audio.join(',') + '&maxAudioChannels=' + ((safe || c.tv) ? 2 : 6);
   }
+  function statsUrl(s) { return s.infoHash ? server() + '/' + s.infoHash + '/' + (s.fileIdx != null ? s.fileIdx : -1) + '/stats.json' : null; }
   function opensubHashUrl(s) { return s.infoHash ? server() + '/opensubHash?videoUrl=' + encodeURIComponent(internal() + '/' + s.infoHash + '/' + (s.fileIdx != null ? s.fileIdx : -1)) : null; }
 
   return {
     ensure: ensure, reload: function () { loaded = false; return loadAddons(); },
     catalogDefs: catalogDefs, fetchCatalog: fetchCatalog, search: search, getMeta: getMeta,
     getStreams: getStreams, torrentioUrl: torrentioUrl, defaultTorrentio: function () { return DEFAULT_TORRENTIO; },
-    getSubtitles: getSubtitles, fileInfo: fileInfo, caps: caps, assess: assess, traitsOf: traitsOf, learn: learn, recordTest: recordTest, traitLabel: function (t) { return TRAIT_LABELS[t] || t; }, deviceReport: deviceReport, forgetDevice: forgetDevice, getJSON: getJSON, opensubHashUrl: opensubHashUrl, directUrl: directUrl, hlsUrl: hlsUrl, server: server,
+    getSubtitles: getSubtitles, fileInfo: fileInfo, caps: caps, assess: assess, traitsOf: traitsOf, learn: learn, recordTest: recordTest, traitLabel: function (t) { return TRAIT_LABELS[t] || t; }, deviceReport: deviceReport, forgetDevice: forgetDevice, getJSON: getJSON, opensubHashUrl: opensubHashUrl, statsUrl: statsUrl, directUrl: directUrl, hlsUrl: hlsUrl, server: server,
     setStreamBase: function (b) { streamBase = b || ''; },
     addons: function () { return addons; }
   };

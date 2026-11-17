@@ -493,6 +493,7 @@ var Views = (function () {
 
   /* ---------- settings ---------- */
   var PLAY_MODES = { auto: 'Automatic: transcode only when the TV cannot play the file', direct: 'Always direct (never transcode)', transcode: 'Always transcode (if video stutters or will not play)' };
+  var BUF_MODES = { auto: 'Automatic: waits only as long as the download speed needs', quick: 'Quick start: less waiting, more risk of stutter', safe: 'Safe: waits longer for a smoother start', off: 'Off: start playing as soon as possible' };
   function playMode() { var m = Store.get('playback', null); if (m === null) m = Store.get('transcode', false) ? 'transcode' : 'auto'; return m; }
   function subPrefs() { var p = Store.get('subs', null) || {}; return { lang: p.lang || 'eng', lang2: p.lang2 || '', auto: !!p.auto, autosync: !!p.autosync }; }
   function setSub(k, v) { var p = subPrefs(); p[k] = v; Store.set('subs', p); }
@@ -515,6 +516,7 @@ var Views = (function () {
       '<div class="srow f" data-act="subautosync">Auto-sync subtitles when they are turned on (uses your server\'s processor): <b>' + (subPrefs().autosync ? 'ON' : 'OFF') + '</b></div>' +
       '<div class="lbl">Playback</div>' +
       '<div class="srow f" data-act="playmode">Playback mode: <b>' + esc(PLAY_MODES[playMode()]) + '</b></div>' +
+      '<div class="srow f" data-act="bufmode">Start-up buffering: <b>' + esc(BUF_MODES[Store.get('bufmode', 'auto')]) + '</b></div>' +
       '<div class="srow f" data-act="redodc">Run the device check again (tests which formats this device plays)</div>' +
       '<div class="srow f" data-act="forgetdev">Forget what this device can play: <b>' + (rep.good.length + rep.bad.length) + ' formats remembered</b></div>' +
       '<div class="hint">' + (rep.good.length ? 'Plays directly: ' + esc(rep.good.join(', ')) + '. ' : '') + (rep.bad.length ? 'Needs transcoding: ' + esc(rep.bad.join(', ')) + '. ' : '') + (rep.good.length + rep.bad.length ? '' : 'JoolzTV learns what this device can decode as you watch, so the next file of that kind starts the right way straight away.') + '</div>' +
@@ -575,6 +577,7 @@ var Views = (function () {
     if (a === 'skipdc') { DeviceTest.skip(); return window._dcLeave && window._dcLeave(); }
     if (a === 'dcdone') return window._dcLeave && window._dcLeave();
     if (a === 'redodc') { DeviceTest.reset(); return deviceCheck(function () { page('settings'); }); }
+    if (a === 'bufmode') { var bo = ['auto', 'quick', 'safe', 'off']; Store.set('bufmode', bo[(bo.indexOf(Store.get('bufmode', 'auto')) + 1) % 4]); return settingsPage(); }
     if (a === 'forgetdev') { Api.forgetDevice(); toast('Forgot what this device can play'); return settingsPage(); }
     if (a === 'subauto') { setSub('auto', !subPrefs().auto); return settingsPage(); }
     if (a === 'subautosync') { setSub('autosync', !subPrefs().autosync); return settingsPage(); }
