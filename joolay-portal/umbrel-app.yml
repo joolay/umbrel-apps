@@ -1,0 +1,26 @@
+manifestVersion: 1
+id: joolay-portal
+category: social
+name: JoolzApp Portal
+version: "0.22.0"
+tagline: The JoolzApp home screen for everyone in the family
+description: >-
+  The home screen people use for every JoolzApp app: sign in or create an account, open your apps, arrange icons and folders,
+  manage your family, your settings and paid apps, and see upcoming events.
+  It is the public face of JoolzApp and deliberately holds no admin powers and no PocketBase admin login:
+  anything that needs them is asked of Portal Admin, which stays private on your home network.
+  Needs Portal Admin (same version) and the PocketBase app. Portal Admin links the two by itself within a minute of installing.
+developer: joolay
+website: https://github.com/joolay/umbrel-apps/tree/main/src/portal-admin
+dependencies: []
+repo: https://github.com/joolay/umbrel-apps
+support: https://github.com/joolay/umbrel-apps/issues
+port: 3885
+gallery: []
+path: ""
+defaultUsername: ""
+defaultPassword: ""
+releaseNotes: "First release: the dashboard as its own app, separate from Portal Admin."
+submitter: joolay
+submission: https://github.com/joolay/umbrel-apps
+icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-portal/icon.svg

@@ -217,6 +217,7 @@ async function connectApp(req, res) {
   if (/[\r\n]/.test(email + password) || /^(["']).*\1$/.test(password) || password !== password.trim()) return send(res, 400, { message: "That password can't be stored in the file (line breaks, surrounding quotes or spaces)." });
   const app = installedApps().apps.find((a) => a.id === id);
   if (!app || !/^joolay-[a-z0-9-]{1,60}$/.test(app.dir) || !app.slug) return send(res, 400, { message: "Only your own JoolzApp apps can be connected." });
+  if (app.slug === 'portal') return send(res, 400, { message: 'JoolzApp Portal never gets a PocketBase login. Portal Admin links it by itself.' });
   if (app.env === 'no-data-dir') return send(res, 409, { message: "That app has no data folder yet. Open the app once, then try again." });
   let ok; try { ok = await verifySuperuser(email, password); } catch { return send(res, 502, { message: "Couldn't reach PocketBase." }); }
   if (!ok) { connectFails.push(Date.now()); return send(res, 401, { message: "PocketBase didn't accept that login. It has to be a superuser." }); }
@@ -241,6 +242,7 @@ function serveStatic(req, res, pathname) {
 // The caller is the right-most public address in X-Forwarded-For (what the first proxy that saw the internet appended, so a client
 // can't fake it by adding its own values on the left). On the home network there is no public hop, so the last address is used.
 function clientIp(req) {
+  if (req.portalClientIp) return req.portalClientIp;   // passed on by JoolzApp Portal (checked by its key), which is the one that saw the caller
   const xs = String(req.headers['x-forwarded-for'] || '').split(',').map((x) => x.trim()).filter(Boolean);
   for (let i = xs.length - 1; i >= 0; i--) if (!isPrivateAddr(xs[i])) return xs[i];
   return xs.length ? xs[xs.length - 1] : String(req.socket.remoteAddress || '');
@@ -484,7 +486,8 @@ const handle = async (req, res) => {
     if (pathname === '/umbrel-apps') {
       if (req.method !== 'GET') return send(res, 405, { message: 'Method not allowed' });
       if (isPublicRequest(req)) return send(res, 403, { message: 'Only available from your home network or tailnet.' });
-      return send(res, 200, installedApps());
+      const found = installedApps();   // JoolzApp Portal is part of this app, not something to register, connect or show as an icon
+      return send(res, 200, { ...found, apps: found.apps.filter((a) => a.dir !== 'joolay-portal') });
     }
 
     if (pathname === '/connect-app') {
@@ -513,6 +516,25 @@ const handle = async (req, res) => {
   }
 };
 
+// JoolzApp Portal (the separate, internet-facing home screen app) passes these on for people: /user/<route> on the apps-only port,
+// with its own Portal API key. They are ALWAYS handled as public, user-only requests, and only the routes listed here exist.
+const PORTAL_ROUTES = new Set(['/signup-config', '/signup', '/forgot', '/guardians', '/family', '/family/users', '/events', '/paywall', '/pay', '/pay/status', '/account/dob', '/account/username', '/account/guardian', '/api/active', '/yoco/webhook']);
+const portalBad = new Map();
+function fromPortal(req, res) {
+  const ip = String(req.socket.remoteAddress || ''), now = Date.now(), fails = (portalBad.get(ip) || []).filter((t) => now - t < 600e3);
+  if (fails.length >= 20) return send(res, 429, { message: 'Too many attempts.' });
+  if (appapi.keys.appOf(String(req.headers['x-portal-key'] || '')) !== 'portal') { portalBad.set(ip, [...fails, now]); if (portalBad.size > 2000) portalBad.clear(); return send(res, 401, { message: 'Unknown app key.' }); }
+  const u = new URL(req.url.slice(5), 'http://x');
+  if (!PORTAL_ROUTES.has(u.pathname)) return send(res, 404, { message: 'Not found' });
+  req.url = u.pathname + u.search; req.publicPort = true;
+  req.portalClientIp = String(req.headers['x-portal-client-ip'] || '').slice(0, 64) || ip;
+  delete req.headers['x-portal-key']; delete req.headers['x-portal-client-ip']; delete req.headers['x-forwarded-for'];
+  return handle(req, res);
+}
+// The Portal app's key is handed over without a Changes card: it is our own app and no PocketBase change is involved.
+const linkPortal = () => { try { const r = changes.linkPortal(); if (r) console.log('JoolzApp Portal: ' + r); } catch (e) { console.error('JoolzApp Portal link:', e.message); } };
+setTimeout(linkPortal, 3000).unref(); setInterval(linkPortal, 30e3).unref();
+
 // Two listeners, one app. PORT is the normal one (Umbrel's app address, behind Umbrel's login). PUBLIC_PORT is the one to
 // publish on the internet (Tailscale Funnel): requests that arrive there are ALWAYS treated as public, so admin sign-in and the
 // PocketBase admin APIs stay refused no matter how the tunnel forwards or labels traffic. Set PUBLIC_PORT=0 to turn it off.
@@ -530,7 +552,10 @@ if (PUBLIC_PORT && PUBLIC_PORT !== PORT) {
 const APP_API_PORT = Number(process.env.APP_API_PORT === undefined ? 3002 : process.env.APP_API_PORT);
 let apiServer = null;
 if (APP_API_PORT && APP_API_PORT !== PORT && APP_API_PORT !== PUBLIC_PORT) {
-  apiServer = http.createServer((req, res) => { appapi.handle(req, res).catch((e) => send(res, 500, { message: String(e.message || e) })); });
+  apiServer = http.createServer((req, res) => {
+    if (req.url.startsWith('/user/')) return fromPortal(req, res);
+    appapi.handle(req, res).catch((e) => send(res, 500, { message: String(e.message || e) }));
+  });
   apiServer.listen(APP_API_PORT, '0.0.0.0', () => console.log(`Portal API (apps only) listening on :${APP_API_PORT}`));
 }
 process.on('SIGTERM', () => { if (pubServer) pubServer.close(); if (apiServer) apiServer.close(); server.close(() => process.exit(0)); });

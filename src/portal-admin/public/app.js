@@ -247,6 +247,15 @@ async function showShell() {
   homeModel().then((m) => { if (!HM) HM = m; renderDock(); }).catch(() => {});   // so the dock is there on every page
   if (selfId()) { seedRegional().then(loadDatePref).catch(loadDatePref); loadAppearance(); }
   loadEvents();
+  if (state.role !== 'user' && !state.public && state.pid) rememberAdminUrl().catch(() => {});
+}
+// Portal Admin notes its own address on the admin's account (a private pref.* row), so JoolzApp Portal can show them an Admin icon.
+async function rememberAdminUrl() {
+  const f = `scope = "user" && user = ${fq(state.pid)} && app = "" && key = "pref.adminUrl"`;
+  const r = (await api('GET', `/api/collections/portal_settings/records?perPage=1&filter=${q(f)}`)).items[0];
+  if (r && r.value === location.origin) return;
+  if (r) await api('PATCH', `/api/collections/portal_settings/records/${r.id}`, { value: location.origin });
+  else await api('POST', '/api/collections/portal_settings/records', { scope: 'user', user: state.pid, app: '', key: 'pref.adminUrl', value: location.origin, secret: false });
 }
 const SESSION_KEYS = ['token', 'actor', 'role', 'uid', 'pid'];
 // The JoolzApp person behind this sign-in. A regular user is themselves; the PocketBase superuser is the account with the same email (if any),
@@ -529,7 +538,7 @@ async function syncSchemas(apps) {
 
 /* ---------- First-time connect: sign in once, then the app gets its PocketBase login ---------- */
 // Nothing is remembered: the superuser login you type here is checked, written into each app's own data folder, and forgotten.
-const connectNeeded = (found) => found && found.available ? found.apps.filter((a) => /^joolay-/.test(a.id) && a.slug && a.env === 'missing') : [];
+const connectNeeded = (found) => found && found.available ? found.apps.filter((a) => /^joolay-/.test(a.id) && a.slug && a.slug !== 'portal' && a.env === 'missing') : [];
 const connectSkipped = new Set();
 function promptConnect(apps, force) {
   const todo = apps.filter((a) => force || !connectSkipped.has(a.id));
@@ -1449,13 +1458,14 @@ const canFolder = (id) => !PROTECTED.has(id) && !String(id).startsWith('folder:'
 let HM = null, editing = false, saveChain = Promise.resolve();
 const isAdminRole = () => state.role !== 'user';
 
+let adminRow = null;   // where this person's Portal Admin lives (only an admin has the row; Portal Admin writes it when they use it)
 async function homeModel() {
   const uid = selfId() || state.uid, isAdmin = isAdminRole();
   const [apps, reqs, acc, lrows, ssoRows, pend] = await Promise.all([
     listAll('portal_apps', { sort: 'name' }),
     isAdmin ? Promise.resolve([]) : listAll('portal_requests', { filter: `user = ${fq(uid)}`, sort: '-created' }).catch(() => null),
     isAdmin ? Promise.resolve([]) : listAll('portal_settings', { filter: 'key = "portal.access"' }),
-    listAll('portal_settings', { filter: `scope = "user" && user = ${fq(uid)} && app = "" && key = "pref.home.layout"` }).catch(() => []),
+    listAll('portal_settings', { filter: `scope = "user" && user = ${fq(uid)} && app = "" && (key = "pref.home.layout" || key = "pref.adminUrl")` }).catch(() => []).then((rs) => { adminRow = rs.find((r) => r.key === 'pref.adminUrl') || null; return rs.filter((r) => r.key === 'pref.home.layout'); }),
     listAll('portal_settings', { filter: 'scope = "app" && key = "app.sso"' }).catch(() => []),
     isAdmin ? count('portal_requests', 'status = "pending"').catch(() => 0) : Promise.resolve(0),
   ]);
@@ -1473,6 +1483,8 @@ async function homeModel() {
     items['sys:family'] = { id: 'sys:family', kind: 'sys', name: 'Family', glyph: 'family', grad: ['#fb7185', '#f59e0b'], href: '#/family' };
     items['sys:me'] = { id: 'sys:me', kind: 'sys', name: 'Settings', glyph: 'me', grad: ['#94a3b8', '#475569'], href: '#/me' };
   }
+  // On JoolzApp Portal an admin gets a way into Portal Admin (a separate app, reachable on their home network or tailnet only).
+  if (!isAdmin && adminRow && /^https?:\/\//i.test(String(adminRow.value || '')) && String(adminRow.value) !== location.origin) items['sys:adminlink'] = { id: 'sys:adminlink', kind: 'sys', name: 'Admin', glyph: 'setup', grad: ['#64748b', '#334155'], href: String(adminRow.value) };
   let pw = null; if (selfId()) { try { pw = await acctFetch('/paywall'); } catch { pw = null; } }
   let saved = lrows[0] && lrows[0].value && typeof lrows[0].value === 'object' ? lrows[0].value : null;
   if (!saved) { try { saved = JSON.parse(store.lget('pa.layout.' + uid) || 'null'); } catch { saved = null; } }
@@ -1533,7 +1545,7 @@ function tileText(it) {
     st = !a.enabled ? 'Off' : a.maintenance ? 'Maintenance' : !it.ok ? (pcfg ? priceText(pcfg) : 'Request access') : 'Open';
   } else if (it.kind === 'ufolder') { const n = ((HM && HM.layout.folders[it.fid]) || { items: [] }).items.length; d = n ? n + (n === 1 ? ' app' : ' apps') : 'Empty folder'; st = 'Open'; }
   else if (it.kind === 'folder') { d = 'Users, apps, requests and settings'; st = it.badge ? it.badge + ' waiting' : 'Open'; }
-  else d = it.id === 'sys:family' ? 'Your household and relatives' : 'Your preferences and account';
+  else d = it.id === 'sys:family' ? 'Your household and relatives' : it.id === 'sys:adminlink' ? 'Portal Admin (home network or tailnet)' : 'Your preferences and account';
   return `<span class="ic-desc">${esc(d)}</span><span class="ic-state">${esc(st || 'Open')}</span>`;
 }
 const homeView = () => (HM && HM.layout.view) || (matchMedia('(min-width:900px)').matches ? 'tiles' : 'icons');
@@ -1547,7 +1559,7 @@ function iconHTML(it, o = {}) {
   let tile, st = '';
   if (it.kind === 'folder') tile = `<button class="ic-tile folder" data-folder="1" aria-label="Admin tools">${folderMini()}</button>`;
   else if (it.kind === 'ufolder') tile = `<button class="ic-tile folder" data-ufolder="${esc(it.fid)}" aria-label="Folder ${esc(it.name)}">${ufMini(it)}</button>`;
-  else if (it.kind === 'sys') tile = `<a class="ic-tile" href="${it.href}" draggable="false" aria-label="${esc(it.name)}">${tileInner(it)}</a>`;
+  else if (it.kind === 'sys') tile = `<a class="ic-tile" href="${esc(it.href)}" draggable="false" aria-label="${esc(it.name)}">${tileInner(it)}</a>`;
   else if (a.enabled && it.ok && !a.maintenance && /^https?:\/\//i.test(a.url || '')) tile = `<a class="ic-tile" href="${esc(a.url)}" data-open="${esc(a.slug)}" target="_blank" rel="noopener" draggable="false" aria-label="Open ${esc(a.name)}">${tileInner(it)}</a>`;
   else tile = `<button class="ic-tile" data-info="${esc(a.slug)}" aria-label="${esc(a.name)}">${tileInner(it)}</button>`;
   if (it.kind === 'app') {
