@@ -2,7 +2,7 @@ manifestVersion: 1
 id: joolay-joolztv
 category: media
 name: JoolzTV
-version: "1.5.0"
+version: "1.6.0"
 tagline: A glassy, Apple TV style front end for your streaming server, behind your JoolzApp account
 description: >-
   JoolzTV gives your TV, phone and computer a clean, glassy Apple TV style interface. It includes its own Stremio streaming server and replaces the old Stremio app.
@@ -26,6 +26,6 @@ icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-joolztv/i
 path: ""
 defaultUsername: ""
 defaultPassword: ""
-releaseNotes: "Parental controls: only parent accounts can change a kids profile (age limit, a block list or an only-allow list of titles, kids profile on/off), with a For kids button on every title page. Porn and erotica are blocked for every user. Also: Collections tab, TMDB (artwork, ratings, cast, Discover), glass player controls, seek previews, voice search, skip intro / credits, Sources screen, household-wide sign-in, profile pictures."
+releaseNotes: "Optional big-key on-screen keyboard (Settings > Typing), collections can be added to My List, a discreet Also on Netflix note that opens the Netflix app, parental controls (parent accounts only) and a global porn and erotica block. Also: Collections tab, TMDB, glass player controls, seek previews, voice search, skip intro / credits, Sources screen, household-wide sign-in, profile pictures."
 submitter: joolay
 submission: https://github.com/joolay/umbrel-apps

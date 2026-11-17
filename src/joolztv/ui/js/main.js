@@ -1,5 +1,5 @@
 /* Boot + global key handling. */
-window.FLIX_VERSION = 'v1.5.0';
+window.FLIX_VERSION = 'v1.6.0';
 (function () {
   var KEYS = { 37: 'left', 38: 'up', 39: 'right', 40: 'down' };
   var BACK = { 8: 1, 27: 1, 461: 1, 10009: 1 };
@@ -10,16 +10,23 @@ window.FLIX_VERSION = 'v1.5.0';
     window.addEventListener('resize', z); z();
   })();
 
+  /* what Enter / Done does after typing in a box */
+  function submitField(ae) {
+    if (ae.id === 'q') return Views.runSearch(ae.value.trim());
+    if (ae.id === 'em') { var pw = document.getElementById('pw'); if (pw) { Nav.set(pw); if (Kbd.enabled()) Kbd.open(pw); } return; }    // email done: on to the password
+    var b = Views.current() && Views.current().el.querySelector(DEFAULT_BTN);
+    if (b && (ae.id === 'pw' || ae.id === 'nm')) Views.act(b);
+  }
+  window.JTV_submitField = submitField;
+
   document.addEventListener('keydown', function (e) {
     var code = e.keyCode, ae = document.activeElement;
+    if (Kbd.active() && Kbd.physical(e)) { e.preventDefault(); return; }
     var typing = ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA');
     if (typing) {
       if (code === 13) {
         ae.blur(); e.preventDefault();
-        if (ae.id === 'q') return Views.runSearch(ae.value.trim());
-        var b = Views.current() && Views.current().el.querySelector(DEFAULT_BTN);
-        if (b && (ae.id === 'pw' || ae.id === 'nm')) Views.act(b);
-        return;
+        return submitField(ae);
       }
       if (BACK[code] && code !== 8) { ae.blur(); e.preventDefault(); return; }
       if (code === 38 || code === 40) { ae.blur(); } else { return; }   // normal typing
@@ -30,7 +37,7 @@ window.FLIX_VERSION = 'v1.5.0';
       e.preventDefault();
       var c = Nav.cur();
       if (!c) return;
-      if (c.tagName === 'INPUT') { c.focus(); return; }
+      if (c.tagName === 'INPUT') { if (Kbd.enabled()) Kbd.open(c); else c.focus(); return; }
       window.JTV_REPEAT = !!e.repeat;
       try { if (c.hasAttribute('data-act')) Views.act(c); else c.click(); } finally { window.JTV_REPEAT = false; }
       return;
@@ -40,7 +47,7 @@ window.FLIX_VERSION = 'v1.5.0';
 
   document.addEventListener('click', function (e) {
     var c = e.target.closest ? e.target.closest('.f') : null;
-    if (c && c.tagName === 'INPUT') c.focus();
+    if (c && c.tagName === 'INPUT') { if (Kbd.enabled()) { c.blur(); Kbd.open(c); } else c.focus(); }
   });
 
   /* start-up: splash -> (first run wizard | profile picker | sign in on a new device) */

@@ -117,3 +117,10 @@ When TMDB is on and a title streams on Netflix (subscription or the ad tier) in 
 - Not shown on kids profiles (Netflix has its own profiles and none of JoolzTV's limits).
 - It cannot jump to the title inside Netflix (no official way, and TMDB gives no Netflix title id); a message names the title to search for.
 - Untested on a real LG: whether a page served from the Umbrel (not an installed app) is allowed to call the launcher. If it is not, the pill shows "Could not open Netflix from here. Open the Netflix app and search for ..." instead.
+
+## Big-key on-screen keyboard (optional)
+Settings > Typing > On-screen keyboard: "The TV's own keyboard" (default) or "Big keys". With Big keys on, choosing any text box (OK on the remote, or a click) opens `ui/js/kbd.js` instead of the TV's keyboard: a glass panel with large keys (118 x 92 px) that you move over with the arrow keys and press with OK. It has shift (one capital, then back), a 123 layer (symbols), space, backspace, Clear, a .com key for email addresses, and a tick (Done) that submits the box (search runs; Done on the email box goes on to the password; Done on the password signs in). Passwords show as dots; choose the text line to show them. A real keyboard also works while it is open (letters, Backspace, Escape). Back closes it.
+It has no microphone: voice entry needs the TV's own keyboard. Untested on a real TV: the keys' size at TV distance and the remote's key codes.
+
+## Collections in My List
+A collection's page has a "+ My List" button; My List then shows the collection as a card (opens the collection again) among the films and shows. It is saved and synced with the account like the rest of My List (`col:<id>` entries).

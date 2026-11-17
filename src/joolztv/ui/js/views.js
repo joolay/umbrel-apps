@@ -27,7 +27,7 @@ var MyList = (function () {
   function all() { return Store.get('list', {}); }
   return {
     has: function (id) { var e = all()[id]; return !!e && !e.removed; },
-    set: function (m, yes) { var a = all(); a[m.id] = { type: m.type, id: m.id, name: m.name, poster: m.poster, ts: Date.now(), removed: !yes }; Store.set('list', a); },
+    set: function (m, yes) { var a = all(); a[m.id] = { type: m.type, id: m.id, name: m.name, poster: m.poster, colId: m.colId, ts: Date.now(), removed: !yes }; Store.set('list', a); },
     items: function () { var a = all(); return Object.keys(a).map(function (k) { return a[k]; }).filter(function (e) { return !e.removed; }).sort(function (x, y) { return y.ts - x.ts; }); }
   };
 })();
@@ -514,7 +514,7 @@ var Views = (function () {
     var main = el.querySelector('#main'), items = MyList.items();
     if (!items.length) { main.innerHTML = '<div class="empty">Your list is empty. Open any title and choose “+ My List”.</div>'; return; }
     var h = '<div class="grid">';
-    items.slice(0, 150).forEach(function (i) { h += card({ type: i.type, id: i.id, name: i.name, poster: i.poster }); });
+    items.slice(0, 150).forEach(function (i) { h += i.type === 'collection' ? colCard({ id: i.colId, name: i.name, poster: i.poster }) : card({ type: i.type, id: i.id, name: i.name, poster: i.poster }); });
     main.innerHTML = h + '</div>'; Nav.hydrate();
   }
 
@@ -547,6 +547,7 @@ var Views = (function () {
         r.start(); return;
       } catch (e) {}
     }
+    if (Kbd.enabled()) { Kbd.open(q); if (hint) hint.textContent = 'The big keyboard has no microphone: choose the TV\u2019s own keyboard in Settings to speak.'; return; }
     q.focus();
     if (hint) hint.textContent = 'Press the microphone key on the keyboard that just opened (or hold the Magic Remote\u2019s microphone button) and say a title. The words are typed in and searched automatically.';
   }
@@ -690,7 +691,11 @@ var Views = (function () {
   }
   function collectionPage(id) {
     toast('Loading…', 6000);
-    Tmdb.collection(id).then(function (c) { gridView('collection', '<div class="ptext"><h1>' + esc(c.name) + '</h1><div class="desc">' + esc(c.overview) + '</div></div>', c.items, false); }).catch(function () { toast('Could not load that collection', 4000); });
+    Tmdb.collection(id).then(function (c) {
+      var entry = { id: 'col:' + c.id, colId: c.id, type: 'collection', name: String(c.name || '').replace(/ Collection$/, ''), poster: c.poster || '' };
+      var el = gridView('collection', '<div class="ptext"><h1>' + esc(c.name) + '</h1><div class="desc">' + esc(c.overview) + '</div><div class="btns"><div class="btn glass f" data-act="togglecol" id="colbtn">' + (MyList.has(entry.id) ? '\u2713  In My List' : '+  My List') + '</div></div></div>', c.items, false);
+      el._col = entry; Nav.hydrate();
+    }).catch(function () { toast('Could not load that collection', 4000); });
   }
   /* ---------- Collections: film franchises (Star Wars, Harry Potter, ...) ---------- */
   function colCard(c) {
@@ -913,6 +918,8 @@ var Views = (function () {
       '<div class="srow f" data-act="sublang2">Second language: <b>' + esc(subPrefs().lang2 ? Subs.langName(subPrefs().lang2) : 'None') + '</b></div>' +
       '<div class="srow f" data-act="subauto">Turn on the best matching subtitles automatically: <b>' + (subPrefs().auto ? 'ON' : 'OFF') + '</b></div>' +
       '<div class="srow f" data-act="subautosync">Auto-sync subtitles when they are turned on (uses your server\'s processor): <b>' + (subPrefs().autosync ? 'ON' : 'OFF') + '</b></div>' +
+      '<div class="lbl">Typing</div>' +
+      '<div class="srow f" data-act="kbdmode">On-screen keyboard: <b>' + (Kbd.enabled() ? 'Big keys' : 'The TV\u2019s own keyboard') + '</b></div>' +
       '<div class="lbl">Playback</div>' +
       '<div class="srow f" data-act="playmode">Playback mode: <b>' + esc(PLAY_MODES[playMode()]) + '</b></div>' +
       '<div class="srow f" data-act="bufmode">Start-up buffering: <b>' + esc(BUF_MODES[Store.get('bufmode', 'auto')]) + '</b></div>' +
@@ -941,6 +948,9 @@ var Views = (function () {
     if (a === 'dmore') { DISC.page++; var mh = document.getElementById('gmoreh'); if (mh) mh.innerHTML = ''; return discoverLoad(); }
     if (a === 'pick') { var mm = menuEl, i = +el.getAttribute('data-i'), cb = mm._pick, o = mm._opts[i]; closeMenu(); return cb(o, i); }
     if (a === 'toggle') return el.classList.toggle('on');
+    if (a === 'kkey') return Kbd.press(el);
+    if (a === 'kshow') return Kbd.toggleShow();
+    if (a === 'kbdmode') { Store.set('kbd', Kbd.enabled() ? 'system' : 'big'); return settingsPage(); }
     if (a === 'avatarmenu') return menu('Profile', [{ label: 'Switch profile', k: 'picker' }, { label: 'Settings', k: 'settings' }, { label: 'Sign out of this profile on this TV', k: 'signout' }], function (o) {
       if (o.k === 'picker') picker(); else if (o.k === 'settings') page('settings'); else doSignOut();
     });
@@ -962,6 +972,12 @@ var Views = (function () {
     if (a === 'saveprofile') return saveProfile(el.getAttribute('data-id'));
     if (a === 'delprofile') return delProfile(el.getAttribute('data-id'));
     if (a === 'signout') return doSignOut();
+    if (a === 'togglecol') {
+      var ce = current().el._col; if (!ce) return;
+      var cyes = !MyList.has(ce.id); MyList.set(ce, cyes);
+      var cb = current().el.querySelector('#colbtn'); if (cb) cb.textContent = cyes ? '\u2713  In My List' : '+  My List';
+      return toast(cyes ? 'Collection added to My List' : 'Collection removed from My List');
+    }
     if (a === 'togglelib') {
       var dv = current().el._detail; if (!dv) return;
       var yes = !MyList.has(dv.id);
@@ -1008,6 +1024,7 @@ var Views = (function () {
   }
   function doSignOut() { var id = Store.active(); if (id) { Store.delFor(id, 'token'); } Backend.setToken(null); Store.setActive(null); picker(); }
   function back() {
+    if (Kbd.close()) return true;
     if (closeMenu()) return true;
     var v = current();
     if (v && v.onBack && v.onBack() === true) return true;

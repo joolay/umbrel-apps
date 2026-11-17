@@ -211,3 +211,12 @@ body.pointer { cursor: pointer; }
 .nflx { position: absolute; right: 70px; top: 150px; z-index: 6; padding: 9px 22px 9px 40px; border-radius: 26px; font-size: 22px; font-weight: 600; color: rgba(245,245,247,.85); }
 .nflx:before { content: ""; position: absolute; left: 18px; top: 50%; width: 10px; height: 10px; margin-top: -5px; border-radius: 5px; background: #e50914; }
 .nflx.focus { background: #f5f5f7; color: #111; }
+
+.kover { background: rgba(5,7,12,.55); } .kbd { position: absolute; left: 280px; width: 1360px; bottom: 36px; padding: 22px 30px 26px 30px; border-radius: 44px; box-shadow: 0 30px 80px rgba(0,0,0,.6); }
+.khead { margin: 0 0 16px 0; } .klabel { font-size: 22px; font-weight: 700; color: var(--dim); text-transform: uppercase; letter-spacing: 1.2px; margin: 0 0 6px 10px; }
+.kval { height: 86px; line-height: 86px; padding: 0 30px; border-radius: 43px; background: rgba(255,255,255,.1); font-size: 44px; font-weight: 600; white-space: nowrap; overflow: hidden; }
+.kval.focus { background: rgba(255,255,255,.18); box-shadow: 0 0 0 3px rgba(255,255,255,.6); } .kph { color: rgba(255,255,255,.4); font-weight: 500; }
+.kcaret { display: inline-block; width: 4px; height: 50px; margin: -6px 0 0 4px; vertical-align: middle; background: #fff; border-radius: 2px; }
+.kr { white-space: nowrap; text-align: center; font-size: 0; } .kk { display: inline-block; width: 118px; height: 92px; line-height: 92px; margin: 5px; border-radius: 28px; text-align: center; font-size: 46px; font-weight: 600; background: rgba(255,255,255,.12); border: 1.5px solid rgba(255,255,255,.22); box-shadow: inset 0 1.5px 0 rgba(255,255,255,.28); color: #fff; }
+.kk .ico { vertical-align: middle; margin-top: -6px; } .kk.sp { font-size: 30px; background: rgba(255,255,255,.2); } .kk.sp-space { width: 400px; } .kk.sp-done { background: rgba(48,209,88,.55); } .kk.sp-clear, .kk.sp-dotcom { width: 150px; } .kk.on { background: rgba(255,255,255,.55); color: #111; }
+.kk.focus { background: #f5f5f7; color: #111; border-color: #fff; -webkit-transform: scale(1.08); transform: scale(1.08); box-shadow: 0 14px 34px rgba(0,0,0,.5); position: relative; z-index: 2; }
