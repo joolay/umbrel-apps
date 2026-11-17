@@ -1,0 +1,9 @@
+{
+  "name": "torrentflix",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Torrentflix: Netflix-style front end for the Stremio streaming server, with synced profiles",
+  "main": "server.js",
+  "scripts": { "start": "node server.js", "test": "node test.js" },
+  "license": "MIT"
+}
