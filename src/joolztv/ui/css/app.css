@@ -150,7 +150,10 @@ body.pointer { cursor: pointer; }
 .pbar { position: absolute; left: 210px; bottom: 60px; width: 1500px; height: 260px; border-radius: 52px; padding: 34px 54px 0 54px; }
 .seek { position: relative; height: 12px; border-radius: 6px; background: rgba(255,255,255,.28); margin: 10px 0 10px 0; }
 .seek.focus { height: 18px; margin: 7px 0 7px 0; box-shadow: 0 0 0 4px rgba(255,255,255,.35); }
-.seek .buf { position: absolute; left: 0; top: 0; height: 100%; border-radius: 6px; background: rgba(255,255,255,.35); }
+.seek .buf { position: absolute; left: 0; top: 0; width: 100%; height: 100%; border-radius: 6px; overflow: hidden; }
+.seek .buf { z-index: 2; pointer-events: none; }
+.seek .bseg { position: absolute; bottom: 0; height: 5px; background: #64d2ff; } .seek .bseg.old { background: rgba(100,210,255,.55); }
+.times .dl { font-size: 21px; font-weight: 600; opacity: .75; }
 .seek .pos { position: absolute; left: 0; top: 0; height: 100%; border-radius: 6px; background: #fff; }
 .seek .knob { position: absolute; top: 50%; width: 30px; height: 30px; margin: -15px 0 0 -15px; border-radius: 15px; background: #fff; box-shadow: 0 4px 14px rgba(0,0,0,.5); }
 .times { font-size: 24px; color: rgba(255,255,255,.8); display: flex; justify-content: space-between; font-weight: 600; }

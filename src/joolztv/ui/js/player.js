@@ -13,7 +13,7 @@ var Player = (function () {
     var h = '<video id="pv" preload="auto"></video><div class="pspin" style="display:none"></div><div class="pmsg" style="display:none"></div><div class="skips" id="skips"></div>' +
       '<div class="pov"><div class="ptop"><div class="t1">' + Views.esc(info.title || '') + '</div><div class="t2">' + Views.esc([info.sub, info.epTitle].filter(Boolean).join(' · ')) + '</div><div class="pmode glass" id="pmode"></div></div>' +
       '<div class="tprev glass" id="tprev" style="display:none"><div class="timg img" id="timg"></div><div class="tt" id="ttime"></div></div><div class="pbar glass"><div class="seek f" id="seek"><div class="buf"></div><div class="pos"></div><div class="knob"></div></div>' +
-      '<div class="times"><span id="tcur">0:00</span><span id="tdur">0:00</span></div>' +
+      '<div class="times"><span id="tcur">0:00</span><span id="tdl" class="dl"></span><span id="tdur">0:00</span></div>' +
       '<div class="pctl"><span class="cbtn ic f" data-pact="back10" aria-label="Back 10 seconds">' + ICON.back + '</span><span class="cbtn ic big f" data-pact="toggle" id="bplay" aria-label="Play or pause">' + ICON.pause + '</span><span class="cbtn ic f" data-pact="fwd10" aria-label="Forward 10 seconds">' + ICON.fwd + '</span>' +
       '<span class="cbtn f" data-pact="speed">Speed 1x</span><span class="cbtn f" data-pact="subs">Subtitles</span><span class="cbtn f" data-pact="sources">Sources</span>' + '</div></div></div>';
     var el = Views.mount('player', h, { cls: 'player', onBack: function () { close(); Views.pop(); return true; }, onClose: cleanup });
@@ -282,7 +282,7 @@ var Player = (function () {
     if (!isFinite(d) || !d) { return; }
     var pos = $('.seek .pos'), knob = $('.seek .knob'), buf = $('.seek .buf'), pct = Math.min(100, t / d * 100);
     if (pos) pos.style.width = pct + '%'; if (knob) knob.style.left = pct + '%';
-    if (buf && v.buffered && v.buffered.length) { var e = v.buffered.end(v.buffered.length - 1); buf.style.width = Math.min(100, e / d * 100) + '%'; }
+    if (buf) drawLoaded(buf, v, d);
     $('#tcur').textContent = Views.fmtTime(t * 1000); $('#tdur').textContent = '-' + Views.fmtTime(Math.max(0, d - t) * 1000);
     if (Date.now() - S.lastSave > 10000 && !v.paused) save();
     marksTick(t, d); thumbPump();
@@ -343,6 +343,17 @@ var Player = (function () {
   }
   /* Order of work: 1) pictures for what is already loaded, nearest the playhead first (this is the starting buffer, so it comes first and never waits);
      2) the rest of the file, but only while the download is comfortably faster than the film plays and the buffer ahead is healthy, so the torrent keeps feeding playback first. */
+  /* what is loaded, drawn on the progress bar: the parts the player holds right now (bright) and the parts it has loaded earlier in this viewing (dim; they stay downloaded on the server) */
+  function drawLoaded(box, v, d) {
+    seenUpdate(v);
+    var cur = [], b = v.buffered, i, html = '', total = 0;
+    for (i = 0; i < b.length; i++) cur.push([b.start(i), b.end(i)]);
+    function seg(r, cls) { var l = Math.max(0, r[0] / d * 100), w = Math.min(100 - l, (r[1] - r[0]) / d * 100); return w > 0.05 ? '<span class="bseg' + cls + '" style="left:' + l.toFixed(2) + '%;width:' + w.toFixed(2) + '%"></span>' : ''; }
+    (S.seen || []).forEach(function (r) { html += seg(r, ' old'); total += r[1] - r[0]; });
+    cur.forEach(function (r) { html += seg(r, ''); });
+    if (html !== S.loadedHtml) { S.loadedHtml = html; box.innerHTML = html; }
+    var dl = $('#tdl'); if (dl) { var txt = total > 0 ? 'Loaded ' + Math.min(100, Math.round(total / d * 100)) + '%' : ''; if (dl.textContent !== txt) dl.textContent = txt; }
+  }
   function thumbPump() {
     var sess = S; if (!sess || sess.thumbOff || sess.hold || sess.rebuf || sess.failed || sess.ended) return;
     var v = sess.v, f = fileKey(sess.streams[sess.idx]); if (!f || !isFinite(v.duration) || v.duration < 60 || Date.now() < (sess.thumbNext || 0)) return;

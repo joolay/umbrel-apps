@@ -94,3 +94,6 @@ Search has a microphone ("Speak") button next to the box. webOS gives web apps n
 1. If the browser has speech recognition (`SpeechRecognition` / `webkitSpeechRecognition`: desktop and phone browsers), Speak listens and searches what it hears.
 2. Otherwise it opens the search box and the TV's own keyboard, whose microphone key (and the Magic Remote's) types what you say into the box. Anything that arrives without pressing Enter is searched on its own after 0.9 s.
 LG's help says voice input is unavailable in password fields; the search box is a plain text field. Not tested on a real TV: whether your webOS 4 build offers the keyboard's microphone key, and whether it works over the home address (voice may need the TV to be online).
+
+## What is loaded, on the progress bar
+A thin blue band along the bottom edge of the progress bar shows every part of the film this player has loaded: bright where it is in the player's buffer right now, dim where it was loaded earlier in this viewing (it stays downloaded on the server, so seeking back there is quick). "Loaded NN%" sits in the middle of the time row. It follows the player's own buffered ranges, not the torrent's piece map (the streaming server does not expose one), so it can under-report what the torrent has already fetched.
