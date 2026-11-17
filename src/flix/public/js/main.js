@@ -1,5 +1,5 @@
 /* Boot + global key handling. */
-window.FLIX_VERSION = 'v1.4.0';
+window.FLIX_VERSION = 'v1.5.0';
 (function fit() {            // web (Umbrel) mode: scale the 1920x1080 layout to the browser window
   if (!window.TF_BACKEND) return;
   function z() { document.documentElement.style.zoom = Math.min(window.innerWidth / 1920, window.innerHeight / 1080); }

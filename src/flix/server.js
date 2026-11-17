@@ -1,5 +1,5 @@
-/* Torrentflix for Umbrel (no dependencies).
-   - Serves the Torrentflix UI (./public) to browsers, behind Umbrel's login (app_proxy on PORT).
+/* JoolzFlix for Umbrel (no dependencies).
+   - Serves the JoolzFlix UI (./public) to browsers, behind Umbrel's login (app_proxy on PORT).
    - /config.js tells the UI where your Stremio streaming server is and turns on profile sync.
    - /tf/api/sync stores profiles, watchlists and watch progress (newest entry wins) in /data/state.json. */
 'use strict';
@@ -9,7 +9,7 @@ var PORT = parseInt(process.env.PORT || '3900', 10);
 var API_PORT = parseInt(process.env.API_PORT || '0', 10);   // optional second port that serves ONLY the profile-sync API (for the TV app)
 var DATA = process.env.DATA_DIR || '/data';
 var ROOT = path.resolve(process.env.TF_ROOT || path.join(__dirname, 'public'));
-var STREMIO_PORT = process.env.TF_STREMIO_PORT || '11470';   // joolay-stremio's streaming server
+var STREMIO_PORT = process.env.TF_STREMIO_PORT || "11470";   // the bundled streaming server
 var STREMIO_URL = process.env.TF_STREMIO_URL || '';       // optional: point at another streaming server
 var FILE = path.join(DATA, 'state.json');
 var MAX_BODY = 2 * 1024 * 1024, MAX_RESUME = 200, MAX_LIST = 500;
@@ -96,6 +96,6 @@ function handler(apiOnly) { return function (req, res) {
   if (req.method !== 'GET' && req.method !== 'HEAD') { res.writeHead(405); return res.end(); }
   serveStatic(req, res, pathname);
 }; }
-http.createServer(handler(false)).listen(PORT, '0.0.0.0', function () { console.log('Torrentflix listening on :' + PORT + ', UI from ' + ROOT + ', data in ' + DATA); });
+http.createServer(handler(false)).listen(PORT, '0.0.0.0', function () { console.log('JoolzFlix listening on :' + PORT + ', UI from ' + ROOT + ', data in ' + DATA); });
 if (API_PORT) http.createServer(handler(true)).listen(API_PORT, '0.0.0.0', function () { console.log('Profile-sync API only on :' + API_PORT); });
 process.on('SIGTERM', function () { try { fs.writeFileSync(FILE, JSON.stringify(state)); } catch (e) {} process.exit(0); });

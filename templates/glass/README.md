@@ -35,7 +35,7 @@ One look for every JoolzApp: soft gradient backdrop, frosted panels, rounded cor
 | Listify | #0A6C8F / #3FB0D6 | #4DB6DD / #7FD0EE |
 | Diner Bell | #d9480f / #ff8a4c | #ff8a4c / #ffb27d |
 | ShutterWorth | #145f4f / #2f8571 | #3FBF9F / #7FD6BD |
-| Torrentflix (TV-style UI, not Glass; icon only) | #c8141b / #ff6a4d | #ff6a4d / #ff9a85 |
+| JoolzFlix (TV-style UI, not Glass; icon only) | #c8141b / #ff6a4d | #ff6a4d / #ff9a85 |
 | New apps | pick one accent, then an `--accent-2` 20-30° hue away | a lighter pair |
 
 ## Changing the template

@@ -1,0 +1,30 @@
+manifestVersion: 1
+id: joolay-flix
+category: media
+name: JoolzFlix
+version: "1.0.0"
+tagline: A classic Netflix-style front end for your own streaming server
+description: >-
+  JoolzFlix gives your browser and your TV a clean, classic Netflix-style interface. It includes its own Stremio streaming server and replaces the old Stremio app.
+
+
+  It finds sources with Torrentio, shows the top 3 by seeds in 4K, 1080p, 720p and other, and plays them through the built-in streaming server, which is also available on port 11470 for the JoolzFlix TV app and the Stremio apps on your phone or PC (Settings > Streaming > Streaming server URL, e.g. http://umbrel.local:11470).
+
+
+  Up to 12 profiles, each with its own My List and watch progress, are saved on your Umbrel and shared by the browser and the JoolzFlix TV app for LG webOS (set Settings > Profile sync to http://umbrel.local:3901).
+
+
+  The interface is protected by your Umbrel login. The streaming server (port 11470) and the small profile-sync API (port 3901) are open on your home network, so keep this Umbrel off the public internet. You are responsible for what you stream and for following the laws that apply to you.
+developer: joolay
+website: https://github.com/joolay/homebrew
+dependencies: []
+repo: https://github.com/joolay/umbrel-apps
+support: https://github.com/joolay/umbrel-apps/issues
+port: 3900
+gallery: []
+path: ""
+defaultUsername: ""
+defaultPassword: ""
+releaseNotes: "First release: Netflix-style interface, built-in streaming server, Torrentio sources (top 3 by seeds per resolution) and synced profiles. Replaces the Stremio app."
+submitter: joolay
+submission: https://github.com/joolay/umbrel-apps

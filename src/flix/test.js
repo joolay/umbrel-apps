@@ -14,7 +14,7 @@ function sync(state) { return req(A, 'POST', '/tf/api/sync', JSON.stringify({ st
 setTimeout(function () {
   req(P, 'GET', '/healthz').then(function (r) { ok(r.code === 200, 'health'); return req(P, 'GET', '/config.js'); })
     .then(function (r) { ok(/serverUrl: "http:\/\/umbrel\.local:11470"/.test(r.body) && /TF_BACKEND/.test(r.body), 'config.js points at the Stremio server and enables sync'); return req(P, 'GET', '/'); })
-    .then(function (r) { ok(r.code === 200 && /Torrentflix/.test(r.body), 'UI served'); return req(P, 'GET', '/%2e%2e/server.js'); })
+    .then(function (r) { ok(r.code === 200 && /JoolzFlix/.test(r.body), 'UI served'); return req(P, 'GET', '/%2e%2e/server.js'); })
     .then(function (r) { ok(r.code === 403 || r.code === 404, 'path traversal blocked (' + r.code + ')'); return req(A, 'GET', '/'); })
     .then(function (r) { ok(r.code === 404, 'API-only port does not serve the UI'); return req(A, 'OPTIONS', '/tf/api/sync'); })
     .then(function (r) { ok(r.code === 204 && r.headers['access-control-allow-origin'] === '*', 'CORS preflight'); return sync({ profiles: { a1: { id: 'a1', name: 'Dad', ts: 100 } }, 'pa1.resume': { tt1: { t: 5, ts: 100 } }, evil: { x: { ts: 1 } }, 'pa1.list': { bad: { n: 1 } } }); })

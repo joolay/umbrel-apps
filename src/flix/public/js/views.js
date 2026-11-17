@@ -101,14 +101,14 @@ var Views = (function () {
   var PAGE_NAMES = { home: '', movie: 'Movies', series: 'TV Shows', library: 'My List', search: 'Search', settings: 'Settings' };
   function topbar(active) {
     var pr = Profiles.active(), who = pr ? '<div class="who f" data-act="profiles"><span class="av" style="background:' + esc(pr.color) + '">' + esc(pr.name.charAt(0).toUpperCase()) + '</span>' + esc(pr.name) + '</div>' : '';
-    return '<div class="top"><div class="logo f" data-act="menu">TORRENTFLIX</div><div class="pg">' + esc(PAGE_NAMES[active] || '') + '</div><div class="sp"></div>' + who + '</div>';
+    return '<div class="top"><div class="logo f" data-act="menu">JOOLZFLIX</div><div class="pg">' + esc(PAGE_NAMES[active] || '') + '</div><div class="sp"></div>' + who + '</div>';
   }
   var sideEl = null, sidePrev = null, infoT = null;
   function openSide() {
     if (sideEl || menuEl) return;
     var v = current(); if (!v || ['home', 'movie', 'series', 'library', 'search', 'settings'].indexOf(v.name) < 0) return;
     sidePrev = { root: Nav.root(), cur: Nav.cur() };
-    var h = '<div class="sidepanel"><div class="slogo">TORRENTFLIX</div>';
+    var h = '<div class="sidepanel"><div class="slogo">JOOLZFLIX</div>';
     TABS.forEach(function (t) { h += '<div class="sitem f' + (t[0] === v.name ? ' on' : '') + '" data-act="page" data-p="' + t[0] + '">' + t[1] + '</div>'; });
     h += '<div class="sitem f" data-act="profiles">Switch Profile</div><div class="sitem f" data-act="exit">Exit</div></div>';
     sideEl = document.createElement('div'); sideEl.className = 'side'; sideEl.innerHTML = h; app.appendChild(sideEl);
@@ -342,9 +342,9 @@ var Views = (function () {
       '<div class="srow f" data-act="savetio">Save Torrentio link</div>' +
       '<div class="srow f" data-act="testtio">Test Torrentio</div>' +
       '<div class="srow f" data-act="resettio">Reset Torrentio link to default</div>' +
-      '<div class="lbl">PROFILE SYNC (Torrentflix on your Umbrel)</div>' +
+      '<div class="lbl">PROFILE SYNC (JoolzFlix on your Umbrel)</div>' +
       (Sync.webMode() ? '<div class="srow">Profiles, lists and progress are stored on your Umbrel automatically. ' + esc(Sync.status()) + '</div>' :
-        '<input id="syncurl" class="field f" value="' + esc(Store.get('syncurl', '')) + '" placeholder="http://umbrel.local:11580  (leave empty to keep profiles on this TV only)">' +
+        '<input id="syncurl" class="field f" value="' + esc(Store.get('syncurl', '')) + '" placeholder="http://umbrel.local:3901  (leave empty to keep profiles on this TV only)">' +
         '<div class="srow f" data-act="savesync">Save and sync now</div><div class="srow">' + esc(Sync.status()) + '</div>') +
       '<div class="lbl">STREAMING SERVER (your Umbrel)</div><input id="srv" class="field f" value="' + esc(Api.server()) + '" placeholder="http://192.168.1.50:11470">' +
       '<div class="srow f" data-act="saveserver">Save server address</div>' +
@@ -353,7 +353,7 @@ var Views = (function () {
       '<div class="lbl">STREMIO ACCOUNT FOR THIS PROFILE (optional – only for Stremio progress sync)</div>' +
       (signed ? '<div class="srow f" data-act="signout">Signed in as ' + esc(email) + ' – Sign out</div>' : '<div class="srow f" data-act="gologin">Sign in to Stremio</div>') +
       (signed ? '<div class="srow f" data-act="togglesync">Sync watch progress to your Stremio account: <b>' + (Store.get('sync', true) === false ? 'OFF' : 'ON') + '</b></div>' : '') +
-      '<div class="hint">Torrentflix ' + (window.FLIX_VERSION || '') + '. Sources come only from Torrentio, shown as the top 3 by seeds for each resolution. Posters and details come from Cinemeta. Playback runs through your own streaming server.</div></div></div>';
+      '<div class="hint">JoolzFlix ' + (window.FLIX_VERSION || '') + '. Sources come only from Torrentio, shown as the top 3 by seeds for each resolution. Posters and details come from Cinemeta. Playback runs through your own streaming server.</div></div></div>';
     replaceAll('settings', h, { onBack: function () { openSide(); return true; } });
     Nav.first('#tio');
   }

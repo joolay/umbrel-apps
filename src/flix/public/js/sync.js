@@ -1,4 +1,4 @@
-/* Optional profile sync with Torrentflix on Umbrel: merges profiles, watch progress and watchlists (per-entry, newest wins). */
+/* Optional profile sync with JoolzFlix on Umbrel: merges profiles, watch progress and watchlists (per-entry, newest wins). */
 var Sync = (function () {
   var timer = null, busy = false, status = 'Not connected', started = false;
   function base() {
