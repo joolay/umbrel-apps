@@ -593,6 +593,19 @@ var Views = (function () {
   function personCard(p) {
     return '<div class="pc f" data-act="person" data-id="' + esc(p.id) + '"><div class="ph img" data-bg="' + esc(p.photo || '') + '"></div><div class="n">' + esc(p.name) + '</div>' + (p.role || p.department ? '<div class="r">' + esc(p.role || p.department) + '</div>' : '') + '</div>';
   }
+  /* opens the TV's Netflix app (LG webOS: the system's app launcher). In a normal browser: Netflix's own search page. It cannot jump to the title itself. */
+  function launchNetflix(title) {
+    var hint = 'Open the Netflix app and search for \u201c' + title + '\u201d.';
+    try {
+      if (window.PalmServiceBridge) {
+        var br = new PalmServiceBridge();
+        br.onservicecallback = function (r) { try { if (JSON.parse(r).returnValue === false) toast('Could not open Netflix from here. ' + hint, 7000); } catch (e) {} };
+        br.call('luna://com.webos.applicationManager/launch', JSON.stringify({ id: 'netflix' }));
+        return toast('Opening Netflix\u2026 ' + hint, 6000);
+      }
+    } catch (e) { return toast('Could not open Netflix from here. ' + hint, 7000); }
+    try { window.open('https://www.netflix.com/search?q=' + encodeURIComponent(title), '_blank'); } catch (e) { toast(hint, 6000); }
+  }
   function certChip(c) { return c && c.rating ? '<span class="chip cert">' + esc(c.rating) + '</span>' : ''; }
   function fmtDate(iso) {
     var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || ''); if (!m) return '';
@@ -620,6 +633,9 @@ var Views = (function () {
       if (t.tagline && chips) { var tg = document.createElement('div'); tg.className = 'tag'; tg.textContent = t.tagline; chips.parentNode.insertBefore(tg, chips.nextSibling); }
       if (t.directors && t.directors.length && desc) { var cr = document.createElement('div'); cr.className = 'credit'; cr.textContent = t.directorLabel + ' ' + t.directors.map(function (x) { return x.name; }).join(', '); desc.parentNode.insertBefore(cr, desc.nextSibling); }
       addDetailTabs(el, t);
+      if (t.netflix && !Policy.kid() && !el.querySelector('.nflx')) {                    // a discreet note, not for kids profiles (Netflix has its own profiles and no JoolzTV limits)
+        var nf = document.createElement('div'); nf.className = 'nflx glass f'; nf.setAttribute('data-act', 'netflix'); nf.setAttribute('data-title', t.name || m.name || ''); nf.textContent = 'Also on Netflix'; el.appendChild(nf); Nav.hydrate();
+      }
       var sel = el.querySelector('#seasons .chip.on[data-s]'); if (sel && t.type === 'series') stillsFor(el, +sel.getAttribute('data-s'));
     }).catch(function () {});
   }
@@ -878,7 +894,7 @@ var Views = (function () {
     }
     if (Tmdb.canKey()) h += '<input id="tmdbkey" class="field f" type="password" placeholder="' + (Tmdb.on() ? 'TMDB key saved. Paste a new one to replace it' : 'Paste the TMDB key to switch this on') + '" autocomplete="off"><div class="srow f" data-act="savetmdb">Save the TMDB key</div>';
     else if (!Tmdb.on()) h += '<div class="hint">Titles with logos, cast, age ratings, trending lists and Discover switch on when a JoolzApp admin adds a TMDB key here.</div>';
-    return h + '<div class="hint">This product uses the TMDB API but is not endorsed or certified by TMDB.</div>';
+    return h + '<div class="hint">This product uses the TMDB API but is not endorsed or certified by TMDB. Where-to-watch data is provided by JustWatch.</div>';
   }
   function settingsPage() {
     ++browseToken;
@@ -917,6 +933,7 @@ var Views = (function () {
     if (a === 'season') return renderEpisodes(current().el, +el.getAttribute('data-s'));
     if (a === 'speak') return speak();
     if (a === 'detailback') return back();
+    if (a === 'netflix') return launchNetflix(el.getAttribute('data-title'));
     if (a === 'xtab') return xTab(current().el, el.getAttribute('data-t'));
     if (a === 'person') return personPage(el.getAttribute('data-id'));
     if (a === 'collection') return collectionPage(el.getAttribute('data-id'));

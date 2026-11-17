@@ -91,7 +91,7 @@ async function find(imdb) {
 async function title({ imdb, tmdb, type, locale, region }) {
   let id = tmdb, t = type === "series" ? "tv" : type === "tv" ? "tv" : "movie";
   if (!id) { const f = await find(imdb); if (!f) throw Object.assign(new Error("not found"), { code: "not_found" }); id = f.tmdb; t = f.type; }
-  const append = t === "tv" ? "images,credits,content_ratings,keywords,recommendations,external_ids" : "images,credits,release_dates,keywords,recommendations,external_ids";
+  const append = (t === "tv" ? "images,credits,content_ratings,keywords,recommendations,external_ids" : "images,credits,release_dates,keywords,recommendations,external_ids") + ",watch/providers";
   const d = await call("/" + t + "/" + id, clean({ language: locale || "en-US", append_to_response: append, include_image_language: ((locale || "en").slice(0, 2)) + ",en,null" }));
   const logos = ((d.images && d.images.logos) || []).slice().sort((a, b) => (b.vote_average || 0) - (a.vote_average || 0));
   const logo = logos.filter(l => l.iso_639_1 === (locale || "en").slice(0, 2))[0] || logos.filter(l => l.iso_639_1 === "en")[0] || logos[0];
@@ -99,6 +99,8 @@ async function title({ imdb, tmdb, type, locale, region }) {
   const stinger = { during: kw.some(k => k.id === 179431 || /during.?credits?\s*stinger/i.test(k.name)), after: kw.some(k => k.id === 179430 || /after.?credits?\s*stinger/i.test(k.name)) };
   const crew = (d.credits && d.credits.crew) || [], dir = crew.filter(c => c.job === "Director").slice(0, 2).map(c => ({ id: c.id, name: c.name }));
   const creators = (d.created_by || []).slice(0, 2).map(c => ({ id: c.id, name: c.name }));
+  const wp = (d["watch/providers"] && d["watch/providers"].results && d["watch/providers"].results[region || ""]) || null;       // where it streams (subscription) in the person's country (JustWatch data via TMDB)
+  const flat = ((wp && wp.flatrate) || []).concat((wp && wp.ads) || []);
   const ne = d.next_episode_to_air;
   return {
     tmdb: d.id, type: t === "tv" ? "series" : "movie", imdb: (d.external_ids && d.external_ids.imdb_id) || imdb || "", tvdb: (d.external_ids && d.external_ids.tvdb_id) || null,
@@ -112,7 +114,7 @@ async function title({ imdb, tmdb, type, locale, region }) {
     similar: ((d.recommendations && d.recommendations.results) || []).filter(x => x.poster_path && !isAdultCard(x)).slice(0, 18).map(x => card(x, t)),
     seasons: t === "tv" ? (d.seasons || []).filter(s => s.season_number > 0).map(s => ({ n: s.season_number, name: s.name, episodes: s.episode_count })) : [],
     nextEpisode: ne ? { season: ne.season_number, episode: ne.episode_number, name: ne.name || "", air: ne.air_date || "" } : null,
-    network: (d.networks && d.networks[0] && d.networks[0].name) || "", stinger
+    network: (d.networks && d.networks[0] && d.networks[0].name) || "", stinger, netflix: flat.some(x => /^netflix/i.test(String(x.provider_name || ""))), streaming: flat.map(x => x.provider_name).filter((v, i, a) => v && a.indexOf(v) === i).slice(0, 6)
   };
 }
 async function season({ tmdb, season, locale }) {

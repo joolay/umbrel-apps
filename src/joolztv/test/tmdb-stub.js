@@ -38,7 +38,8 @@ function make() {
         release_dates: { results: Object.keys(x.cert).map(c => ({ iso_3166_1: c, release_dates: [{ certification: "", type: 1 }, { certification: x.cert[c], type: 3 }] })) },
         keywords: { keywords: (x.kw || []).concat(x.stinger ? [{ id: 179430, name: "aftercreditsstinger" }, { id: 1, name: "prison" }] : [{ id: 1, name: "prison" }]) },
         recommendations: { results: [{ id: 238, title: "The Godfather", poster_path: poster, backdrop_path: back, vote_average: 8.7, release_date: "1972-03-14", media_type: "movie" }, { id: 11, title: "No Poster", poster_path: null }] },
-        external_ids: { imdb_id: x.imdb } });
+        external_ids: { imdb_id: x.imdb },
+        "watch/providers": { results: { GB: { link: "x", flatrate: x.id === 278 ? [{ provider_id: 8, provider_name: "Netflix" }, { provider_id: 9, provider_name: "Prime Video" }] : [{ provider_id: 337, provider_name: "Disney Plus" }] }, ZA: { link: "x", flatrate: x.id === 278 ? [{ provider_id: 1796, provider_name: "Netflix Standard with Adverts" }] : [] }, US: { link: "x", rent: [{ provider_id: 2, provider_name: "Apple TV Store" }] } } } });
     }
     if ((m = /^\/tv\/(\d+)$/.exec(p))) {
       const x = SHOWS[m[1]]; if (!x) return J({}, 404);
