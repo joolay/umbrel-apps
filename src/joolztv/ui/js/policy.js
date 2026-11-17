@@ -24,3 +24,4 @@ var Policy = (function () {
     }
   };
 })();
+if (typeof module !== 'undefined') module.exports = Policy;
