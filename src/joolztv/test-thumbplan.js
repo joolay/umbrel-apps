@@ -1,0 +1,25 @@
+// Which seek-preview picture is made next, and when the not-yet-downloaded part may be touched (ui/js/thumbplan.js).
+"use strict";
+const P = require("./ui/js/thumbplan.js");
+let fails = 0; const ok = (c, m) => { if (!c) { fails++; console.log("FAIL", m); } else console.log("ok  ", m); };
+const base = (o) => Object.assign({ dur: 7200, t: 100, seen: [[90, 150]], have: {}, bad: {}, fly: {}, ratio: 5, slow: false, ahead: 50, aheadMax: 50, sinceGrewMs: 0, playedMs: 10000 }, o || {});
+let r = P.next(base());
+ok(r && r.loaded && r.pick === 100, "loaded part first, nearest the playhead (" + (r && r.pick) + ")");
+r = P.next(base({ have: { 100: 1 } })); ok(r.pick === 110 && r.loaded, "then the next one ahead");
+r = P.next(base({ t: 140, seen: [[90, 150]], have: { 140: 1 } })); ok(r.pick === 130 || r.pick === 120 || r.pick === 100 || r.pick === 110, "near the end of the loaded part it goes back, not into the unloaded part (" + r.pick + ")");
+r = P.next(base({ have: { 100: 1, 110: 1, 120: 1, 130: 1, 140: 1, 90: 1, 80: 1 }, seen: [[90, 150]], playedMs: 10000 })); ok(r === null, "the loaded part is done and playback has only run 10 s: nothing outside it yet");
+const done = {}; for (let g = 100; g <= 140; g += 10) done[g] = 1;
+ok(P.farOk(base({ playedMs: 44000, ahead: 70 })) === false, "not before the film has played for 45 s");
+ok(P.farOk(base({ playedMs: 50000, ahead: 20, aheadMax: 20 })) === false, "not with only 20 s buffered");
+ok(P.farOk(base({ playedMs: 50000, ahead: 59, aheadMax: 59, sinceGrewMs: 1000 })) === false, "not at 59 s while the buffer is still growing");
+ok(P.farOk(base({ playedMs: 50000, ahead: 60 })) === true, "yes with 60 s buffered, a fast download and 45 s of playing");
+ok(P.farOk(base({ playedMs: 50000, ahead: 35, aheadMax: 36, sinceGrewMs: 20000 })) === true, "yes when the buffer is as full as this player lets it get (35 s, flat for 20 s)");
+ok(P.farOk(base({ playedMs: 50000, ahead: 35, aheadMax: 60, sinceGrewMs: 20000 })) === false, "no when the buffer has dropped well below its best");
+ok(P.farOk(base({ playedMs: 50000, ahead: 90, ratio: 2.9 })) === false, "not below 3x real time");
+ok(P.farOk(base({ playedMs: 50000, ahead: 90, slow: true })) === false, "never for a source flagged slow");
+ok(P.farOk(base({ playedMs: 50000, ahead: 90, ratio: undefined })) === false, "not while the download speed is unknown");
+r = P.next(base({ have: Object.assign({ 90: 1, 80: 1, 70: 1, 60: 1 }, done), playedMs: 50000, ahead: 90, aheadMax: 90 }));
+ok(r && !r.loaded && r.pick === 150, "once allowed, the unloaded part is done nearest the playhead, ahead before behind at similar distances (" + (r && r.pick) + ")");
+r = P.next(base({ fly: { 100: 1 }, bad: { 110: 1 } })); ok(r.pick === 120 || r.pick === 90 || r.pick === 130, "pictures in flight or failed are skipped (" + r.pick + ")");
+r = P.next(base({ dur: 125, seen: [[0, 125]], t: 10 })); ok(r.pick === 10 && P.next(base({ dur: 125, seen: [[0, 125]], t: 10, have: { 0: 1, 10: 1, 20: 1, 30: 1, 40: 1, 50: 1, 60: 1, 70: 1, 80: 1, 90: 1, 100: 1, 110: 1, 120: 1 } })) === null, "the whole file is covered, then it stops");
+console.log(fails ? fails + " FAILED" : "ALL PASSED"); process.exit(fails ? 1 : 0);

@@ -332,7 +332,7 @@ var Player = (function () {
   /* ---- seek preview pictures ---- */
   /* Pictures are made on the server (ffmpeg), one every 10 s, only for parts of the file that this player has already loaded (so nothing is
      pulled from the torrent ahead of the film), closest to the playhead first. A jump shows the picture of where you land. */
-  var THUMB_STEP = 10;
+  var THUMB_STEP = Thumbplan.STEP;
   function seenUpdate(v) {
     var seen = S.seen || (S.seen = []), b = v.buffered;
     for (var i = 0; i < b.length; i++) {
@@ -349,14 +349,13 @@ var Player = (function () {
     var ahead = bufEnd(v) - v.currentTime; if (ahead < 5 || (sess.thumbN || 0) >= 2) return;        // never compete with the start of playback
     seenUpdate(v);
     var th = sess.thumbs || (sess.thumbs = {}), bad = sess.thumbBad || (sess.thumbBad = {}), fly = sess.thumbFly || (sess.thumbFly = {}), t = v.currentTime;
-    var plan = sess.buf && sess.buf.plan, far = !!(plan && !plan.slow && plan.ratio >= 3 && ahead >= 20), bestL = -1, dL = 1e9, bestF = -1, dF = 1e9;
-    for (var g = 0; g <= v.duration - 3; g += THUMB_STEP) {
-      if (th[g] || bad[g] || fly[g]) continue;
-      var d = g >= t ? g - t : (t - g) * 1.3, loaded = sess.seen.some(function (r) { return g >= r[0] + 1 && g <= r[1] - 2; });
-      if (loaded) { if (d < dL) { dL = d; bestL = g; } } else if (d < dF) { dF = d; bestF = g; }
-    }
-    var pick = bestL >= 0 ? bestL : (far ? bestF : -1); if (pick < 0) return;
-    var loadedPick = pick === bestL;
+    if (!sess.firstPlayAt) sess.firstPlayAt = Date.now();
+    if (ahead > (sess.aheadMax || 0) + 1) { sess.aheadMax = ahead; sess.aheadGrewAt = Date.now(); }
+    var plan = sess.buf && sess.buf.plan;
+    var nx = Thumbplan.next({ dur: v.duration, t: t, seen: sess.seen, have: th, bad: bad, fly: fly, ratio: plan && plan.ratio, slow: !plan || plan.slow, ahead: ahead, aheadMax: sess.aheadMax || 0,
+      sinceGrewMs: Date.now() - (sess.aheadGrewAt || Date.now()), playedMs: Date.now() - sess.firstPlayAt });
+    if (!nx) return;
+    var pick = nx.pick, loadedPick = nx.loaded;
     sess.thumbN = (sess.thumbN || 0) + 1; fly[pick] = 1; sess.thumbNext = Date.now() + (loadedPick ? 150 : 700);
     fetch('/api/thumb?hash=' + f.infoHash + '&idx=' + f.fileIdx + '&t=' + pick, { headers: { 'x-jtv-token': Backend.token() || '' } }).then(function (r) {
       if (r.status === 503) { sess.thumbOff = true; throw 0; }
