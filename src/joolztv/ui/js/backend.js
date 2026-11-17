@@ -8,10 +8,10 @@ var Backend = (function () {
       p.then(function (v) { clearTimeout(t); res(v); }, function (e) { clearTimeout(t); rej(e); });
     });
   }
-  function call(method, path, body, tok) {
+  function call(method, path, body, tok, ms) {
     var h = { 'Content-Type': 'application/json' }, t = tok === undefined ? token : tok;
     if (t) h['x-jtv-token'] = t;
-    return timeout(fetch(path, { method: method, headers: h, body: body === undefined ? undefined : JSON.stringify(body) }), 20000).then(function (r) {
+    return timeout(fetch(path, { method: method, headers: h, body: body === undefined ? undefined : JSON.stringify(body) }), ms || 20000).then(function (r) {
       var renew = r.headers.get('x-jtv-renew');
       if (renew && t && t === token) { token = renew; Store.set('token', renew); }   // keeps "90 days since you last used it" going
       return r.json().catch(function () { return {}; }).then(function (j) {

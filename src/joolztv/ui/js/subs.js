@@ -39,23 +39,28 @@ var Subs = (function () {
     s += Math.min(40, Math.round(shared / Math.max(6, want.tokens.length) * 60));
     return s;
   }
-  /* list: addon subtitles; ctx: {filename}; prefs: {lang, lang2}. Returns groups in display order (preferred languages first). */
-  function rank(list, ctx, prefs) {
-    var pref = [prefs && prefs.lang || 'eng']; if (prefs && prefs.lang2 && prefs.lang2 !== pref[0]) pref.push(prefs.lang2);
-    var by = {};
-    (list || []).forEach(function (sub, i) { (by[sub.lang || 'und'] = by[sub.lang || 'und'] || []).push({ sub: sub, score: score(sub, ctx), i: i, file: sub.m === 'f' }); });
-    var groups = [], codes = Object.keys(by);
-    function add(code) { by[code].sort(function (a, b) { return (b.score - a.score) || (a.i - b.i); }); groups.push({ lang: code, label: langName(code), preferred: pref.indexOf(code) >= 0, items: by[code] }); }
-    pref.forEach(function (c) { if (by[c]) add(c); });
-    codes.filter(function (c) { return pref.indexOf(c) < 0; }).sort(function (a, b) { return langName(a).localeCompare(langName(b)); }).forEach(add);
-    var best = groups.length && groups[0].preferred ? groups[0].items[0] : null;
-    return { groups: groups, best: best };
+  /* list: addon subtitles; ctx: {filename}; prefs: {lang, lang2}.
+     Only the chosen language(s) are listed (English by default); the best `limit` (10) come back, most likely match first. */
+  function rank(list, ctx, prefs, limit) {
+    var langs = [prefs && prefs.lang || 'eng']; if (prefs && prefs.lang2 && prefs.lang2 !== langs[0]) langs.push(prefs.lang2);
+    var seen = {}, items = [], hidden = 0;
+    (list || []).forEach(function (sub, i) {
+      if (langs.indexOf(sub.lang) < 0) { hidden++; return; }                 // other languages are hidden
+      var key = sub.lang + '|' + base(sub.subtitleFileName || sub.movieReleaseName || sub.id || i);
+      var it = { sub: sub, score: score(sub, ctx), pri: langs.indexOf(sub.lang), i: i, file: sub.m === 'f' };
+      if (seen[key]) { if (it.score > seen[key].score) { items[items.indexOf(seen[key])] = it; seen[key] = it; } return; }   // the same subtitle uploaded twice
+      seen[key] = it; items.push(it);
+    });
+    items.sort(function (a, b) { return (a.pri - b.pri) || (b.score - a.score) || (a.i - b.i); });   // your first language first, then most likely match
+    items = items.slice(0, limit || 10);
+    return { items: items, best: items[0] || null, hidden: hidden, langs: langs };
   }
-  /* shift every cue time of a WebVTT/SRT text by ms (positive = later) */
-  function shift(text, ms) {
-    if (!ms) return text;
+  /* move every cue time: new = old * scale + ms   (positive ms = later) */
+  function shift(text, ms, scale) {
+    scale = scale || 1;
+    if (!ms && scale === 1) return text;
     return text.replace(/(\d{2}):(\d{2}):(\d{2})[.,](\d{3})/g, function (m, h, mi, s, f) {
-      var t = Math.max(0, ((+h * 60 + +mi) * 60 + +s) * 1000 + +f + ms), hh = Math.floor(t / 3600000), mm = Math.floor(t % 3600000 / 60000), ss = Math.floor(t % 60000 / 1000), ff = t % 1000;
+      var t = Math.max(0, Math.round((((+h * 60 + +mi) * 60 + +s) * 1000 + +f) * scale + ms)), hh = Math.floor(t / 3600000), mm = Math.floor(t % 3600000 / 60000), ss = Math.floor(t % 60000 / 1000), ff = t % 1000;
       function p(n, l) { return String(n).padStart(l || 2, '0'); }
       return p(hh) + ':' + p(mm) + ':' + p(ss) + '.' + p(ff, 3);
     });

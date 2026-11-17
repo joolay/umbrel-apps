@@ -18,16 +18,19 @@ const PORT = +process.env.PORT || 3900;
 const DATA_DIR = path.resolve(process.env.DATA_DIR || path.join(__dirname, "data"));
 const UI_DIR = path.resolve(process.env.UI_DIR || path.join(__dirname, "ui"));
 const DIST_DIR = path.resolve(process.env.UI_DIST || path.join(__dirname, "dist"));
+const DEVTEST_DIR = path.resolve(process.env.DEVTEST_DIR || path.join(__dirname, "devtest"));   // the first-run device check clips (made by make-clips.js)
 const UPSTREAM = new URL(process.env.STREAM_UPSTREAM || "http://server:11470");
 const INTERNAL = process.env.STREAM_INTERNAL || "http://127.0.0.1:11470";   // how the streaming server reaches itself (for transcoding)
 const REQUIRE_ACCOUNTS = !/^(0|false|no)$/i.test(process.env.REQUIRE_ACCOUNTS || "1");
+const subsync = require("./subsync");
+const FFMPEG = process.env.FFMPEG || "ffmpeg", FFPROBE = process.env.FFPROBE || "ffprobe";
 const APP_NAME = process.env.POCKETBASE_APP_NAME || "JoolzTV";
 const MAX_PROFILES = 12, MAX_BODY = 2 * 1024 * 1024, MAX_RESUME = 200, MAX_LIST = 500, STREAM_TTL = 12 * 3600e3;
 const USERS_DIR = path.join(DATA_DIR, "users");
 fs.mkdirSync(USERS_DIR, { recursive: true });
 
 /* ---------- small helpers ---------- */
-const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml", ".png": "image/png", ".json": "application/json", ".webmanifest": "application/manifest+json", ".ico": "image/x-icon", ".woff2": "font/woff2" };
+const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml", ".png": "image/png", ".json": "application/json", ".webmanifest": "application/manifest+json", ".ico": "image/x-icon", ".woff2": "font/woff2", ".mp4": "video/mp4", ".mkv": "video/x-matroska", ".ts": "video/mp2t", ".avi": "video/x-msvideo" };
 const send = (res, code, obj, extra) => { res.writeHead(code, Object.assign({ "content-type": "application/json", "cache-control": "no-store" }, extra || {})); res.end(JSON.stringify(obj)); };
 function readBody(req, max = MAX_BODY) {
   return new Promise((ok, bad) => {
@@ -177,6 +180,26 @@ function syncRoutes(req, res, p, u) {
   })();
 }
 
+/* ---------- subtitle auto-sync: listens to the file's audio (read from the streaming server) and lines the subtitle up with the speech ---------- */
+const syncing = new Set(); let syncActive = 0;
+async function subsSync(req, res, u) {
+  const body = await jsonBody(req), hash = String(body.infoHash || ""), idx = Number.isInteger(body.fileIdx) ? body.fileIdx : parseInt(body.fileIdx, 10), text = typeof body.subtitle === "string" ? body.subtitle : "";
+  if (!/^[0-9a-fA-F]{40}$/.test(hash) || !(idx >= -1 && idx < 10000)) return send(res, 400, { code: "bad_request", message: "Auto-sync needs a torrent source." });
+  if (text.length < 500 || text.length > 600000) return send(res, 400, { code: "bad_request", message: "That subtitle can't be used for auto-sync." });
+  if (syncing.has(u.id)) return send(res, 429, { code: "busy", message: "Already lining up subtitles for you. Wait for it to finish." });
+  if (syncActive >= 2) return send(res, 429, { code: "busy", message: "The server is busy lining up other subtitles. Try again in a minute." });
+  syncing.add(u.id); syncActive++;
+  try {
+    const r = await subsync.sync({ url: UPSTREAM.origin + "/" + hash + "/" + idx, text, ffmpeg: FFMPEG, ffprobe: FFPROBE });
+    return send(res, 200, r);
+  } catch (e) {
+    if (e.code === "no_ffmpeg") return send(res, 503, { code: "sync_unavailable", message: "Auto-sync isn't available on this server (ffmpeg is missing)." });
+    if (["low_confidence", "few_cues", "inconsistent", "no_audio"].indexOf(e.code) >= 0) return send(res, 422, { code: e.code, message: e.message });
+    if (e.code === "timeout") return send(res, 504, { code: "timeout", message: "Reading the audio took too long (the file may still be downloading). Try again in a moment." });
+    console.error("subsync:", e.message); return send(res, 500, { code: "error", message: "Auto-sync failed." });
+  } finally { syncing.delete(u.id); syncActive--; }
+}
+
 /* ---------- streaming server behind the sign-in ---------- */
 const SECRET_FILE = path.join(DATA_DIR, "secret.key");
 let SECRET = (() => { try { const s = fs.readFileSync(SECRET_FILE, "utf8").trim(); if (s.length >= 32) return s; } catch {} const s = crypto.randomBytes(32).toString("hex"); fs.writeFileSync(SECRET_FILE, s, { mode: 0o600 }); return s; })();
@@ -254,6 +277,22 @@ function serveStatic(req, res, pathname, root) {
     fs.createReadStream(file).pipe(res);
   });
 }
+function serveDevtest(req, res, name) {
+  const file = path.normalize(path.join(DEVTEST_DIR, name));
+  if (file.indexOf(DEVTEST_DIR + path.sep) !== 0 || !/^[a-z0-9]+\.(mp4|mkv|ts|avi|json)$/.test(name)) { res.writeHead(404); return res.end(); }
+  fs.stat(file, (err, st) => {
+    if (err || !st.isFile()) { res.writeHead(404, { "content-type": "application/json", "cache-control": "no-store" }); return res.end("{}"); }
+    const type = TYPES[path.extname(file)] || "application/octet-stream", rg = /bytes=(\d*)-(\d*)/.exec(req.headers.range || "");
+    if (rg && (rg[1] || rg[2])) {
+      const a = rg[1] === "" ? Math.max(0, st.size - +rg[2]) : +rg[1], b = rg[1] === "" || rg[2] === "" ? st.size - 1 : Math.min(+rg[2], st.size - 1);
+      if (a > b || a >= st.size) { res.writeHead(416, { "content-range": "bytes */" + st.size }); return res.end(); }
+      res.writeHead(206, { "content-type": type, "content-range": "bytes " + a + "-" + b + "/" + st.size, "content-length": b - a + 1, "accept-ranges": "bytes", "cache-control": "no-store" });
+      return fs.createReadStream(file, { start: a, end: b }).pipe(res);
+    }
+    res.writeHead(200, { "content-type": type, "content-length": st.size, "accept-ranges": "bytes", "cache-control": name === "index.json" ? "no-store" : "public, max-age=86400" });
+    if (req.method === "HEAD") return res.end(); fs.createReadStream(file).pipe(res);
+  });
+}
 const configJs = () => "window.FLIX_CONFIG = " + JSON.stringify({ internalServerUrl: INTERNAL, appName: APP_NAME, accounts: REQUIRE_ACCOUNTS }) + ";\nwindow.JTV = { backend: true, maxProfiles: " + MAX_PROFILES + " };\n";
 
 /* ---------- account routes (public, throttled) ---------- */
@@ -300,6 +339,8 @@ const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, "http://x"), p = decodeURIComponent(url.pathname);
     if (p === "/healthz") { res.writeHead(200, { "content-type": "application/json", "access-control-allow-origin": "*", "cache-control": "no-store" }); return res.end(JSON.stringify({ ok: true, app: "joolztv" })); }
     if (p === "/config.js") { res.writeHead(200, { "content-type": "text/javascript; charset=utf-8", "cache-control": "no-store" }); return res.end(configJs()); }
+    const dm = /^\/devtest\/([^/]+)$/.exec(url.pathname);
+    if (dm && (req.method === "GET" || req.method === "HEAD")) return serveDevtest(req, res, dm[1]);
     const sm = /^\/s\/([^/]+)(\/.*)$/.exec(url.pathname);
     if (sm) return proxyStream(req, res, sm[1], sm[2] + url.search);
     if (p.startsWith("/api/")) {
@@ -308,6 +349,7 @@ const server = http.createServer(async (req, res) => {
       const u = await requireUser(req, res); if (!u) return;
       if (!profileOf(hh(), u.id) && !u.isAdmin) return send(res, 403, { code: "not_in_household", message: "This account isn't part of this household." });
       if ((p === "/api/state" && req.method === "GET") || (p === "/api/sync" && req.method === "POST")) return await syncRoutes(req, res, p, u);
+      if (p === "/api/subs/sync" && req.method === "POST") return await subsSync(req, res, u);
       if (p === "/api/stream-token" && req.method === "POST") { const m = mintStream(u.id); return send(res, 200, { st: m.st, exp: m.exp }); }
       return send(res, 404, { code: "not_found" });
     }

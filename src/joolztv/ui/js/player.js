@@ -15,7 +15,7 @@ var Player = (function () {
       '<div class="pctl"><span class="cbtn f" data-pact="back10">⏪ 10</span><span class="cbtn big f" data-pact="toggle" id="bplay">❚❚</span><span class="cbtn f" data-pact="fwd10">10 ⏩</span>' +
       '<span class="cbtn f" data-pact="speed">Speed 1x</span><span class="cbtn f" data-pact="subs">Subtitles</span><span class="cbtn f" data-pact="sources">Sources</span></div></div></div>';
     var el = Views.mount('player', h, { cls: 'player', onBack: function () { close(); Views.pop(); return true; }, onClose: cleanup });
-    S = { el: el, info: info, v: el.querySelector('#pv'), streams: [], groups: [], idx: -1, tried: {}, rate: 1, subs: null, ui: true, uiT: null, lastSave: 0, tick: null, buffT: null, ended: false, gotTime: false };
+    S = { el: el, info: info, v: el.querySelector('#pv'), learnedFor: {}, streams: [], groups: [], idx: -1, tried: {}, rate: 1, subs: null, ui: true, uiT: null, lastSave: 0, tick: null, buffT: null, ended: false, gotTime: false };
     bind();
     Nav.set(el.querySelector('#seek'), true);
     showUi();
@@ -54,6 +54,7 @@ var Player = (function () {
     if (!S) return;
     var s = S.streams[i]; if (!s) return;
     S.idx = i; S.ended = false; S.gotTime = false;
+    clearTimeout(S.decodeT1); clearTimeout(S.decodeT2); clearTimeout(S.okT); clearTimeout(S.flowT); S.metaOk = false;
     var d = decide(s), hls = forceHls || d.hls;
     var url = s._direct || (hls ? Api.hlsUrl(s, safe) : Api.directUrl(s));
     if (!url) { return next('Unsupported source'); }
@@ -67,13 +68,21 @@ var Player = (function () {
     try { v.defaultPlaybackRate = 1; } catch (e) {}
     v.load();
     var p = v.play(); if (p && p.catch) p.catch(function () {});
+    // data is arriving (the first 64 KB can be read) but the TV never opens the file: an unsupported container or codec, not a slow download
+    if (!hls && !s._direct) S.flowT = setTimeout(function () {
+      var sess = S; if (!sess || sess.idx !== i || sess.metaOk || sess.hls) return;
+      fetch(url, { headers: { Range: 'bytes=0-65535' } }).then(function (r) { return r.arrayBuffer(); }).then(function (b) {
+        if (S === sess && sess.idx === i && !sess.metaOk && !sess.hls && b.byteLength >= 20000) next('Your TV could not read this file', true);
+      }).catch(function () {});
+    }, 9000);
     if (S.subsIdx !== i) { S.subsIdx = i; S.hash = null; S.size = 0; loadSubs(true); }     // new file: find subtitles for that file
     var btn = $('[data-pact=speed]'); if (btn) btn.textContent = 'Speed 1x';
   }
-  function next(why) {
+  function next(why, strong) {
     if (!S) return;
     var i = S.idx, s = S.streams[i];
     S.why = why || 'playback problem';
+    if (strong && !S.hls && s && !s._direct) Api.learn(s, false);          // the decoder failed on this kind of file: remember it for next time
     if (!S.hls && s && !s._direct) { say((why || 'Playback problem') + ' – trying transcoding…'); return start(i, true, false); }
     if (S.hls && !S.safe && s && !s._direct) { say((why || 'Playback problem') + ' – trying safer transcoding…'); return start(i, true, true); }
     for (var j = i + 1; j < S.streams.length && j < i + 6; j++) { if (!S.tried[j]) { say((why || 'Playback problem') + ' – trying another source…'); return start(j); } }
@@ -86,11 +95,33 @@ var Player = (function () {
     function alive() { return S === sess; }
     v.addEventListener('loadedmetadata', function () {
       if (!alive()) return;
+      sess.metaOk = true;
       var st = (sess.info.startMs || 0) / 1000;
       if (st > 5 && !sess.resumed && isFinite(v.duration) && st < v.duration - 20) { try { v.currentTime = st; } catch (e) {} }
       sess.resumed = true;
+      // direct play only: tell a decoder problem apart from a slow download, and fall back within seconds instead of waiting for the 45 s timeout
+      clearTimeout(sess.decodeT1); clearTimeout(sess.decodeT2);
+      if (!sess.hls) {
+        sess.decodeT1 = setTimeout(function () { if (alive() && !sess.hls && !sess.gotTime && v.videoWidth === 0) next('Your TV could not show the picture of this file', true); }, 4000);
+        sess.decodeT2 = setTimeout(function () {
+          if (!alive() || sess.hls || sess.gotTime) return;
+          var ahead = v.buffered && v.buffered.length ? v.buffered.end(v.buffered.length - 1) - v.currentTime : 0;
+          if (ahead >= 3 && !v.paused) next('Your TV could not play this file', true);       // data is there but nothing plays: the decoder is stuck
+        }, 12000);
+      }
     });
-    v.addEventListener('playing', function () { if (!alive()) return; sess.gotTime = true; spin(''); say(''); sess.failed = false; reapplyRate(); setPlayLabel(); showUi(); });
+    v.addEventListener('playing', function () {
+      if (!alive()) return; sess.gotTime = true; spin(''); say(''); sess.failed = false; reapplyRate(); setPlayLabel(); showUi();
+      clearTimeout(sess.okT);
+      if (!sess.hls) {                                          // played for a few seconds with a picture: remember this device can play these formats directly
+        var base = v.currentTime, idx = sess.idx;
+        sess.okT = setTimeout(function () {
+          if (!alive() || sess.hls || sess.idx !== idx || sess.learnedFor[idx]) return;
+          var fr = v.webkitDecodedFrameCount;
+          if (!v.paused && v.currentTime - base >= 4 && v.videoWidth > 0 && (fr === undefined || fr > 0)) { sess.learnedFor[idx] = 1; Api.learn(sess.streams[idx], true); }
+        }, 6500);
+      }
+    });
     v.addEventListener('waiting', function () { if (!alive()) return; clearTimeout(sess.buffT); sess.buffT = setTimeout(function () { if (alive() && !v.paused) spin('Buffering…'); }, 700); });
     v.addEventListener('canplay', function () { if (alive()) { clearTimeout(sess.buffT); spin(''); } });
     v.addEventListener('pause', function () { if (alive()) { setPlayLabel(); showUi(true); save(); } });
@@ -103,8 +134,10 @@ var Player = (function () {
     });
     v.addEventListener('error', function () {
       if (!alive()) return;
-      var code = v.error ? v.error.code : 0;
-      next(code === 4 ? 'This file format is not supported directly' : 'Playback error');
+      var code = v.error ? v.error.code : 0, msg = code === 4 ? 'This file format is not supported directly' : 'Playback error', idx = sess.idx, src = v.currentSrc || v.src;
+      if (sess.hls || code !== 4) return next(msg, !sess.hls && code === 3);
+      // a "source not supported" error is also what a missing file or a dead download looks like: only blame the decoder when the file itself is reachable
+      fetch(src, { headers: { Range: 'bytes=0-1' } }).then(function (r) { if (alive() && sess.idx === idx) next(msg, r.ok); }, function () { if (alive() && sess.idx === idx) next(msg, false); });
     });
     sess.tick = setInterval(function () { if (alive()) update(); }, 500);
     sess.watchdog = setTimeout(function () { if (alive() && !sess.gotTime && !sess.failed && sess.streams.length) next('Taking too long to start'); }, 45000);
@@ -144,7 +177,7 @@ var Player = (function () {
     if (!S) return;
     save();
     if (S.upnext) clearInterval(S.upnext.timer);
-    var v = S.v; clearInterval(S.tick); clearTimeout(S.uiT); clearTimeout(S.buffT); clearTimeout(S.watchdog);
+    var v = S.v; clearInterval(S.tick); clearTimeout(S.uiT); clearTimeout(S.buffT); clearTimeout(S.watchdog); clearTimeout(S.decodeT1); clearTimeout(S.decodeT2); clearTimeout(S.okT); clearTimeout(S.flowT);
     try { v.pause(); v.removeAttribute('src'); v.load(); } catch (e) {}
     S = null;
     if (window.Sync) Sync.run();
@@ -180,7 +213,7 @@ var Player = (function () {
       });
     });
     Views.menu('Choose a source – top 3 by seeds per resolution', opts, function (o) {
-      S.failed = false; S.tried = {}; S.resumed = false; S.subOn = false; S.subManual = false; S.info.startMs = S.v.currentTime * 1000 || S.info.startMs; S.why = ''; start(o.idx);
+      S.failed = false; S.tried = {}; S.resumed = false; S.subOn = false; S.subManual = false; S.subOffset = 0; S.subScale = 1; S.info.startMs = S.v.currentTime * 1000 || S.info.startMs; S.why = ''; start(o.idx);
     }, 'If a source will not play, try a different resolution.');
   }
   function pickSpeed() {
@@ -192,7 +225,7 @@ var Player = (function () {
     });
   }
   /* ---- subtitles matched to the file being watched ---- */
-  function subPrefs() { var p = Store.get('subs', null) || {}; return { lang: p.lang || 'eng', lang2: p.lang2 || '', auto: !!p.auto }; }
+  function subPrefs() { var p = Store.get('subs', null) || {}; return { lang: p.lang || 'eng', lang2: p.lang2 || '', auto: !!p.auto, autosync: !!p.autosync }; }
   function fileCtx() { var st = S.streams[S.idx]; var f = st ? Api.fileInfo(st) : {}; return { filename: f.filename, size: f.size || S.size || 0, hash: S.hash || '' }; }
   function loadSubs(fresh) {
     var sess = S, sig = S.idx;
@@ -215,9 +248,10 @@ var Player = (function () {
   function autoPick() {
     if (!S || S.subManual || S.subOn) return;
     var pr = subPrefs(); if (!pr.auto) return;
-    var r = Subs.rank(S.subs, fileCtx(), pr);
+    var r = Subs.rank(S.subs, fileCtx(), pr, 10);
     if (r.best) applySub(r.best.sub, true);
   }
+  function syncKey(sub) { var st = S.streams[S.idx]; return st && st.infoHash ? st.infoHash + ':' + (st.fileIdx != null ? st.fileIdx : -1) + ':' + (sub.id || sub.url) : ''; }
   function applySub(sub, quiet) {
     Array.prototype.forEach.call(S.v.querySelectorAll('track'), function (t) { t.parentNode.removeChild(t); });
     if (!sub) { S.subOn = false; S.subCur = null; if (!quiet) Views.toast('Subtitles off'); return; }
@@ -226,32 +260,60 @@ var Player = (function () {
     function show(txt) {
       if (S !== sess) return;
       Array.prototype.forEach.call(S.v.querySelectorAll('track'), function (t) { t.parentNode.removeChild(t); });
-      var vtt = Subs.shift(Subs.toVtt(txt), S.subOffset || 0), url = URL.createObjectURL(new Blob([vtt], { type: 'text/vtt' })), tr = document.createElement('track');
+      var vtt = Subs.shift(Subs.toVtt(txt), S.subOffset || 0, S.subScale || 1), url = URL.createObjectURL(new Blob([vtt], { type: 'text/vtt' })), tr = document.createElement('track');
       tr.kind = 'subtitles'; tr.label = sub.lang; tr.src = url; tr.default = true; S.v.appendChild(tr);
       setTimeout(function () { if (tr.track) tr.track.mode = 'showing'; }, 100);
-      S.subOn = true; S.subCur = sub; if (!quiet) Views.toast('Subtitles on: ' + Subs.langName(sub.lang) + (S.subOffset ? ' (' + (S.subOffset > 0 ? '+' : '') + (S.subOffset / 1000) + 's)' : ''));
+      var firstTime = S.subCur !== sub; S.subOn = true; S.subCur = sub;
+      if (!quiet) Views.toast('Subtitles on: ' + Subs.langName(sub.lang) + (S.subOffset ? ' (' + (S.subOffset > 0 ? '+' : '') + (S.subOffset / 1000).toFixed(1) + ' s)' : ''));
+      if (firstTime && subPrefs().autosync && !sub._synced) { sub._synced = true; setTimeout(function () { if (S === sess && S.subCur === sub) autoSync(true); }, 9000); }
     }
+    // a timing fix found earlier for this subtitle on this file is reused
+    var cached = (Store.get('subsync', {}) || {})[syncKey(sub)];
+    if (cached && !S.subOffset && !S.subScale) { S.subOffset = cached.o; S.subScale = cached.s; }
     if (sub._text) return show(sub._text);
     fetch(sub.url).then(function (r) { return r.text(); }).then(function (txt) { sub._text = txt; show(txt); }).catch(function () { if (!quiet) Views.toast('Could not load those subtitles'); });
   }
+  /* auto-sync: the server listens to the file's audio and lines the subtitle up with the speech */
+  function autoSync(quiet) {
+    if (!S || !S.subCur) return Views.toast('Turn on a subtitle first');
+    var st = S.streams[S.idx], sub = S.subCur, sess = S;
+    if (!st || !st.infoHash) return Views.toast('Auto-sync works for torrent sources');
+    if (!sub._text) return Views.toast('Subtitles are still loading');
+    if (S.syncing) return;
+    S.syncing = true;
+    Views.toast('Listening to the audio to line up the subtitles… this can take a minute', 150000);
+    Backend.call('POST', '/api/subs/sync', { infoHash: st.infoHash, fileIdx: st.fileIdx != null ? st.fileIdx : -1, subtitle: sub._text }, undefined, 170000).then(function (r) {
+      if (S !== sess || S.subCur !== sub) return;
+      S.syncing = false; S.subOffset = r.offsetMs; S.subScale = r.scale;
+      var c = Store.get('subsync', {}) || {}, k = syncKey(sub); if (k) { c[k] = { o: r.offsetMs, s: r.scale, ts: Date.now() }; var ks = Object.keys(c); if (ks.length > 100) { ks.sort(function (a, b) { return c[a].ts - c[b].ts; }).slice(0, ks.length - 100).forEach(function (x) { delete c[x]; }); } Store.set('subsync', c); }
+      applySub(sub, true);
+      var sec = (r.offsetMs / 1000).toFixed(1);
+      Views.toast(r.note === 'in_sync' ? 'Subtitles were already in sync' : r.note === 'drift' ? 'Fixed subtitle timing drift (frame rate) and moved them ' + (r.offsetMs >= 0 ? 'later' : 'earlier') + ' by ' + Math.abs(sec) + ' s' : 'Subtitles moved ' + (r.offsetMs >= 0 ? 'later' : 'earlier') + ' by ' + Math.abs(sec) + ' s', 5000);
+    }).catch(function (e) { if (S === sess) S.syncing = false; Views.toast((e.code === 'low_confidence' || e.code === 'inconsistent' ? e.message + ' Use earlier/later to adjust by hand, or try another subtitle.' : e.message), 7000); });
+  }
   function pickSubs() {
-    var list = S.subs || [], pr = subPrefs(), r = Subs.rank(list, fileCtx(), pr), opts = [{ label: 'Off', selected: !S.subOn }];
-    if (!list.length) Views.toast('No subtitles found (yet)');
-    var best = r.best && r.best.sub;
-    r.groups.forEach(function (g) {
-      opts.push({ header: (g.preferred ? '★ ' : '') + g.label });
-      g.items.slice(0, g.preferred ? 8 : 3).forEach(function (it, n) {
-        var tag = it.file ? 'Exact file' : (best === it.sub ? 'Best match' : '');
-        opts.push({ q: tag, label: (it.sub.subtitleFileName || it.sub.movieReleaseName || it.sub.id || 'Subtitle').slice(0, 70), sub: it.score > 60 && !it.file ? 'similar release' : '', sort: it.sub, selected: S.subCur === it.sub });
-      });
+    var list = S.subs || [], pr = subPrefs(), r = Subs.rank(list, fileCtx(), pr, 10), best = r.best && r.best.sub, two = r.langs.length > 1;
+    var opts = [{ label: 'Off', selected: !S.subOn }];
+    if (!r.items.length) Views.toast(list.length ? 'No ' + Subs.langName(pr.lang) + ' subtitles for this title (' + r.hidden + ' in other languages hidden)' : 'No subtitles found (yet)');
+    r.items.forEach(function (it) {
+      var tag = it.file ? 'Exact file' : (best === it.sub ? 'Best match' : '');
+      opts.push({ q: tag, label: (it.sub.subtitleFileName || it.sub.movieReleaseName || it.sub.id || 'Subtitle').slice(0, 70), sub: (two ? Subs.langName(it.sub.lang) + (it.score > 100 ? ' · similar release' : '') : (it.score > 100 ? 'similar release' : '')), pick: it.sub, selected: S.subCur === it.sub });
     });
-    if (S.subOn) { opts.push({ header: 'Sync' }); opts.push({ label: 'Subtitles earlier  (-0.5 s)', shift: -500 }); opts.push({ label: 'Subtitles later  (+0.5 s)', shift: 500 }); }
-    Views.menu('Subtitles – matched to this file', opts, function (o, i) {
+    if (S.subOn) {
+      opts.push({ header: 'Timing' });
+      opts.push({ label: 'Auto-sync: fix the timing from the audio', autosync: true });
+      opts.push({ label: 'Subtitles earlier  (-0.5 s)', shift: -500 });
+      opts.push({ label: 'Subtitles later  (+0.5 s)', shift: 500 });
+      if (S.subOffset || (S.subScale && S.subScale !== 1)) opts.push({ label: 'Reset timing', reset: true });
+    }
+    Views.menu('Subtitles – best ' + Math.max(r.items.length, 0) + ' for this file', opts, function (o, i) {
+      if (o.autosync) return autoSync();
+      if (o.reset) { S.subOffset = 0; S.subScale = 1; return applySub(S.subCur, true); }
       if (o.shift) { S.subOffset = (S.subOffset || 0) + o.shift; return applySub(S.subCur); }
       S.subManual = true;
-      if (!o.sort) return applySub(null);
-      S.subOffset = 0; applySub(o.sort);
-    }, 'Best match first: the same file (by its fingerprint), then the same release (group, source, resolution), in your language (Settings).');
+      if (!o.pick) return applySub(null);
+      S.subOffset = 0; S.subScale = 1; applySub(o.pick);
+    }, 'Only ' + r.langs.map(Subs.langName).join(' and ') + ' subtitles are listed (change in Settings), most likely match first.' + (r.hidden ? ' ' + r.hidden + ' in other languages hidden.' : ''));
   }
 
   document.addEventListener('click', function (e) {

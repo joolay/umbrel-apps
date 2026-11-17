@@ -4,6 +4,7 @@ const http = require("http"), fs = require("fs"), os = require("os"), path = req
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), "jtv-")), P = 39600 + Math.floor(Math.random() * 300), U = P + 1;
 fs.mkdirSync(path.join(dir, "dist", "compat"), { recursive: true }); fs.mkdirSync(path.join(dir, "dist", "modern"), { recursive: true });
 fs.writeFileSync(path.join(dir, "dist", "compat", "index.html"), "COMPAT"); fs.writeFileSync(path.join(dir, "dist", "modern", "index.html"), "MODERN");
+fs.mkdirSync(path.join(dir, "devtest"), { recursive: true }); fs.writeFileSync(path.join(dir, "devtest", "index.json"), '{"v":1,"clips":[{"id":"h264","trait":"h264","label":"H.264","kind":"video","file":"h264.mp4"}]}'); fs.writeFileSync(path.join(dir, "devtest", "h264.mp4"), Buffer.alloc(3000, 1));
 const HASH = "a".repeat(40), BODY = Buffer.from("0123456789".repeat(100));
 
 const upstream = http.createServer((q, r) => {
@@ -18,7 +19,7 @@ const upstream = http.createServer((q, r) => {
   r.writeHead(200); r.end("SECRET-" + q.url);
 }).listen(U);
 
-const child = cp.spawn(process.execPath, [path.join(__dirname, "server.js")], { env: Object.assign({}, process.env, { NODE_ENV: "test", JTV_PB: path.join(__dirname, "test", "mock-pb.js"), PORT: P, DATA_DIR: dir, UI_DIST: path.join(dir, "dist"), STREAM_UPSTREAM: "http://127.0.0.1:" + U }), stdio: "ignore" });
+const child = cp.spawn(process.execPath, [path.join(__dirname, "server.js")], { env: Object.assign({}, process.env, { NODE_ENV: "test", JTV_PB: path.join(__dirname, "test", "mock-pb.js"), PORT: P, DATA_DIR: dir, FFMPEG: "/nonexistent/ffmpeg", DEVTEST_DIR: path.join(dir, "devtest"), UI_DIST: path.join(dir, "dist"), STREAM_UPSTREAM: "http://127.0.0.1:" + U }), stdio: "ignore" });
 function req(method, p, body, headers) {
   return new Promise((res, rej) => {
     const r = http.request({ port: P, method, path: p, headers: Object.assign({ "content-type": "application/json" }, headers || {}) }, x => { const c = []; x.on("data", d => c.push(d)); x.on("end", () => { const t = Buffer.concat(c).toString(); let j = null; try { j = JSON.parse(t); } catch {} res({ code: x.statusCode, text: t, json: j, headers: x.headers }); }); });
@@ -64,6 +65,15 @@ const T = tok => ({ "x-jtv-token": tok });
   r = await req("GET", "/s/" + st + "/opensubHash?videoUrl=" + encodeURIComponent("http://127.0.0.1:11470/" + HASH + "/0")); ok(r.code === 200 && r.json.result.hash, "subtitle fingerprint of a streamed file works through the proxy");
   r = await req("GET", "/s/" + st + "/opensubHash?videoUrl=" + encodeURIComponent("http://evil.example/x.mkv")); ok(r.code === 400, "subtitle fingerprint refuses arbitrary URLs");
   r = await req("GET", "/s/" + st + "/opensubHash"); ok(r.code === 400, "subtitle fingerprint needs a file");
+  const goodSub = Array.from({ length: 40 }, (_, i) => (i + 1) + "\n00:00:" + String(10 + i).padStart(2, "0") + ",000 --> 00:00:" + String(11 + i).padStart(2, "0") + ",000\nline number " + i + " of the subtitle").join("\n\n");
+  r = await req("POST", "/api/subs/sync", { infoHash: HASH, fileIdx: 0, subtitle: goodSub }); ok(r.code === 401, "auto-sync needs a sign-in");
+  r = await req("POST", "/api/subs/sync", { infoHash: "nothex", fileIdx: 0, subtitle: goodSub }, T(ann)); ok(r.code === 400, "auto-sync refuses a bad source id");
+  r = await req("POST", "/api/subs/sync", { infoHash: HASH, fileIdx: 0, subtitle: "too short" }, T(ann)); ok(r.code === 400, "auto-sync refuses an unusable subtitle");
+  r = await req("POST", "/api/subs/sync", { infoHash: HASH, fileIdx: 0, subtitle: goodSub }, T(ann)); ok(r.code === 503 && r.json.code === "sync_unavailable", "auto-sync says so clearly when ffmpeg is missing");
+  r = await req("GET", "/devtest/index.json"); ok(r.code === 200 && r.json.clips.length === 1, "device-check list is served (before sign-in, it is just tiny test clips)");
+  r = await req("GET", "/devtest/h264.mp4", undefined, { range: "bytes=0-99" }); ok(r.code === 206 && r.text.length === 100 && r.headers["content-type"] === "video/mp4", "device-check clip served with ranges and the right type");
+  r = await req("GET", "/devtest/..%2fserver.js"); ok(r.code === 404, "device-check route cannot read other files");
+  r = await req("GET", "/devtest/missing.mp4"); ok(r.code === 404, "unknown clip -> 404");
   // roles
   r = await req("DELETE", "/api/household/profiles/" + annId, undefined, T(bob)); ok(r.code === 403, "a member cannot remove the owner");
   r = await req("PATCH", "/api/household/profiles/" + bobId, { name: "Robert" }, T(bob)); ok(r.code === 200 && r.json.profile.name === "Robert", "a member can rename their own profile");

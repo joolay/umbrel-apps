@@ -149,6 +149,32 @@ var Views = (function () {
     Nav.first('.btn');
   }
 
+  /* ---------- first-run device check: what can this device decode? ---------- */
+  function deviceCheck(cont) {
+    if (DeviceTest.done()) return cont();
+    var finished = false;
+    function leave() { if (finished) return; finished = true; cont(); }
+    replaceAll('devicecheck', '<div class="splash"><div class="center"><div class="form glass" style="width:980px"><h1>Checking this device</h1><div class="sub" id="dcsub">JoolzTV is testing which video and audio formats this device can play, so every film starts the right way from the first time. It takes a few seconds.</div>' +
+      '<div class="dclist" id="dclist"></div><div class="btn glass f" id="dcbtn" data-act="skipdc">Skip</div></div></div></div>', { onBack: function () { DeviceTest.skip(); leave(); return true; } });
+    Nav.first('.btn');
+    window._dcLeave = leave;
+    var list = document.getElementById('dclist');
+    DeviceTest.run(function (clip, state, r) {
+      var row = document.getElementById('dc-' + clip.id);
+      if (!row) { row = document.createElement('div'); row.id = 'dc-' + clip.id; row.className = 'dc run'; row.innerHTML = '<span>' + esc(clip.label) + '</span><span class="dcs">Testing…</span>'; list.appendChild(row); }
+      if (state === 'done') {
+        row.className = 'dc ' + (r.ok === true ? 'ok' : r.ok === false ? 'bad' : '');
+        row.lastChild.textContent = r.ok === true ? 'Plays directly' : r.ok === false ? 'Will be transcoded' : 'Not tested';
+      }
+    }).then(function (out) {
+      if (finished) return;
+      var good = out.filter(function (r) { return r.ok === true; }).length, bad = out.filter(function (r) { return r.ok === false; }).length;
+      var sub = document.getElementById('dcsub'), btn = document.getElementById('dcbtn');
+      if (sub) sub.textContent = good + ' formats play directly on this device' + (bad ? ', ' + bad + ' will be converted by your server when needed.' : '.') + ' This is remembered, and gets better as you watch.';
+      if (btn) { btn.textContent = 'Continue'; btn.className = 'btn primary f'; btn.setAttribute('data-act', 'dcdone'); Nav.set(btn); }
+    }).catch(function () { DeviceTest.skip(); leave(); });      // no clips on this server, or the browser can't run the check: carry on with the usual guesses
+  }
+
   /* ---------- sign-in, wizard, picker ---------- */
   function toggleHtml(id, label, on) { return '<div class="tog f' + (on ? ' on' : '') + '" id="' + id + '" data-act="toggle"><span>' + esc(label) + '</span><span class="sw"></span></div>'; }
   function isOn(id) { var t = document.getElementById(id); return !!t && t.classList.contains('on'); }
@@ -171,7 +197,7 @@ var Views = (function () {
     ferr('Signing in…');
     Backend.addProfile(em, pw, '', null).then(function (r) {
       Profiles.setAll(r.profiles); finishSignIn(r.profile.id, em, r.token, isOn('keep'));
-      Backend.setToken(r.token); members(true);
+      Backend.setToken(r.token); deviceCheck(function () { members(true); });
     }).catch(function (e) { ferr(e.message); });
   }
   /* a new device for an existing household: sign in with any member's account, the household comes down with it */
@@ -245,6 +271,7 @@ var Views = (function () {
     }).catch(function (e) { ferr(e.message); });
   }
   function enter(id, token) {
+    if (!DeviceTest.done()) { Store.setActive(id); if (token) Backend.setToken(token); else Backend.setToken(Store.getFor(id, 'token', null) || Backend.token()); return deviceCheck(function () { enter(id, token); }); }
     Store.setActive(id);
     if (token) Backend.setToken(token); else Backend.setToken(Store.getFor(id, 'token', null) || Backend.token());
     Api.setStreamBase('');
@@ -467,11 +494,11 @@ var Views = (function () {
   /* ---------- settings ---------- */
   var PLAY_MODES = { auto: 'Automatic: transcode only when the TV cannot play the file', direct: 'Always direct (never transcode)', transcode: 'Always transcode (if video stutters or will not play)' };
   function playMode() { var m = Store.get('playback', null); if (m === null) m = Store.get('transcode', false) ? 'transcode' : 'auto'; return m; }
-  function subPrefs() { var p = Store.get('subs', null) || {}; return { lang: p.lang || 'eng', lang2: p.lang2 || '', auto: !!p.auto }; }
+  function subPrefs() { var p = Store.get('subs', null) || {}; return { lang: p.lang || 'eng', lang2: p.lang2 || '', auto: !!p.auto, autosync: !!p.autosync }; }
   function setSub(k, v) { var p = subPrefs(); p[k] = v; Store.set('subs', p); }
   function settingsPage() {
     ++browseToken;
-    var pr = Profiles.active(), keep = !!Store.get('token', null);
+    var pr = Profiles.active(), keep = !!Store.get('token', null), rep = Api.deviceReport();
     var h = '<div class="art-shade"></div>' + topbar('settings') + '<div class="vs" id="main" data-pad-top="140"><div class="settings"><h1>Settings</h1>' +
       '<div class="lbl">Profile – ' + esc(pr ? pr.name : '') + '</div>' +
       '<div class="srow f" data-act="members">Household: add, rename or remove profiles</div>' +
@@ -482,11 +509,15 @@ var Views = (function () {
       '<input id="tio" class="field f" value="' + esc(Api.torrentioUrl()) + '" placeholder="https://torrentio.strem.fun/…">' +
       '<div class="srow f" data-act="savetio">Save Torrentio link</div><div class="srow f" data-act="testtio">Test Torrentio</div><div class="srow f" data-act="resettio">Reset Torrentio link to default</div>' +
       '<div class="lbl">Subtitles</div>' +
-      '<div class="srow f" data-act="sublang">Subtitle language: <b>' + esc(Subs.langName(subPrefs().lang)) + '</b></div>' +
+      '<div class="srow f" data-act="sublang">Show subtitles in: <b>' + esc(Subs.langName(subPrefs().lang)) + '</b> (other languages are hidden)</div>' +
       '<div class="srow f" data-act="sublang2">Second language: <b>' + esc(subPrefs().lang2 ? Subs.langName(subPrefs().lang2) : 'None') + '</b></div>' +
       '<div class="srow f" data-act="subauto">Turn on the best matching subtitles automatically: <b>' + (subPrefs().auto ? 'ON' : 'OFF') + '</b></div>' +
+      '<div class="srow f" data-act="subautosync">Auto-sync subtitles when they are turned on (uses your server\'s processor): <b>' + (subPrefs().autosync ? 'ON' : 'OFF') + '</b></div>' +
       '<div class="lbl">Playback</div>' +
       '<div class="srow f" data-act="playmode">Playback mode: <b>' + esc(PLAY_MODES[playMode()]) + '</b></div>' +
+      '<div class="srow f" data-act="redodc">Run the device check again (tests which formats this device plays)</div>' +
+      '<div class="srow f" data-act="forgetdev">Forget what this device can play: <b>' + (rep.good.length + rep.bad.length) + ' formats remembered</b></div>' +
+      '<div class="hint">' + (rep.good.length ? 'Plays directly: ' + esc(rep.good.join(', ')) + '. ' : '') + (rep.bad.length ? 'Needs transcoding: ' + esc(rep.bad.join(', ')) + '. ' : '') + (rep.good.length + rep.bad.length ? '' : 'JoolzTV learns what this device can decode as you watch, so the next file of that kind starts the right way straight away.') + '</div>' +
       '<div class="hint">JoolzTV ' + esc(window.FLIX_VERSION || '') + '. Sources come from Torrentio (top 3 by seeds per resolution), posters from Cinemeta, subtitles from OpenSubtitles. Video plays through your own streaming server behind your JoolzApp sign-in. ' + esc(Sync.status()) + '</div></div></div>';
     replaceAll('settings', h, { cls: 'noart', onBack: function () { page('home'); return true; } });
     Nav.first('.tab.on');
@@ -541,7 +572,12 @@ var Views = (function () {
         .catch(function (e) { toast('Cannot reach Torrentio: ' + e.message, 7000); });
     }
     if (a === 'playmode') { var order = ['auto', 'direct', 'transcode']; Store.set('playback', order[(order.indexOf(playMode()) + 1) % 3]); return settingsPage(); }
+    if (a === 'skipdc') { DeviceTest.skip(); return window._dcLeave && window._dcLeave(); }
+    if (a === 'dcdone') return window._dcLeave && window._dcLeave();
+    if (a === 'redodc') { DeviceTest.reset(); return deviceCheck(function () { page('settings'); }); }
+    if (a === 'forgetdev') { Api.forgetDevice(); toast('Forgot what this device can play'); return settingsPage(); }
     if (a === 'subauto') { setSub('auto', !subPrefs().auto); return settingsPage(); }
+    if (a === 'subautosync') { setSub('autosync', !subPrefs().autosync); return settingsPage(); }
     if (a === 'sublang' || a === 'sublang2') {
       var two = a === 'sublang2', cur = two ? subPrefs().lang2 : subPrefs().lang, ls = (two ? [['', 'None']] : []).concat(Subs.LANGS);
       return menu(two ? 'Second subtitle language' : 'Subtitle language', ls.map(function (l) { return { label: l[1], code: l[0], selected: l[0] === cur }; }), function (o) { setSub(two ? 'lang2' : 'lang', o.code); settingsPage(); });

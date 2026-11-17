@@ -189,24 +189,74 @@ var Api = (function () {
       tv: /Web0S|webOS|SMART-TV|SmartTV/i.test(ua)
     };
   }
-  /* decides from the release name (resolution, codec, audio, container) and the device. Returns {transcode, reason}. Wrong guesses are caught by the fallbacks in the player. */
-  function assess(s, c) {
+  /* what a release is made of, as short trait ids (read from its name). Used to decide, and to remember what this device can play. */
+  var TRAIT_LABELS = { av1: 'AV1 video', oldvid: 'older video formats (AVI/XviD)', h264hi10: '10-bit H.264', hevc: 'HEVC (H.265) video', hevc10: '10-bit HEVC', dv: 'Dolby Vision', hdr: 'HDR video',
+    truehd: 'TrueHD audio', dts: 'DTS audio', eac3: 'Dolby Digital Plus audio', ac3: 'Dolby Digital audio', mkv: 'MKV files', ts: 'TS / M2TS files' };
+  var BASELINE = { h264: 1, mp4: 1, aac: 1 };                                  // never blamed: if these fail the file or the network is at fault, not the device
+  function textOf(s) { return (' ' + [s.name, s.title, s.description, s.behaviorHints && s.behaviorHints.filename].join(' ') + ' ').toLowerCase().replace(/[._\-\[\]()]+/g, ' '); }
+  function traitsOf(s) {
+    var t = textOf(s), has = function (re) { return re.test(t); }, out = [];
+    if (has(/ av1 /)) out.push('av1');
+    if (has(/ (xvid|divx|wmv|vc 1|mpeg2) /) || has(/ (avi|wmv|flv|mpg|mpeg|iso|vob) /)) out.push('oldvid');
+    if (has(/ (hi10p|hi10) /)) out.push('h264hi10');
+    if (has(/ (x265|h ?265|hevc) /)) { out.push('hevc'); if (has(/ (10 ?bit|main ?10) /)) out.push('hevc10'); }
+    if (has(/ (dv|dovi|dolby vision) /)) out.push('dv');
+    if (has(/ (hdr10?|hdr10plus|hdr) /)) out.push('hdr');
+    if (has(/ truehd | true hd /)) out.push('truehd');
+    if (has(/ (dts ?hd|dts ?x|dts) /)) out.push('dts');
+    if (has(/ (ddp|dd\+|eac3|e ac3|ec 3|atmos) /)) out.push('eac3');
+    else if (has(/ (ac3|dd ?[257] ?1?|dd5 1|dolby digital) /)) out.push('ac3');
+    if (has(/ mkv /)) out.push('mkv'); if (has(/ (ts|m2ts) /)) out.push('ts');
+    return out;
+  }
+  /* ---- device memory: what this device has (not) been able to play directly. Kept on the device; the next choice uses it. ---- */
+  var STALE = 180 * 86400e3;
+  function mem() { var m = Store.get('devcaps', null) || {}, now = Date.now(), out = {}; Object.keys(m).forEach(function (k) { if (m[k] && now - (m[k].ts || 0) < STALE) out[k] = m[k]; }); return out; }
+  function traitState(t, m) { var e = (m || mem())[t]; if (!e) return 'unknown'; return e.fail > e.ok ? 'bad' : (e.ok > e.fail ? 'good' : 'unknown'); }
+  /* every static reason this device might not play the file directly (from its capability report) */
+  function risks(s, c) {
     c = c || caps();
-    var t = (' ' + [s.name, s.title, s.description, s.behaviorHints && s.behaviorHints.filename].join(' ') + ' ').toLowerCase().replace(/[._\-\[\]()]+/g, ' ');
-    var has = function (re) { return re.test(t); };
-    if (has(/ av1 /)) return { transcode: true, reason: 'AV1 video' };
-    if (has(/ (xvid|divx|wmv|vc 1|mpeg2) /) || has(/ (avi|wmv|flv|mpg|mpeg|iso|vob|m2ts) /)) return { transcode: true, reason: 'older video format' };
-    if (has(/ (hi10p|hi10) /)) return { transcode: true, reason: '10-bit H.264' };
-    if (has(/ (x265|h ?265|hevc) /)) {
-      if (!c.hevc) return { transcode: true, reason: 'HEVC video' };
-      if (has(/ (10 ?bit|main ?10|hdr10?|hdr10plus|dv|dovi|dolby vision) /) && !c.hevc10) return { transcode: true, reason: '10-bit HEVC' };
-    }
-    if (has(/ (dv|dovi|dolby vision) /)) return { transcode: true, reason: 'Dolby Vision' };
-    if (has(/ (dts ?hd|dts ?x|dts|truehd|true hd) /) && !c.dts) return { transcode: true, reason: 'DTS / TrueHD audio' };
-    if (has(/ (ddp|dd\+|eac3|e ac3|ec 3|atmos) /) && !c.eac3) return { transcode: true, reason: 'Dolby Digital Plus audio' };
-    if (has(/ (ac3|dd ?[257] ?1?|dd5 1|dolby digital) /) && !c.ac3) return { transcode: true, reason: 'Dolby Digital audio' };
+    var t = textOf(s), has = function (re) { return re.test(t); }, out = [], tr = traitsOf(s);
+    if (tr.indexOf('av1') >= 0) out.push({ trait: 'av1', reason: 'AV1 video' });
+    if (tr.indexOf('oldvid') >= 0) out.push({ trait: 'oldvid', reason: 'older video format' });
+    if (tr.indexOf('h264hi10') >= 0) out.push({ trait: 'h264hi10', reason: '10-bit H.264' });
+    if (tr.indexOf('hevc') >= 0 && !c.hevc) out.push({ trait: 'hevc', reason: 'HEVC video' });
+    if (tr.indexOf('hevc') >= 0 && c.hevc && !c.hevc10 && (tr.indexOf('hevc10') >= 0 || has(/ (hdr10?|hdr10plus|dv|dovi|dolby vision) /))) out.push({ trait: 'hevc10', reason: '10-bit HEVC' });
+    if (tr.indexOf('dv') >= 0) out.push({ trait: 'dv', reason: 'Dolby Vision' });
+    if ((tr.indexOf('dts') >= 0 || tr.indexOf('truehd') >= 0) && !c.dts) out.push({ trait: tr.indexOf('truehd') >= 0 ? 'truehd' : 'dts', reason: 'DTS / TrueHD audio' });
+    if (tr.indexOf('eac3') >= 0 && !c.eac3) out.push({ trait: 'eac3', reason: 'Dolby Digital Plus audio' });
+    if (tr.indexOf('ac3') >= 0 && !c.ac3) out.push({ trait: 'ac3', reason: 'Dolby Digital audio' });
+    return out;
+  }
+  /* decides: transcode on the server, or play directly? From what this device has taught us, then from its capability report. */
+  function assess(s, c) {
+    var m = mem(), tr = traitsOf(s), i;
+    for (i = 0; i < tr.length; i++) if (traitState(tr[i], m) === 'bad') return { transcode: true, reason: "this device couldn't play " + (TRAIT_LABELS[tr[i]] || tr[i]) + ' before', learned: true };
+    var r = risks(s, c);
+    for (i = 0; i < r.length; i++) if (traitState(r[i].trait, m) !== 'good') return { transcode: true, reason: r[i].reason };     // a format this device has played directly before is trusted
     return { transcode: false, reason: '' };
   }
+  /* remember how a direct play went. ok=true: it played; ok=false: the decoder failed (only strong evidence is passed in). */
+  function learn(s, ok) {
+    var tr = traitsOf(s).filter(function (x) { return !BASELINE[x]; }); if (!tr.length) return;
+    var m = mem(), now = Date.now(), targets = tr;
+    if (!ok) {                                                                // blame what could plausibly be the cause, not what already played fine
+      var risky = risks(s).map(function (x) { return x.trait; }).filter(function (x) { return traitState(x, m) !== 'good'; });
+      var unproven = tr.filter(function (x) { return traitState(x, m) !== 'good'; });
+      targets = risky.length ? risky : unproven;
+    }
+    targets.forEach(function (x) { var e = m[x] || (m[x] = { ok: 0, fail: 0 }); if (ok) e.ok++; else e.fail++; e.ts = now; });
+    Store.set('devcaps', m);
+  }
+  /* result of the first-run device check: a measured fact, so it outweighs earlier guesses (real plays keep adjusting it afterwards) */
+  function recordTest(trait, ok) {
+    if (BASELINE[trait]) return;
+    var m = mem(), e = m[trait] || (m[trait] = { ok: 0, fail: 0 });
+    if (ok) e.ok = Math.max(e.ok, e.fail + 1); else e.fail = Math.max(e.fail, e.ok + 1);
+    e.ts = Date.now(); e.test = true; Store.set('devcaps', m);
+  }
+  function deviceReport() { var m = mem(), good = [], bad = []; Object.keys(m).forEach(function (k) { var st = traitState(k, m); if (st === 'good') good.push(TRAIT_LABELS[k] || k); else if (st === 'bad') bad.push(TRAIT_LABELS[k] || k); }); return { good: good, bad: bad }; }
+  function forgetDevice() { Store.del('devcaps'); }
 
   /* ---- turning a stream into a playable URL on the streaming server, always behind the sign-in (/s/<token>/...) ---- */
   var streamBase = '';
@@ -231,7 +281,7 @@ var Api = (function () {
     ensure: ensure, reload: function () { loaded = false; return loadAddons(); },
     catalogDefs: catalogDefs, fetchCatalog: fetchCatalog, search: search, getMeta: getMeta,
     getStreams: getStreams, torrentioUrl: torrentioUrl, defaultTorrentio: function () { return DEFAULT_TORRENTIO; },
-    getSubtitles: getSubtitles, fileInfo: fileInfo, caps: caps, assess: assess, getJSON: getJSON, opensubHashUrl: opensubHashUrl, directUrl: directUrl, hlsUrl: hlsUrl, server: server,
+    getSubtitles: getSubtitles, fileInfo: fileInfo, caps: caps, assess: assess, traitsOf: traitsOf, learn: learn, recordTest: recordTest, traitLabel: function (t) { return TRAIT_LABELS[t] || t; }, deviceReport: deviceReport, forgetDevice: forgetDevice, getJSON: getJSON, opensubHashUrl: opensubHashUrl, directUrl: directUrl, hlsUrl: hlsUrl, server: server,
     setStreamBase: function (b) { streamBase = b || ''; },
     addons: function () { return addons; }
   };

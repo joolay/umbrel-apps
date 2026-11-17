@@ -11,9 +11,12 @@ RUN node build.js
 # Stage 2: the server (no npm dependencies at run time)
 FROM node:22-alpine
 LABEL org.opencontainers.image.source="https://github.com/joolay/umbrel-apps"
+RUN apk add --no-cache ffmpeg      # subtitle auto-sync listens to the file's audio
 WORKDIR /app
-COPY server.js pocketbase.js portal-client.js guardians.js guardians-legacy.js activity.js ./
+COPY server.js subsync.js make-clips.js pocketbase.js portal-client.js guardians.js guardians-legacy.js activity.js ./
 COPY --from=build /src/dist ./dist
+# the first-run device check plays these 2-second clips; one that can't be encoded here is just left out of the check
+RUN node make-clips.js /app/devtest || true
 ENV PORT=3900 DATA_DIR=/data UI_DIST=/app/dist NODE_ENV=production
 EXPOSE 3900
 VOLUME /data
