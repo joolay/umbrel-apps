@@ -47,6 +47,7 @@ var Views = (function () {
     var s = Math.max(0, Math.floor(ms / 1000)), h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60;
     return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(x).padStart(2, '0');
   }
+  function avHtml(p) { var l = Profiles.all(), i = 0; for (var k = 0; k < l.length; k++) if (p && l[k].id === p.id) i = k; return Avatars.html(p, i); }
   function initial(name) { return esc(String(name || '?').charAt(0).toUpperCase()); }
 
   /* ---------- view stack ---------- */
@@ -113,7 +114,7 @@ var Views = (function () {
     var pr = Profiles.active(), h = '<div class="top"><div class="brand">Joolz<b>TV</b></div><div class="tabbar glass">';
     TABS.forEach(function (t) { h += '<div class="tab f' + (t[0] === active ? ' on' : '') + '" data-act="page" data-p="' + t[0] + '">' + t[1] + '</div>'; });
     h += '</div>';
-    if (pr) h += '<div class="who glass f" data-act="avatarmenu"><span class="av" style="background:' + esc(pr.color) + '">' + initial(pr.name) + '</span>' + esc(pr.name) + '</div>';
+    if (pr) h += '<div class="who glass f" data-act="avatarmenu"><span class="av" style="position:relative;overflow:hidden;background:' + esc(pr.color) + '">' + avHtml(pr) + '</span>' + esc(pr.name) + '</div>';
     return h + '</div>';
   }
   function card(m, extra) {
@@ -189,22 +190,22 @@ var Views = (function () {
   function wizard() {
     formView('wizard', 'Welcome to JoolzTV', 'Sign in with your JoolzApp account to set up your household. Each person who watches uses their own JoolzApp account; you can add up to ' + Profiles.max() + ' profiles.',
       '<input id="em" class="field f" type="email" placeholder="JoolzApp email" autocomplete="off"><input id="pw" class="field f" type="password" placeholder="Password">' +
-      toggleHtml('keep', 'Stay signed in on this TV (90 days)', true) + '<div class="btn primary f" data-act="wizardgo">Sign in and continue</div>', null);
+      '<div class="btn primary f" data-act="wizardgo">Sign in and continue</div>', null);
   }
   function wizardGo() {
     var em = val('em').toLowerCase(), pw = document.getElementById('pw').value;
     if (!em || !pw) return ferr('Enter your JoolzApp email and password.');
     ferr('Signing in…');
     Backend.addProfile(em, pw, '', null).then(function (r) {
-      Profiles.setAll(r.profiles); finishSignIn(r.profile.id, em, r.token, isOn('keep'));
-      Backend.setToken(r.token); deviceCheck(function () { members(true); });
+      Profiles.setAll(r.profiles); finishSignIn(r.profile.id, em, r.token);
+      Backend.setToken(r.token); deviceCheck(function () { qualityStep(function () { members(true); }); });
     }).catch(function (e) { ferr(e.message); });
   }
   /* a new device for an existing household: sign in with any member's account, the household comes down with it */
   function deviceSignin() {
     formView('devicesignin', 'Sign in to JoolzTV', 'Sign in with your JoolzApp account to use this household on this TV.',
       '<input id="em" class="field f" type="email" placeholder="JoolzApp email" autocomplete="off"><input id="pw" class="field f" type="password" placeholder="Password">' +
-      toggleHtml('keep', 'Stay signed in on this TV (90 days)', true) + '<div class="btn primary f" data-act="devicego">Sign in</div>', null);
+      '<div class="btn primary f" data-act="devicego">Sign in</div>', null);
   }
   function deviceGo() {
     var em = val('em').toLowerCase(), pw = document.getElementById('pw').value;
@@ -214,13 +215,13 @@ var Views = (function () {
       return Backend.household(r.token).then(function (h) {
         var me = h.profiles.filter(function (p) { return p.self; })[0];
         if (!me) throw new Error('That account is not part of this household.');
-        Profiles.setAll(h.profiles); finishSignIn(me.id, em, r.token, isOn('keep')); enter(me.id);
+        Profiles.setAll(h.profiles); finishSignIn(me.id, em, r.token); enter(me.id);
       });
     }).catch(function (e) { ferr(e.message); });
   }
-  function finishSignIn(id, email, token, keep) {
-    Store.setFor(id, 'email', email); Store.setFor(id, 'remember', !!keep);
-    if (keep) Store.setFor(id, 'token', token); else Store.delFor(id, 'token');
+  /* The sign-in is always kept on the device. How long it lasts is the server's call: 90 days since the household was last used. */
+  function finishSignIn(id, email, token) {
+    Store.setFor(id, 'email', email); Store.setFor(id, 'token', token);
     Profiles.setActive(id);
   }
 
@@ -229,7 +230,7 @@ var Views = (function () {
     ++browseToken;
     var ps = Profiles.all(), h = '<div class="splash"><div class="picker"><h1>Who\'s watching?</h1><div class="ptiles">';
     ps.forEach(function (p) {
-      h += '<div class="ptile f" data-act="selprofile" data-id="' + esc(p.id) + '"><div class="pav" style="background:' + esc(p.color) + '">' + initial(p.name) + '</div><div class="pn">' + esc(p.name) + '</div>' +
+      h += '<div class="ptile f" data-act="selprofile" data-id="' + esc(p.id) + '"><div class="pav" style="background:' + esc(p.color) + '">' + avHtml(p) + '</div><div class="pn">' + esc(p.name) + '</div>' +
         (Store.getFor(p.id, 'token', null) ? '<div class="ps">Signed in</div>' : '') + '</div>';
     });
     h += '</div></div></div>';
@@ -252,7 +253,6 @@ var Views = (function () {
     var em = Store.getFor(p.id, 'email', '');
     formView('signin', 'Hi ' + p.name, 'Sign in with your JoolzApp account to continue.',
       '<input id="em" class="field f" type="email" placeholder="JoolzApp email" autocomplete="off" value="' + esc(em) + '"><input id="pw" class="field f" type="password" placeholder="Password">' +
-      toggleHtml('keep', 'Stay signed in on this TV (90 days)', Store.getFor(p.id, 'remember', true) !== false) +
       '<div class="btn primary f" data-act="signingo" data-id="' + esc(p.id) + '">Sign in</div><div class="btn glass f" data-act="forgot">Forgot password</div><div class="btn glass f" data-act="picker">Back</div>',
       function () { picker(); return true; });
     if (msg) ferr(msg);
@@ -266,7 +266,7 @@ var Views = (function () {
       return Backend.household(r.token).then(function (h) {
         var me = h.profiles.filter(function (p) { return p.self; })[0];
         if (!me || me.id !== id) throw new Error('That account belongs to a different profile. Pick that profile instead.');
-        Profiles.setAll(h.profiles); finishSignIn(id, em, r.token, isOn('keep')); enter(id, r.token);
+        Profiles.setAll(h.profiles); finishSignIn(id, em, r.token); enter(id, r.token);
       });
     }).catch(function (e) { ferr(e.message); });
   }
@@ -275,9 +275,12 @@ var Views = (function () {
     Store.setActive(id);
     if (token) Backend.setToken(token); else Backend.setToken(Store.getFor(id, 'token', null) || Backend.token());
     Api.setStreamBase('');
-    Backend.household().then(function (h) { Profiles.setAll(h.profiles); }).catch(function () {});
-    Sync.run(function () { var v = current(); if (v && PAGES.indexOf(v.name) >= 0 && v.name === 'home') page('home'); });
-    page('home');
+    Backend.household().then(function (h) { Profiles.setAll(h.profiles); Api.setPrefs(h.prefs); }).catch(function () {}).then(function () {
+      if (Store.active() !== id) return;
+      Sync.run(function () { var v = current(); if (v && PAGES.indexOf(v.name) >= 0 && v.name === 'home') page('home'); });
+      if (!Api.quality()) return qualityStep(function () { page('home'); });          // a household set up before this question existed
+      page('home');
+    });
   }
   function signedOut() {                       // the server said 401: this profile must sign in again
     var id = Store.active(), p = id && Profiles.get(id);
@@ -285,12 +288,12 @@ var Views = (function () {
     if (p) signin(p, 'Your sign-in expired. Please sign in again.'); else picker();
   }
 
-  /* household management (after the wizard, or from Settings): add members, rename, remove, stay-signed-in per profile */
+  /* household management (after the wizard, or from Settings): add members, rename, remove */
   function members(firstRun) {
     ++browseToken;
     var ps = Profiles.all(), h = '<div class="splash"><div class="picker"><h1>' + (firstRun ? 'Who else watches?' : 'Household') + '</h1><div class="ptiles">';
     ps.forEach(function (p) {
-      h += '<div class="ptile f" data-act="editprofile" data-id="' + esc(p.id) + '"><div class="pav edit" style="background:' + esc(p.color) + '">' + initial(p.name) + '</div><div class="pen">✎</div><div class="pn">' + esc(p.name) + '</div>' +
+      h += '<div class="ptile f" data-act="editprofile" data-id="' + esc(p.id) + '"><div class="pav edit" style="background:' + esc(p.color) + '">' + avHtml(p) + '</div><div class="pen">✎</div><div class="pn">' + esc(p.name) + '</div>' +
         '<div class="ps">' + (Store.getFor(p.id, 'token', null) ? 'Signed in on this TV' : 'Not signed in here') + '</div></div>';
     });
     if (ps.length < Profiles.max()) h += '<div class="ptile f" data-act="addmember"><div class="pav add">+</div><div class="pn">Add member</div></div>';
@@ -299,9 +302,9 @@ var Views = (function () {
     Nav.set(Nav.root().querySelector('.ptile'));
   }
   function addMember() {
-    formView('addmember', 'Add a household member', 'Each profile is one JoolzApp account. Enter that person\'s JoolzApp email and password. Turn on "Stay signed in" so they don\'t have to sign in each time on this TV.',
+    formView('addmember', 'Add a household member', 'Each profile is one JoolzApp account. Enter that person\'s JoolzApp email and password. They stay signed in as long as anyone in the household keeps using JoolzTV.',
       '<input id="em" class="field f" type="email" placeholder="Their JoolzApp email" autocomplete="off"><input id="pw" class="field f" type="password" placeholder="Their password">' +
-      toggleHtml('keep', 'Stay signed in on this TV (90 days)', true) + '<div class="btn primary f" data-act="addmembergo">Add to household</div><div class="btn glass f" data-act="membersback">Cancel</div>',
+      '<div class="btn primary f" data-act="addmembergo">Add to household</div><div class="btn glass f" data-act="membersback">Cancel</div>',
       function () { members(false); return true; });
   }
   function addMemberGo() {
@@ -309,29 +312,42 @@ var Views = (function () {
     if (!em || !pw) return ferr('Enter their JoolzApp email and password.');
     ferr('Adding…');
     Backend.addProfile(em, pw, '', Backend.token()).then(function (r) {
-      Profiles.setAll(r.profiles); Store.setFor(r.profile.id, 'email', em); Store.setFor(r.profile.id, 'remember', isOn('keep'));
-      if (isOn('keep')) Store.setFor(r.profile.id, 'token', r.token); else Store.delFor(r.profile.id, 'token');
+      Profiles.setAll(r.profiles); Store.setFor(r.profile.id, 'email', em);
       toast(r.profile.name + ' added'); members(false);
     }).catch(function (e) { ferr(e.message); });
   }
   function editProfile(id) {
     var p = Profiles.get(id); if (!p) return;
     var h = '<div class="center"><div class="form glass"><h1>' + esc(p.name) + '</h1><div class="sub">' + (p.owner ? 'Household owner' : 'Household member') + '</div><div class="err" id="ferr"></div>' +
+      '<div class="pav" style="width:150px;height:150px;border-radius:75px;margin:0 auto 18px;background:' + esc(p.color) + '">' + avHtml(p) + '</div>' +
       '<input id="nm" class="field f" maxlength="16" placeholder="Name" autocomplete="off" value="' + esc(p.name) + '">' +
-      toggleHtml('keep', 'Stay signed in on this TV', !!Store.getFor(id, 'token', null)) +
+      '<div class="btn glass f" data-act="pickavatar" data-id="' + esc(id) + '">Change picture</div>' +
       '<div class="btn primary f" data-act="saveprofile" data-id="' + esc(id) + '">Save</div>' +
       (Profiles.all().length > 1 ? '<div class="btn glass f" data-act="delprofile" data-id="' + esc(id) + '">Remove from household</div>' : '') +
       '<div class="btn glass f" data-act="membersback">Back</div></div></div>';
     replaceAll('editprofile', '<div class="splash">' + h + '</div>', { onBack: function () { members(false); return true; } });
     Nav.first('.field');
   }
+  /* choose a picture: the person's JoolzApp photo (if the account has one) or one of 24 built-in pictures */
+  function avatarPage(id) {
+    var p = Profiles.get(id); if (!p) return;
+    var cur = p.avatar || (p.photo ? 'photo' : ''), tiles = '';
+    if (p.photo) tiles += '<div class="avc f' + (cur === 'photo' ? ' on' : '') + '" data-act="setavatar" data-id="' + esc(id) + '" data-v="photo"><div class="pav"><img class="pimg" alt="" src="' + p.photo + '"></div>My photo</div>';
+    Avatars.LIST.forEach(function (a) { tiles += '<div class="avc f' + (cur === a[0] ? ' on' : '') + '" data-act="setavatar" data-id="' + esc(id) + '" data-v="' + a[0] + '"><div class="pav">' + Avatars.svg(a) + '</div>' + esc(a[1]) + '</div>'; });
+    replaceAll('avatars', '<div class="splash"><div class="picker"><h1>Choose a picture for ' + esc(p.name) + '</h1><div class="avgrid">' + tiles + '</div><div class="err" id="ferr"></div><div class="btn glass f pbtn2" data-act="editprofile" data-id="' + esc(id) + '">Back</div></div></div>', { onBack: function () { editProfile(id); return true; } });
+    Nav.set(Nav.root().querySelector('.avc.on') || Nav.root().querySelector('.avc'));
+  }
+  function setAvatar(id, v) {
+    Backend.setAvatar(id, v).then(function (r) {
+      Profiles.setAll(Profiles.all().map(function (x) { if (x.id === id) { x.avatar = r.profile.avatar; x.photo = r.profile.photo; x.hasPhoto = r.profile.hasPhoto; } return x; }));
+      toast('Picture changed'); editProfile(id);
+    }).catch(function (e) { ferr(e.message); });
+  }
   function saveProfile(id) {
     var nm = val('nm'); if (!nm) return ferr('Enter a name.');
     Backend.renameProfile(id, nm).then(function (r) {
       Profiles.setAll(Profiles.all().map(function (p) { if (p.id === id) { p.name = r.profile.name; } return p; }));
-      if (!isOn('keep')) Store.delFor(id, 'token');
-      else if (!Store.getFor(id, 'token', null) && id === Store.active() && Backend.token()) Store.setFor(id, 'token', Backend.token());
-      Store.setFor(id, 'remember', isOn('keep')); toast('Saved'); members(false);
+      toast('Saved'); members(false);
     }).catch(function (e) { ferr(e.message); });
   }
   function delProfile(id) {
@@ -491,6 +507,55 @@ var Views = (function () {
     Nav.hydrate();
   }
 
+  /* ---------- preferred quality (first run, or a household set up before the question existed) ---------- */
+  var QUALITY_INFO = [['4K', 'Sharpest picture. Big files: needs a 4K screen and a fast connection.'], ['1080p', 'A great picture on most screens. Recommended.'], ['720p', 'Smaller files: starts quickly and suits a slower connection.']];
+  function savePrefs(patch, cb) {
+    Backend.savePrefs(patch).then(function (r) { Api.setPrefs(r.prefs); if (cb) cb(); }).catch(function (e) { toast(e.message || 'Could not save', 5000); });
+  }
+  function qualityStep(cont) {
+    window._qcont = cont;
+    var body = QUALITY_INFO.map(function (q) { return '<div class="btn glass f qopt" data-act="setquality" data-q="' + q[0] + '"><b>' + q[0] + '</b><small>' + esc(q[1]) + '</small></div>'; }).join('');
+    formView('quality', 'Preferred quality', 'When something starts by itself, JoolzTV plays the file in this quality that has the most seeds. If it is not available for a title, you are told and shown the alternatives. Change it any time in Settings.', body, null);
+    Nav.set(Nav.root().querySelector('[data-q="1080p"]'));
+  }
+
+  /* ---------- Sources: which files are offered (shared by the whole household) ---------- */
+  function srow(act, k, label, value) { return '<div class="srow f" data-act="' + act + '" data-k="' + esc(k) + '">' + esc(label) + (value === undefined ? '' : ': <b>' + esc(value) + '</b>') + '</div>'; }
+  function saveSources(cfg, focus, sub) { savePrefs({ sources: cfg }, function () { sourcesPage(sub, focus); }); }
+  function sourcesPage(sub, focus) {
+    ++browseToken;
+    var c = Api.sourcesCfg(), h = '<div class="art-shade"></div>' + topbar('settings') + '<div class="vs" id="main" data-pad-top="140"><div class="settings">';
+    if (sub === 'sites') {
+      h += '<h1>Search these sites</h1><div class="hint">Leave "All sites" on to search everything (recommended). Choosing sites narrows the search to just those.</div>' +
+        srow('srcallsites', 'all', 'All sites (recommended)', c.providers.length ? 'OFF' : 'ON');
+      Sources.PROVIDERS.forEach(function (p) { h += srow('srcsite', p[0], p[1], c.providers.indexOf(p[0]) >= 0 ? 'ON' : 'OFF'); });
+      h += srow('srcback', 'back', 'Back to Sources');
+    } else {
+      h += '<h1>Sources</h1><div class="hint">These choices are shared by everyone in the household. Camera recordings and screeners are always left out. Each title offers the 3 files with the most seeds in every resolution.</div>' +
+        '<div class="lbl">Automatic playback</div>' + srow('quality', 'quality', 'Preferred quality', Api.quality() || 'Not chosen') +
+        '<div class="lbl">Hide</div>';
+      Sources.HIDE.forEach(function (x) { h += srow('srchide', x[0], x[1] + ' – ' + x[2], c.hide[x[0]] ? 'HIDDEN' : 'SHOWN'); });
+      h += '<div class="lbl">Files</div>' + srow('srcsize', 'size', 'Largest file', c.maxGb ? 'Up to ' + c.maxGb + ' GB' : 'No limit') +
+        srow('srclang', 'lang', 'Preferred audio language', Sources.langName(c.language)) +
+        srow('srcsites', 'sites', 'Sites searched', c.providers.length ? c.providers.length + ' chosen' : 'All sites') +
+        '<div class="lbl">Check it</div>' + srow('srctest', 'test', 'Test these settings with a sample film') + srow('srcreset', 'reset', 'Restore the default filters') +
+        '<div class="lbl">Advanced</div><input id="srcurl" class="field f" data-k="custom" value="' + esc(c.custom) + '" placeholder="Custom source address (leave empty to use the built-in sources)">' +
+        srow('srccustom', 'savecustom', 'Save the custom address') +
+        '<div class="hint">Now: ' + esc(Sources.summary(c)) + '</div>';
+    }
+    h += '</div></div>';
+    replaceAll('sources', h, { cls: 'noart', onBack: function () { if (sub) { sourcesPage(); return true; } page('settings'); return true; } });
+    var f = focus && Nav.root().querySelector('[data-k="' + focus + '"]');
+    Nav.set(f || Nav.root().querySelector('.srow'));
+  }
+  function testSources() {
+    toast('Testing with a sample film …', 20000);
+    Api.ensure().then(function () { return Api.getStreams('movie', 'tt0111161'); }).then(function (r) {
+      var n = 0, parts = []; ['4K', '1080p', '720p', 'Other'].forEach(function (k) { if (r.counts[k]) { n += r.counts[k]; parts.push((k === 'Other' ? 'other' : k) + ' ' + r.counts[k]); } });
+      toast(n ? n + ' files found for the sample film (' + parts.join(', ') + ')' : 'No files found with these settings. Try showing more, or check the connection.', 7000);
+    }).catch(function (e) { toast('Could not check: ' + e.message, 7000); });
+  }
+
   /* ---------- settings ---------- */
   var PLAY_MODES = { auto: 'Automatic: transcode only when the TV cannot play the file', direct: 'Always direct (never transcode)', transcode: 'Always transcode (if video stutters or will not play)' };
   var BUF_MODES = { auto: 'Automatic: waits only as long as the download speed needs', quick: 'Quick start: less waiting, more risk of stutter', safe: 'Safe: waits longer for a smoother start', off: 'Off: start playing as soon as possible' };
@@ -499,16 +564,15 @@ var Views = (function () {
   function setSub(k, v) { var p = subPrefs(); p[k] = v; Store.set('subs', p); }
   function settingsPage() {
     ++browseToken;
-    var pr = Profiles.active(), keep = !!Store.get('token', null), rep = Api.deviceReport();
+    var pr = Profiles.active(), rep = Api.deviceReport();
     var h = '<div class="art-shade"></div>' + topbar('settings') + '<div class="vs" id="main" data-pad-top="140"><div class="settings"><h1>Settings</h1>' +
       '<div class="lbl">Profile – ' + esc(pr ? pr.name : '') + '</div>' +
       '<div class="srow f" data-act="members">Household: add, rename or remove profiles</div>' +
-      '<div class="srow f" data-act="togglekeep">Stay signed in on this TV (90 days): <b>' + (keep ? 'ON' : 'OFF') + '</b></div>' +
       '<div class="srow f" data-act="picker">Switch profile</div>' +
       '<div class="srow f" data-act="signout">Sign out of this profile on this TV</div>' +
-      '<div class="lbl">Sources (Torrentio)</div>' +
-      '<input id="tio" class="field f" value="' + esc(Api.torrentioUrl()) + '" placeholder="https://torrentio.strem.fun/…">' +
-      '<div class="srow f" data-act="savetio">Save Torrentio link</div><div class="srow f" data-act="testtio">Test Torrentio</div><div class="srow f" data-act="resettio">Reset Torrentio link to default</div>' +
+      '<div class="lbl">Sources (the whole household)</div>' +
+      '<div class="srow f" data-act="quality">Preferred quality for automatic playback: <b>' + esc(Api.quality() || 'Not chosen') + '</b></div>' +
+      '<div class="srow f" data-act="sourcespage">Sources and filters: <b>' + esc(Sources.summary(Api.sourcesCfg())) + '</b></div>' +
       '<div class="lbl">Subtitles</div>' +
       '<div class="srow f" data-act="sublang">Show subtitles in: <b>' + esc(Subs.langName(subPrefs().lang)) + '</b> (other languages are hidden)</div>' +
       '<div class="srow f" data-act="sublang2">Second language: <b>' + esc(subPrefs().lang2 ? Subs.langName(subPrefs().lang2) : 'None') + '</b></div>' +
@@ -520,7 +584,7 @@ var Views = (function () {
       '<div class="srow f" data-act="redodc">Run the device check again (tests which formats this device plays)</div>' +
       '<div class="srow f" data-act="forgetdev">Forget what this device can play: <b>' + (rep.good.length + rep.bad.length) + ' formats remembered</b></div>' +
       '<div class="hint">' + (rep.good.length ? 'Plays directly: ' + esc(rep.good.join(', ')) + '. ' : '') + (rep.bad.length ? 'Needs transcoding: ' + esc(rep.bad.join(', ')) + '. ' : '') + (rep.good.length + rep.bad.length ? '' : 'JoolzTV learns what this device can decode as you watch, so the next file of that kind starts the right way straight away.') + '</div>' +
-      '<div class="hint">JoolzTV ' + esc(window.FLIX_VERSION || '') + '. Sources come from Torrentio (top 3 by seeds per resolution), posters from Cinemeta, subtitles from OpenSubtitles. Video plays through your own streaming server behind your JoolzApp sign-in. ' + esc(Sync.status()) + '</div></div></div>';
+      '<div class="hint">JoolzTV ' + esc(window.FLIX_VERSION || '') + '. The top 3 sources by seeds are offered per resolution; posters come from Cinemeta and subtitles from OpenSubtitles. Video plays through your own streaming server behind your JoolzApp sign-in. You stay signed in while anyone in the household uses JoolzTV; after 90 days with no use everyone signs in again. ' + esc(Sync.status()) + '</div></div></div>';
     replaceAll('settings', h, { cls: 'noart', onBack: function () { page('home'); return true; } });
     Nav.first('.tab.on');
   }
@@ -550,14 +614,11 @@ var Views = (function () {
     if (a === 'addmember') return addMember();
     if (a === 'addmembergo') return addMemberGo();
     if (a === 'editprofile') return editProfile(el.getAttribute('data-id'));
+    if (a === 'pickavatar') return avatarPage(el.getAttribute('data-id'));
+    if (a === 'setavatar') return setAvatar(el.getAttribute('data-id'), el.getAttribute('data-v'));
     if (a === 'saveprofile') return saveProfile(el.getAttribute('data-id'));
     if (a === 'delprofile') return delProfile(el.getAttribute('data-id'));
     if (a === 'signout') return doSignOut();
-    if (a === 'togglekeep') {
-      var id = Store.active();
-      if (Store.get('token', null)) { Store.delFor(id, 'token'); Store.setFor(id, 'remember', false); } else { Store.setFor(id, 'token', Backend.token()); Store.setFor(id, 'remember', true); }
-      return settingsPage();
-    }
     if (a === 'togglelib') {
       var dv = current().el._detail; if (!dv) return;
       var yes = !MyList.has(dv.id);
@@ -565,14 +626,19 @@ var Views = (function () {
       var bb = current().el.querySelector('#libbtn'); if (bb) bb.textContent = yes ? '✓  In My List' : '+  My List';
       return toast(yes ? 'Added to My List' : 'Removed from My List');
     }
-    if (a === 'savetio') { var tu = document.getElementById('tio').value.trim().replace(/\/manifest\.json.*$/, '').replace(/\/+$/, ''); if (tu && !/^https?:\/\//.test(tu)) return toast('Link must start with https://'); Store.set('torrentio', tu); return Api.reload().then(function () { toast(tu ? 'Torrentio link saved' : 'Torrentio disabled'); }); }
-    if (a === 'resettio') { Store.del('torrentio'); return Api.reload().then(function () { toast('Torrentio link reset to default'); settingsPage(); }); }
-    if (a === 'testtio') {
-      var tb = document.getElementById('tio').value.trim().replace(/\/manifest\.json.*$/, '').replace(/\/+$/, ''); toast('Testing Torrentio …', 15000);
-      return fetch(tb + '/stream/movie/tt0111161.json').then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
-        .then(function (j) { toast('Torrentio OK: ' + (j.streams || []).length + ' sources found for a test movie', 5000); })
-        .catch(function (e) { toast('Cannot reach Torrentio: ' + e.message, 7000); });
-    }
+    if (a === 'quality') return menu('Preferred quality', QUALITY_INFO.map(function (q) { return { label: q[0] + '  –  ' + q[1], q: q[0], selected: q[0] === Api.quality() }; }), function (o) { savePrefs({ quality: o.q }, function () { if (current() && current().name === 'sources') sourcesPage(null, 'quality'); else settingsPage(); }); });
+    if (a === 'setquality') { var qq = el.getAttribute('data-q'); return savePrefs({ quality: qq }, function () { var cb = window._qcont; window._qcont = null; if (cb) cb(); }); }
+    if (a === 'sourcespage') return sourcesPage();
+    if (a === 'srchide') { var hk = el.getAttribute('data-k'), c1 = Api.sourcesCfg(); c1.hide[hk] = !c1.hide[hk]; return saveSources(c1, hk); }
+    if (a === 'srcsize') { var c2 = Api.sourcesCfg(); return menu('Largest file', Sources.SIZES.map(function (g) { return { label: g ? 'Up to ' + g + ' GB' : 'No limit', g: g, selected: g === c2.maxGb }; }), function (o) { c2.maxGb = o.g; saveSources(c2, 'size'); }); }
+    if (a === 'srclang') { var c3 = Api.sourcesCfg(); return menu('Preferred audio language', Sources.LANGS.map(function (l) { return { label: l[1], code: l[0], selected: l[0] === c3.language }; }), function (o) { c3.language = o.code; saveSources(c3, 'lang'); }); }
+    if (a === 'srcsites') return sourcesPage('sites');
+    if (a === 'srcsite') { var c4 = Api.sourcesCfg(), id4 = el.getAttribute('data-k'), i4 = c4.providers.indexOf(id4); if (i4 >= 0) c4.providers.splice(i4, 1); else c4.providers.push(id4); return saveSources(c4, id4, 'sites'); }
+    if (a === 'srcallsites') { var c5 = Api.sourcesCfg(); c5.providers = []; return saveSources(c5, 'all', 'sites'); }
+    if (a === 'srcback') return sourcesPage();
+    if (a === 'srccustom') { var c6 = Api.sourcesCfg(), cv = val('srcurl'); if (cv && !/^https:\/\//.test(cv)) return toast('The address must start with https://'); c6.custom = cv; return saveSources(c6, 'custom'); }
+    if (a === 'srcreset') { return savePrefs({ sources: Sources.defaults() }, function () { toast('Source filters restored'); sourcesPage(); }); }
+    if (a === 'srctest') return testSources();
     if (a === 'playmode') { var order = ['auto', 'direct', 'transcode']; Store.set('playback', order[(order.indexOf(playMode()) + 1) % 3]); return settingsPage(); }
     if (a === 'skipdc') { DeviceTest.skip(); return window._dcLeave && window._dcLeave(); }
     if (a === 'dcdone') return window._dcLeave && window._dcLeave();

@@ -19,7 +19,7 @@ const upstream = http.createServer((q, r) => {
   r.writeHead(200); r.end("SECRET-" + q.url);
 }).listen(U);
 
-const child = cp.spawn(process.execPath, [path.join(__dirname, "server.js")], { env: Object.assign({}, process.env, { NODE_ENV: "test", JTV_PB: path.join(__dirname, "test", "mock-pb.js"), PORT: P, DATA_DIR: dir, FFMPEG: "/nonexistent/ffmpeg", DEVTEST_DIR: path.join(dir, "devtest"), UI_DIST: path.join(dir, "dist"), STREAM_UPSTREAM: "http://127.0.0.1:" + U }), stdio: "ignore" });
+const child = cp.spawn(process.execPath, [path.join(__dirname, "server.js")], { env: Object.assign({}, process.env, { NODE_ENV: "test", JTV_PB: path.join(__dirname, "test", "mock-pb.js"), PORT: P, DATA_DIR: dir, JTV_CACHE_MS: "0", FFMPEG: "/nonexistent/ffmpeg", DEVTEST_DIR: path.join(dir, "devtest"), UI_DIST: path.join(dir, "dist"), STREAM_UPSTREAM: "http://127.0.0.1:" + U }), stdio: "ignore" });
 function req(method, p, body, headers) {
   return new Promise((res, rej) => {
     const r = http.request({ port: P, method, path: p, headers: Object.assign({ "content-type": "application/json" }, headers || {}) }, x => { const c = []; x.on("data", d => c.push(d)); x.on("end", () => { const t = Buffer.concat(c).toString(); let j = null; try { j = JSON.parse(t); } catch {} res({ code: x.statusCode, text: t, json: j, headers: x.headers }); }); });
@@ -80,6 +80,44 @@ const T = tok => ({ "x-jtv-token": tok });
   r = await req("PATCH", "/api/household/profiles/" + bobId, { name: "Robert" }, T(bob)); ok(r.code === 200 && r.json.profile.name === "Robert", "a member can rename their own profile");
   r = await req("DELETE", "/api/household/profiles/" + bobId, undefined, T(ann)); ok(r.code === 200 && r.json.profiles.length === 11, "owner can remove a profile (removes that account's data)");
   r = await req("GET", "/api/state", undefined, T(bob)); ok(r.code === 403, "removed profile loses access to household data");
+  // profile pictures: the JoolzApp photo (when there is one) or one of 24 built-in pictures
+  r = await req("GET", "/api/household", undefined, T(ann)); const pa = r.json.profiles.filter(p => p.self)[0], pb2 = r.json.profiles.filter(p => !p.self)[0];
+  ok(pa.hasPhoto && /^data:image\/png;base64,/.test(pa.photo), "a profile whose JoolzApp account has a photo gets it (as a small picture)");
+  ok(!pb2.hasPhoto && pb2.photo === "" && /^a\d\d$/.test(pb2.avatar), "a profile without a photo is given a built-in picture (" + pb2.avatar + ")");
+  ok(new Set(r.json.profiles.map(p => p.avatar)).size === r.json.profiles.length, "each profile starts with a different built-in picture");
+  r = await req("PATCH", "/api/household/profiles/" + annId, { avatar: "a17" }, T(ann)); ok(r.code === 200 && r.json.profile.avatar === "a17", "a built-in picture can be chosen");
+  r = await req("PATCH", "/api/household/profiles/" + annId, { avatar: "a25" }, T(ann)); ok(r.code === 400, "only the 24 built-in pictures are accepted");
+  r = await req("PATCH", "/api/household/profiles/" + annId, { avatar: "photo" }, T(ann)); ok(r.code === 200 && r.json.profile.avatar === "photo" && r.json.profile.photo, "the JoolzApp photo can be chosen again");
+  const other = r2 => r2.json.profiles.filter(p => !p.self)[0];
+  r = await req("PATCH", "/api/household/profiles/" + (await req("GET", "/api/household", undefined, T(ann))).json.profiles.filter(p => !p.self)[0].id, { avatar: "photo" }, T(ann)); ok(r.code === 400, "a profile with no JoolzApp photo cannot pick \"photo\"");
+  // sign-in lives while the HOUSEHOLD is used; settings live on the household
+  const hf = path.join(dir, "household.json"), setLast = ms => { const h = JSON.parse(fs.readFileSync(hf, "utf8")); h.lastActive = ms; fs.writeFileSync(hf, JSON.stringify(h)); return h; };
+  ok(/^s\./.test(ann) && !/^tok\./.test(ann), "sign-in is the server's own session token (not a PocketBase one)");
+  r = await req("GET", "/api/household", undefined, T(ann)); ok(r.json.prefs && typeof r.json.prefs === "object", "household settings come with the household");
+  r = await req("PUT", "/api/household/prefs", { quality: "8K" }, T(ann)); ok(r.code === 400, "an unknown preferred quality is refused");
+  r = await req("PUT", "/api/household/prefs", { quality: "1080p", sources: { hide: { dv: true, hdr: 1, junk: true }, maxGb: 8, language: "english", providers: ["yts", "bad name!", "eztv"], custom: "javascript:alert(1)", extra: 1 } }, T(ann));
+  ok(r.code === 200 && r.json.prefs.quality === "1080p" && r.json.prefs.sources.hide.dv === true && r.json.prefs.sources.hide.hdr === false && !("junk" in r.json.prefs.sources.hide) && r.json.prefs.sources.maxGb === 8 && r.json.prefs.sources.providers.join() === "yts,eztv" && r.json.prefs.sources.custom === "" && !("extra" in r.json.prefs.sources), "settings saved and cleaned (only known fields, safe values)");
+  r = await req("GET", "/api/household", undefined, T(ann)); ok(r.json.prefs.quality === "1080p", "another request sees the saved quality");
+  const carol = (await req("POST", "/api/account/login", { email: "p5@x.com", password: "pw5" })).json.token;
+  r = await req("GET", "/api/household", undefined, T(carol)); ok(r.json.prefs.quality === "1080p", "every member sees the same household settings");
+  const vw = (await req("POST", "/api/household/profiles", { email: "view@x.com", password: "pw20" }, T(ann))).json.token;
+  r = await req("PUT", "/api/household/prefs", { quality: "720p" }, T(vw)); ok(r.code === 403 && r.json.code === "view_only", "a view-only account cannot change the household settings");
+  setLast(Date.now() - 100 * 864e5);
+  r = await req("GET", "/api/state", undefined, T(carol)); ok(r.code === 401, "household unused for 100 days: sign-in expired for everyone");
+  r = await req("GET", "/api/state", undefined, T(ann)); ok(r.code === 401, "...including the owner's token");
+  setLast(Date.now() - 80 * 864e5);
+  r = await req("GET", "/api/state", undefined, T(carol)); ok(r.code === 200, "80 days idle is still signed in (carol had not been used for ages herself)");
+  r = await req("GET", "/api/state", undefined, T(ann)); ok(r.code === 200, "any use refreshes the whole household's clock");
+  const lastNow = JSON.parse(fs.readFileSync(hf, "utf8")).lastActive; ok(Date.now() - lastNow < 60e3, "household last-use moved to now (" + Math.round((Date.now() - lastNow) / 1000) + " s ago)");
+  setLast(Date.now() - 95 * 864e5); r = await req("POST", "/api/account/login", { email: "p5@x.com", password: "pw5" }); ok(r.code === 200 && /^s\./.test(r.json.token), "signing in again always works");
+  const again = r.json.token; r = await req("GET", "/api/state", undefined, T(again)); ok(r.code === 200, "...and the new sign-in works straight away (it restarts the household's 90 days)");
+  r = await req("GET", "/api/state", undefined, T(ann)); ok(r.code === 200, "...which also revives everyone else's sign-in");
+  setLast(Date.now());
+  const tampered = ann.slice(0, -2) + (ann.slice(-2) === "aa" ? "bb" : "aa");
+  r = await req("GET", "/api/state", undefined, T(tampered)); ok(r.code === 401, "a tampered session token is refused");
+  r = await req("GET", "/api/state", undefined, T("s.dTE.zzzz." + "a".repeat(27))); ok(r.code === 401, "a forged session token is refused");
+  const legacy = "legacy-ann";
+  r = await req("GET", "/api/state", undefined, T(legacy)); ok(r.code === 200 && /^s\./.test(r.headers["x-jtv-renew"] || ""), "an older PocketBase token still works once and is swapped for a session token");
   // UI build selection
   r = await req("GET", "/", undefined, { "user-agent": "Mozilla/5.0 (Web0S; Linux/SmartTV) AppleWebKit/537.36 Chrome/53.0.2785.34 Safari/537.36 WebAppManager" }); ok(r.text === "COMPAT" && /User-Agent/i.test(r.headers.vary), "LG webOS TV gets the compat build");
   r = await req("GET", "/", undefined, { "user-agent": "Mozilla/5.0 (Macintosh) AppleWebKit/537.36 Chrome/126.0 Safari/537.36" }); ok(r.text === "MODERN", "modern browser gets the modern build");

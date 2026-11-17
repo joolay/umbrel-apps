@@ -30,9 +30,15 @@ var Player = (function () {
       var res = r[0];
       if (!S || S.el !== el) return;
       var list = res.list; S.streams = list; S.groups = res.groups;
-      if (!list.length) { spin(''); say('No sources found on Torrentio for this title.\nTry another title, or check the Torrentio link in Settings.'); return; }
+      if (!list.length) { spin(''); say('No sources found for this title.\nTry another title, or show more files in Settings > Sources.'); return; }
       if (info.pick) { spin(''); return pickSource(); }
-      start(0);
+      if (!res.hasPreferred) {                                   // nothing in the preferred quality: say so, and let the person choose from what exists
+        S.failed = true; S.missing = res.preferred; spin('');
+        say(res.preferred + ' is not available for this title.\nChoose another version to watch (press OK to see them again).');
+        Views.toast(res.preferred + ' is not available for this title. Pick an alternative.', 6000);
+        return pickSource(res.preferred);
+      }
+      start(0);                                                  // the file in the preferred quality with the most seeds
     }).catch(function (e) {
       if (!S || S.el !== el) return;
       if (e && e.status === 401) { close(); Views.pop(); return Views.signedOut(); }
@@ -258,8 +264,9 @@ var Player = (function () {
   function toggle() { if (!S) return; if (S.failed) return pickSource(); if (S.hold) return release('you chose to start'); if (S.v.paused) S.v.play(); else S.v.pause(); }
 
   /* ---- menus ---- */
-  function pickSource() {
+  function pickSource(missing) {
     if (!S) return;
+    missing = typeof missing === 'string' ? missing : '';
     var opts = [];
     (S.groups || []).forEach(function (g) {
       opts.push({ header: g.label === 'Other' ? 'Other resolutions' : g.label });
@@ -268,9 +275,9 @@ var Player = (function () {
         opts.push({ q: '👤 ' + q.seeds, label: name.slice(0, 90), sub: q.size, idx: i, selected: i === S.idx });
       });
     });
-    Views.menu('Choose a source – top 3 by seeds per resolution', opts, function (o) {
+    Views.menu(missing ? missing + ' is not available – choose an alternative' : 'Choose a source – top 3 by seeds per resolution', opts, function (o) {
       S.failed = false; S.tried = {}; S.resumed = false; S.subOn = false; S.subManual = false; S.subOffset = 0; S.subScale = 1; S.info.startMs = S.v.currentTime * 1000 || S.info.startMs; S.why = ''; start(o.idx);
-    }, 'If a source will not play, try a different resolution.');
+    }, missing ? 'Nothing was started. These are the files that exist, most seeds first in each resolution.' : 'If a source will not play, try a different resolution.');
   }
   function pickSpeed() {
     var rates = [0.75, 1, 1.25, 1.5, 1.75];

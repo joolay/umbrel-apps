@@ -1,8 +1,6 @@
 /* Stremio data layer: account, addons, catalogs, meta, streams, subtitles. Stremio is used only as a source. */
 var Api = (function () {
   var CINEMETA = 'https://v3-cinemeta.strem.io';
-  var DEFAULT_TORRENTIO = 'https://torrentio.strem.fun/qualityfilter=scr,cam';
-  var OLD_DEFAULT = 'https://torrentio.strem.fun/qualityfilter=brremux,hdrall,dolbyvision,dolbyvisionwithhdr,4k,scr,cam,unknown|sizefilter=12GB|limit=10';
   var addons = [];           // [{base, manifest, torrentio?}]
   var loaded = false;
 
@@ -16,10 +14,15 @@ var Api = (function () {
     return timeout(fetch(url).then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); }), ms || 15000);
   }
   function baseOf(url) { return url.replace(/\/manifest\.json.*$/, '').replace(/\/+$/, ''); }
-  function torrentioUrl() { var v = Store.get('torrentio', undefined); return v === undefined || v === null || v === OLD_DEFAULT ? DEFAULT_TORRENTIO : v; }
+  /* the household's settings (preferred quality + source filters) live on the server; this keeps a copy for start-up */
+  function prefs() { return Store.get('hhprefs', null) || {}; }
+  function setPrefs(p) { var before = JSON.stringify(sourcesCfg()); Store.set('hhprefs', p || {}); if (JSON.stringify(sourcesCfg()) !== before) loaded = false; }   // changed filters: addons are rebuilt on next use
+  function quality() { var q = prefs().quality; return Sources.QUALITIES.indexOf(q) >= 0 ? q : ''; }
+  function sourcesCfg() { return Sources.normalize(prefs().sources); }
+  function torrentioUrl() { return Sources.url(sourcesCfg()); }
   function builtinAddons() {
     var out = [], t = torrentioUrl();
-    if (t) out.push({ base: baseOf(t), torrentio: true, manifest: { id: 'com.stremio.torrentio.addon', name: 'Torrentio', version: '0', resources: ['stream'], types: ['movie', 'series'], idPrefixes: ['tt'], catalogs: [] } });
+    if (t) out.push({ base: baseOf(t), torrentio: true, manifest: { id: 'jtv.sources', name: 'Sources', version: '0', resources: ['stream'], types: ['movie', 'series'], idPrefixes: ['tt'], catalogs: [] } });
     out.push({ base: 'https://opensubtitles-v3.strem.io', manifest: { id: 'org.stremio.opensubtitlesv3', name: 'OpenSubtitles', version: '0', resources: ['subtitles'], types: ['movie', 'series'], idPrefixes: ['tt'], catalogs: [] } });
     return out;
   }
@@ -131,9 +134,11 @@ var Api = (function () {
     return q === '4K' || q === '1080p' || q === '720p' ? q : 'Other';
   }
   var CATS = ['4K', '1080p', '720p', 'Other'];          // display order
-  var AUTO = ['1080p', '720p', '4K', 'Other'];          // what plays automatically (first with sources, highest seeds)
-  function organise(found) {
-    var seen = {}, by = { '4K': [], '1080p': [], '720p': [], 'Other': [] };
+  /* what plays automatically: the preferred definition first, then the nearest ones */
+  var ORDER = { '4K': ['4K', '1080p', '720p', 'Other'], '1080p': ['1080p', '720p', '4K', 'Other'], '720p': ['720p', '1080p', '4K', 'Other'] };
+  function organise(found, pref) {
+    var seen = {}, by = { '4K': [], '1080p': [], '720p': [], 'Other': [] }, counts = {};
+    pref = ORDER[pref] ? pref : '1080p';
     found.forEach(function (s) {
       if (s._q.score <= -400 || !s.infoHash && !s.url) return;
       if (/\bcam\b|camrip|hdcam|telesync|hdts|telecine/.test(((s.title || '') + (s.name || '')).toLowerCase())) return;
@@ -143,22 +148,23 @@ var Api = (function () {
     });
     var groups = [];
     CATS.forEach(function (c) {
-      by[c].sort(function (a, b) { return (b._q.seeds - a._q.seeds) || (b._q.score - a._q.score); });
+      by[c].sort(function (a, b) { return (b._q.seeds - a._q.seeds) || (b._q.score - a._q.score); });     // most seeds first
+      counts[c] = by[c].length;
       if (by[c].length) groups.push({ label: c, items: by[c].slice(0, 3) });
     });
     var list = [];
-    AUTO.forEach(function (c) { groups.forEach(function (g) { if (g.label === c) list = list.concat(g.items); }); });
-    return { list: list, groups: groups };
+    ORDER[pref].forEach(function (c) { groups.forEach(function (g) { if (g.label === c) list = list.concat(g.items); }); });
+    return { list: list, groups: groups, counts: counts, preferred: pref, hasPreferred: by[pref].length > 0, first: list.length ? list[0]._cat : '' };
   }
   function getStreams(type, videoId, onPartial) {
     var found = [];
     var jobs = addons.filter(function (a) { return a.torrentio && supports(a, 'stream', type, videoId); }).map(function (a) {
       return getJSON(a.base + '/stream/' + type + '/' + encodeURIComponent(videoId) + '.json', 30000).then(function (r) {
-        (r.streams || []).forEach(function (s) { s._q = describe(s); s._addon = 'Torrentio'; found.push(s); });
+        (r.streams || []).forEach(function (s) { s._q = describe(s); s._addon = 'Sources'; found.push(s); });
         if (onPartial) onPartial(found.length);
       }).catch(function () {});
     });
-    return Promise.all(jobs).then(function () { return organise(found); });
+    return Promise.all(jobs).then(function () { return organise(found, quality()); });
   }
   /* ctx: {filename, size, hash} of the file being watched. The subtitle addon uses them to find subtitles for exactly that file. */
   function getSubtitles(type, videoId, ctx) {
@@ -281,7 +287,7 @@ var Api = (function () {
   return {
     ensure: ensure, reload: function () { loaded = false; return loadAddons(); },
     catalogDefs: catalogDefs, fetchCatalog: fetchCatalog, search: search, getMeta: getMeta,
-    getStreams: getStreams, torrentioUrl: torrentioUrl, defaultTorrentio: function () { return DEFAULT_TORRENTIO; },
+    getStreams: getStreams, torrentioUrl: torrentioUrl, prefs: prefs, setPrefs: setPrefs, quality: quality, sourcesCfg: sourcesCfg, organise: organise,
     getSubtitles: getSubtitles, fileInfo: fileInfo, caps: caps, assess: assess, traitsOf: traitsOf, learn: learn, recordTest: recordTest, traitLabel: function (t) { return TRAIT_LABELS[t] || t; }, deviceReport: deviceReport, forgetDevice: forgetDevice, getJSON: getJSON, opensubHashUrl: opensubHashUrl, statsUrl: statsUrl, directUrl: directUrl, hlsUrl: hlsUrl, server: server,
     setStreamBase: function (b) { streamBase = b || ''; },
     addons: function () { return addons; }

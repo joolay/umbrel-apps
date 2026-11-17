@@ -66,17 +66,48 @@ function gateOf(u) {
 const publicUser = u => ({ id: u.id, email: u.email || "", name: u.name || "", isAdmin: !!u.isAdmin });
 async function withGuard(u) { if (u) u.guard = await guardians.statusOf(u).catch(() => ({ minor: guardians.isMinor(u), approved: !guardians.isMinor(u) })); return u; }
 
-/* ---------- sessions: header token, 90-day sign-in renewed on use ---------- */
+/* ---------- sessions: header token; the sign-in lasts while the household was used in the last 90 days ---------- */
 const tokenCache = new Map(), checking = new Map();
+const CACHE_FRESH = test && process.env.JTV_CACHE_MS !== undefined ? +process.env.JTV_CACHE_MS : 15000, CACHE_STALE = CACHE_FRESH ? 600000 : 0;   // a signed-in profile is re-checked at most every 15 s
 const tokenOf = req => String(req.headers["x-jtv-token"] || "").trim();
+/* The server's own sign-in token: s.<user>.<issued>.<mac>. It carries no expiry. How long it lives is decided here, from the last time the HOUSEHOLD was used. */
+const SESSION_MS = 90 * 864e5, TOUCH_MS = 600e3;
+const mintSession = userId => { const body = "s." + b64u(userId) + "." + Date.now().toString(36); return body + "." + mac("sess:" + body); };
+function parseSession(t) {
+  const m = /^s\.([\w-]+)\.([0-9a-z]+)\.([\w-]{27})$/.exec(t); if (!m) return null;
+  const want = Buffer.from(mac("sess:s." + m[1] + "." + m[2])), got = Buffer.from(m[3]);
+  if (want.length !== got.length || !crypto.timingSafeEqual(want, got)) return null;
+  return { userId: Buffer.from(m[1], "base64url").toString(), iat: parseInt(m[2], 36) };
+}
+/* Any signed-in request by any profile counts as use of the household, so one person using the app keeps everybody signed in. */
+function touchHousehold(h, userId, force) {
+  const now = Date.now(), me = profileOf(h, userId); if (!me) return;
+  if (force || now - (h.lastActive || 0) > TOUCH_MS) { h.lastActive = now; writeJson(HH_FILE, h); }
+}
+const householdIdle = (h, userId) => { const me = profileOf(h, userId); return !!me && Date.now() - (h.lastActive || me.created || 0) > SESSION_MS; };
+async function sessionUser(t) {
+  const s = parseSession(t); if (!s) return null;
+  const h = hh(), me = profileOf(h, s.userId);
+  if (me ? householdIdle(h, s.userId) : Date.now() - s.iat > SESSION_MS) return null;       // 90 days without any use
+  let u; try { u = await pb.getUser(s.userId); } catch (e) { if (e instanceof pb.PBError && [400, 401, 403, 404].includes(e.status)) return null; throw e; }
+  if (!u) return null;
+  touchHousehold(h, s.userId); rememberPhoto(h, u);
+  return u;
+}
 function verifyFresh(t, prev) {
   if (checking.has(t)) return checking.get(t);
   const p = (async () => {
     try {
-      const j = await pb.verifyToken(t);
-      await withGuard(j.record);
-      activity.touch(j.record.id);
-      const e = { user: j.record, at: Date.now(), fresh: j.token, renewedAt: prev && prev.renewedAt || 0 };
+      let u, fresh = null;
+      if (t.startsWith("s.")) u = await sessionUser(t);
+      else {                                                  // an older PocketBase token: accept it once, then swap it for a session token
+        const j = await pb.verifyToken(t); u = j.record;
+        const h = hh(); if (u && !householdIdle(h, u.id)) { touchHousehold(h, u.id); fresh = mintSession(u.id); } else u = null;
+      }
+      if (!u) { const n = { user: null, at: Date.now() }; tokenCache.set(t, n); return n; }
+      await withGuard(u);
+      activity.touch(u.id);
+      const e = { user: u, at: Date.now(), fresh, renewedAt: prev && prev.renewedAt || 0 };
       tokenCache.set(t, e); if (tokenCache.size > 300) tokenCache.delete(tokenCache.keys().next().value);
       return e;
     } catch (e) {
@@ -89,8 +120,8 @@ function verifyFresh(t, prev) {
 async function currentUser(req) {
   const t = tokenOf(req); if (!t) return null;
   let c = tokenCache.get(t); const age = c ? Date.now() - c.at : Infinity;
-  if (c && age < 15000) { if (c.user) req._renew = c; return c.user; }
-  if (c && c.user && age < 600000) { verifyFresh(t, c).catch(() => {}); req._renew = c; return c.user; }
+  if (c && age < CACHE_FRESH) { if (c.user) req._renew = c; return c.user; }
+  if (c && c.user && age < CACHE_STALE) { verifyFresh(t, c).catch(() => {}); req._renew = c; return c.user; }
   c = await verifyFresh(t, c); if (c.user) req._renew = c; return c.user;
 }
 /* returns the signed-in user, or answers 401/403/503 itself and returns null */
@@ -108,15 +139,56 @@ const hh = () => { const h = readJson(HH_FILE, { profiles: {} }); if (!h.profile
 const live = h => Object.keys(h.profiles).map(k => h.profiles[k]).filter(p => !p.deleted).sort((a, b) => (a.created || 0) - (b.created || 0));
 const profileOf = (h, userId) => live(h).filter(p => p.userId === userId)[0] || null;
 const COLORS = ["#0a84ff", "#30d158", "#ff9f0a", "#bf5af2", "#ff375f", "#64d2ff", "#ffd60a", "#ac8e68", "#5e5ce6", "#32ade6", "#ff6482", "#63e6be"];
-const pubProfile = (p, selfId) => ({ id: p.id, name: p.name, color: p.color, owner: !!p.owner, self: p.userId === selfId });
+const AV_RE = /^a(0[1-9]|1\d|2[0-4])$/;                                    // the 24 built-in pictures (a01..a24, drawn in the app)
+const nextAvatar = list => { const used = list.map(x => x.avatar); for (let i = 1; i <= 24; i++) { const id = "a" + String(i).padStart(2, "0"); if (!used.includes(id)) return id; } return "a" + String(1 + list.length % 24).padStart(2, "0"); };
+const pubProfile = (p, selfId) => ({ id: p.id, name: p.name, color: p.color, owner: !!p.owner, self: p.userId === selfId, avatar: p.avatar || "", hasPhoto: !!p.photo });
+/* the photo on the person's JoolzApp account, as a small picture the app can show before anyone has signed in on a device */
+const photoCache = new Map();
+const photoFile = u => { const f = String(u && (u.avatar || u.photo) || ""); return /^[\w.\-]{1,200}$/.test(f) ? f : ""; };
+async function photoOf(userId, file) {
+  if (!file || !pb.superFetch || !pb.collection) return "";
+  const key = userId + "/" + file; if (photoCache.has(key)) return photoCache.get(key);
+  let out = "";
+  try {
+    const r = await pb.superFetch("/api/files/" + encodeURIComponent(pb.collection) + "/" + encodeURIComponent(userId) + "/" + encodeURIComponent(file) + "?thumb=160x160", {}, 15000);
+    const type = String(r.headers.get("content-type") || "").split(";")[0];
+    if (r.ok && /^image\/(png|jpe?g|webp|gif)$/.test(type)) { const b = Buffer.from(await r.arrayBuffer()); if (b.length <= 400e3) out = "data:" + type + ";base64," + b.toString("base64"); }
+  } catch {}
+  if (photoCache.size > 100) photoCache.clear(); photoCache.set(key, out); return out;
+}
+function rememberPhoto(h, u) {                  // keeps note of which profiles have a JoolzApp photo (checked whenever that person signs in or is seen)
+  const me = profileOf(h, u.id), f = photoFile(u); if (!me || (me.photo || "") === f) return;
+  me.photo = f; writeJson(HH_FILE, h);
+}
+const withPhotos = async (list, selfId) => Promise.all(list.map(async x => Object.assign(pubProfile(x, selfId), { photo: x.photo ? await photoOf(x.userId, x.photo) : "" })));
 
+const QUALITIES = ["4K", "1080p", "720p"];
+const bool = v => v === true;
+function cleanSources(x) {                       // the household's source filters; only known fields, short values
+  x = x && typeof x === "object" ? x : {}; const hide = x.hide && typeof x.hide === "object" ? x.hide : {};
+  const providers = Array.isArray(x.providers) ? x.providers.filter(n => typeof n === "string" && /^[a-z0-9]{2,24}$/.test(n)).slice(0, 40) : [];
+  const custom = typeof x.custom === "string" && /^https:\/\/[^\s"'<>]{4,300}$/.test(x.custom.trim()) ? x.custom.trim().replace(/\/manifest\.json.*$/, "").replace(/\/+$/, "") : "";
+  return { hide: { dv: bool(hide.dv), hdr: bool(hide.hdr), remux: bool(hide.remux), threed: bool(hide.threed), unknown: bool(hide.unknown) },
+    maxGb: [0, 4, 8, 15, 30].includes(x.maxGb) ? x.maxGb : 0, language: typeof x.language === "string" && /^[a-z]{0,20}$/.test(x.language) ? x.language : "", providers, custom };
+}
 async function householdRoutes(req, res, p) {
   const h = hh(), list = live(h);
   if (p === "/api/household" && req.method === "GET") {
     if (!list.length) return send(res, 200, { empty: true, max: MAX_PROFILES, profiles: [] });
     const u = await requireUser(req, res); if (!u) return;
     if (!profileOf(h, u.id) && !u.isAdmin) return send(res, 403, { code: "not_in_household", message: "This account isn't part of this household. Ask a household member to add you." });
-    return send(res, 200, { empty: false, max: MAX_PROFILES, profiles: list.map(x => pubProfile(x, u.id)) });
+    rememberPhoto(h, u);
+    return send(res, 200, { empty: false, max: MAX_PROFILES, profiles: await withPhotos(live(h), u.id), prefs: h.prefs || {} });
+  }
+  if (p === "/api/household/prefs" && req.method === "PUT") {
+    const u = await requireUser(req, res); if (!u) return;
+    if (!profileOf(h, u.id) && !u.isAdmin) return send(res, 403, { code: "not_in_household", message: "Only household members can change this." });
+    if (u.portal && u.portal.readonly && !u.isAdmin) return send(res, 403, { code: "view_only", message: "Your account is view-only, so it cannot change the household's settings." });
+    const body = await jsonBody(req), cur = h.prefs || {}, next = Object.assign({}, cur);
+    if (body.quality !== undefined) { if (!QUALITIES.includes(body.quality)) return send(res, 400, { code: "bad_request", message: "Pick 4K, 1080p or 720p." }); next.quality = body.quality; }
+    if (body.sources !== undefined) next.sources = cleanSources(body.sources);
+    next.ts = Date.now(); h.prefs = next; writeJson(HH_FILE, h);
+    return send(res, 200, { prefs: next });
   }
   if (p === "/api/household/profiles" && req.method === "POST") {
     if (throttled(req, "addprofile", 20, 600e3)) return send(res, 429, { code: "slow_down", message: "Too many attempts. Try again in a few minutes." });
@@ -134,9 +206,10 @@ async function householdRoutes(req, res, p) {
     const now = Date.now(), id = crypto.randomBytes(5).toString("hex");
     const name = String(body.name || j.record.name || email.split("@")[0]).trim().slice(0, 16) || "Profile";
     const used = list.map(x => x.color), color = /^#[0-9a-f]{6}$/i.test(body.color || "") ? body.color : (COLORS.filter(c => used.indexOf(c) < 0)[0] || COLORS[list.length % COLORS.length]);
-    h.profiles[id] = { id, userId: j.record.id, name, color, owner: !list.length, created: now, ts: now };
+    h.profiles[id] = { id, userId: j.record.id, name, color, owner: !list.length, created: now, ts: now, avatar: nextAvatar(list), photo: photoFile(j.record) };
     writeJson(HH_FILE, h);
-    return send(res, 201, { profile: pubProfile(h.profiles[id], j.record.id), token: j.token, user: publicUser(j.record), profiles: live(h).map(x => pubProfile(x, j.record.id)) });
+    touchHousehold(h, j.record.id);
+    return send(res, 201, { profile: pubProfile(h.profiles[id], j.record.id), token: mintSession(j.record.id), user: publicUser(j.record), profiles: await withPhotos(live(h), j.record.id) });
   }
   const m = /^\/api\/household\/profiles\/([a-f0-9]{4,20})$/.exec(p);
   if (m && (req.method === "PATCH" || req.method === "DELETE")) {
@@ -148,14 +221,18 @@ async function householdRoutes(req, res, p) {
       const body = await jsonBody(req);
       if (typeof body.name === "string" && body.name.trim()) target.name = body.name.trim().slice(0, 16);
       if (/^#[0-9a-f]{6}$/i.test(body.color || "")) target.color = body.color;
+      if (body.avatar !== undefined) {
+        if (body.avatar === "photo" ? !target.photo : !(body.avatar === "" || AV_RE.test(body.avatar))) return send(res, 400, { code: "bad_request", message: body.avatar === "photo" ? "That account has no JoolzApp photo." : "Pick one of the built-in pictures." });
+        target.avatar = body.avatar;
+      }
       target.ts = Date.now(); writeJson(HH_FILE, h);
-      return send(res, 200, { profile: pubProfile(target, u.id) });
+      return send(res, 200, { profile: Object.assign(pubProfile(target, u.id), { photo: target.photo ? await photoOf(target.userId, target.photo) : "" }) });
     }
     target.deleted = true; target.ts = Date.now();
     const rest = live(h); if (target.owner && rest.length) { rest[0].owner = true; } target.owner = false;
     writeJson(HH_FILE, h);
     try { fs.unlinkSync(path.join(USERS_DIR, target.userId.replace(/[^a-zA-Z0-9_-]/g, "") + ".json")); } catch {}
-    return send(res, 200, { ok: true, profiles: rest.map(x => pubProfile(x, u.id)) });
+    return send(res, 200, { ok: true, profiles: await withPhotos(rest, u.id) });
   }
   return send(res, 404, { code: "not_found" });
 }
@@ -306,7 +383,8 @@ async function accountRoutes(req, res, p) {
         const j = await pb.login(String(body.email || "").trim().toLowerCase(), String(body.password || ""));
         await withGuard(j.record);
         const g = gateOf(j.record); if (!g.ok) return send(res, 403, { code: g.reason, message: g.message });
-        return send(res, 200, { token: j.token, user: publicUser(j.record) });
+        touchHousehold(hh(), j.record.id, true);                 // signing in with a password is use: it restarts the household's 90 days
+        return send(res, 200, { token: mintSession(j.record.id), user: publicUser(j.record) });
       } catch (e) { if (e instanceof pb.PBError && e.status === 400) return send(res, 400, { code: "bad_login", message: "That email and password don't match." }); throw e; }
     }
     if (p === "/api/account/forgot" && req.method === "POST") {

@@ -9,12 +9,15 @@ browser / LG TV launcher ──>  web (server.js, port 3900; host 3901 = public 
                                 │  JoolzApp (PocketBase) sign-in, household, per-profile data                      ▲
                                 └──────────────  /s/<stream token>/…  (video, only for signed-in profiles)  ───────┘
 ```
-- **One JoolzApp account per profile, up to 12 profiles per household.** First run (empty household): a wizard signs in with a JoolzApp account (becomes the owner),
-  then offers to add the other members (their email + password, optional "stay signed in on this TV"). Later: "Who's watching?" picker, then sign-in unless that
-  profile stays signed in on the device. Tokens are renewed every time they are used, so a sign-in lasts 90 days since you last used the app (PocketBase's token lifetime
-  for `users` is set to 90 days by Portal Admin > Changes, as for the other apps).
-- **Access rules** are the shared JoolzApp ones (`gateOf` in `server.js`: admin approval via `portal.access`, app disabled/maintenance, guardian approval for minors).
-- **Data**: `<data>/household.json` (profiles) and `<data>/users/<accountId>.json` (My List + watch progress, newest entry wins). Removing a profile deletes that account's file.
+- **One JoolzApp account per profile, up to 12 profiles per household.** First run (empty household): a wizard signs in with a JoolzApp account (becomes the owner), asks the preferred quality (4K / 1080p / 720p), then offers to add the other members (their email + password).
+  Later: "Who's watching?" picker, then straight in.
+- **Staying signed in is the server's decision, not a switch.** Sign-in gives a server-issued session token (`s.<user>.<issued>.<mac>`) that the device always keeps. It stays valid while the HOUSEHOLD was used in the last 90 days
+  (`household.json` `lastActive`, moved forward by any signed-in request of any profile, at most every 10 minutes). One person using the app therefore keeps everybody signed in; after 90 days with no use by anyone, every profile asks for the password again,
+  and signing in with a password restarts the 90 days. Each check re-reads the account from PocketBase, so a removed or disabled account stops working at once. Older PocketBase tokens are accepted once and swapped for a session token (`x-jtv-renew`).
+- **Profile pictures**: the photo on the JoolzApp account (the users `avatar` file field, sent to the app as a small 160 px picture) or one of 24 built-in pictures drawn in the app (`ui/js/avatars.js`). Each new profile gets an unused built-in picture; the person can switch in Household > profile > Change picture.
+- **Household settings** live on the server (`household.json` `prefs`, `GET /api/household`, `PUT /api/household/prefs`; view-only accounts are refused): the preferred quality and the source filters.
+- **Sources** (the source's name is never shown): Settings > Sources and filters hides Dolby Vision / HDR / BluRay remux / 3D / unknown quality, limits file size, prefers an audio language, chooses which sites are searched, and has a test button and an advanced custom address. Camera recordings and screeners are always left out.
+  `ui/js/sources.js` turns the choices into the address; the 3 files with the most seeds are offered in each resolution. Automatic playback takes the file with the most seeds in the preferred quality; if there is none, a notice appears and the alternatives are listed (nothing starts by itself). `test-sources.js` covers it.
 - **Streaming**: `POST /api/stream-token` gives a signed 12-hour token; video is `/s/<token>/<infoHash>/<file>` or `/hlsv2/...` proxied to the streaming server (only those paths, ranges supported, HLS playlists rewritten). The streaming server has no port published.
 - **Open on purpose**: `/healthz` (the TV launcher uses it), `/config.js`, the static UI, sign-in and password-reset requests. Everything else needs a household member's token (`x-jtv-token`).
 
