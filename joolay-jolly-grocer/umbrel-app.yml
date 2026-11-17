@@ -2,7 +2,7 @@ manifestVersion: 1
 id: joolay-jolly-grocer
 category: files
 name: Jolly Grocer
-version: "1.0.10"
+version: "1.0.11"
 tagline: Your grocery shopping companion
 description: >-
   Jolly Grocer sorts your shopping list by shop and category, remembers short shop codes, and checks each shop out with a
@@ -19,7 +19,7 @@ gallery: []
 path: ""
 defaultUsername: ""
 defaultPassword: ""
-releaseNotes: "Back to Dashboard now opens the JoolzApp Portal app."
+releaseNotes: "The home button now finds the JoolzApp Portal on your public address as well as at home."
 submitter: joolay
 submission: https://github.com/joolay/umbrel-apps
 icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-jolly-grocer/icon.svg
