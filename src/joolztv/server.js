@@ -530,33 +530,78 @@ const DL_FILE = path.join(DATA_DIR, "downloads.json");
 let dl = readJson(DL_FILE, { jobs: {} }); if (!dl.jobs) dl.jobs = {};
 const dlActive = new Map(); let dlSaveT = null;
 const dlSave = (now) => { clearTimeout(dlSaveT); const w = () => { try { writeJson(DL_FILE, dl); } catch {} }; if (now) w(); else dlSaveT = setTimeout(w, 3000); };
-Object.values(dl.jobs).forEach(j => { if (j.status === "downloading" || j.status === "queued") { j.status = "queued"; j.bytes = 0; } });
-const DL_ACTIVE_MAX = 2, DL_PER_USER = 3, DL_STORED = 40;
-const dlPub = j => ({ id: j.id, imdb: j.imdb, type: j.type, videoId: j.videoId, name: j.name, sub: j.sub, poster: j.poster, infoHash: j.infoHash, fileIdx: j.fileIdx, status: j.status, bytes: j.bytes || 0, size: j.size || 0, speed: j.speed || 0, error: j.error || "", created: j.created, done: j.done || 0, notified: !!j.notified });
+Object.values(dl.jobs).forEach(j => { if (j.status === "downloading" || j.status === "queued" || j.status === "paused") { j.status = "queued"; j.offset = j.offset || 0; } });
+const DL_ACTIVE_MAX = 2, DL_PER_USER = 3, DL_STORED = 40, DL_LIVE = ["queued", "downloading", "paused"];
+const dlPub = j => ({ id: j.id, imdb: j.imdb, type: j.type, videoId: j.videoId, name: j.name, sub: j.sub, poster: j.poster, infoHash: j.infoHash, fileIdx: j.fileIdx, status: j.status, bytes: j.offset || j.bytes || 0, size: j.size || 0, speed: j.speed || 0, error: j.error || "", created: j.created, done: j.done || 0, notified: !!j.notified });
+/* Playback comes first. Every open player reports how much it has buffered ahead; while any of them is running short (under 15 s, or waiting) all downloads
+   pause, and they carry on (from where they stopped) once every player is comfortable again (40 s or more) or has stopped. */
+const playing = new Map();                                    // user id -> {at, ahead, hold, hash, idx}
+function dlShouldYield(j) {
+  const now = Date.now(); let starving = false, comfy = true;
+  for (const [uid, pl] of playing) {
+    if (now - pl.at > 20000) { playing.delete(uid); continue; }
+    if (pl.hold || pl.ahead < 15) starving = true;
+    // comfortable: 40 s ahead, or as full as that player lets its buffer get (25 s or more, not growing for 15 s): some TVs never buffer 40 s
+    if (pl.hold || !(pl.ahead >= 40 || (pl.ahead >= 25 && pl.ahead >= pl.max - 3 && now - pl.grewAt > 15000))) comfy = false;
+  }
+  return j.status === "paused" ? !comfy : starving;
+}
 function dlPump() {
   while (dlActive.size < DL_ACTIVE_MAX) { const j = Object.values(dl.jobs).filter(x => x.status === "queued").sort((a, b) => a.created - b.created)[0]; if (!j) break; dlRun(j); }
 }
 async function dlRun(j) {
-  const ac = new AbortController(); dlActive.set(j.id, ac); j.status = "downloading"; j.bytes = 0; j.error = ""; j.startedAt = Date.now(); dlSave(true);
-  let last = Date.now(), tick = Date.now(), tickBytes = 0, saved = 0;
+  dlActive.set(j.id, true); j.error = ""; j.startedAt = j.startedAt || Date.now(); j.offset = j.offset || 0; dlSave(true);
+  try {
+    for (;;) {
+      if (j.cancelled) { j.status = "cancelled"; return; }
+      if (dlShouldYield(j)) { j.status = "paused"; j.speed = 0; dlSave(); await new Promise(r => setTimeout(r, 2000)); continue; }      // playback needs the bandwidth: wait
+      j.status = "downloading"; dlSave(true);
+      const r = await dlSegment(j);
+      if (r === "yield") continue;
+      return;
+    }
+  } finally { j.speed = 0; dlActive.delete(j.id); if (j.status === "cancelled") delete dl.jobs[j.id]; dlSave(true); dlPump(); }
+}
+/* reads from j.offset to the end (or until playback needs the bandwidth) */
+async function dlSegment(j) {
+  const ac = new AbortController(); dlActive.set(j.id, ac);
+  let last = Date.now(), tick = Date.now(), tickBytes = j.offset, saved = 0, yielded = false;
   const stall = setInterval(() => { if (Date.now() - last > 180000) { j.error = "stalled"; ac.abort(); } }, 10000);
   try {
-    const r = await fetch(UPSTREAM.origin + "/" + j.infoHash + "/" + j.fileIdx, { signal: ac.signal });
+    const r = await fetch(UPSTREAM.origin + "/" + j.infoHash + "/" + j.fileIdx, { headers: j.offset > 0 ? { range: "bytes=" + j.offset + "-" } : {}, signal: ac.signal });
     if (!r.ok) throw Object.assign(new Error("The streaming server answered " + r.status), { code: "upstream" });
-    j.size = Number(r.headers.get("content-length")) || j.size || 0;
+    if (j.offset > 0 && r.status === 200) j.offset = 0;                       // it ignored the range: start again from the beginning
+    const cr = /\/(\d+)$/.exec(r.headers.get("content-range") || ""); j.size = cr ? +cr[1] : (j.offset === 0 ? Number(r.headers.get("content-length")) || j.size || 0 : j.size || 0);
     for await (const c of r.body) {
-      j.bytes += c.length; last = Date.now();
-      if (last - tick >= 2000) { j.speed = Math.round((j.bytes - tickBytes) / ((last - tick) / 1000)); tick = last; tickBytes = j.bytes; }
+      j.offset += c.length; j.bytes = j.offset; last = Date.now();
+      if (last - tick >= 2000) { j.speed = Math.round((j.offset - tickBytes) / ((last - tick) / 1000)); tick = last; tickBytes = j.offset; }
       if (last - saved > 5000) { saved = last; dlSave(); }
+      if (j.cancelled) { ac.abort(); break; }
+      if (dlShouldYield(j)) { yielded = true; ac.abort(); break; }
     }
-    if (j.size && j.bytes < j.size * 0.98) { j.status = "failed"; j.error = "ended early"; } else { j.status = "ready"; j.done = Date.now(); j.size = j.size || j.bytes; }
+    if (yielded) return "yield";
+    if (j.cancelled) { j.status = "cancelled"; return "done"; }
+    if (j.size && j.offset < j.size * 0.98) { j.status = "failed"; j.error = "ended early"; } else { j.status = "ready"; j.done = Date.now(); j.size = j.size || j.offset; }
+    return "done";
   } catch (e) {
-    if (j.cancelled) j.status = "cancelled"; else { j.status = "failed"; j.error = j.error || (ac.signal.aborted ? "stalled" : String(e.message || "failed").slice(0, 120)); }
-  } finally { clearInterval(stall); j.speed = 0; dlActive.delete(j.id); if (j.status === "cancelled") delete dl.jobs[j.id]; dlSave(true); dlPump(); }
+    if (yielded) return "yield";
+    if (j.cancelled) { j.status = "cancelled"; return "done"; }
+    j.status = "failed"; j.error = j.error || (ac.signal.aborted ? "stalled" : String(e.message || "failed").slice(0, 120)); return "done";
+  } finally { clearInterval(stall); dlActive.set(j.id, true); }
 }
 if (!test || process.env.JTV_DL_RESUME) setTimeout(dlPump, 4000);
 async function downloadsRoutes(req, res, p, u) {
   const mine = () => Object.values(dl.jobs).filter(j => j.userId === u.id);
+  if (p === "/api/downloads/playing" && req.method === "POST") {                 // a player reports its buffer, so downloads can step aside when it is running short
+    const b = await jsonBody(req), f = fileOf(b);
+    if (b.stopped) playing.delete(u.id);
+    else if (f && isFinite(+b.ahead)) {
+      const prev = playing.get(u.id), now = Date.now(), ahead = Math.max(0, +b.ahead), hash = f.key.split(":")[0], idx = f.key.split(":")[1], same = prev && prev.hash === hash && prev.idx === idx;
+      playing.set(u.id, { at: now, ahead, hold: !!b.hold, hash, idx, max: same ? Math.max(prev.max, ahead) : ahead, grewAt: !same || ahead > prev.max + 1 ? now : prev.grewAt });
+    }
+    const same = f && Object.values(dl.jobs).filter(j => j.userId === u.id && DL_LIVE.concat(["ready"]).includes(j.status) && j.infoHash === f.key.split(":")[0] && String(j.fileIdx) === f.key.split(":")[1])[0];
+    return send(res, 200, { ok: true, job: same ? dlPub(same) : null });
+  }
   if (p === "/api/downloads" && req.method === "GET") return send(res, 200, { jobs: mine().sort((a, b) => b.created - a.created).map(dlPub) });
   if (p === "/api/downloads" && req.method === "POST") {
     const body = await jsonBody(req), f = fileOf(body), imdb = String(body.imdb || "");
@@ -565,8 +610,8 @@ async function downloadsRoutes(req, res, p, u) {
     if (!dec.ok) return send(res, 403, { code: dec.reason || "not_allowed", message: dec.message });
     const same = mine().filter(j => j.infoHash === f.key.split(":")[0] && String(j.fileIdx) === f.key.split(":")[1] && j.status !== "failed" && j.status !== "cancelled")[0];
     if (same) return send(res, 200, { job: dlPub(same), existing: true });
-    if (mine().filter(j => j.status === "queued" || j.status === "downloading").length >= DL_PER_USER) return send(res, 429, { code: "too_many", message: "You can download " + DL_PER_USER + " things ahead at a time. Wait for one to finish or cancel one." });
-    const old = mine().filter(j => j.status !== "queued" && j.status !== "downloading").sort((a, b) => a.created - b.created); while (mine().length >= DL_STORED && old.length) delete dl.jobs[old.shift().id];
+    if (mine().filter(j => DL_LIVE.includes(j.status)).length >= DL_PER_USER) return send(res, 429, { code: "too_many", message: "You can download " + DL_PER_USER + " things ahead at a time. Wait for one to finish or cancel one." });
+    const old = mine().filter(j => !DL_LIVE.includes(j.status)).sort((a, b) => a.created - b.created); while (mine().length >= DL_STORED && old.length) delete dl.jobs[old.shift().id];
     const id = crypto.randomBytes(6).toString("hex"), [hash, idx] = f.key.split(":");
     dl.jobs[id] = { id, userId: u.id, imdb, type: body.type === "series" ? "series" : "movie", videoId: String(body.videoId || imdb).slice(0, 40), name: String(body.name || "").slice(0, 120), sub: String(body.sub || "").slice(0, 40), poster: /^https?:\/\/[^\s"'<>]{4,300}$/.test(body.poster || "") ? body.poster : "", infoHash: hash, fileIdx: +idx, status: "queued", bytes: 0, size: 0, created: Date.now() };
     dlSave(true); dlPump(); return send(res, 201, { job: dlPub(dl.jobs[id]) });
@@ -575,7 +620,7 @@ async function downloadsRoutes(req, res, p, u) {
   if (m) {
     if (!j || j.userId !== u.id) return send(res, 404, { code: "not_found", message: "No such download." });
     if (m[2] && req.method === "POST") { j.notified = true; dlSave(); return send(res, 200, { ok: true }); }
-    if (req.method === "DELETE") { if (dlActive.has(j.id)) { j.cancelled = true; dlActive.get(j.id).abort(); } else delete dl.jobs[j.id]; dlSave(true); return send(res, 200, { ok: true }); }
+    if (req.method === "DELETE") { if (dlActive.has(j.id)) { j.cancelled = true; const c = dlActive.get(j.id); if (c && c.abort) c.abort(); } else delete dl.jobs[j.id]; dlSave(true); return send(res, 200, { ok: true }); }
   }
   return send(res, 404, { code: "not_found" });
 }

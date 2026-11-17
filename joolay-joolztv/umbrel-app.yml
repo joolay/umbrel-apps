@@ -2,7 +2,7 @@ manifestVersion: 1
 id: joolay-joolztv
 category: media
 name: JoolzTV
-version: "1.7.0"
+version: "1.8.0"
 tagline: A glassy, Apple TV style front end for your streaming server, behind your JoolzApp account
 description: >-
   JoolzTV gives your TV, phone and computer a clean, glassy Apple TV style interface. It includes its own Stremio streaming server and replaces the old Stremio app.
@@ -26,6 +26,6 @@ icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-joolztv/i
 path: ""
 defaultUsername: ""
 defaultPassword: ""
-releaseNotes: "The streaming cache is set to 50 GB (checked by reading it back; an admin can change it in Settings), and any title can be downloaded ahead of time with a Download ahead button: it fetches in the background and tells you in the app when it is ready (Ready to watch row, Settings > Downloads). Also: optional big-key keyboard, collections in My List, Also on Netflix, parental controls, Collections tab, TMDB, glass player controls, seek previews, voice search, skip intro / credits."
+releaseNotes: "You can watch a title while it is downloading ahead (downloads step aside whenever a player runs short and carry on afterwards), the first minute of the next episode is read ahead near the end of a fully downloaded episode, and Settings has tabs. Also: 50 GB cache, Download ahead, big-key keyboard, collections in My List, Also on Netflix, parental controls, TMDB, glass player controls, seek previews, voice search, skip intro / credits."
 submitter: joolay
 submission: https://github.com/joolay/umbrel-apps

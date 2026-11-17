@@ -616,7 +616,7 @@ var Views = (function () {
   function dlButton(el) {
     var b = el && el.querySelector('#dlbtn'), D = el && el._detail; if (!b || !D) return;
     var j = Dl.forVideo(D.play.videoId || D.id);
-    b.textContent = !j ? 'Download ahead' : j.status === 'ready' ? '\u2713  Downloaded' : j.status === 'failed' ? 'Download failed, try again' : 'Downloading ' + Dl.pct(j) + '%';
+    b.textContent = !j ? 'Download ahead' : j.status === 'ready' ? '\u2713  Downloaded' : j.status === 'failed' ? 'Download failed, try again' : j.status === 'paused' ? 'Paused while you watch' : 'Downloading ' + Dl.pct(j) + '%';
   }
   Dl.onChange(function () { var v = current(); if (v && v.name === 'detail') dlButton(v.el); });
   function dlAhead(el) {
@@ -945,36 +945,43 @@ var Views = (function () {
       row._cache = c;
     }).catch(function () { var row = document.getElementById('cacherow'); if (row) row.innerHTML = 'Streaming cache: <b>could not be read</b>'; });
   }
-  function settingsPage() {
+  var settingsTab = 'profile';
+  function settingsPage(tab) {
+    tab = typeof tab === 'string' ? tab : settingsTab; settingsTab = tab;
     ++browseToken;
     var pr = Profiles.active(), rep = Api.deviceReport();
-    var h = '<div class="art-shade"></div>' + topbar('settings') + '<div class="vs" id="main" data-pad-top="140"><div class="settings"><h1>Settings</h1>' +
-      '<div class="lbl">Profile – ' + esc(pr ? pr.name : '') + '</div>' +
+    var rowsBy = {
+      profile: '<div class="lbl">Profile – ' + esc(pr ? pr.name : '') + '</div>' +
       '<div class="srow f" data-act="members">Household: add, rename or remove profiles</div>' +
       '<div class="srow f" data-act="picker">Switch profile</div>' +
-      '<div class="srow f" data-act="signout">Sign out of this profile on this TV</div>' +
-      '<div class="lbl">Sources (the whole household)</div>' +
+      '<div class="srow f" data-act="signout">Sign out of this profile on this TV</div>',
+      sources: '<div class="lbl">Sources (the whole household)</div>' +
       '<div class="srow f" data-act="quality">Preferred quality for automatic playback: <b>' + esc(Api.quality() || 'Not chosen') + '</b></div>' +
       '<div class="srow f" data-act="sourcespage">Sources and filters: <b>' + esc(Sources.summary(Api.sourcesCfg())) + '</b></div>' +
-      tmdbSettingsRows() +
-      '<div class="lbl">Subtitles</div>' +
+      tmdbSettingsRows(),
+      subtitles: '<div class="lbl">Subtitles</div>' +
       '<div class="srow f" data-act="sublang">Show subtitles in: <b>' + esc(Subs.langName(subPrefs().lang)) + '</b> (other languages are hidden)</div>' +
       '<div class="srow f" data-act="sublang2">Second language: <b>' + esc(subPrefs().lang2 ? Subs.langName(subPrefs().lang2) : 'None') + '</b></div>' +
       '<div class="srow f" data-act="subauto">Turn on the best matching subtitles automatically: <b>' + (subPrefs().auto ? 'ON' : 'OFF') + '</b></div>' +
-      '<div class="srow f" data-act="subautosync">Auto-sync subtitles when they are turned on (uses your server\'s processor): <b>' + (subPrefs().autosync ? 'ON' : 'OFF') + '</b></div>' +
-      downloadsRows() +
-      '<div class="lbl">Typing</div>' +
-      '<div class="srow f" data-act="kbdmode">On-screen keyboard: <b>' + (Kbd.enabled() ? 'Big keys' : 'The TV\u2019s own keyboard') + '</b></div>' +
-      '<div class="lbl">Playback</div>' +
+      '<div class="srow f" data-act="subautosync">Auto-sync subtitles when they are turned on (uses your server\'s processor): <b>' + (subPrefs().autosync ? 'ON' : 'OFF') + '</b></div>',
+      playback: '<div class="lbl">Playback</div>' +
       '<div class="srow f" data-act="playmode">Playback mode: <b>' + esc(PLAY_MODES[playMode()]) + '</b></div>' +
       '<div class="srow f" data-act="bufmode">Start-up buffering: <b>' + esc(BUF_MODES[Store.get('bufmode', 'auto')]) + '</b></div>' +
       '<div class="srow f" data-act="redodc">Run the device check again (tests which formats this device plays)</div>' +
       '<div class="srow f" data-act="forgetdev">Forget what this device can play: <b>' + (rep.good.length + rep.bad.length) + ' formats remembered</b></div>' +
-      '<div class="hint">' + (rep.good.length ? 'Plays directly: ' + esc(rep.good.join(', ')) + '. ' : '') + (rep.bad.length ? 'Needs transcoding: ' + esc(rep.bad.join(', ')) + '. ' : '') + (rep.good.length + rep.bad.length ? '' : 'JoolzTV learns what this device can decode as you watch, so the next file of that kind starts the right way straight away.') + '</div>' +
-      '<div class="hint">JoolzTV ' + esc(window.FLIX_VERSION || '') + '. The top 3 sources by seeds are offered per resolution; posters come from Cinemeta and subtitles from OpenSubtitles. Video plays through your own streaming server behind your JoolzApp sign-in. You stay signed in while anyone in the household uses JoolzTV; after 90 days with no use everyone signs in again. ' + esc(Sync.status()) + '</div></div></div>';
+      '<div class="hint">' + (rep.good.length ? 'Plays directly: ' + esc(rep.good.join(', ')) + '. ' : '') + (rep.bad.length ? 'Needs transcoding: ' + esc(rep.bad.join(', ')) + '. ' : '') + (rep.good.length + rep.bad.length ? '' : 'JoolzTV learns what this device can decode as you watch, so the next file of that kind starts the right way straight away.') + '</div>',
+      downloads: downloadsRows(),
+      more: '<div class="lbl">Typing</div>' +
+      '<div class="srow f" data-act="kbdmode">On-screen keyboard: <b>' + (Kbd.enabled() ? 'Big keys' : 'The TV\u2019s own keyboard') + '</b></div>' +
+      '<div class="hint">JoolzTV ' + esc(window.FLIX_VERSION || '') + '. The top 3 sources by seeds are offered per resolution; posters come from Cinemeta and subtitles from OpenSubtitles. Video plays through your own streaming server behind your JoolzApp sign-in. You stay signed in while anyone in the household uses JoolzTV; after 90 days with no use everyone signs in again. ' + esc(Sync.status()) + '</div></div></div>',
+    };
+    var STABS = [['profile', 'Profile'], ['sources', 'Sources'], ['subtitles', 'Subtitles'], ['playback', 'Playback'], ['downloads', 'Downloads'], ['more', 'Typing and about']], tabsH = '<div class="seasons" id="stabs">';
+    STABS.forEach(function (t) { tabsH += '<span class="chip f' + (t[0] === tab ? ' on' : '') + '" data-act="stab" data-t="' + t[0] + '">' + t[1] + '</span>'; });
+    tabsH += '</div>';
+    var h = '<div class="art-shade"></div>' + topbar('settings') + '<div class="vs" id="main" data-pad-top="140"><div class="settings"><h1>Settings</h1>' + tabsH + (rowsBy[tab] || rowsBy.profile) + '</div></div>';
     replaceAll('settings', h, { cls: 'noart', onBack: function () { page('home'); return true; } });
     Nav.first('.tab.on');
-    fillCacheRow(); Dl.refresh().then(function () { var v = current(); if (v && v.name === 'settings' && document.querySelectorAll('[data-act=dljob]').length !== Math.min(12, Dl.jobs().length)) settingsPage(); });
+    if (tab === 'downloads') { fillCacheRow(); Dl.refresh().then(function () { var v = current(); if (v && v.name === 'settings' && settingsTab === 'downloads' && document.querySelectorAll('[data-act=dljob]').length !== Math.min(12, Dl.jobs().length)) settingsPage(); }); }
   }
 
   /* ---------- actions ---------- */
@@ -991,6 +998,7 @@ var Views = (function () {
       }, 'A cache is a ceiling, not a reserved space: the oldest films are dropped when it is full. Make sure the server has that much free disk.'); }
     if (a === 'dljob') { var jb = null, jid = el.getAttribute('data-id'); Dl.jobs().forEach(function (x) { if (x.id === jid) jb = x; }); if (!jb) return;
       return menu(Dl.title(jb), [{ label: 'Open the title', k: 'o' }, { label: jb.status === 'ready' || jb.status === 'failed' ? 'Remove from the list' : 'Cancel this download', k: 'x' }], function (o) { if (o.k === 'o') return detail(jb.type, jb.imdb, { name: jb.name, poster: jb.poster }); Dl.remove(jb.id).then(function () { settingsPage(); }); }, Dl.state(jb)); }
+    if (a === 'stab') return settingsPage(el.getAttribute('data-t'));
     if (a === 'detailback') return back();
     if (a === 'dlahead') return dlAhead(current().el);
     if (a === 'netflix') return launchNetflix(el.getAttribute('data-title'));

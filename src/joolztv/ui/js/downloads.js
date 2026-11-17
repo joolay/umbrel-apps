@@ -23,6 +23,7 @@ var Dl = (function () {
     if (x.status === 'ready') return 'Ready to watch';
     if (x.status === 'failed') return 'Failed' + (x.error ? ' (' + x.error + ')' : '');
     if (x.status === 'queued') return 'Waiting';
+    if (x.status === 'paused') return 'Paused while you watch (' + pct(x) + '%)';
     return 'Downloading ' + pct(x) + '%' + (x.speed ? ' (' + fmtBytes(x.speed) + '/s)' : '');
   }
   return {
@@ -30,6 +31,8 @@ var Dl = (function () {
     onChange: function (f) { listeners.push(f); },
     forVideo: function (videoId) { var r = null; jobs.forEach(function (x) { if (x.videoId === videoId && (!r || x.created > r.created)) r = x; }); return r; },
     ready: function () { return jobs.filter(function (x) { return x.status === 'ready'; }).sort(function (a, b) { return b.done - a.done; }); },
+    /* a player tells the server how much it has buffered, so downloads step aside when it runs short; the answer is this file's own download, if any */
+    report: function (body) { return Backend.call('POST', '/api/downloads/playing', body, undefined, 8000).then(function (r) { return r.job || null; }).catch(function () { return null; }); },
     add: function (body) { return Backend.call('POST', '/api/downloads', body, undefined, 20000); },
     remove: function (id) { return Backend.call('DELETE', '/api/downloads/' + id).then(refresh); }
   };

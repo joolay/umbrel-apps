@@ -1,6 +1,7 @@
 /* Player: finds sources, picks the best, plays through the signed-in streaming proxy, glass TV controls. */
 var Player = (function () {
   var S = null;   // active session
+  var Warm = {};  // next episodes whose first minute was read ahead: videoId -> {infoHash, fileIdx}
   /* control icons: drawn here (not emoji, which TVs colour in orange) and filled with the button's own text colour */
   var ICON = { back: '<svg class="ico" viewBox="0 0 48 48" width="46" height="46"><g fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M24.4 14.9 L17.0 13.9 L19.8 6.9"/><path d="M17.0 13.9 A14 14 0 1 1 10.1 27.2"/></g><text x="24" y="31" text-anchor="middle" font-size="13.5" font-weight="800" fill="currentColor" style="font-family:inherit">10</text></svg>', fwd: '<svg class="ico" viewBox="0 0 48 48" width="46" height="46"><g transform="matrix(-1 0 0 1 48 0)" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M24.4 14.9 L17.0 13.9 L19.8 6.9"/><path d="M17.0 13.9 A14 14 0 1 1 10.1 27.2"/></g><text x="24" y="31" text-anchor="middle" font-size="13.5" font-weight="800" fill="currentColor" style="font-family:inherit">10</text></svg>', play: '<svg class="ico" viewBox="0 0 48 48" width="46" height="46"><path d="M17 11.5v25a1.6 1.6 0 0 0 2.4 1.4l21-12.5a1.6 1.6 0 0 0 0-2.8l-21-12.5A1.6 1.6 0 0 0 17 11.5z" fill="currentColor"/></svg>', pause: '<svg class="ico" viewBox="0 0 48 48" width="46" height="46"><rect x="13" y="11" width="7.5" height="26" rx="2.6" fill="currentColor"/><rect x="27.5" y="11" width="7.5" height="26" rx="2.6" fill="currentColor"/></svg>' };
 
@@ -11,7 +12,7 @@ var Player = (function () {
   function open(info) {
     if (S) close();
     var h = '<video id="pv" preload="auto"></video><div class="pspin" style="display:none"></div><div class="pmsg" style="display:none"></div><div class="skips" id="skips"></div>' +
-      '<div class="pov"><div class="ptop"><div class="t1">' + Views.esc(info.title || '') + '</div><div class="t2">' + Views.esc([info.sub, info.epTitle].filter(Boolean).join(' · ')) + '</div><div class="pmode glass" id="pmode"></div></div>' +
+      '<div class="pov"><div class="ptop"><div class="t1">' + Views.esc(info.title || '') + '</div><div class="t2">' + Views.esc([info.sub, info.epTitle].filter(Boolean).join(' · ')) + '</div><div class="pmode glass" id="pmode"></div><div class="pdl glass" id="pdl" style="display:none"></div></div>' +
       '<div class="tprev glass" id="tprev" style="display:none"><div class="timg img" id="timg"></div><div class="tt" id="ttime"></div></div><div class="pbar glass"><div class="seek f" id="seek"><div class="buf"></div><div class="pos"></div><div class="knob"></div></div>' +
       '<div class="times"><span id="tcur">0:00</span><span id="tdur">0:00</span></div>' +
       '<div class="pctl"><span class="cbtn ic f" data-pact="back10" aria-label="Back 10 seconds">' + ICON.back + '</span><span class="cbtn ic big f" data-pact="toggle" id="bplay" aria-label="Play or pause">' + ICON.pause + '</span><span class="cbtn ic f" data-pact="fwd10" aria-label="Forward 10 seconds">' + ICON.fwd + '</span>' +
@@ -31,7 +32,7 @@ var Player = (function () {
     }), streamReady]).then(function (r) {
       var res = r[0];
       if (!S || S.el !== el) return;
-      var list = res.list; S.streams = list; S.groups = res.groups;
+      var list = preferStream(res.list, vid); S.streams = list; S.groups = res.groups;
       if (!list.length) { spin(''); say('No sources found for this title.\nTry another title, or show more files in Settings > Sources.'); return; }
       if (info.pick) { spin(''); return pickSource(); }
       if (!res.hasPreferred) {                                   // nothing in the preferred quality: say so, and let the person choose from what exists
@@ -48,6 +49,13 @@ var Player = (function () {
     });
   }
 
+  /* the copy that is already downloaded (or warmed up) comes first: it starts at once and plays from the cache */
+  function preferStream(list, vid) {
+    var j = Dl.forVideo(vid), w = Warm[vid], want = j && j.status !== 'failed' && j.infoHash ? { infoHash: j.infoHash, fileIdx: j.fileIdx } : w || null;
+    if (!want) return list;
+    for (var i = 0; i < list.length; i++) if (list[i].infoHash === want.infoHash && (list[i].fileIdx == null ? -1 : list[i].fileIdx) === want.fileIdx) { if (i === 0) return list; var c = list.slice(); c.unshift(c.splice(i, 1)[0]); return c; }
+    return list;
+  }
   /* how this file will be played: "direct" (the device decodes it) or "transcode" (the server converts it to HLS) */
   function playMode(s) { var m = Store.get('playback', null); if (m === null) m = Store.get('transcode', false) ? 'transcode' : 'auto'; return m; }
   function decide(s) {
@@ -285,7 +293,7 @@ var Player = (function () {
     if (buf) drawLoaded(buf, v, d);
     $('#tcur').textContent = Views.fmtTime(t * 1000); $('#tdur').textContent = '-' + Views.fmtTime(Math.max(0, d - t) * 1000);
     if (Date.now() - S.lastSave > 10000 && !v.paused) save();
-    marksTick(t, d); thumbPump();
+    marksTick(t, d); thumbPump(); dlReport(t, d); warmNext(t, d);
   }
   function save(done) {
     if (!S || !S.v || !isFinite(S.v.duration) || !S.v.duration) return;
@@ -300,6 +308,7 @@ var Player = (function () {
     save();
     if (S.upnext) clearInterval(S.upnext.timer);
     var v = S.v; clearInterval(S.bufT); clearTimeout(S.statsT); clearInterval(S.tick); clearTimeout(S.uiT); clearTimeout(S.buffT); clearTimeout(S.watchdog); clearTimeout(S.decodeT1); clearTimeout(S.decodeT2); clearTimeout(S.okT); clearTimeout(S.flowT);
+    try { Dl.report({ stopped: true }); } catch (e) {}
     try { for (var tk in (S.thumbs || {})) URL.revokeObjectURL(S.thumbs[tk]); } catch (e) {}
     try { v.pause(); v.removeAttribute('src'); v.load(); } catch (e) {}
     S = null;
@@ -328,6 +337,32 @@ var Player = (function () {
       if (to <= t + 0.5) { if (!S.holdToast || Date.now() - S.holdToast > 3000) { S.holdToast = Date.now(); Views.toast('That is as far as is downloaded so far', 2500); } return; }
     }
     S.lastJump = Date.now(); v.currentTime = to; update(); showUi(); say(''); previewAt(to);
+  }
+  /* ---- downloads and playback together ---- */
+  /* every 5 s: how much this player has buffered. The server pauses downloads while any player is running short and resumes them afterwards. */
+  function dlReport(t, d) {
+    var sess = S, f = fileKey(sess.streams[sess.idx]); if (!f || Date.now() - (sess.dlPingAt || 0) < 5000) return;
+    sess.dlPingAt = Date.now();
+    Dl.report({ infoHash: f.infoHash, fileIdx: f.fileIdx, ahead: Math.max(0, bufEnd(sess.v) - t), hold: !!(sess.hold || sess.rebuf) }).then(function (job) {
+      if (S !== sess) return; sess.dlJob = job;
+      var el = $('#pdl'); if (!el) return;
+      if (job && job.status !== 'ready') { el.textContent = job.status === 'paused' ? 'Download paused while you watch (' + Dl.pct(job) + '%)' : 'Also downloading: ' + Dl.pct(job) + '%'; el.style.display = 'inline-block'; } else el.style.display = 'none';
+    });
+  }
+  /* near the end of a fully downloaded episode: read the first minute of the next one ahead, so it starts at once */
+  function warmNext(t, d) {
+    var sess = S, info = sess.info; if (sess.warmDone || !info.getNext || !d || (d < 300 && !window.JTV_TEST_WARM) || sess.upnext) return;
+    if (Date.now() < (sess.warmAt || 0) || d - t > Math.min(360, d * 0.15)) return;
+    var done = sess.dlJob && sess.dlJob.status === 'ready', cov = 0; if (!done) { loadedRanges(sess.v).forEach(function (r) { cov += r[1] - r[0]; }); }
+    if (!done && cov < d * 0.98) return;                                   // the current episode is not all downloaded yet
+    var n = info.getNext(info.videoId || info.id), cur = sess.streams[sess.idx], len = (sess.buf && sess.buf.len) || (cur && cur.behaviorHints && cur.behaviorHints.videoSize) || (sess.dlJob && sess.dlJob.size) || 0;
+    if (!n || !len) { sess.warmDone = true; return; }
+    sess.warmDone = true;
+    var rate = len / d, bytes = Math.max(2000000, Math.min(79000000, Math.ceil(rate * 60 * 1.2)));
+    Api.getStreams(info.type, n.videoId).then(function (res) {
+      var s = res.list[0], f = fileKey(s); if (!f) return;
+      return Backend.call('POST', '/api/prefetch', { infoHash: f.infoHash, fileIdx: f.fileIdx, from: 0, to: bytes - 1 }, undefined, 160000).then(function () { Warm[n.videoId] = { infoHash: f.infoHash, fileIdx: f.fileIdx }; });
+    }).catch(function (e) { if (e && e.status === 429 && S === sess) { sess.warmDone = false; sess.warmAt = Date.now() + 30000; } });
   }
   /* ---- seek preview pictures ---- */
   /* Pictures are made on the server (ffmpeg), one every 10 s, only for parts of the file that this player has already loaded (so nothing is

@@ -8,6 +8,7 @@ fs.mkdirSync(path.join(dir, "devtest"), { recursive: true }); fs.writeFileSync(p
 const tmdbStub = require("./test/tmdb-stub.js").make(); tmdbStub.srv.listen(P + 2);
 const HASH = "a".repeat(40), BODY = Buffer.from("0123456789".repeat(100));
 
+const stubRanges = [];
 const settingsVals = { cacheSize: 10 * 1073741824, serverVersion: "stub" };
 const upstream = http.createServer((q, r) => {
   if (q.url.indexOf("/" + HASH + "/") === 0) {
@@ -20,7 +21,7 @@ const upstream = http.createServer((q, r) => {
   if (q.url === "/settings" && q.method === "POST") { const c = []; q.on("data", d => c.push(d)); q.on("end", () => { try { const v = JSON.parse(Buffer.concat(c).toString()); if (v.cacheSize <= 100 * 1073741824) settingsVals.cacheSize = v.cacheSize; } catch {} r.writeHead(200, { "content-type": "application/json" }); r.end("{}"); }); return; }
   if (q.url === "/settings") { r.writeHead(200, { "content-type": "application/json" }); return r.end(JSON.stringify({ options: [], values: settingsVals })); }
   if (q.url.indexOf("/" + "f".repeat(40) + "/") === 0) { r.writeHead(404); return r.end(); }
-  if (q.url.indexOf("/" + "c".repeat(40) + "/") === 0) { r.writeHead(200, { "content-type": "video/mp4", "content-length": 100000000 }); const iv = setInterval(() => { if (r.destroyed) return clearInterval(iv); r.write(Buffer.alloc(2000)); }, 40); r.on("close", () => clearInterval(iv)); return; }
+  if (q.url.indexOf("/" + "c".repeat(40) + "/") === 0) { const TOTAL = 100000000, rg = /bytes=(\d+)-/.exec(q.headers.range || ""), st = rg ? +rg[1] : 0; stubRanges.push(st); r.writeHead(rg ? 206 : 200, Object.assign({ "content-type": "video/mp4", "content-length": TOTAL - st }, rg ? { "content-range": "bytes " + st + "-" + (TOTAL - 1) + "/" + TOTAL } : {})); const iv = setInterval(() => { if (r.destroyed) return clearInterval(iv); r.write(Buffer.alloc(2000)); }, 40); r.on("close", () => clearInterval(iv)); return; }
   r.writeHead(200); r.end("SECRET-" + q.url);
 }).listen(U);
 
@@ -247,6 +248,23 @@ const T = tok => ({ "x-jtv-token": tok });
   r = await req("DELETE", "/api/downloads/" + sid, undefined, T(ann)); ok(r.code === 200, "a running download can be cancelled"); await new Promise(x => setTimeout(x, 400));
   sj = (await req("GET", "/api/downloads", undefined, T(ann))).json.jobs; ok(!sj.some(j => j.id === sid) && sj.filter(j => j.status === "downloading").length === 2, "it disappears and the waiting one takes its place");
   for (const x of sj.filter(j => j.status === "downloading" || j.status === "queued")) await req("DELETE", "/api/downloads/" + x.id, undefined, T(ann));
+  // playback first: downloads step aside while a player is running short and carry on afterwards
+  r = await req("POST", "/api/downloads", { imdb: "tt0111161", type: "movie", name: "Long five", infoHash: "c".repeat(40), fileIdx: 9, region: "GB" }, T(ann)); const pid = r.json.job.id;
+  const jobOf = async () => (await req("GET", "/api/downloads", undefined, T(ann))).json.jobs.filter(j => j.id === pid)[0], sleep = ms => new Promise(x => setTimeout(x, ms));
+  await sleep(700); let j1 = await jobOf(); ok(j1.status === "downloading" && j1.bytes > 0, "the download is running (" + j1.bytes + " bytes)");
+  r = await req("POST", "/api/downloads/playing", { infoHash: "c".repeat(40), fileIdx: 9, ahead: 4, hold: false }, T(carol)); ok(r.code === 200 && r.json.job === null, "a player reports its buffer (someone else's playback; no job of theirs for that file)");
+  await sleep(900); j1 = await jobOf(); ok(j1.status === "paused", "a player running short on buffer (4 s) makes the download pause (" + j1.status + ")");
+  const frozen = j1.bytes; await sleep(700); j1 = await jobOf(); ok(j1.bytes === frozen, "...and nothing is read while it is paused");
+  r = await req("POST", "/api/downloads/playing", { infoHash: "c".repeat(40), fileIdx: 9, ahead: 25, hold: false }, T(carol)); await sleep(2600); j1 = await jobOf(); ok(j1.status === "paused", "25 s buffered, just reached, is not yet comfortable (it needs 40 s, or a full buffer that has stopped growing)");
+  await sleep(6000); await req("POST", "/api/downloads/playing", { infoHash: "c".repeat(40), fileIdx: 9, ahead: 25, hold: false }, T(carol)); await sleep(9500); await req("POST", "/api/downloads/playing", { infoHash: "c".repeat(40), fileIdx: 9, ahead: 25, hold: false }, T(carol)); await sleep(2600); j1 = await jobOf(); ok(j1.status === "downloading", "a player whose buffer tops out at 25 s (and has been flat for 15 s) counts as comfortable, so a TV with a small buffer does not hold the download back for the whole film");
+  r = await req("POST", "/api/downloads/playing", { infoHash: "c".repeat(40), fileIdx: 9, ahead: 4, hold: false }, T(carol)); await sleep(1200); j1 = await jobOf(); ok(j1.status === "paused", "and it pauses again when the buffer runs short");
+  r = await req("POST", "/api/downloads/playing", { infoHash: "c".repeat(40), fileIdx: 9, ahead: 55, hold: false }, T(carol)); await sleep(2600); j1 = await jobOf(); ok(j1.status === "downloading" && j1.bytes >= frozen, "with 55 s buffered it carries on (" + j1.bytes + " >= " + frozen + ")");
+  ok(stubRanges.some(x => x > 0), "...from where it stopped (a range request from byte " + stubRanges.filter(x => x > 0)[0] + "), not from the start");
+  r = await req("POST", "/api/downloads/playing", { infoHash: "c".repeat(40), fileIdx: 9, ahead: 3, hold: true }, T(ann)); ok(r.json.job && r.json.job.id === pid, "the person watching the same file is told about its download (for the 'also downloading' chip)");
+  await sleep(900); j1 = await jobOf(); ok(j1.status === "paused", "a player that is waiting (rebuffering) pauses it at once");
+  r = await req("POST", "/api/downloads/playing", { stopped: true }, T(ann)); r = await req("POST", "/api/downloads/playing", { stopped: true }, T(carol)); await sleep(2600); j1 = await jobOf(); ok(j1.status === "downloading", "when every player has stopped it resumes");
+  r = await req("POST", "/api/downloads/playing", { infoHash: "c".repeat(40), fileIdx: 9, ahead: 3, hold: false }, T(ann)); await sleep(21000); j1 = await jobOf(); ok(j1.status === "downloading" || j1.status === "paused", "a player that goes quiet for 20 s no longer holds it back");
+  r = await req("DELETE", "/api/downloads/" + pid, undefined, T(ann)); ok(r.code === 200, "it can still be cancelled while paused or running");
   // UI build selection
   r = await req("GET", "/", undefined, { "user-agent": "Mozilla/5.0 (Web0S; Linux/SmartTV) AppleWebKit/537.36 Chrome/53.0.2785.34 Safari/537.36 WebAppManager" }); ok(r.text === "COMPAT" && /User-Agent/i.test(r.headers.vary), "LG webOS TV gets the compat build");
   r = await req("GET", "/", undefined, { "user-agent": "Mozilla/5.0 (Macintosh) AppleWebKit/537.36 Chrome/126.0 Safari/537.36" }); ok(r.text === "MODERN", "modern browser gets the modern build");
