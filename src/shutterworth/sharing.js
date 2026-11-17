@@ -159,7 +159,18 @@ module.exports = function makeSharing({ store, pb, clients, readBody, send, Stor
       if (target) { if (!theirs.has(target.ownerId)) theirs.set(target.ownerId, []); theirs.get(target.ownerId).push(o); } else mine.push(o);
     }
     const all = [];
-    if (mine.length) { const ch = await store.write(user, mine); await fanout(user.id, ch, origin); all.push(...ch); }
+    if (mine.length) {
+      const ch = await store.write(user, mine); await fanout(user.id, ch, origin); all.push(...ch);
+      // A renamed shared list: the invitations people hold (pending or accepted) show the new name too.
+      for (const o of mine) {
+        if (!/^lists\/[^/]+$/.test(o.path || "") || !o.data || typeof o.data.name !== "string") continue;
+        const listId = o.path.slice(6), sh = (await docsOf(user.id))["shares/" + listId]; if (!sh) continue;
+        for (const m of sh.members) {
+          const key = user.id + SEP + listId, inv = (await docsOf(m.id))["invites/" + key];
+          if (inv && inv.listName !== o.data.name) await setInvite(m.id, key, { ...inv, listName: o.data.name });
+        }
+      }
+    }
     for (const [ownerId, list] of theirs) { const ch = await store.write({ id: ownerId }, list); await fanout(ownerId, ch, origin); }
     return all;
   }
