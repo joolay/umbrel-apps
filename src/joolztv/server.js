@@ -396,6 +396,24 @@ async function thumbRoute(req, res, u) {
   } finally { const n = (thumbBusy.get(u.id) || 1) - 1; if (n > 0) thumbBusy.set(u.id, n); else thumbBusy.delete(u.id); thumbActive--; }
 }
 
+/* ---------- prefetch: read part of the file on the server (not sent anywhere) so the streaming server downloads it ahead of playback ---------- */
+const preBusy = new Set(); let preActive = 0; const PRE_MAX = 80e6;
+async function prefetchRoute(req, res, u) {
+  const body = await jsonBody(req), f = fileOf(body), a = Number(body.from), b = Number(body.to);
+  if (!f || !(Number.isInteger(a) && Number.isInteger(b) && a >= 0 && b > a && b - a <= PRE_MAX)) return send(res, 400, { code: "bad_request", message: "Needs a torrent source and a byte range." });
+  if (preBusy.has(u.id) || preActive >= 2) return send(res, 429, { code: "busy", message: "Busy." });
+  preBusy.add(u.id); preActive++;
+  const ac = new AbortController(); req.on("close", () => { if (!res.writableEnded) ac.abort(); });
+  const timer = setTimeout(() => ac.abort(), 150000);
+  try {
+    const r = await fetch(f.url, { headers: { range: "bytes=" + a + "-" + b }, signal: ac.signal });
+    if (r.status !== 206 && r.status !== 200) return send(res, 502, { code: "upstream", message: "The streaming server could not read that part." });
+    let n = 0; for await (const c of r.body) n += c.length;                    // read it all, keep nothing
+    return send(res, 200, { ok: true, bytes: n });
+  } catch (e) { if (ac.signal.aborted) { if (!res.writableEnded && !res.destroyed) send(res, 504, { code: "timeout", message: "That part did not arrive in time." }); return; } console.error("prefetch:", e.message); return send(res, 502, { code: "upstream", message: "The streaming server could not read that part." }); }
+  finally { clearTimeout(timer); preBusy.delete(u.id); preActive--; }
+}
+
 /* ---------- streaming server behind the sign-in ---------- */
 const SECRET_FILE = path.join(DATA_DIR, "secret.key");
 let SECRET = (() => { try { const s = fs.readFileSync(SECRET_FILE, "utf8").trim(); if (s.length >= 32) return s; } catch {} const s = crypto.randomBytes(32).toString("hex"); fs.writeFileSync(SECRET_FILE, s, { mode: 0o600 }); return s; })();
@@ -548,6 +566,7 @@ const server = http.createServer(async (req, res) => {
       if ((p === "/api/state" && req.method === "GET") || (p === "/api/sync" && req.method === "POST")) return await syncRoutes(req, res, p, u);
       if (p === "/api/subs/sync" && req.method === "POST") return await subsSync(req, res, u);
       if (p === "/api/thumb" && req.method === "GET") return await thumbRoute(req, res, u);
+      if (p === "/api/prefetch" && req.method === "POST") return await prefetchRoute(req, res, u);
       if (p.startsWith("/api/marks/")) return await marksRoutes(req, res, p, u);
       if (p.startsWith("/api/tmdb/")) return await tmdbRoutes(req, res, p, u);
       if (p === "/api/play-check" && req.method === "POST") return await playCheck(req, res, u);

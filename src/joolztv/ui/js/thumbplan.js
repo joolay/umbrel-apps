@@ -13,7 +13,7 @@ var Thumbplan = (function () {
   /* o: dur, t (playhead), seen [[start,end]...] (parts the player has loaded), have/bad/fly (sets of grid seconds), + the farOk inputs.
      Returns {pick, loaded} or null. Loaded parts first, nearest the playhead (ahead counts less than behind); then, if allowed, the rest. */
   function next(o) {
-    var bestL = -1, dL = 1e9, bestF = -1, dF = 1e9, far = farOk(o);
+    var bestL = -1, dL = 1e9, bestF = -1, dF = 1e9, far = farOk(o) || !!o.forceFar;
     for (var g = 0; g <= o.dur - 3; g += STEP) {
       if (o.have[g] || o.bad[g] || o.fly[g]) continue;
       var d = g >= o.t ? g - o.t : (o.t - g) * 1.3, loaded = false;

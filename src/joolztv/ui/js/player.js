@@ -13,7 +13,7 @@ var Player = (function () {
     var h = '<video id="pv" preload="auto"></video><div class="pspin" style="display:none"></div><div class="pmsg" style="display:none"></div><div class="skips" id="skips"></div>' +
       '<div class="pov"><div class="ptop"><div class="t1">' + Views.esc(info.title || '') + '</div><div class="t2">' + Views.esc([info.sub, info.epTitle].filter(Boolean).join(' · ')) + '</div><div class="pmode glass" id="pmode"></div></div>' +
       '<div class="tprev glass" id="tprev" style="display:none"><div class="timg img" id="timg"></div><div class="tt" id="ttime"></div></div><div class="pbar glass"><div class="seek f" id="seek"><div class="buf"></div><div class="pos"></div><div class="knob"></div></div>' +
-      '<div class="times"><span id="tcur">0:00</span><span id="tdl" class="dl"></span><span id="tdur">0:00</span></div>' +
+      '<div class="times"><span id="tcur">0:00</span><span id="tdur">0:00</span></div>' +
       '<div class="pctl"><span class="cbtn ic f" data-pact="back10" aria-label="Back 10 seconds">' + ICON.back + '</span><span class="cbtn ic big f" data-pact="toggle" id="bplay" aria-label="Play or pause">' + ICON.pause + '</span><span class="cbtn ic f" data-pact="fwd10" aria-label="Forward 10 seconds">' + ICON.fwd + '</span>' +
       '<span class="cbtn f" data-pact="speed">Speed 1x</span><span class="cbtn f" data-pact="subs">Subtitles</span><span class="cbtn f" data-pact="sources">Sources</span>' + '</div></div></div>';
     var el = Views.mount('player', h, { cls: 'player', onBack: function () { close(); Views.pop(); return true; }, onClose: cleanup });
@@ -323,7 +323,7 @@ var Player = (function () {
     if (!S || !isFinite(S.v.duration)) return;
     var v = S.v, t = v.currentTime, to = Math.max(0, Math.min(v.duration - 2, t + sec));
     if (rep && sec > 0) {
-      var lim = bufEnd(v) - 1.5;
+      var lim = loadedEnd(v) - 1.5;
       if (to > lim) to = lim;
       if (to <= t + 0.5) { if (!S.holdToast || Date.now() - S.holdToast > 3000) { S.holdToast = Date.now(); Views.toast('That is as far as is downloaded so far', 2500); } return; }
     }
@@ -333,27 +333,34 @@ var Player = (function () {
   /* Pictures are made on the server (ffmpeg), one every 10 s, only for parts of the file that this player has already loaded (so nothing is
      pulled from the torrent ahead of the film), closest to the playhead first. A jump shows the picture of where you land. */
   var THUMB_STEP = Thumbplan.STEP;
+  /* parts of the film that are downloaded: what this player has loaded (S.seen) and parts the server was asked to read ahead (S.pre), as [start, end] seconds */
+  function addRange(list, a, e) {
+    for (var k = 0; k < list.length; k++) if (a <= list[k][1] + 0.5 && e >= list[k][0] - 0.5) { list[k][0] = Math.min(list[k][0], a); list[k][1] = Math.max(list[k][1], e); return; }
+    list.push([a, e]);
+  }
   function seenUpdate(v) {
     var seen = S.seen || (S.seen = []), b = v.buffered;
-    for (var i = 0; i < b.length; i++) {
-      var a = b.start(i), e = b.end(i), merged = false;
-      for (var k = 0; k < seen.length; k++) if (a <= seen[k][1] + 0.5 && e >= seen[k][0] - 0.5) { seen[k][0] = Math.min(seen[k][0], a); seen[k][1] = Math.max(seen[k][1], e); merged = true; break; }
-      if (!merged) seen.push([a, e]);
-    }
+    for (var i = 0; i < b.length; i++) addRange(seen, b.start(i), b.end(i));
+  }
+  function loadedRanges(v) {                              // everything above, merged into separate stretches, in order
+    seenUpdate(v);
+    var all = (S.seen || []).concat(S.pre || []).map(function (r) { return [r[0], r[1]]; }).sort(function (a, b) { return a[0] - b[0]; }), out = [];
+    all.forEach(function (r) { var l = out[out.length - 1]; if (l && r[0] <= l[1] + 0.5) l[1] = Math.max(l[1], r[1]); else out.push(r); });
+    return out;
+  }
+  function loadedEnd(v) {                                 // where the downloaded stretch that holds the playhead ends
+    var t = v.currentTime, e = t, rs = loadedRanges(v);
+    for (var i = 0; i < rs.length; i++) if (rs[i][0] <= t + 0.5 && rs[i][1] >= t) e = rs[i][1];
+    return e;
+  }
+  /* the light shading of the progress bar: filled only where the film is downloaded (not necessarily one stretch from the start) */
+  function drawLoaded(box, v, d) {
+    var html = '';
+    loadedRanges(v).forEach(function (r) { var l = Math.max(0, r[0] / d * 100), w = Math.min(100 - l, (r[1] - r[0]) / d * 100); if (w > 0.05) html += '<span class="bseg" style="left:' + l.toFixed(2) + '%;width:' + w.toFixed(2) + '%"></span>'; });
+    if (html !== S.loadedHtml) { S.loadedHtml = html; box.innerHTML = html; }
   }
   /* Order of work: 1) pictures for what is already loaded, nearest the playhead first (this is the starting buffer, so it comes first and never waits);
      2) the rest of the file, but only while the download is comfortably faster than the film plays and the buffer ahead is healthy, so the torrent keeps feeding playback first. */
-  /* what is loaded, drawn on the progress bar: the parts the player holds right now (bright) and the parts it has loaded earlier in this viewing (dim; they stay downloaded on the server) */
-  function drawLoaded(box, v, d) {
-    seenUpdate(v);
-    var cur = [], b = v.buffered, i, html = '', total = 0;
-    for (i = 0; i < b.length; i++) cur.push([b.start(i), b.end(i)]);
-    function seg(r, cls) { var l = Math.max(0, r[0] / d * 100), w = Math.min(100 - l, (r[1] - r[0]) / d * 100); return w > 0.05 ? '<span class="bseg' + cls + '" style="left:' + l.toFixed(2) + '%;width:' + w.toFixed(2) + '%"></span>' : ''; }
-    (S.seen || []).forEach(function (r) { html += seg(r, ' old'); total += r[1] - r[0]; });
-    cur.forEach(function (r) { html += seg(r, ''); });
-    if (html !== S.loadedHtml) { S.loadedHtml = html; box.innerHTML = html; }
-    var dl = $('#tdl'); if (dl) { var txt = total > 0 ? 'Loaded ' + Math.min(100, Math.round(total / d * 100)) + '%' : ''; if (dl.textContent !== txt) dl.textContent = txt; }
-  }
   function thumbPump() {
     var sess = S; if (!sess || sess.thumbOff || sess.hold || sess.rebuf || sess.failed || sess.ended) return;
     var v = sess.v, f = fileKey(sess.streams[sess.idx]); if (!f || !isFinite(v.duration) || v.duration < 60 || Date.now() < (sess.thumbNext || 0)) return;
@@ -363,20 +370,39 @@ var Player = (function () {
     if (!sess.firstPlayAt) sess.firstPlayAt = Date.now();
     if (ahead > (sess.aheadMax || 0) + 1) { sess.aheadMax = ahead; sess.aheadGrewAt = Date.now(); }
     var plan = sess.buf && sess.buf.plan;
-    var nx = Thumbplan.next({ dur: v.duration, t: t, seen: sess.seen, have: th, bad: bad, fly: fly, ratio: plan && plan.ratio, slow: !plan || plan.slow, ahead: ahead, aheadMax: sess.aheadMax || 0,
+    var nx = Thumbplan.next({ forceFar: !!window.JTV_TEST_FAR, dur: v.duration, t: t, seen: sess.seen, have: th, bad: bad, fly: fly, ratio: plan && plan.ratio, slow: !plan || plan.slow, ahead: ahead, aheadMax: sess.aheadMax || 0,
       sinceGrewMs: Date.now() - (sess.aheadGrewAt || Date.now()), playedMs: Date.now() - sess.firstPlayAt });
     if (!nx) return;
-    var pick = nx.pick, loadedPick = nx.loaded;
-    sess.thumbN = (sess.thumbN || 0) + 1; fly[pick] = 1; sess.thumbNext = Date.now() + (loadedPick ? 150 : 700);
-    fetch('/api/thumb?hash=' + f.infoHash + '&idx=' + f.fileIdx + '&t=' + pick, { headers: { 'x-jtv-token': Backend.token() || '' } }).then(function (r) {
-      if (r.status === 503) { sess.thumbOff = true; throw 0; }
-      if (r.status === 429) { sess.thumbNext = Date.now() + 4000; throw 0; }
-      if (!r.ok) { sess.thumbBad[pick] = 1; throw 0; }
-      return r.blob();
-    }).then(function (blob) {
-      if (!blob || S !== sess) return;
-      try { sess.thumbs[pick] = URL.createObjectURL(blob); } catch (e) {}
-    }).catch(function () {}).then(function () { sess.thumbN--; delete sess.thumbFly[pick]; });
+    var pick = nx.pick, loadedPick = nx.loaded, st = sess.streams[sess.idx];
+    if (!loadedPick && sess.farBusy) return;                            // one read-ahead at a time
+    sess.thumbN = (sess.thumbN || 0) + 1; fly[pick] = 1; sess.thumbNext = Date.now() + (loadedPick ? 150 : 400);
+    var hdr = { 'x-jtv-token': Backend.token() || '' };
+    function picture() {
+      return fetch('/api/thumb?hash=' + f.infoHash + '&idx=' + f.fileIdx + '&t=' + pick, { headers: hdr }).then(function (r) {
+        if (r.status === 503) { sess.thumbOff = true; throw 0; }
+        if (r.status === 429) { sess.thumbNext = Date.now() + 4000; throw 0; }
+        if (!r.ok) { sess.thumbBad[pick] = 1; throw 0; }
+        return r.blob();
+      }).then(function (blob) { if (blob && S === sess) { try { sess.thumbs[pick] = URL.createObjectURL(blob); } catch (e) {} } });
+    }
+    var job;
+    if (loadedPick) job = picture();
+    else {                                                              // download it ahead first (on the server: nothing is sent to the TV), then make the picture from it
+      var len = (sess.buf && sess.buf.len) || (st && st.behaviorHints && st.behaviorHints.videoSize) || 0, d = v.duration;
+      if (!len) { job = picture(); }
+      else {
+        sess.farBusy = true;
+        var a = Math.max(0, Math.floor(Math.max(0, pick - 1) / d * len)), b = Math.min(len - 1, Math.ceil((pick + THUMB_STEP) / d * len));
+        job = fetch('/api/prefetch', { method: 'POST', headers: { 'x-jtv-token': hdr['x-jtv-token'], 'content-type': 'application/json' }, body: JSON.stringify({ infoHash: f.infoHash, fileIdx: f.fileIdx, from: a, to: b }) }).then(function (r) {
+          if (r.status === 429) { sess.thumbNext = Date.now() + 4000; throw 0; }
+          if (!r.ok) { sess.thumbBad[pick] = 1; throw 0; }
+          if (S === sess) { sess.pre = sess.pre || []; addRange(sess.pre, pick, pick + THUMB_STEP); }
+          return picture();
+        });
+      }
+    }
+    var farJob = !loadedPick && !!sess.farBusy;
+    job.catch(function () {}).then(function () { sess.thumbN--; if (farJob) sess.farBusy = false; delete sess.thumbFly[pick]; });
   }
   function thumbNear(time) {
     var th = S.thumbs || {}, g = Math.round(time / THUMB_STEP) * THUMB_STEP;

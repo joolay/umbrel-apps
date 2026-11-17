@@ -133,6 +133,12 @@ const T = tok => ({ "x-jtv-token": tok });
   r = await req("GET", "/api/thumb?hash=nope&idx=0&t=10", undefined, T(ann)); ok(r.code === 400, "thumb only takes a torrent source");
   r = await req("GET", "/api/thumb?hash=" + HASH + "&idx=0&t=-5", undefined, T(ann)); ok(r.code === 400, "thumb: a negative time is refused");
   r = await req("GET", "/api/thumb?hash=" + HASH + "&idx=0&t=10", undefined, T(ann)); ok(r.code === 503 && r.json.code === "thumbs_unavailable", "thumb: missing ffmpeg gives a clear answer");
+  // prefetch (reads part of the file on the server so it is downloaded ahead of playback)
+  r = await req("POST", "/api/prefetch", { infoHash: HASH, fileIdx: 0, from: 0, to: 500 }); ok(r.code === 401, "prefetch needs a sign-in");
+  r = await req("POST", "/api/prefetch", { infoHash: "nope", fileIdx: 0, from: 0, to: 500 }, T(ann)); ok(r.code === 400, "prefetch only takes a torrent source");
+  r = await req("POST", "/api/prefetch", { infoHash: HASH, fileIdx: 0, from: 600, to: 100 }, T(ann)); ok(r.code === 400, "prefetch: the range must go forward");
+  r = await req("POST", "/api/prefetch", { infoHash: HASH, fileIdx: 0, from: 0, to: 999999999 }, T(ann)); ok(r.code === 400, "prefetch: a range over 80 MB is refused");
+  r = await req("POST", "/api/prefetch", { infoHash: HASH, fileIdx: 0, from: 100, to: 399 }, T(ann)); ok(r.code === 200 && r.json.ok === true && r.json.bytes === 300, "prefetch reads exactly that range and keeps nothing (" + (r.json && r.json.bytes) + " bytes)");
   // TMDB: key, details, lists, parental limits
   r = await req("GET", "/api/tmdb/status", undefined, T(ann)); ok(r.json.enabled === false && r.json.canSetKey === false, "TMDB starts off (no key); an ordinary member cannot set one");
   r = await req("GET", "/api/tmdb/title?imdb=tt0111161", undefined, T(ann)); ok(r.code === 503 && r.json.code === "tmdb_off", "without a key the TMDB routes say so (the app falls back to Cinemeta)");
