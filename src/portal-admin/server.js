@@ -535,17 +535,27 @@ function fromPortal(req, res) {
 const linkPortal = () => { try { const r = changes.linkPortal(); if (r) console.log('JoolzApp Portal: ' + r); } catch (e) { console.error('JoolzApp Portal link:', e.message); } };
 setTimeout(linkPortal, 3000).unref(); setInterval(linkPortal, 30e3).unref();
 
-// Two listeners, one app. PORT is the normal one (Umbrel's app address, behind Umbrel's login). PUBLIC_PORT is the one to
-// publish on the internet (Tailscale Funnel): requests that arrive there are ALWAYS treated as public, so admin sign-in and the
-// PocketBase admin APIs stay refused no matter how the tunnel forwards or labels traffic. Set PUBLIC_PORT=0 to turn it off.
+// Listeners. PORT is the normal one (Umbrel's app address, behind Umbrel's login): the admin's own.
+// PUBLIC_PORT (host port 3892) used to be the dashboard for everyone. That is now a separate app, JoolzApp Portal (host port 3886,
+// and the public joolzapp address). Once the Portal is installed this port only sends browsers on to it, so old bookmarks and the
+// apps' "Back to Dashboard" links on the home network keep working and nothing of Portal Admin is served to people.
+// Until the Portal is installed it still answers as before (always user-only), so nobody is locked out. PUBLIC_PORT=0 turns it off.
 const PUBLIC_PORT = Number(process.env.PUBLIC_PORT === undefined ? 3001 : process.env.PUBLIC_PORT);
+const PORTAL_HOST_PORT = String(process.env.PORTAL_HOST_PORT || 3886), OLD_HOST_PORT = String(process.env.PUBLIC_HOST_PORT || 3892);
+const portalInstalled = () => installedApps().apps.some((a) => a.dir === 'joolay-portal' && a.slug === 'portal' && a.env === 'present');
+function toPortal(req, res) {
+  const host = String(req.headers.host || '');
+  if (!host.endsWith(':' + OLD_HOST_PORT) || /[^A-Za-z0-9.:\[\]-]/.test(host)) return send(res, 410, 'The JoolzApp home screen has moved to the JoolzApp Portal app. Open it from your JoolzApp address.');
+  res.writeHead(req.method === 'GET' || req.method === 'HEAD' ? 302 : 307, { Location: 'http://' + host.slice(0, -OLD_HOST_PORT.length) + PORTAL_HOST_PORT + req.url, 'Cache-Control': 'no-store' });
+  res.end();
+}
 const server = http.createServer(handle);
 setInterval(() => paywall.sweep().catch((e) => console.error('paywall sweep:', e.message)), 3600e3).unref();
 setTimeout(() => paywall.sweep().catch(() => {}), 20e3).unref();
 server.listen(PORT, '0.0.0.0', () => console.log(`Portal Admin listening on :${PORT}`));
 let pubServer = null;
 if (PUBLIC_PORT && PUBLIC_PORT !== PORT) {
-  pubServer = http.createServer((req, res) => { req.publicPort = true; handle(req, res); });
+  pubServer = http.createServer((req, res) => { if (portalInstalled()) return toPortal(req, res); req.publicPort = true; handle(req, res); });
   pubServer.listen(PUBLIC_PORT, '0.0.0.0', () => console.log(`Portal Admin public (user-only) listening on :${PUBLIC_PORT}`));
 }
 // Portal API for the apps: its own internal port, never published through the tunnel. Every call needs an app key.

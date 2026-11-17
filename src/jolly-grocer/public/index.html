@@ -799,7 +799,7 @@ input,select,textarea{background:var(--glass-strong);border:1px solid var(--glas
     sync.on = true;
     $('acct').hidden = false; $('out-btn').onclick = signOut;
     $('dash-btn').onclick = function () {
-      const base = (cfg.portalUrl || (location.protocol + '//' + location.hostname + ':3892/')).replace(/\/+$/, '') + '/';
+      const base = (cfg.portalUrl || (location.protocol + '//' + location.hostname + ':3886/')).replace(/\/+$/, '') + '/';
       location.href = base + (tok() ? '#sso=' + encodeURIComponent(tok()) : '');
     };
     setSync('saving');

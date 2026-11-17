@@ -10,23 +10,18 @@ services:
       PROXY_AUTH_ADD: "true"
 
   web:
-    image: ghcr.io/joolay/portal-admin:0.22.1
+    image: ghcr.io/joolay/portal-admin:0.23.0
     restart: on-failure
     stop_grace_period: 10s
     # Lets the container reach the PocketBase app (port 5400) published on this Umbrel.
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    # Public hub (https://joolzapp.<tailnet>.ts.net via TSDProxy + Funnel, see deploy/tsdproxy). Port 3892 is the server's
-    # dedicated public port: it skips Umbrel's login (still on the normal address, port 3890) and is always user-only, so
-    # admin sign-in and the PocketBase admin APIs are refused there. TSDProxy reads the labels below.
     ports:
+      # The old dashboard port. The dashboard is now the JoolzApp Portal app: this port only forwards browsers on the home
+      # network to it (host port 3886), so old bookmarks keep working. It is no longer published through the tunnel.
       - "3892:3001"
-      # Portal API for the apps (needs an app key). Not published through the tunnel.
+      # Portal API for the apps and for JoolzApp Portal (each needs its own key). Not published through the tunnel.
       - "3899:3002"
-    labels:
-      tsdproxy.enable: "true"
-      tsdproxy.name: "joolzapp"
-      tsdproxy.port.1: "443/https:3892/http, no_autodetect, tailscale_funnel"
     volumes:
       - ${APP_DATA_DIR}/data:/data
       # Umbrel's installed-app folders: umbrel-app.yml and docker-compose.yml are read to detect new apps, and the "Connect" button
