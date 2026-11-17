@@ -2,7 +2,7 @@ manifestVersion: 1
 id: joolay-joolztv
 category: media
 name: JoolzTV
-version: "1.2.0"
+version: "1.3.0"
 tagline: A glassy, Apple TV style front end for your streaming server, behind your JoolzApp account
 description: >-
   JoolzTV gives your TV, phone and computer a clean, glassy Apple TV style interface. It includes its own Stremio streaming server and replaces the old Stremio app.
@@ -26,6 +26,6 @@ icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-joolztv/i
 path: ""
 defaultUsername: ""
 defaultPassword: ""
-releaseNotes: "Skip buttons now use the community skip databases (IntroDB and TheIntroDB) for intros, credits and credit scenes, with the file's own chapters as a fallback. Also: Sources screen and filters, preferred quality, household-wide sign-in, profile pictures."
+releaseNotes: "TMDB (add a key in Settings as a JoolzApp admin): title logos and backdrops, summaries in your language, age ratings, cast, director, more like this, collections, trending / popular / top rated / now in cinemas / coming soon rows, a Discover tab by genre, year and sort, people pages, episode pictures, next-episode dates, a note when a film has an extra credits scene, and age limits per profile. Also: skip intro / credits buttons from the community databases, Sources screen, preferred quality, household-wide sign-in, profile pictures."
 submitter: joolay
 submission: https://github.com/joolay/umbrel-apps

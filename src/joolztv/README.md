@@ -65,3 +65,14 @@ One small glass button at the bottom right (OK on the remote presses it; it fade
    Credits that stop and start again leave a gap, and that gap is taken as a mid-credits scene. TheIntroDB's "preview" is not used (its own example puts it 28 minutes into a film).
 2. **The file's own chapters** (ffprobe, `POST /api/marks/scan`): Intro / Opening / Credits / Post-credits scene.
 Limit: the databases are community-filled, so coverage varies by title and some entries disagree. Test: `test-community.js` (stand-in services using real response shapes), `test-marks.js` (chapters).
+
+## TMDB (artwork, ratings, cast, lists, Discover, age limits)
+Optional. A JoolzApp admin pastes a TMDB key in Settings (stored in `<data>/tmdb.key`, mode 600, never sent back; or set `TMDB_KEY`, a v3 key or a v4 read token). Without a key nothing changes and Cinemeta carries on. The TV never talks to TMDB's API, only to its image CDN.
+`tmdb.js` + `/api/tmdb/*` (any signed-in profile; answers cached 1-12 h):
+- **Title page**: the title logo (in your language, else English), a wide backdrop, the age rating for your country (falls back to the UK, then US), runtime, tagline, "Directed by" / "Created by", summary in your language, a chip when the film has a mid- or after-credits scene (TMDB keyword), the next episode date or "Ended" for a series, tabs for Cast, More like this and the film's Collection, and a picture and summary for every episode where Cinemeta has none.
+- **Rows**: trending, popular, top rated, now in cinemas / coming soon (for your country), on the air. **Discover** tab: films or TV by genre, year and sort, with More. **People**: cast cards open a person with their best-known titles; search also lists people.
+- **Country and language** are household settings (Settings > Artwork, ratings and cast); by default they come from the device language, then the time zone.
+- **Age limits**: the household owner can set up to 7 / 10 / 13 / 16 on a profile (Household > profile). The limit is also the account's own age when JoolzApp says it is under 18. A limited profile only gets TMDB's age-filtered rows (films rated for that age; TV from the Kids genre) and `POST /api/play-check` stops anything rated above the limit, or with no rating, before it plays.
+  Honest limits: the check is made by the app before starting a title, not by the streaming proxy, and TV rows cannot be filtered by rating (TMDB offers that for films only). Without a key age limits cannot be applied.
+- Attribution ("This product uses the TMDB API but is not endorsed or certified by TMDB.") is in Settings.
+- Tests: `test-tmdb.js` and the TMDB block of `test.js` run against `test/tmdb-stub.js`, a stand-in made from the documented response shapes. The real API has not been called yet (no key); check the credit-scene keyword ids (179430 / 179431, also matched by name) when it is.

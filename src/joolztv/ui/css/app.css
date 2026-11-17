@@ -179,3 +179,17 @@ body.pointer { cursor: pointer; }
 .skip { background: rgba(18,22,32,.66); border: 1px solid rgba(255,255,255,.28); display: inline-block; padding: 16px 34px; border-radius: 40px; font-size: 26px; font-weight: 700; color: #fff; margin-top: 10px; box-shadow: 0 12px 34px rgba(0,0,0,.5); }
 .skip small { font-size: 18px; font-weight: 700; opacity: .65; margin-left: 12px; padding: 3px 12px; border: 2px solid rgba(255,255,255,.5); border-radius: 12px; }
 .skip.focus { background: #f5f5f7; color: #111; border-color: #fff; } .skip.focus small { border-color: rgba(0,0,0,.4); }
+
+.dlogo { display: block; max-height: 130px; max-width: 760px; margin: 0 0 10px 0; -webkit-filter: drop-shadow(0 4px 16px rgba(0,0,0,.6)); filter: drop-shadow(0 4px 16px rgba(0,0,0,.6)); }
+.dtop .tag { font-size: 24px; font-style: italic; color: rgba(245,245,247,.72); margin: -6px 0 12px 0; text-shadow: 0 2px 12px rgba(0,0,0,.6); }
+.dtop .credit { font-size: 22px; color: var(--dim); margin-top: 10px; }
+.chip.cert { border: 2px solid rgba(255,255,255,.7); background: rgba(0,0,0,.35); border-radius: 10px; font-weight: 800; }
+.tm .eps-wrap { top: 600px; }
+.pc { display: inline-block; vertical-align: top; width: 210px; margin-right: 26px; text-align: center; border-radius: 26px; padding: 18px 8px 14px 8px; white-space: normal; background: rgba(255,255,255,.07); }
+.pc .ph { width: 150px; height: 150px; border-radius: 75px; margin: 0 auto 12px auto; }
+.pc .n { font-size: 24px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 6px; } .pc .r { font-size: 19px; color: var(--dim); margin-top: 4px; height: 50px; overflow: hidden; line-height: 1.25; }
+.pc.focus { background: #f5f5f7; color: #111; } .pc.focus .r { color: #444; }
+.gh { margin: 0 0 24px 0; overflow: hidden; } .gh h1 { font-size: 64px; font-weight: 800; margin-bottom: 14px; letter-spacing: -1px; }
+.pphoto { float: left; width: 240px; height: 240px; border-radius: 120px; margin-right: 40px; } .ptext { overflow: hidden; max-width: 1300px; } .ptext .desc { max-height: 150px; font-size: 24px; }
+.gl { font-size: 24px; font-weight: 700; color: var(--dim); text-transform: uppercase; letter-spacing: 1.2px; margin: 8px 0 14px 4px; } .prow { white-space: nowrap; overflow: hidden; margin-bottom: 20px; }
+.grid .btn#gmore { margin: 10px 0 40px 0; } #gmoreh .btn { margin: 0 0 60px 0; }

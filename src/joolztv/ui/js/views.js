@@ -35,7 +35,8 @@ var MyList = (function () {
 var Views = (function () {
   var app = document.getElementById('app'), stack = [], reg = [], seq = 0, menuEl = null, menuPrev = null, toastT = null, browseToken = 0, infoT = null;
   var TABS = [['home', 'Home'], ['movie', 'Movies'], ['series', 'TV Shows'], ['library', 'My List'], ['search', 'Search']];
-  var PAGES = ['home', 'movie', 'series', 'library', 'search', 'settings'];
+  var PAGES = ['home', 'movie', 'series', 'library', 'search', 'discover', 'settings'];
+  function tabs() { return Tmdb.on() ? TABS.slice(0, 4).concat([['discover', 'Discover']], TABS.slice(4)) : TABS; }
 
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function toast(msg, ms) {
@@ -112,7 +113,7 @@ var Views = (function () {
   }
   function topbar(active) {
     var pr = Profiles.active(), h = '<div class="top"><div class="brand">Joolz<b>TV</b></div><div class="tabbar glass">';
-    TABS.forEach(function (t) { h += '<div class="tab f' + (t[0] === active ? ' on' : '') + '" data-act="page" data-p="' + t[0] + '">' + t[1] + '</div>'; });
+    tabs().forEach(function (t) { h += '<div class="tab f' + (t[0] === active ? ' on' : '') + '" data-act="page" data-p="' + t[0] + '">' + t[1] + '</div>'; });
     h += '</div>';
     if (pr) h += '<div class="who glass f" data-act="avatarmenu"><span class="av" style="position:relative;overflow:hidden;background:' + esc(pr.color) + '">' + avHtml(pr) + '</span>' + esc(pr.name) + '</div>';
     return h + '</div>';
@@ -227,7 +228,7 @@ var Views = (function () {
 
   /* "Who's watching?" */
   function picker() {
-    ++browseToken;
+    ++browseToken; Tmdb.forget();
     var ps = Profiles.all(), h = '<div class="splash"><div class="picker"><h1>Who\'s watching?</h1><div class="ptiles">';
     ps.forEach(function (p) {
       h += '<div class="ptile f" data-act="selprofile" data-id="' + esc(p.id) + '"><div class="pav" style="background:' + esc(p.color) + '">' + avHtml(p) + '</div><div class="pn">' + esc(p.name) + '</div>' +
@@ -275,7 +276,7 @@ var Views = (function () {
     Store.setActive(id);
     if (token) Backend.setToken(token); else Backend.setToken(Store.getFor(id, 'token', null) || Backend.token());
     Api.setStreamBase('');
-    Backend.household().then(function (h) { Profiles.setAll(h.profiles); Api.setPrefs(h.prefs); }).catch(function () {}).then(function () {
+    Backend.household().then(function (h) { Profiles.setAll(h.profiles); Api.setPrefs(h.prefs); }).catch(function () {}).then(function () { return Tmdb.init(); }).then(function () {
       if (Store.active() !== id) return;
       Sync.run(function () { var v = current(); if (v && PAGES.indexOf(v.name) >= 0 && v.name === 'home') page('home'); });
       if (!Api.quality()) return qualityStep(function () { page('home'); });          // a household set up before this question existed
@@ -322,6 +323,7 @@ var Views = (function () {
       '<div class="pav" style="width:150px;height:150px;border-radius:75px;margin:0 auto 18px;background:' + esc(p.color) + '">' + avHtml(p) + '</div>' +
       '<input id="nm" class="field f" maxlength="16" placeholder="Name" autocomplete="off" value="' + esc(p.name) + '">' +
       '<div class="btn glass f" data-act="pickavatar" data-id="' + esc(id) + '">Change picture</div>' +
+      (Tmdb.on() && (Profiles.active() && Profiles.active().owner) ? '<div class="btn glass f" data-act="agelimit" data-id="' + esc(id) + '">Age limit: ' + (p.maxAge ? 'up to ' + p.maxAge : 'none') + '</div>' : '') +
       '<div class="btn primary f" data-act="saveprofile" data-id="' + esc(id) + '">Save</div>' +
       (Profiles.all().length > 1 ? '<div class="btn glass f" data-act="delprofile" data-id="' + esc(id) + '">Remove from household</div>' : '') +
       '<div class="btn glass f" data-act="membersback">Back</div></div></div>';
@@ -360,8 +362,10 @@ var Views = (function () {
   /* ---------- browse pages ---------- */
   function page(kind) {
     closeMenu(true);
+    if (!Tmdb.known() && Backend.token()) return Tmdb.init().then(function () { page(kind); });          // is TMDB set up? (asked once after signing in)
     if (kind === 'search') return searchPage();
     if (kind === 'settings') return settingsPage();
+    if (kind === 'discover') return discoverPage();
     var token = ++browseToken, browse = kind !== 'library';
     replaceAll(kind, '<div class="art img"></div><div class="art-shade"></div>' + topbar(kind) + (browse ? '<div id="info"></div>' : '') +
       '<div class="vs' + (browse ? ' rows snap' : '') + '" id="main"><div class="loading">Loading…</div></div>', { cls: 'noart', onBack: function () { if (kind !== 'home') { page('home'); return true; } return false; } });
@@ -376,7 +380,8 @@ var Views = (function () {
     });
   }
   function buildBrowse(kind, el, token) {
-    var main = el.querySelector('#main'), defs = Api.catalogDefs().filter(function (d) { return kind === 'home' || d.type === kind; }).slice(0, 10);
+    var main = el.querySelector('#main'), defs = Api.catalogDefs().filter(function (d) { return kind === 'home' || d.type === kind; }).slice(0, 10), trows = Tmdb.on() ? tmdbRows(kind) : [];
+    if (Tmdb.on() && Tmdb.restricted()) defs = [];                // a profile with an age limit only sees rows that TMDB has filtered for it
     main.innerHTML = '<div id="rows"></div>';
     var rows = main.querySelector('#rows'), slots = [], focused = false;
     function focusFirst() {
@@ -393,9 +398,16 @@ var Views = (function () {
         Nav.hydrate(); focusFirst();
       }
     }
+    var tslots = trows.map(function () { var s = document.createElement('div'); rows.appendChild(s); return s; });
     defs.forEach(function () { var s = document.createElement('div'); rows.appendChild(s); slots.push(s); });
-    var pending = defs.length;
+    var pending = defs.length + trows.length;
     function done() { if (--pending === 0 && token === browseToken && !rows.querySelector('.row')) main.innerHTML = '<div class="empty">Nothing to show right now. Check your internet connection.</div>'; }
+    trows.forEach(function (r, i) {
+      r.load().then(function (items) {
+        if (token !== browseToken || !items.length) return;
+        tslots[i].innerHTML = rowHtml(r.title, items.map(tmdbMeta)); Nav.hydrate(); focusFirst();
+      }).catch(function () {}).then(done);
+    });
     defs.forEach(function (d, i) {
       Api.fetchCatalog(d).then(function (metas) {
         if (token !== browseToken || !metas.length) return;
@@ -423,12 +435,155 @@ var Views = (function () {
   function runSearch(q) {
     var res = document.getElementById('res'); if (!res || !q) return;
     res.innerHTML = '<div class="skel">Searching…</div>';
-    Api.ensure().then(function () { return Api.search(q); }).then(function (metas) {
+    var people = Tmdb.on() ? Tmdb.search(q).then(function (r) { return r.people || []; }).catch(function () { return []; }) : Promise.resolve([]);
+    Promise.all([Api.ensure().then(function () { return Api.search(q); }), people]).then(function (all) {
+      var metas = all[0], ppl = all[1];
       if (!document.getElementById('res')) return;
-      if (!metas.length) { res.innerHTML = '<div class="skel">No results for “' + esc(q) + '”.</div>'; return; }
-      var h = ''; metas.slice(0, 48).forEach(function (m) { h += card(m); });
+      if (!metas.length && !ppl.length) { res.innerHTML = '<div class="skel">No results for “' + esc(q) + '”.</div>'; return; }
+      var h = ''; if (ppl.length) h += '<div class="gl">People</div><div class="prow">' + ppl.map(personCard).join('') + '</div><div class="gl">Titles</div>';
+      metas.slice(0, 48).forEach(function (m) { h += card(m); });
       res.innerHTML = h; Nav.hydrate();
     }).catch(function (e) { res.innerHTML = '<div class="skel">Search failed: ' + esc(e.message) + '</div>'; });
+  }
+
+  /* ---------- TMDB: rows, title extras, people, collections, discover ---------- */
+  function tmdbMeta(x) { return { type: x.type, tmdb: x.tmdb, id: '', name: x.name, poster: x.poster, background: x.background, description: x.description, year: x.year, imdbRating: x.rating }; }
+  function tmdbRows(kind) {
+    var rows = [];
+    function L(title, k, t) { rows.push({ title: title, load: function () { return Tmdb.list(k, t).then(function (r) { return r.items; }); } }); }
+    function D(title, t, genre) { rows.push({ title: title, load: function () { return Tmdb.discover({ type: t, genre: genre, sort: 'popular' }).then(function (r) { return r.items; }); } }); }
+    if (Tmdb.restricted()) { if (kind !== 'series') D('Films for you', 'movie'); if (kind !== 'movie') D('Kids’ TV', 'series', 10762); return rows; }
+    if (kind === 'home') { L('Trending films', 'trending', 'movie'); L('Trending TV', 'trending', 'series'); L('Now in cinemas', 'now', 'movie'); L('Coming soon', 'soon', 'movie'); }
+    else if (kind === 'movie') { L('Trending today', 'trending', 'movie'); L('Popular', 'popular', 'movie'); L('Top rated', 'top', 'movie'); L('Now in cinemas', 'now', 'movie'); L('Coming soon', 'soon', 'movie'); }
+    else { L('Trending today', 'trending', 'series'); L('Popular', 'popular', 'series'); L('Top rated', 'top', 'series'); L('On the air', 'now', 'series'); L('Airing today', 'soon', 'series'); }
+    return rows;
+  }
+  function openTmdb(m) {
+    toast('Opening…', 6000);
+    Tmdb.resolve(m.tmdb, m.type).then(function (r) { detail(r.type, r.imdb, m); }).catch(function () { toast('That title is not available here', 4000); });
+  }
+  /* age limit and the like: check before a title starts */
+  function playChecked(info) {
+    var id = info.id || '';
+    if (info._direct || !Tmdb.on() || !Tmdb.restricted() || !/^tt\d+$/.test(id)) return Player.open(info);
+    Tmdb.playCheck(id, info.type).then(function (r) {
+      if (r.ok) return Player.open(info);
+      menu('Not available on this profile', [{ label: 'OK' }], function () {}, r.message || 'This title is not suitable for this profile.');
+    });
+  }
+  function personCard(p) {
+    return '<div class="pc f" data-act="person" data-id="' + esc(p.id) + '"><div class="ph img" data-bg="' + esc(p.photo || '') + '"></div><div class="n">' + esc(p.name) + '</div>' + (p.role || p.department ? '<div class="r">' + esc(p.role || p.department) + '</div>' : '') + '</div>';
+  }
+  function certChip(c) { return c && c.rating ? '<span class="chip cert">' + esc(c.rating) + '</span>' : ''; }
+  function fmtDate(iso) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || ''); if (!m) return '';
+    var mo = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][+m[2] - 1];
+    return +m[3] + ' ' + mo + ' ' + m[1];
+  }
+  function enrichDetail(el, type, id, m) {
+    if (!Tmdb.on() || !/^tt\d+$/.test(id)) return;
+    Tmdb.title(type, id).then(function (t) {
+      if (!current() || current().el !== el || !el.parentNode) return;
+      el._tm = t; var d = el.querySelector('.dtop'); if (!d) return;
+      el.classList.add('tm');
+      if (t.background) setArt(el, t.background);
+      var h1 = d.querySelector('h1'); if (h1 && t.logo) h1.innerHTML = '<img class="dlogo" alt="' + esc(t.name) + '" src="' + esc(t.logo) + '">';
+      var chips = d.querySelector('.chips'), add = certChip(t.cert);
+      if (!m.runtime && t.runtime) add += '<span class="chip">' + (t.runtime >= 60 ? Math.floor(t.runtime / 60) + 'h ' + (t.runtime % 60) + 'm' : t.runtime + ' min') + '</span>';
+      if (t.stinger && (t.stinger.during || t.stinger.after)) add += '<span class="chip">Stay for an extra scene</span>';
+      if (t.type === 'series') {
+        if (t.nextEpisode) add += '<span class="chip">Next: S' + t.nextEpisode.season + ':E' + t.nextEpisode.episode + (t.nextEpisode.air ? ' · ' + esc(fmtDate(t.nextEpisode.air)) : '') + '</span>';
+        else if (t.status === 'Ended' || t.status === 'Canceled') add += '<span class="chip">' + esc(t.status === 'Ended' ? 'Ended' : 'Cancelled') + '</span>';
+      }
+      if (chips) chips.innerHTML = add + chips.innerHTML;
+      var desc = d.querySelector('.desc');
+      if (desc && t.overview && (!m.description || Tmdb.locale().slice(0, 2) !== 'en')) desc.textContent = t.overview;
+      if (t.tagline && chips) { var tg = document.createElement('div'); tg.className = 'tag'; tg.textContent = t.tagline; chips.parentNode.insertBefore(tg, chips.nextSibling); }
+      if (t.directors && t.directors.length && desc) { var cr = document.createElement('div'); cr.className = 'credit'; cr.textContent = t.directorLabel + ' ' + t.directors.map(function (x) { return x.name; }).join(', '); desc.parentNode.insertBefore(cr, desc.nextSibling); }
+      addDetailTabs(el, t);
+      var sel = el.querySelector('#seasons .chip.on[data-s]'); if (sel && t.type === 'series') stillsFor(el, +sel.getAttribute('data-s'));
+    }).catch(function () {});
+  }
+  /* Cast / More like this / Collection: tabs next to the seasons (series), or in the empty bottom half (films) */
+  function addDetailTabs(el, t) {
+    var tabsH = '';
+    if (t.cast && t.cast.length) tabsH += '<span class="chip f" data-act="xtab" data-t="cast">Cast</span>';
+    if (t.similar && t.similar.length) tabsH += '<span class="chip f" data-act="xtab" data-t="similar">More like this</span>';
+    if (t.collection) tabsH += '<span class="chip f" data-act="collection" data-id="' + esc(t.collection.id) + '">' + esc(t.collection.name) + '</span>';
+    if (!tabsH) return;
+    var bar = el.querySelector('#seasons');
+    if (!bar) {
+      var w = document.createElement('div'); w.className = 'eps-wrap'; w.innerHTML = '<div class="seasons" id="seasons">' + tabsH + '</div><div class="eps hs" id="eplist"></div>'; el.appendChild(w);
+      xTab(el, t.cast && t.cast.length ? 'cast' : 'similar');
+    } else bar.insertAdjacentHTML('beforeend', tabsH);
+    Nav.hydrate();
+  }
+  function xTab(el, which) {
+    var t = el._tm; if (!t) return;
+    var list = el.querySelector('#eplist'), h = '';
+    if (which === 'cast') t.cast.forEach(function (p) { h += personCard(p); });
+    else t.similar.forEach(function (x) { h += card(tmdbMeta(x)); });
+    list.scrollLeft = 0; list.innerHTML = h + '<span class="pad-end"></span>';
+    Array.prototype.forEach.call(el.querySelectorAll('#seasons .chip'), function (c) { c.classList.toggle('on', c.getAttribute('data-t') === which); });
+    Nav.hydrate();
+  }
+  function stillsFor(el, season) {                                   // episode pictures and summaries where Cinemeta has none
+    var t = el._tm; if (!t || !t.tmdb || t.type !== 'series' || !season) return;
+    Tmdb.season(t.tmdb, season).then(function (r) {
+      if (!el.parentNode) return;
+      r.episodes.forEach(function (e) {
+        var ep = el.querySelector('.ep[data-ep="' + e.episode + '"]'); if (!ep) return;
+        var im = ep.querySelector('.img'); if (im && e.still && !im.getAttribute('data-has')) { im.setAttribute('data-bg', e.still); im.style.backgroundImage = 'url("' + e.still + '")'; }
+        var o = ep.querySelector('.o'); if (o && !o.textContent && e.overview) o.textContent = e.overview;
+      });
+    }).catch(function () {});
+  }
+  /* generic page of cards (collection, person, genre results) */
+  function gridView(name, head, items, pager) {
+    var h = '<div class="art-shade"></div>' + topbar('') + '<div class="vs" id="main"><div class="grid" id="gridp"><div class="gh">' + head + '</div><div id="gcards">';
+    items.forEach(function (x) { h += card(tmdbMeta(x)); });
+    h += '</div>' + (pager ? '<div class="btn glass f" id="gmore" data-act="gmore">More</div>' : '') + '</div></div>';
+    var el = mount(name, h, { cls: 'noart' }); Nav.hydrate(); Nav.first('.card'); return el;
+  }
+  function personPage(id) {
+    toast('Loading…', 6000);
+    Tmdb.person(id).then(function (p) {
+      var head = '<div class="pphoto img" data-bg="' + esc(p.photo || '') + '"></div><div class="ptext"><h1>' + esc(p.name) + '</h1><div class="chips">' + (p.department ? '<span class="chip">' + esc(p.department) + '</span>' : '') +
+        (p.born ? '<span class="chip">Born ' + esc(fmtDate(p.born) || p.born) + '</span>' : '') + (p.place ? '<span class="chip">' + esc(p.place.slice(0, 40)) + '</span>' : '') + '</div><div class="desc">' + esc(p.bio) + '</div></div>';
+      gridView('person', head, p.known, false);
+    }).catch(function () { toast('Could not load that person', 4000); });
+  }
+  function collectionPage(id) {
+    toast('Loading…', 6000);
+    Tmdb.collection(id).then(function (c) { gridView('collection', '<div class="ptext"><h1>' + esc(c.name) + '</h1><div class="desc">' + esc(c.overview) + '</div></div>', c.items, false); }).catch(function () { toast('Could not load that collection', 4000); });
+  }
+  var DISC = { type: 'movie', genre: '', genreName: 'Any genre', year: '', sort: 'popular', page: 1 };
+  var SORT_NAMES = { popular: 'Most popular', rating: 'Highest rated', newest: 'Newest', az: 'A to Z' };
+  function discoverPage() {
+    var token = ++browseToken;
+    var chips = '<span class="chip f" data-act="dtype">' + (DISC.type === 'movie' ? 'Films' : 'TV shows') + '</span><span class="chip f" data-act="dgenre">' + esc(DISC.genreName) + '</span>' +
+      '<span class="chip f" data-act="dyear">' + (DISC.year || 'Any year') + '</span><span class="chip f" data-act="dsort">' + esc(SORT_NAMES[DISC.sort]) + '</span>';
+    replaceAll('discover', '<div class="art-shade"></div>' + topbar('discover') + '<div class="vs" id="main"><div class="grid" id="gridp"><div class="gh"><h1>Discover</h1><div class="chips">' + chips + '</div></div><div id="gcards"><div class="skel">Loading…</div></div><div id="gmoreh"></div></div></div>',
+      { cls: 'noart', onBack: function () { page('home'); return true; } });
+    Nav.first('.tab.on');
+    discoverLoad(token);
+  }
+  function discoverLoad(token) {
+    token = token || browseToken;
+    Tmdb.discover({ type: DISC.type, genre: DISC.genre, year: DISC.year, sort: DISC.sort, page: DISC.page }).then(function (r) {
+      if (token !== browseToken) return;
+      var h = ''; r.items.forEach(function (x) { h += card(tmdbMeta(x)); });
+      var box = document.getElementById('gcards'); if (!box) return;
+      if (DISC.page > 1) box.insertAdjacentHTML('beforeend', h); else box.innerHTML = h || '<div class="skel">Nothing matches those choices.</div>';
+      var more = document.getElementById('gmoreh'); if (more) more.innerHTML = r.pages > DISC.page ? '<div class="btn glass f" data-act="dmore">More</div>' : '';
+      Nav.hydrate();
+    }).catch(function (e) { var b = document.getElementById('gcards'); if (b) b.innerHTML = '<div class="skel">Could not load: ' + esc(e.message) + '</div>'; });
+  }
+  function discoverMenu(a) {
+    if (a === 'dtype') { DISC.type = DISC.type === 'movie' ? 'series' : 'movie'; DISC.genre = ''; DISC.genreName = 'Any genre'; DISC.page = 1; return discoverPage(); }
+    if (a === 'dsort') return menu('Sort by', Object.keys(SORT_NAMES).map(function (k) { return { label: SORT_NAMES[k], k: k, selected: k === DISC.sort }; }), function (o) { DISC.sort = o.k; DISC.page = 1; discoverPage(); });
+    if (a === 'dyear') { var ys = [{ label: 'Any year', y: '' }], y = new Date().getFullYear(); for (var i = 0; i < 40; i++) ys.push({ label: String(y - i), y: String(y - i) }); ys.forEach(function (o) { o.selected = o.y === DISC.year; }); return menu('Year', ys, function (o) { DISC.year = o.y; DISC.page = 1; discoverPage(); }); }
+    if (a === 'dgenre') return Tmdb.genres(DISC.type).then(function (r) { var os = [{ label: 'Any genre', g: '', n: 'Any genre' }].concat(r.genres.map(function (g) { return { label: g.name, g: String(g.id), n: g.name }; })); os.forEach(function (o) { o.selected = o.g === DISC.genre; }); menu('Genre', os, function (o) { DISC.genre = o.g; DISC.genreName = o.n; DISC.page = 1; discoverPage(); }); });
   }
 
   /* ---------- title page ---------- */
@@ -491,20 +646,22 @@ var Views = (function () {
       renderEpisodes(el, season);
     }
     Nav.hydrate(); Nav.first('.btn');
+    enrichDetail(el, type, id, m);
   }
   function renderEpisodes(el, season) {
     var D = el._detail, list = el.querySelector('#eplist'), eps = D.S.by[season] || [], h = '';
     eps.forEach(function (v) {
       var r = Resume.get(v.id), pct = r && r.d ? Math.min(1, r.t / r.d) : 0;
       var info = Object.assign({}, D.base, { videoId: v.id, startMs: r && !r.done ? r.t : 0, sub: 'S' + v.season + ':E' + v.episode, epTitle: v.title || v.name });
-      h += '<div class="ep glass f" data-act="play" data-k="' + ref(info) + '"><div class="img" data-bg="' + esc(v.thumbnail || D.m.background || '') + '"></div>' +
+      h += '<div class="ep glass f" data-ep="' + (v.episode || v.number || '') + '" data-act="play" data-k="' + ref(info) + '"><div class="img" data-bg="' + esc(v.thumbnail || D.m.background || '') + '"' + (v.thumbnail ? ' data-has="1"' : '') + '></div>' +
         '<div class="t">' + (v.episode || v.number || '') + '. ' + esc(v.title || v.name || 'Episode') + '</div><div class="o">' + esc(v.overview || v.description || '') + '</div>' +
         (pct > 0.02 ? '<div class="bar" style="width:' + Math.round(pct * 440) + 'px"></div>' : '') + '</div>';
     });
     list.scrollLeft = 0;
     list.innerHTML = (h || '<div class="skel">No episodes.</div>') + '<span class="pad-end"></span>';
     Array.prototype.forEach.call(el.querySelectorAll('.chip[data-s]'), function (c) { c.classList.toggle('on', Number(c.getAttribute('data-s')) === Number(season)); });
-    Nav.hydrate();
+    Array.prototype.forEach.call(el.querySelectorAll('.chip[data-t]'), function (c) { c.classList.remove('on'); });
+    Nav.hydrate(); stillsFor(el, season);
   }
 
   /* ---------- preferred quality (first run, or a household set up before the question existed) ---------- */
@@ -562,6 +719,18 @@ var Views = (function () {
   function playMode() { var m = Store.get('playback', null); if (m === null) m = Store.get('transcode', false) ? 'transcode' : 'auto'; return m; }
   function subPrefs() { var p = Store.get('subs', null) || {}; return { lang: p.lang || 'eng', lang2: p.lang2 || '', auto: !!p.auto, autosync: !!p.autosync }; }
   function setSub(k, v) { var p = subPrefs(); p[k] = v; Store.set('subs', p); }
+  function countryName(c) { for (var i = 0; i < Tmdb.COUNTRIES.length; i++) if (Tmdb.COUNTRIES[i][0] === c) return Tmdb.COUNTRIES[i][1]; return c; }
+  function localeName(c) { for (var i = 0; i < Tmdb.LOCALES.length; i++) if (Tmdb.LOCALES[i][0] === c) return Tmdb.LOCALES[i][1]; return c; }
+  function tmdbSettingsRows() {
+    var h = '<div class="lbl">Artwork, ratings and cast (shared by the household)</div>';
+    if (Tmdb.on()) {
+      h += '<div class="srow f" data-act="tregion">Country (age ratings, cinema listings): <b>' + esc(countryName(Tmdb.region())) + '</b></div>' +
+        '<div class="srow f" data-act="tlocale">Language of titles and summaries: <b>' + esc(localeName(Tmdb.locale())) + '</b></div>';
+    }
+    if (Tmdb.canKey()) h += '<input id="tmdbkey" class="field f" type="password" placeholder="' + (Tmdb.on() ? 'TMDB key saved. Paste a new one to replace it' : 'Paste the TMDB key to switch this on') + '" autocomplete="off"><div class="srow f" data-act="savetmdb">Save the TMDB key</div>';
+    else if (!Tmdb.on()) h += '<div class="hint">Titles with logos, cast, age ratings, trending lists and Discover switch on when a JoolzApp admin adds a TMDB key here.</div>';
+    return h + '<div class="hint">This product uses the TMDB API but is not endorsed or certified by TMDB.</div>';
+  }
   function settingsPage() {
     ++browseToken;
     var pr = Profiles.active(), rep = Api.deviceReport();
@@ -573,6 +742,7 @@ var Views = (function () {
       '<div class="lbl">Sources (the whole household)</div>' +
       '<div class="srow f" data-act="quality">Preferred quality for automatic playback: <b>' + esc(Api.quality() || 'Not chosen') + '</b></div>' +
       '<div class="srow f" data-act="sourcespage">Sources and filters: <b>' + esc(Sources.summary(Api.sourcesCfg())) + '</b></div>' +
+      tmdbSettingsRows() +
       '<div class="lbl">Subtitles</div>' +
       '<div class="srow f" data-act="sublang">Show subtitles in: <b>' + esc(Subs.langName(subPrefs().lang)) + '</b> (other languages are hidden)</div>' +
       '<div class="srow f" data-act="sublang2">Second language: <b>' + esc(subPrefs().lang2 ? Subs.langName(subPrefs().lang2) : 'None') + '</b></div>' +
@@ -593,9 +763,14 @@ var Views = (function () {
   function act(el) {
     var a = el.getAttribute('data-act');
     if (a === 'page') return page(el.getAttribute('data-p'));
-    if (a === 'open') { var m = reg[+el.getAttribute('data-k')]; return detail(m.type, m.id, m); }
-    if (a === 'play') return Player.open(reg[+el.getAttribute('data-k')]);
+    if (a === 'open') { var m = reg[+el.getAttribute('data-k')]; if (!m.id && m.tmdb) return openTmdb(m); return detail(m.type, m.id, m); }
+    if (a === 'play') return playChecked(reg[+el.getAttribute('data-k')]);
     if (a === 'season') return renderEpisodes(current().el, +el.getAttribute('data-s'));
+    if (a === 'xtab') return xTab(current().el, el.getAttribute('data-t'));
+    if (a === 'person') return personPage(el.getAttribute('data-id'));
+    if (a === 'collection') return collectionPage(el.getAttribute('data-id'));
+    if (a === 'dtype' || a === 'dsort' || a === 'dyear' || a === 'dgenre') return discoverMenu(a);
+    if (a === 'dmore') { DISC.page++; var mh = document.getElementById('gmoreh'); if (mh) mh.innerHTML = ''; return discoverLoad(); }
     if (a === 'pick') { var mm = menuEl, i = +el.getAttribute('data-i'), cb = mm._pick, o = mm._opts[i]; closeMenu(); return cb(o, i); }
     if (a === 'toggle') return el.classList.toggle('on');
     if (a === 'avatarmenu') return menu('Profile', [{ label: 'Switch profile', k: 'picker' }, { label: 'Settings', k: 'settings' }, { label: 'Sign out of this profile on this TV', k: 'signout' }], function (o) {
@@ -639,6 +814,11 @@ var Views = (function () {
     if (a === 'srccustom') { var c6 = Api.sourcesCfg(), cv = val('srcurl'); if (cv && !/^https:\/\//.test(cv)) return toast('The address must start with https://'); c6.custom = cv; return saveSources(c6, 'custom'); }
     if (a === 'srcreset') { return savePrefs({ sources: Sources.defaults() }, function () { toast('Source filters restored'); sourcesPage(); }); }
     if (a === 'srctest') return testSources();
+    if (a === 'tregion') return menu('Country', Tmdb.COUNTRIES.map(function (c) { return { label: c[1], c: c[0], selected: c[0] === Tmdb.region() }; }), function (o) { savePrefs({ region: o.c }, function () { settingsPage(); }); });
+    if (a === 'tlocale') return menu('Language of titles and summaries', Tmdb.LOCALES.map(function (c) { return { label: c[1], c: c[0], selected: c[0] === Tmdb.locale() }; }), function (o) { savePrefs({ locale: o.c }, function () { settingsPage(); }); });
+    if (a === 'savetmdb') { var tk = val('tmdbkey'); if (!tk) return toast('Paste the TMDB key first'); return Tmdb.setKey(tk).then(function (j) { toast(j.enabled ? 'TMDB is on' : 'TMDB is off', 4000); settingsPage(); }).catch(function (e) { toast(e.message, 6000); }); }
+    if (a === 'agelimit') { var pid = el.getAttribute('data-id'); return menu('Age limit for this profile', [{ label: 'No limit', v: null }, { label: 'Up to age 7', v: 7 }, { label: 'Up to age 10', v: 10 }, { label: 'Up to age 13', v: 13 }, { label: 'Up to age 16', v: 16 }], function (o) {
+      Backend.setMaxAge(pid, o.v).then(function (r) { Profiles.setAll(Profiles.all().map(function (x) { if (x.id === pid) x.maxAge = r.profile.maxAge; return x; })); toast(o.v === null ? 'Age limit removed' : 'Age limit set', 3000); editProfile(pid); }).catch(function (e) { toast(e.message, 5000); }); }, 'Titles rated above this age are hidden and will not play on this profile. Accounts that JoolzApp knows are under 18 are limited to their own age automatically.'); }
     if (a === 'playmode') { var order = ['auto', 'direct', 'transcode']; Store.set('playback', order[(order.indexOf(playMode()) + 1) % 3]); return settingsPage(); }
     if (a === 'skipdc') { DeviceTest.skip(); return window._dcLeave && window._dcLeave(); }
     if (a === 'dcdone') return window._dcLeave && window._dcLeave();

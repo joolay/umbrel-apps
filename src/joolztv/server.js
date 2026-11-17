@@ -11,7 +11,7 @@ const path = require("path");
 const crypto = require("crypto");
 const test = process.env.NODE_ENV === "test";
 const pb = test && process.env.JTV_PB ? require(path.resolve(process.env.JTV_PB)) : require("./pocketbase");
-const guardians = test && process.env.JTV_PB ? { ageOf: () => null, isMinor: () => false, statusOf: async () => ({ minor: false, approved: true }) } : require("./guardians");
+const guardians = test && process.env.JTV_PB ? { ageOf: u => (u.age == null ? null : u.age), isMinor: u => u.age != null && u.age < 18, statusOf: async u => ({ minor: u.age != null && u.age < 18, approved: true }) } : require("./guardians");
 const activity = test && process.env.JTV_PB ? { touch() {} } : require("./activity");
 
 const PORT = +process.env.PORT || 3900;
@@ -23,11 +23,12 @@ const UPSTREAM = new URL(process.env.STREAM_UPSTREAM || "http://server:11470");
 const INTERNAL = process.env.STREAM_INTERNAL || "http://127.0.0.1:11470";   // how the streaming server reaches itself (for transcoding)
 const REQUIRE_ACCOUNTS = !/^(0|false|no)$/i.test(process.env.REQUIRE_ACCOUNTS || "1");
 const subsync = require("./subsync");
-const marks = require("./marks"), community = require("./community");
+const marks = require("./marks"), community = require("./community"), tmdb = require("./tmdb");
 const FFMPEG = process.env.FFMPEG || "ffmpeg", FFPROBE = process.env.FFPROBE || "ffprobe";
 const APP_NAME = process.env.POCKETBASE_APP_NAME || "JoolzTV";
 const MAX_PROFILES = 12, MAX_BODY = 2 * 1024 * 1024, MAX_RESUME = 200, MAX_LIST = 500, STREAM_TTL = 12 * 3600e3;
 const USERS_DIR = path.join(DATA_DIR, "users");
+tmdb.configure(path.join(DATA_DIR, "tmdb.key"));
 fs.mkdirSync(USERS_DIR, { recursive: true });
 
 /* ---------- small helpers ---------- */
@@ -142,7 +143,8 @@ const profileOf = (h, userId) => live(h).filter(p => p.userId === userId)[0] || 
 const COLORS = ["#0a84ff", "#30d158", "#ff9f0a", "#bf5af2", "#ff375f", "#64d2ff", "#ffd60a", "#ac8e68", "#5e5ce6", "#32ade6", "#ff6482", "#63e6be"];
 const AV_RE = /^a(0[1-9]|1\d|2[0-4])$/;                                    // the 24 built-in pictures (a01..a24, drawn in the app)
 const nextAvatar = list => { const used = list.map(x => x.avatar); for (let i = 1; i <= 24; i++) { const id = "a" + String(i).padStart(2, "0"); if (!used.includes(id)) return id; } return "a" + String(1 + list.length % 24).padStart(2, "0"); };
-const pubProfile = (p, selfId) => ({ id: p.id, name: p.name, color: p.color, owner: !!p.owner, self: p.userId === selfId, avatar: p.avatar || "", hasPhoto: !!p.photo });
+const pubProfile = (p, selfId) => ({ id: p.id, name: p.name, color: p.color, owner: !!p.owner, self: p.userId === selfId, avatar: p.avatar || "", hasPhoto: !!p.photo, maxAge: p.maxAge == null ? null : p.maxAge });
+const AGE_LIMITS = [7, 10, 13, 16];
 /* the photo on the person's JoolzApp account, as a small picture the app can show before anyone has signed in on a device */
 const photoCache = new Map();
 const photoFile = u => { const f = String(u && (u.avatar || u.photo) || ""); return /^[\w.\-]{1,200}$/.test(f) ? f : ""; };
@@ -188,6 +190,8 @@ async function householdRoutes(req, res, p) {
     const body = await jsonBody(req), cur = h.prefs || {}, next = Object.assign({}, cur);
     if (body.quality !== undefined) { if (!QUALITIES.includes(body.quality)) return send(res, 400, { code: "bad_request", message: "Pick 4K, 1080p or 720p." }); next.quality = body.quality; }
     if (body.sources !== undefined) next.sources = cleanSources(body.sources);
+    if (body.region !== undefined) { if (body.region !== "" && !/^[A-Z]{2}$/.test(body.region)) return send(res, 400, { code: "bad_request", message: "Pick a country." }); next.region = body.region; }
+    if (body.locale !== undefined) { if (body.locale !== "" && !/^[a-z]{2}(-[A-Z]{2})?$/.test(body.locale)) return send(res, 400, { code: "bad_request", message: "Pick a language." }); next.locale = body.locale; }
     next.ts = Date.now(); h.prefs = next; writeJson(HH_FILE, h);
     return send(res, 200, { prefs: next });
   }
@@ -222,6 +226,11 @@ async function householdRoutes(req, res, p) {
       const body = await jsonBody(req);
       if (typeof body.name === "string" && body.name.trim()) target.name = body.name.trim().slice(0, 16);
       if (/^#[0-9a-f]{6}$/i.test(body.color || "")) target.color = body.color;
+      if (body.maxAge !== undefined) {                                    // the age limit: set by the household owner (or a JoolzApp admin), never by the person it applies to
+        if (!(u.isAdmin || (me && me.owner))) return send(res, 403, { code: "forbidden", message: "Only the household owner can set an age limit." });
+        if (body.maxAge !== null && !AGE_LIMITS.includes(body.maxAge)) return send(res, 400, { code: "bad_request", message: "Pick one of the age limits." });
+        if (body.maxAge === null) delete target.maxAge; else target.maxAge = body.maxAge;
+      }
       if (body.avatar !== undefined) {
         if (body.avatar === "photo" ? !target.photo : !(body.avatar === "" || AV_RE.test(body.avatar))) return send(res, 400, { code: "bad_request", message: body.avatar === "photo" ? "That account has no JoolzApp photo." : "Pick one of the built-in pictures." });
         target.avatar = body.avatar;
@@ -309,6 +318,64 @@ async function marksRoutes(req, res, p, u) {
     catch (e) { if (e.code === "unreachable") return send(res, 502, { code: "unreachable", message: "The skip databases could not be reached." }); return markErr(res, e); }
   }
   return send(res, 404, { code: "not_found" });
+}
+
+/* ---------- TMDB: details, artwork, lists, people (needs a key; without one everything quietly stays with Cinemeta) ---------- */
+function ageLimitOf(h, u) {                       // the youngest age rating this person may watch: the owner's limit for the profile, and the account's own age when JoolzApp says it is a minor
+  const me = profileOf(h, u.id), a = [];
+  if (me && me.maxAge != null) a.push(me.maxAge);
+  if (u.guard && u.guard.minor) { let age = null; try { age = guardians.ageOf(u); } catch {} if (age != null) a.push(age); }
+  return a.length ? Math.min.apply(null, a) : null;
+}
+const loc = url => { const l = url.searchParams.get("locale") || "", r = url.searchParams.get("region") || ""; return { locale: /^[a-z]{2}(-[A-Z]{2})?$/.test(l) ? l : "en-US", region: /^[A-Z]{2}$/.test(r) ? r : "" }; };
+const tmdbErr = (res, e) => {
+  if (e.code === "off") return send(res, 503, { code: "tmdb_off", message: "TMDB is not set up." });
+  if (e.code === "bad_key") return send(res, 503, { code: "tmdb_key", message: "TMDB refused the key. An admin can enter it again in Settings." });
+  if (e.code === "not_found") return send(res, 404, { code: "not_found", message: "TMDB does not know that title." });
+  if (e.code === "bad_request") return send(res, 400, { code: "bad_request", message: "Bad request." });
+  if (e.code === "busy") return send(res, 429, { code: "busy", message: "TMDB is busy. Try again shortly." });
+  console.error("tmdb:", e.message); return send(res, 502, { code: "upstream", message: "TMDB could not be reached." });
+};
+const idOk = v => /^\d{1,9}$/.test(String(v || ""));
+async function tmdbRoutes(req, res, p, u) {
+  const url = new URL(req.url, "http://x"), q = url.searchParams, l = loc(url);
+  if (p === "/api/tmdb/status") return send(res, 200, { enabled: tmdb.enabled(), canSetKey: !!u.isAdmin, limit: tmdb.enabled() ? ageLimitOf(hh(), u) : null });
+  if (p === "/api/tmdb/key" && req.method === "PUT") {
+    if (!u.isAdmin) return send(res, 403, { code: "forbidden", message: "Only a JoolzApp admin can set the TMDB key." });
+    try { tmdb.setKey((await jsonBody(req)).key); } catch (e) { if (e.code === "bad_key") return send(res, 400, { code: "bad_request", message: e.message }); throw e; }
+    return send(res, 200, { enabled: tmdb.enabled() });
+  }
+  if (!tmdb.enabled()) return send(res, 503, { code: "tmdb_off", message: "TMDB is not set up." });
+  const h = hh(), limit = ageLimitOf(h, u);
+  try {
+    if (p === "/api/tmdb/title") {
+      const imdb = q.get("imdb") || "", t = q.get("tmdb") || "";
+      if (!/^tt\d{5,12}$/.test(imdb) && !idOk(t)) return send(res, 400, { code: "bad_request", message: "Unknown title." });
+      return send(res, 200, await tmdb.title({ imdb: /^tt/.test(imdb) ? imdb : "", tmdb: idOk(t) ? t : "", type: q.get("type") || "movie", locale: l.locale, region: l.region }));
+    }
+    if (p === "/api/tmdb/season") { if (!idOk(q.get("tmdb")) || !idOk(q.get("season"))) return send(res, 400, { code: "bad_request", message: "Unknown season." }); return send(res, 200, await tmdb.season({ tmdb: q.get("tmdb"), season: q.get("season"), locale: l.locale })); }
+    if (p === "/api/tmdb/list") return send(res, 200, await tmdb.list({ kind: q.get("kind") || "popular", type: q.get("type") || "movie", locale: l.locale, region: l.region, page: Math.min(+q.get("page") || 1, 20) }));
+    if (p === "/api/tmdb/genres") return send(res, 200, { genres: await tmdb.genres({ type: q.get("type") || "movie", locale: l.locale }) });
+    if (p === "/api/tmdb/discover") return send(res, 200, await tmdb.discover({ type: q.get("type") || "movie", genre: q.get("genre"), year: q.get("year"), sort: q.get("sort"), locale: l.locale, region: l.region, page: Math.min(+q.get("page") || 1, 50), maxAge: limit }));
+    if (p === "/api/tmdb/person") { if (!idOk(q.get("id"))) return send(res, 400, { code: "bad_request", message: "Unknown person." }); return send(res, 200, await tmdb.person({ id: q.get("id"), locale: l.locale })); }
+    if (p === "/api/tmdb/collection") { if (!idOk(q.get("id"))) return send(res, 400, { code: "bad_request", message: "Unknown collection." }); return send(res, 200, await tmdb.collection({ id: q.get("id"), locale: l.locale })); }
+    if (p === "/api/tmdb/search") { const s = String(q.get("q") || "").trim(); if (s.length < 2) return send(res, 200, { people: [], titles: [] }); return send(res, 200, await tmdb.search({ q: s, locale: l.locale })); }
+    if (p === "/api/tmdb/resolve") { if (!idOk(q.get("tmdb"))) return send(res, 400, { code: "bad_request", message: "Unknown title." }); return send(res, 200, await tmdb.resolve({ tmdb: q.get("tmdb"), type: q.get("type") || "movie" })); }
+    return send(res, 404, { code: "not_found" });
+  } catch (e) { return tmdbErr(res, e); }
+}
+/* before a title starts: is it allowed for this profile? (age limit from the household owner, or the account's own age) */
+async function playCheck(req, res, u) {
+  const body = await jsonBody(req), h = hh(), limit = ageLimitOf(h, u);
+  if (limit === null || !tmdb.enabled()) return send(res, 200, { ok: true, limit });
+  const imdb = String(body.imdb || ""), region = /^[A-Z]{2}$/.test(body.region || "") ? body.region : "";
+  if (!/^tt\d{5,12}$/.test(imdb)) return send(res, 200, { ok: true, limit });
+  try {
+    const c = await tmdb.ageOf({ imdb, type: body.type, region });
+    if (!c || c.age === null) return send(res, 200, { ok: false, reason: "unrated", limit, message: "This title has no age rating, so it is not available on a profile with an age limit." });
+    if (c.age > limit) return send(res, 200, { ok: false, reason: "age", limit, rating: c.rating, message: "Rated " + c.rating + ". This profile is limited to ages " + limit + " and under." });
+    return send(res, 200, { ok: true, limit, rating: c.rating });
+  } catch (e) { if (e.code === "not_found") return send(res, 200, { ok: false, reason: "unrated", limit, message: "This title could not be age-checked, so it is not available on a profile with an age limit." }); return tmdbErr(res, e); }
 }
 
 /* ---------- streaming server behind the sign-in ---------- */
@@ -463,6 +530,8 @@ const server = http.createServer(async (req, res) => {
       if ((p === "/api/state" && req.method === "GET") || (p === "/api/sync" && req.method === "POST")) return await syncRoutes(req, res, p, u);
       if (p === "/api/subs/sync" && req.method === "POST") return await subsSync(req, res, u);
       if (p.startsWith("/api/marks/")) return await marksRoutes(req, res, p, u);
+      if (p.startsWith("/api/tmdb/")) return await tmdbRoutes(req, res, p, u);
+      if (p === "/api/play-check" && req.method === "POST") return await playCheck(req, res, u);
       if (p === "/api/stream-token" && req.method === "POST") { const m = mintStream(u.id); return send(res, 200, { st: m.st, exp: m.exp }); }
       return send(res, 404, { code: "not_found" });
     }

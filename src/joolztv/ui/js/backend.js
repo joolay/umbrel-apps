@@ -29,6 +29,7 @@ var Backend = (function () {
     addProfile: function (email, password, name, tok) { return call('POST', '/api/household/profiles', { email: email, password: password, name: name }, tok); },
     renameProfile: function (id, name, color) { return call('PATCH', '/api/household/profiles/' + id, { name: name, color: color }); },
     setAvatar: function (id, avatar) { return call('PATCH', '/api/household/profiles/' + id, { avatar: avatar }); },
+    setMaxAge: function (id, maxAge) { return call('PATCH', '/api/household/profiles/' + id, { maxAge: maxAge }); },
     removeProfile: function (id) { return call('DELETE', '/api/household/profiles/' + id); },
     savePrefs: function (p) { return call('PUT', '/api/household/prefs', p); },
     me: function () { return call('GET', '/api/account/me'); },

@@ -5,6 +5,7 @@ const dir = fs.mkdtempSync(path.join(os.tmpdir(), "jtv-")), P = 39600 + Math.flo
 fs.mkdirSync(path.join(dir, "dist", "compat"), { recursive: true }); fs.mkdirSync(path.join(dir, "dist", "modern"), { recursive: true });
 fs.writeFileSync(path.join(dir, "dist", "compat", "index.html"), "COMPAT"); fs.writeFileSync(path.join(dir, "dist", "modern", "index.html"), "MODERN");
 fs.mkdirSync(path.join(dir, "devtest"), { recursive: true }); fs.writeFileSync(path.join(dir, "devtest", "index.json"), '{"v":1,"clips":[{"id":"h264","trait":"h264","label":"H.264","kind":"video","file":"h264.mp4"}]}'); fs.writeFileSync(path.join(dir, "devtest", "h264.mp4"), Buffer.alloc(3000, 1));
+const tmdbStub = require("./test/tmdb-stub.js").make(); tmdbStub.srv.listen(P + 2);
 const HASH = "a".repeat(40), BODY = Buffer.from("0123456789".repeat(100));
 
 const upstream = http.createServer((q, r) => {
@@ -19,7 +20,7 @@ const upstream = http.createServer((q, r) => {
   r.writeHead(200); r.end("SECRET-" + q.url);
 }).listen(U);
 
-const child = cp.spawn(process.execPath, [path.join(__dirname, "server.js")], { env: Object.assign({}, process.env, { NODE_ENV: "test", JTV_PB: path.join(__dirname, "test", "mock-pb.js"), PORT: P, DATA_DIR: dir, JTV_CACHE_MS: "0", INTRODB_URL: "http://127.0.0.1:9", THEINTRODB_URL: "http://127.0.0.1:9", FFMPEG: "/nonexistent/ffmpeg", DEVTEST_DIR: path.join(dir, "devtest"), UI_DIST: path.join(dir, "dist"), STREAM_UPSTREAM: "http://127.0.0.1:" + U }), stdio: "ignore" });
+const child = cp.spawn(process.execPath, [path.join(__dirname, "server.js")], { env: Object.assign({}, process.env, { NODE_ENV: "test", JTV_PB: path.join(__dirname, "test", "mock-pb.js"), PORT: P, DATA_DIR: dir, JTV_CACHE_MS: "0", INTRODB_URL: "http://127.0.0.1:9", TMDB_URL: "http://127.0.0.1:" + (P + 2), TMDB_IMG: "https://img.test/t/p/", THEINTRODB_URL: "http://127.0.0.1:9", TMDB_URL: "http://127.0.0.1:" + (P + 2), TMDB_IMG: "https://img.test/t/p/", FFMPEG: "/nonexistent/ffmpeg", DEVTEST_DIR: path.join(dir, "devtest"), UI_DIST: path.join(dir, "dist"), STREAM_UPSTREAM: "http://127.0.0.1:" + U }), stdio: "ignore" });
 function req(method, p, body, headers) {
   return new Promise((res, rej) => {
     const r = http.request({ port: P, method, path: p, headers: Object.assign({ "content-type": "application/json" }, headers || {}) }, x => { const c = []; x.on("data", d => c.push(d)); x.on("end", () => { const t = Buffer.concat(c).toString(); let j = null; try { j = JSON.parse(t); } catch {} res({ code: x.statusCode, text: t, json: j, headers: x.headers }); }); });
@@ -127,10 +128,46 @@ const T = tok => ({ "x-jtv-token": tok });
   r = await req("POST", "/api/marks/lookup", { imdb: "tt0944947", season: 1, duration: 3000 }, T(ann)); ok(r.code === 400, "lookup: season without episode is refused");
   r = await req("POST", "/api/marks/lookup", { imdb: "tt0944947", season: 1, episode: 1, duration: 3000 }, T(ann)); ok(r.code === 502 && r.json.code === "unreachable", "lookup: the databases being down is a clear answer (here they are unreachable on purpose)");
   r = await req("GET", "/api/marks/show?id=tt0944947", undefined, T(ann)); ok(r.code === 404, "no household-marked intros: the databases and the file's chapters are the only sources");
+  // TMDB: key, details, lists, parental limits
+  r = await req("GET", "/api/tmdb/status", undefined, T(ann)); ok(r.json.enabled === false && r.json.canSetKey === false, "TMDB starts off (no key); an ordinary member cannot set one");
+  r = await req("GET", "/api/tmdb/title?imdb=tt0111161", undefined, T(ann)); ok(r.code === 503 && r.json.code === "tmdb_off", "without a key the TMDB routes say so (the app falls back to Cinemeta)");
+  r = await req("PUT", "/api/tmdb/key", { key: "goodkey1234567890abcd" }, T(ann)); ok(r.code === 403, "only a JoolzApp admin can set the key");
+  const adm = (await req("POST", "/api/account/login", { email: "admin@x.com", password: "pw21" })).json.token;
+  r = await req("PUT", "/api/tmdb/key", { key: "not a key!!" }, T(adm)); ok(r.code === 400, "a key with odd characters is refused");
+  r = await req("PUT", "/api/tmdb/key", { key: "goodkey1234567890abcd" }, T(adm)); ok(r.code === 200 && r.json.enabled === true, "an admin sets the key");
+  ok(fs.existsSync(path.join(dir, "tmdb.key")) && (fs.statSync(path.join(dir, "tmdb.key")).mode & 0o077) === 0, "the key is stored on the server, readable by the server only");
+  r = await req("GET", "/api/tmdb/status", undefined, T(adm)); ok(r.json.enabled === true && r.json.canSetKey === true && !/goodkey/.test(r.text), "the key is never sent back");
+  r = await req("GET", "/api/tmdb/title?imdb=tt0111161&type=movie&locale=en-GB&region=ZA", undefined, T(ann)); ok(r.code === 200 && r.json.name === "The Shawshank Redemption" && r.json.cert.rating === "16" && !/goodkey/.test(r.text), "title details for the person's country (key not leaked)");
+  r = await req("GET", "/api/tmdb/title?imdb=nope", undefined, T(ann)); ok(r.code === 400, "a bad id is refused");
+  r = await req("GET", "/api/tmdb/title?imdb=tt9999999&type=movie", undefined, T(ann)); ok(r.code === 404, "an unknown title is a clean 404");
+  r = await req("GET", "/api/tmdb/title?imdb=tt0111161&locale=../../x&region=zz", undefined, T(ann)); ok(r.code === 200, "bad locale/region are ignored, not passed on");
+  ok(!tmdbStub.hits.some(h => /\.\.\//.test(h)), "nothing from the query string is passed to TMDB unchecked");
+  r = await req("GET", "/api/tmdb/list?kind=trending&type=movie", undefined, T(ann)); ok(r.code === 200 && r.json.items.length === 3, "trending list");
+  r = await req("GET", "/api/tmdb/season?tmdb=1396&season=1", undefined, T(ann)); ok(r.code === 200 && r.json.episodes.length === 2, "season stills");
+  r = await req("GET", "/api/tmdb/person?id=504", undefined, T(ann)); ok(r.code === 200 && r.json.name === "Tim Robbins", "person");
+  r = await req("GET", "/api/tmdb/person?id=abc", undefined, T(ann)); ok(r.code === 400, "person id is a number");
+  r = await req("GET", "/api/tmdb/search?q=t", undefined, T(ann)); ok(r.code === 200 && r.json.people.length === 0, "a one-letter search asks nothing");
+  r = await req("GET", "/api/tmdb/resolve?tmdb=1396&type=series", undefined, T(ann)); ok(r.json.imdb === "tt0903747", "resolve a TMDB id to an IMDb id");
+  r = await req("GET", "/api/tmdb/title?imdb=tt0111161"); ok(r.code === 401, "TMDB routes need a sign-in");
+  // age limits
+  r = await req("POST", "/api/play-check", { imdb: "tt0111161", type: "movie", region: "GB" }, T(ann)); ok(r.json.ok === true && r.json.limit === null, "no age limit: everything plays");
+  r = await req("POST", "/api/play-check", { imdb: "tt0111161", type: "movie", region: "GB" }, T(carol)); ok(r.json.ok === false && r.json.reason === "age" && /15/.test(r.json.message) && r.json.limit === 9, "an account that JoolzApp says is 9 cannot play a 15 (" + r.json.message + ")");
+  r = await req("POST", "/api/play-check", { imdb: "tt0000777", type: "movie", region: "GB" }, T(carol)); ok(r.json.ok === true, "...but can play a U");
+  r = await req("POST", "/api/play-check", { imdb: "tt0000888", type: "movie", region: "GB" }, T(carol)); ok(r.json.ok === false && r.json.reason === "unrated", "an unrated title is not available under a limit");
+  r = await req("GET", "/api/tmdb/discover?type=movie", undefined, T(carol)); ok(r.json.items.length === 1 && tmdbStub.hits.some(h => /certification.lte=9/.test(h)), "browsing for that account only asks for age-appropriate films");
+  const vwp = (await req("GET", "/api/household", undefined, T(vw))).json.profiles.filter(p => p.self)[0];
+  r = await req("PATCH", "/api/household/profiles/" + vwp.id, { maxAge: 7 }, T(vw)); ok(r.code === 403, "a profile cannot set its own age limit");
+  r = await req("PATCH", "/api/household/profiles/" + vwp.id, { maxAge: 5 }, T(ann)); ok(r.code === 400, "only the offered age limits are accepted");
+  r = await req("PATCH", "/api/household/profiles/" + vwp.id, { maxAge: 7 }, T(ann)); ok(r.code === 200 && r.json.profile.maxAge === 7, "the household owner sets an age limit for a profile");
+  r = await req("POST", "/api/play-check", { imdb: "tt0111161", type: "movie", region: "GB" }, T(vw)); ok(r.json.ok === false, "that limit is applied");
+  r = await req("POST", "/api/play-check", { imdb: "tt0000777", type: "movie", region: "GB" }, T(vw)); ok(r.json.ok === true && r.json.rating === "U", "a title rated U plays under a 7 limit");
+  r = await req("PATCH", "/api/household/profiles/" + vwp.id, { maxAge: null }, T(ann)); ok(r.code === 200 && r.json.profile.maxAge === null, "the limit can be removed");
+  r = await req("PUT", "/api/household/prefs", { region: "za" }, T(ann)); ok(r.code === 400, "region must be a two-letter country code");
+  r = await req("PUT", "/api/household/prefs", { region: "ZA", locale: "en-GB" }, T(ann)); ok(r.code === 200 && r.json.prefs.region === "ZA" && r.json.prefs.locale === "en-GB", "the household's country and language are saved");
   // UI build selection
   r = await req("GET", "/", undefined, { "user-agent": "Mozilla/5.0 (Web0S; Linux/SmartTV) AppleWebKit/537.36 Chrome/53.0.2785.34 Safari/537.36 WebAppManager" }); ok(r.text === "COMPAT" && /User-Agent/i.test(r.headers.vary), "LG webOS TV gets the compat build");
   r = await req("GET", "/", undefined, { "user-agent": "Mozilla/5.0 (Macintosh) AppleWebKit/537.36 Chrome/126.0 Safari/537.36" }); ok(r.text === "MODERN", "modern browser gets the modern build");
   r = await req("GET", "/", undefined, { "user-agent": "Mozilla/5.0 Chrome/60.0 Safari/537.36" }); ok(r.text === "COMPAT", "any old Chrome (<70) gets the compat build");
   r = await req("GET", "/?modern=1", undefined, { "user-agent": "Web0S" }); ok(r.text === "MODERN", "?modern=1 override");
   r = await req("GET", "/%2e%2e/server.js"); ok(r.code === 403 || r.code === 404, "path traversal blocked");
-})().catch(e => { fails++; console.log("ERROR", e.stack); }).then(() => { child.kill(); upstream.close(); console.log(fails ? fails + " FAILED" : "ALL PASSED"); process.exit(fails ? 1 : 0); });
+})().catch(e => { fails++; console.log("ERROR", e.stack); }).then(() => { child.kill(); upstream.close(); tmdbStub.srv.close(); console.log(fails ? fails + " FAILED" : "ALL PASSED"); process.exit(fails ? 1 : 0); });
