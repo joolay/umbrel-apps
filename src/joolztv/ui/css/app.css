@@ -222,3 +222,9 @@ body.pointer { cursor: pointer; }
 .kk.focus { background: #f5f5f7; color: #111; border-color: #fff; -webkit-transform: scale(1.08); transform: scale(1.08); box-shadow: 0 14px 34px rgba(0,0,0,.5); position: relative; z-index: 2; }
 .pdl { position: absolute; right: 90px; top: 118px; padding: 7px 20px; border-radius: 22px; font-size: 20px; font-weight: 600; color: rgba(245,245,247,.85); }
 .settings .seasons { padding: 0; height: auto; margin: 0 0 16px 0; white-space: normal; }
+/* episodes that are not out yet */
+.ep.unrel .img { -webkit-filter: grayscale(1) brightness(.55); filter: grayscale(1) brightness(.55); }
+.ep.unrel .t { color: var(--dim); }
+.ep.unrel .o { color: var(--dim); font-weight: 600; }
+.ep.unrel .nb { position: absolute; left: 20px; top: 334px; padding: 8px 18px; border-radius: 20px; font-size: 20px; font-weight: 700; background: rgba(255,255,255,.14); border: 1px solid rgba(255,255,255,.3); }
+.ep.unrel.on .nb { background: rgba(255,255,255,.9); color: #111; }

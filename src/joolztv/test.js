@@ -8,7 +8,7 @@ fs.mkdirSync(path.join(dir, "devtest"), { recursive: true }); fs.writeFileSync(p
 const tmdbStub = require("./test/tmdb-stub.js").make(); tmdbStub.srv.listen(P + 2);
 const HASH = "a".repeat(40), BODY = Buffer.from("0123456789".repeat(100));
 
-const stubRanges = [];
+const stubRanges = []; let srcOn = false;
 const settingsVals = { cacheSize: 10 * 1073741824, serverVersion: "stub" };
 const upstream = http.createServer((q, r) => {
   if (q.url.indexOf("/" + HASH + "/") === 0) {
@@ -16,6 +16,7 @@ const upstream = http.createServer((q, r) => {
     if (rg) { const s = +rg[1], e = rg[2] ? +rg[2] : BODY.length - 1; r.writeHead(206, { "content-type": "video/mp4", "content-range": "bytes " + s + "-" + e + "/" + BODY.length, "content-length": e - s + 1, "accept-ranges": "bytes" }); return r.end(BODY.slice(s, e + 1)); }
     r.writeHead(200, { "content-type": "video/mp4", "content-length": BODY.length, "accept-ranges": "bytes" }); return r.end(BODY);
   }
+  if (q.url.indexOf("/stream/series/") === 0) { r.writeHead(200, { "content-type": "application/json" }); return r.end(JSON.stringify({ streams: srcOn ? [{ name: "Src\n720p", title: "Ep 720p\n👤 50", infoHash: HASH, fileIdx: 0 }, { name: "Src\n1080p", title: "Ep 1080p\n👤 5", infoHash: HASH, fileIdx: 0 }, { name: "Src\n1080p", title: "Ep 1080p best\n👤 90", infoHash: "d".repeat(40), fileIdx: 3 }] : [] })); }
   if (q.url.indexOf("/hlsv2/x/master.m3u8") === 0) { r.writeHead(200, { "content-type": "application/vnd.apple.mpegurl" }); return r.end("#EXTM3U\n#EXT-X-MEDIA:URI=\"/hlsv2/x/audio.m3u8\"\n/hlsv2/x/video.m3u8\nhttp://127.0.0.1:11470/hlsv2/x/other.m3u8\nrelative.m3u8\n"); }
   if (q.url.indexOf("/opensubHash") === 0) { r.writeHead(200, { "content-type": "application/json" }); return r.end('{"result":{"hash":"8e245d9679d31e12","size":1000}}'); }
   if (q.url === "/settings" && q.method === "POST") { const c = []; q.on("data", d => c.push(d)); q.on("end", () => { try { const v = JSON.parse(Buffer.concat(c).toString()); if (v.cacheSize <= 100 * 1073741824) settingsVals.cacheSize = v.cacheSize; } catch {} r.writeHead(200, { "content-type": "application/json" }); r.end("{}"); }); return; }
@@ -25,7 +26,7 @@ const upstream = http.createServer((q, r) => {
   r.writeHead(200); r.end("SECRET-" + q.url);
 }).listen(U);
 
-const child = cp.spawn(process.execPath, [path.join(__dirname, "server.js")], { env: Object.assign({}, process.env, { NODE_ENV: "test", JTV_PB: path.join(__dirname, "test", "mock-pb.js"), PORT: P, DATA_DIR: dir, JTV_CACHE_MS: "0", INTRODB_URL: "http://127.0.0.1:9", JTV_CACHE_APPLY: "1", TMDB_URL: "http://127.0.0.1:" + (P + 2), TMDB_IMG: "https://img.test/t/p/", CINEMETA_URL: "http://127.0.0.1:" + (P + 2), THEINTRODB_URL: "http://127.0.0.1:9", TMDB_URL: "http://127.0.0.1:" + (P + 2), TMDB_IMG: "https://img.test/t/p/", FFMPEG: "/nonexistent/ffmpeg", DEVTEST_DIR: path.join(dir, "devtest"), UI_DIST: path.join(dir, "dist"), STREAM_UPSTREAM: "http://127.0.0.1:" + U }), stdio: "ignore" });
+const child = cp.spawn(process.execPath, [path.join(__dirname, "server.js")], { env: Object.assign({}, process.env, { NODE_ENV: "test", JTV_PB: path.join(__dirname, "test", "mock-pb.js"), PORT: P, DATA_DIR: dir, JTV_CACHE_MS: "0", INTRODB_URL: "http://127.0.0.1:9", JTV_CACHE_APPLY: "1", TMDB_URL: "http://127.0.0.1:" + (P + 2), TMDB_IMG: "https://img.test/t/p/", CINEMETA_URL: "http://127.0.0.1:" + (P + 2), THEINTRODB_URL: "http://127.0.0.1:9", TMDB_URL: "http://127.0.0.1:" + (P + 2), TMDB_IMG: "https://img.test/t/p/", FFMPEG: "/nonexistent/ffmpeg", DEVTEST_DIR: path.join(dir, "devtest"), UI_DIST: path.join(dir, "dist"), STREAM_UPSTREAM: "http://127.0.0.1:" + U, SOURCES_URL: "http://127.0.0.1:" + U, JTV_NOTIFY_TICK_MS: "150", JTV_NOTIFY_EVERY_MS: "1200", JTV_NOTIFY_BYTES: "500" }), stdio: "ignore" });
 function req(method, p, body, headers) {
   return new Promise((res, rej) => {
     const r = http.request({ port: P, method, path: p, headers: Object.assign({ "content-type": "application/json" }, headers || {}) }, x => { const c = []; x.on("data", d => c.push(d)); x.on("end", () => { const t = Buffer.concat(c).toString(); let j = null; try { j = JSON.parse(t); } catch {} res({ code: x.statusCode, text: t, json: j, headers: x.headers }); }); });
@@ -144,6 +145,29 @@ const T = tok => ({ "x-jtv-token": tok });
   r = await req("POST", "/api/prefetch", { infoHash: HASH, fileIdx: 0, from: 600, to: 100 }, T(ann)); ok(r.code === 400, "prefetch: the range must go forward");
   r = await req("POST", "/api/prefetch", { infoHash: HASH, fileIdx: 0, from: 0, to: 999999999 }, T(ann)); ok(r.code === 400, "prefetch: a range over 80 MB is refused");
   r = await req("POST", "/api/prefetch", { infoHash: HASH, fileIdx: 0, from: 100, to: 399 }, T(ann)); ok(r.code === 200 && r.json.ok === true && r.json.bytes === 300, "prefetch reads exactly that range and keeps nothing (" + (r.json && r.json.bytes) + " bytes)");
+  // notify me: an episode that is not out yet
+  const nbr = (await req("POST", "/api/account/login", { email: "p4@x.com", password: "pw4" })).json.token;
+  const nap = ms => new Promise(x => setTimeout(x, ms)), VID = "tt0111161:1:2";
+  r = await req("POST", "/api/notify", { imdb: "tt0111161", videoId: VID, releaseAt: Date.now() + 1000 }); ok(r.code === 401, "notify needs a sign-in");
+  r = await req("POST", "/api/notify", { imdb: "tt0111161", videoId: "nope", releaseAt: Date.now() + 1000 }, T(ann)); ok(r.code === 400, "notify needs a real episode id");
+  r = await req("POST", "/api/notify", { imdb: "tt0111161", videoId: VID, name: "Show", sub: "S1:E2", releaseAt: Date.now() + 1000 }, T(ann)); ok(r.code === 200 && r.json.item.status === "waiting" && r.json.item.ahead === false, "a reminder is saved");
+  const wid = r.json.item.id;
+  r = await req("POST", "/api/notify", { imdb: "tt0111161", videoId: VID, name: "Show", sub: "S1:E2", releaseAt: Date.now() + 1000, ahead: true }, T(ann)); ok(r.json.item.id === wid && r.json.item.ahead === true, "asking again changes the same reminder (download ahead on)");
+  r = await req("POST", "/api/notify", { imdb: "tt0111161", videoId: VID, name: "Show", sub: "S1:E2", releaseAt: Date.now() + 1000, ahead: false }, T(ann));
+  r = await req("GET", "/api/notify", undefined, T(nbr)); ok(r.code === 200 && r.json.items.length === 0, "nbr people do not see it " + r.text.slice(0, 200));
+  await nap(2500);
+  r = await req("GET", "/api/notify", undefined, T(ann)); ok(r.json.items[0].status === "waiting" && r.json.items[0].lastCheck > 0, "after the release time the server looks, and keeps waiting while there is no source");
+  srcOn = true; stubRanges.length = 0; await nap(3500);
+  r = await req("GET", "/api/notify", undefined, T(ann)); ok(r.json.items[0].status === "ready", "once a source exists the reminder is ready");
+  r = await req("GET", "/api/downloads", undefined, T(ann)); ok(!r.json.jobs.some(j => j.videoId === VID), "without download ahead only the first minute is read, no download job");
+  r = await req("POST", "/api/notify/" + wid + "/seen", {}, T(ann)); ok(r.code === 200, "seen");
+  r = await req("POST", "/api/notify/" + wid + "/seen", {}, T(nbr)); ok(r.code === 404, "annbr person cannot touch it");
+  r = await req("DELETE", "/api/notify/" + wid, undefined, T(ann)); ok(r.code === 200, "a reminder can be removed");
+  srcOn = false; const VID2 = "tt0111161:1:3";
+  r = await req("POST", "/api/notify", { imdb: "tt0111161", videoId: VID2, name: "Show", sub: "S1:E3", releaseAt: Date.now() + 500, ahead: true }, T(ann)); const wid2 = r.json.item.id;
+  srcOn = true; await nap(3500);
+  r = await req("GET", "/api/downloads", undefined, T(ann)); ok(r.json.jobs.some(j => j.videoId === VID2 && j.infoHash === "d".repeat(40)), "with download ahead the most-seeded file in the preferred definition is downloaded");
+  await req("DELETE", "/api/notify/" + wid2, undefined, T(ann)); srcOn = false;
   // TMDB: key, details, lists, parental limits
   r = await req("GET", "/api/tmdb/status", undefined, T(ann)); ok(r.json.enabled === false && r.json.canSetKey === false, "TMDB starts off (no key); an ordinary member cannot set one");
   r = await req("GET", "/api/tmdb/title?imdb=tt0111161", undefined, T(ann)); ok(r.code === 503 && r.json.code === "tmdb_off", "without a key the TMDB routes say so (the app falls back to Cinemeta)");

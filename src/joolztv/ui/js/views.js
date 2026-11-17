@@ -281,7 +281,7 @@ var Views = (function () {
     Api.setStreamBase('');
     Backend.household().then(function (h) { Profiles.setAll(h.profiles); Profiles.setManageable(h.manageable); Api.setPrefs(h.prefs); }).catch(function () {}).then(function () { return Tmdb.init(); }).then(function () {
       if (Store.active() !== id) return;
-      Dl.start();
+      Dl.start(); watchLoad(); clearInterval(Watch.t); Watch.t = setInterval(function () { watchLoad(); }, 300000);
       Sync.run(function () { var v = current(); if (v && PAGES.indexOf(v.name) >= 0 && v.name === 'home') page('home'); });
       if (!Api.quality()) return qualityStep(function () { page('home'); });          // a household set up before this question existed
       page('home');
@@ -636,7 +636,7 @@ var Views = (function () {
   }
   function certChip(c) { return c && c.rating ? '<span class="chip cert">' + esc(c.rating) + '</span>' : ''; }
   function fmtDate(iso) {
-    var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || ''); if (!m) return '';
+    var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso || ''); if (!m) return '';
     var mo = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][+m[2] - 1];
     return +m[3] + ' ' + mo + ' ' + m[1];
   }
@@ -794,6 +794,21 @@ var Views = (function () {
       '<div class="btns"><div class="btn primary f" data-act="detailback">Back</div></div>';
     Nav.hydrate(); Nav.first('.btn');
   }
+  /* unreleased episodes: greyed out with the date; "Notify me" asks the server to look for a source after the release time */
+  var Watch = { items: {}, loaded: false };
+  function relMs(v) { var t = v && v.released ? Date.parse(v.released) : NaN; return isNaN(t) ? 0 : t; }
+  function unreleased(v) { return relMs(v) > Date.now(); }
+  function watchLoad(cb) { if (!Backend.token()) return cb && cb(); Backend.call('GET', '/api/notify', undefined, undefined, 10000).then(function (j) { Watch.items = {}; (j.items || []).forEach(function (w) { Watch.items[w.videoId] = w; }); Watch.loaded = true; announceWatch(j.items || []); if (cb) cb(); }).catch(function () { if (cb) cb(); }); }
+  var toldWatch = {};
+  function announceWatch(items) { items.forEach(function (w) { if (w.status !== 'ready' || w.notified || toldWatch[w.id]) return; toldWatch[w.id] = 1; toast('Now available: ' + (w.name || '') + ' ' + (w.sub || '') + (w.ahead ? ' (downloading)' : ' (the first minute is ready)'), 9000); Backend.call('POST', '/api/notify/' + w.id + '/seen', {}).catch(function () {}); }); }
+  function notifyState(v) { var w = Watch.items[v.id]; return !w ? 0 : w.ahead ? 2 : 1; }
+  function notifyCycle(v, info) {                                           // off -> notify me -> notify and download ahead -> off
+    var st = notifyState(v), w = Watch.items[v.id], done = function () { var el = current().el; if (el && el._detail) renderEpisodes(el, v.season); };
+    if (st === 2) { Backend.call('DELETE', '/api/notify/' + w.id).then(function () { delete Watch.items[v.id]; toast('Reminder removed', 3000); done(); }).catch(function (e) { toast(e.message || 'Could not remove', 4000); }); return; }
+    Backend.call('POST', '/api/notify', { imdb: info.id, videoId: v.id, name: info.title, sub: info.sub, poster: info.poster, releaseAt: relMs(v), ahead: st === 1, region: Tmdb.region() || '' }).then(function (j) {
+      Watch.items[v.id] = j.item; toast(st === 1 ? 'We will download it as soon as it is out' : 'We will tell you when it is out, and have the first minute ready', 5000); done();
+    }).catch(function (e) { toast(e.message || 'Could not set a reminder', 5000); });
+  }
   function seasonsOf(m) {
     var by = {};
     (m.videos || []).forEach(function (v) { var s = v.season == null ? 0 : v.season; (by[s] = by[s] || []).push(v); });
@@ -807,7 +822,7 @@ var Views = (function () {
     var flat = [];
     function getNext(vid) {
       for (var q = 0; q < flat.length - 1; q++) if (flat[q].id === vid) {
-        var n = flat[q + 1]; if (n.season === 0 && flat[q].season > 0) return null;
+        var n = flat[q + 1]; if (n.season === 0 && flat[q].season > 0) return null; if (unreleased(n)) return null;
         return { videoId: n.id, sub: 'S' + n.season + ':E' + n.episode, epTitle: n.title || n.name, startMs: 0 };
       }
       return null;
@@ -820,7 +835,7 @@ var Views = (function () {
       playVid = first.id; sub = 'S' + first.season + ':E' + first.episode; season = first.season != null ? first.season : season;
       if (last) {
         if (!last.done) { playVid = last.videoId; start = last.t; playLabel = '▶  Resume'; sub = 'S' + last.season + ':E' + last.episode; season = last.season != null ? last.season : season; }
-        else { for (var i = 0; i < flat.length; i++) if (flat[i].id === last.videoId && flat[i + 1]) { playVid = flat[i + 1].id; sub = 'S' + flat[i + 1].season + ':E' + flat[i + 1].episode; season = flat[i + 1].season; } }
+        else { for (var i = 0; i < flat.length; i++) if (flat[i].id === last.videoId && flat[i + 1] && !unreleased(flat[i + 1])) { playVid = flat[i + 1].id; sub = 'S' + flat[i + 1].season + ':E' + flat[i + 1].episode; season = flat[i + 1].season; } }
       }
     } else if (last && !last.done) { start = last.t; playLabel = '▶  Resume'; }
     var info = Object.assign({}, baseInfo, { videoId: playVid, startMs: start });
@@ -834,6 +849,7 @@ var Views = (function () {
       (Profiles.all().some(function (p) { return p.kid && Profiles.manageable().indexOf(p.id) >= 0; }) ? '<div class="btn glass f" data-act="kidsmenu">For kids</div>' : '') + '</div>';
     el.querySelector('.dtop').innerHTML = h;
     el._detail = { type: type, id: id, m: m, S: S, base: baseInfo, play: info };
+    if (isSeries && flat.some(unreleased)) watchLoad(function () { if (current().el === el) renderEpisodes(el, season); });
     Dl.refresh().then(function () { dlButton(el); });
     setArt(el, m.background || m.poster);
     if (isSeries) {
@@ -852,6 +868,12 @@ var Views = (function () {
     eps.forEach(function (v) {
       var r = Resume.get(v.id), pct = r && r.d ? Math.min(1, r.t / r.d) : 0;
       var info = Object.assign({}, D.base, { videoId: v.id, startMs: r && !r.done ? r.t : 0, sub: 'S' + v.season + ':E' + v.episode, epTitle: v.title || v.name });
+      if (unreleased(v)) {
+        var ns = notifyState(v), lab = ns === 2 ? 'We will download it when it is out' : ns === 1 ? 'Reminder on (first minute)' : 'Notify me';
+        h += '<div class="ep glass f unrel' + (ns ? ' on' : '') + '" data-ep="' + (v.episode || v.number || '') + '" data-act="notify" data-k="' + ref(info) + '"><div class="img" data-bg="' + esc(v.thumbnail || D.m.background || '') + '"' + (v.thumbnail ? ' data-has="1"' : '') + '></div>' +
+          '<div class="t">' + (v.episode || v.number || '') + '. ' + esc(v.title || v.name || 'Episode') + '</div><div class="o">Releases ' + esc(fmtDate(v.released)) + '</div><div class="nb">' + esc(lab) + '</div></div>';
+        return;
+      }
       h += '<div class="ep glass f" data-ep="' + (v.episode || v.number || '') + '" data-act="play" data-k="' + ref(info) + '"><div class="img" data-bg="' + esc(v.thumbnail || D.m.background || '') + '"' + (v.thumbnail ? ' data-has="1"' : '') + '></div>' +
         '<div class="t">' + (v.episode || v.number || '') + '. ' + esc(v.title || v.name || 'Episode') + '</div><div class="o">' + esc(v.overview || v.description || '') + '</div>' +
         (pct > 0.02 ? '<div class="bar" style="width:' + Math.round(pct * 440) + 'px"></div>' : '') + '</div>';
@@ -991,6 +1013,7 @@ var Views = (function () {
     if (a === 'page') return page(el.getAttribute('data-p'));
     if (a === 'open') { var m = reg[+el.getAttribute('data-k')]; if (!m.id && m.tmdb) return openTmdb(m); return detail(m.type, m.id, m); }
     if (a === 'play') return playChecked(reg[+el.getAttribute('data-k')]);
+    if (a === 'notify') { var ni = reg[+el.getAttribute('data-k')], nel = current().el, nv = null; ((nel && nel._detail && nel._detail.S.by[+String(ni.sub || '').replace(/^S(\d+).*/, '$1')]) || []).forEach(function (x) { if (x.id === ni.videoId) nv = x; }); return nv && notifyCycle(nv, ni); }
     if (a === 'season') return renderEpisodes(current().el, +el.getAttribute('data-s'));
     if (a === 'speak') return speak();
     if (a === 'cachesize') { var cc = el._cache; if (!cc) return; if (!cc.canSet) return toast('Only a JoolzApp admin can change the cache size', 4000);

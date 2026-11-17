@@ -627,6 +627,69 @@ async function downloadsRoutes(req, res, p, u) {
   return send(res, 404, { code: "not_found" });
 }
 
+
+/* ---------- notify me: an episode that is not out yet. After its release time the server looks for a source every 3 hours, then reads the first minute into the cache (or the whole file when "download ahead" was chosen) and tells the person ---------- */
+const WATCH_FILE = path.join(DATA_DIR, "notify.json"), Sources = require("./ui/js/sources.js");
+let watch = readJson(WATCH_FILE, { items: {} }); if (!watch.items) watch.items = {};
+const WATCH_EVERY = +process.env.JTV_NOTIFY_EVERY_MS || 3 * 3600e3, WATCH_TICK = +process.env.JTV_NOTIFY_TICK_MS || 10 * 60e3, WATCH_FIRST = +process.env.JTV_NOTIFY_BYTES || 60e6, WATCH_GIVEUP = 30 * 86400e3, WATCH_PER_USER = 30;
+const watchSave = () => { try { writeJson(WATCH_FILE, watch); } catch {} };
+const watchPub = w => ({ id: w.id, imdb: w.imdb, videoId: w.videoId, name: w.name, sub: w.sub, poster: w.poster, releaseAt: w.releaseAt, ahead: !!w.ahead, status: w.status, notified: !!w.notified, lastCheck: w.lastCheck || 0 });
+function pickStream(streams, pref) {                      // the preferred definition first, then the nearest; most seeds wins
+  const ORDER = { "4K": ["4K", "1080p", "720p", "Other"], "1080p": ["1080p", "720p", "4K", "Other"], "720p": ["720p", "1080p", "4K", "Other"] }[pref] || ["1080p", "720p", "4K", "Other"];
+  const cat = s => { const tok = String(s.name || "").split("\n")[1] || ""; const t = tok.split(/[\s|]/)[0].toLowerCase(); return t === "4k" || t === "2160p" ? "4K" : t === "1080p" ? "1080p" : t === "720p" ? "720p" : "Other"; };
+  const seeds = s => parseInt((/(?:👤|seeders?:?)\s*(\d+)/i.exec((s.title || "") + " " + (s.name || "")) || [])[1] || "0", 10);
+  const ok = (streams || []).filter(s => s && /^[0-9a-fA-F]{40}$/.test(s.infoHash || "") && !/\bcam\b|camrip|hdcam|telesync|hdts|telecine|\b(xxx|porn|nsfw|hentai)\b/i.test((s.title || "") + " " + (s.name || "")));
+  for (const c of ORDER) { const g = ok.filter(s => cat(s) === c).sort((a, b) => seeds(b) - seeds(a)); if (g.length) return g[0]; }
+  return null;
+}
+async function readSome(url, bytes) { const r = await fetch(url, { headers: { range: "bytes=0-" + (bytes - 1) }, signal: AbortSignal.timeout(150000) }); if (r.status !== 206 && r.status !== 200) throw new Error("status " + r.status); let n = 0; for await (const c of r.body) n += c.length; return n; }
+async function watchCheck(w) {
+  w.lastCheck = Date.now(); w.checks = (w.checks || 0) + 1;
+  const h = hh(), base = (process.env.SOURCES_URL || Sources.url(Sources.normalize((h.prefs || {}).sources))).replace(/\/+$/, "");
+  let pick = null;
+  try { const r = await fetch(base + "/stream/series/" + encodeURIComponent(w.videoId) + ".json", { signal: AbortSignal.timeout(20000), headers: { accept: "application/json" } }); if (r.ok) pick = pickStream((await r.json()).streams, (h.prefs || {}).quality || "1080p"); } catch {}
+  if (!pick) { if (Date.now() - w.releaseAt > WATCH_GIVEUP) w.status = "expired"; return; }
+  const idx = Number.isInteger(pick.fileIdx) ? pick.fileIdx : 0, hash = pick.infoHash.toLowerCase();
+  w.found = { infoHash: hash, fileIdx: idx }; w.status = "ready"; w.readyAt = Date.now();
+  if (w.ahead && Object.values(dl.jobs).filter(j => j.userId === w.userId && DL_LIVE.includes(j.status)).length < DL_PER_USER) {
+    const id = crypto.randomBytes(6).toString("hex");
+    dl.jobs[id] = { id, userId: w.userId, imdb: w.imdb, type: "series", videoId: w.videoId, name: w.name, sub: w.sub, poster: w.poster, infoHash: hash, fileIdx: idx, status: "queued", bytes: 0, size: 0, created: Date.now() };
+    dlSave(true); dlPump(); w.mode = "download";
+  } else { try { await readSome(UPSTREAM.origin + "/" + hash + "/" + idx, WATCH_FIRST); w.mode = "minute"; } catch (e) { w.mode = "none"; } }
+}
+let watchBusy = false;
+async function watchTick() {
+  if (watchBusy) return; watchBusy = true;
+  try {
+    for (const w of Object.values(watch.items)) {
+      if (w.status !== "waiting" || Date.now() < w.releaseAt || Date.now() - (w.lastCheck || 0) < WATCH_EVERY) continue;
+      await watchCheck(w); watchSave();
+    }
+  } catch (e) { console.error("notify:", e.message); } finally { watchBusy = false; }
+}
+if (WATCH_TICK > 0) setInterval(watchTick, WATCH_TICK).unref();
+async function notifyRoutes(req, res, p, u) {
+  const mine = () => Object.values(watch.items).filter(w => w.userId === u.id);
+  if (p === "/api/notify" && req.method === "GET") { setImmediate(watchTick); return send(res, 200, { items: mine().filter(w => w.status !== "expired").map(watchPub) }); }
+  if (p === "/api/notify" && req.method === "POST") {
+    const b = await jsonBody(req), imdb = String(b.imdb || ""), vid = String(b.videoId || ""), rel = Number(b.releaseAt);
+    if (!/^tt\d{5,12}$/.test(imdb) || !/^tt\d{5,12}:\d{1,4}:\d{1,4}$/.test(vid) || !(rel > Date.now() - 86400e3 && rel < Date.now() + 2 * 365 * 86400e3)) return send(res, 400, { code: "bad_request", message: "Needs an episode that is not out yet." });
+    let dec; try { dec = await titleDecision(u, imdb, "series", /^[A-Z]{2}$/.test(b.region || "") ? b.region : ""); } catch { dec = { ok: false, message: "This title could not be checked right now." }; }
+    if (!dec.ok) return send(res, 403, { code: dec.reason || "not_allowed", message: dec.message });
+    let w = mine().filter(x => x.videoId === vid)[0];
+    if (!w) { if (mine().length >= WATCH_PER_USER) return send(res, 429, { code: "too_many", message: "You can follow " + WATCH_PER_USER + " episodes at a time." }); const id = crypto.randomBytes(6).toString("hex"); w = watch.items[id] = { id, userId: u.id, imdb, videoId: vid, created: Date.now() }; }
+    Object.assign(w, { name: String(b.name || "").slice(0, 120), sub: String(b.sub || "").slice(0, 40), poster: /^https?:\/\/[^\s"'<>]{4,300}$/.test(b.poster || "") ? b.poster : "", releaseAt: rel, ahead: !!b.ahead, status: "waiting", notified: false });
+    watchSave(); return send(res, 200, { item: watchPub(w) });
+  }
+  const m = /^\/api\/notify\/([a-f0-9]{12})(\/seen)?$/.exec(p), w = m && watch.items[m[1]];
+  if (m) {
+    if (!w || w.userId !== u.id) return send(res, 404, { code: "not_found", message: "No such reminder." });
+    if (m[2] && req.method === "POST") { w.notified = true; watchSave(); return send(res, 200, { ok: true }); }
+    if (req.method === "DELETE") { delete watch.items[w.id]; watchSave(); return send(res, 200, { ok: true }); }
+  }
+  return send(res, 404, { code: "not_found" });
+}
+
 /* ---------- streaming server behind the sign-in ---------- */
 const SECRET_FILE = path.join(DATA_DIR, "secret.key");
 let SECRET = (() => { try { const s = fs.readFileSync(SECRET_FILE, "utf8").trim(); if (s.length >= 32) return s; } catch {} const s = crypto.randomBytes(32).toString("hex"); fs.writeFileSync(SECRET_FILE, s, { mode: 0o600 }); return s; })();
@@ -781,6 +844,7 @@ const server = http.createServer(async (req, res) => {
       if (p === "/api/thumb" && req.method === "GET") return await thumbRoute(req, res, u);
       if (p === "/api/server/cache" && (req.method === "GET" || req.method === "PUT")) return await cacheRoute(req, res, u);
       if (p.startsWith("/api/downloads")) return await downloadsRoutes(req, res, p, u);
+      if (p.startsWith("/api/notify")) return await notifyRoutes(req, res, p, u);
       if (p === "/api/prefetch" && req.method === "POST") return await prefetchRoute(req, res, u);
       if (p.startsWith("/api/marks/")) return await marksRoutes(req, res, p, u);
       if (p.startsWith("/api/tmdb/")) return await tmdbRoutes(req, res, p, u);

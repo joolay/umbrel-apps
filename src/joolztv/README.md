@@ -139,3 +139,6 @@ A collection's page has a "+ My List" button; My List then shows the collection 
 
 ## Settings tabs
 Profile, Sources (quality, filters, artwork and ratings), Subtitles, Playback, Downloads (streaming cache and the download list), Typing and about. The tab you were on is kept when you change a row.
+
+## Episodes that are not out yet
+An episode whose release date is in the future is greyed out on the series page with "Releases <date>" and cannot be played; Play / Resume and auto-advance skip it. Its card has a **Notify me** button that cycles: off, **reminder** (first minute), **download ahead**, off. The server keeps the reminder in `<data>/notify.json`. From the release time on it asks the household's sources for that episode every 3 hours (`JTV_NOTIFY_EVERY_MS`), picks the preferred definition with the most seeds, and then either reads only the first minute into the cache (about 60 MB) or, when download ahead was chosen, queues a normal download. The app tells the person "Now available" (on opening, then every 5 minutes). A reminder is dropped after 30 days without a source. Kid profiles go through the same title check as Play.
