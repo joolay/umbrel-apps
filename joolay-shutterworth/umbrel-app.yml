@@ -2,7 +2,7 @@ manifestVersion: 1
 id: joolay-shutterworth
 category: files
 name: ShutterWorth
-version: "1.7.16"
+version: "1.7.17"
 tagline: Photograph your belongings and build an insurance inventory
 description: >-
   Photograph your belongings and build an insurance inventory with replacement and depreciated values.
@@ -18,7 +18,7 @@ gallery: []
 path: ""
 defaultUsername: ""
 defaultPassword: ""
-releaseNotes: "The home button now finds the JoolzApp Portal on your public address as well as at home."
+releaseNotes: "Shared lists: members only see the photos of items in lists shared with them."
 submitter: joolay
 submission: https://github.com/joolay/umbrel-apps
 icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-shutterworth/icon.svg

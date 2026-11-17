@@ -560,7 +560,8 @@ function fromPortal(req, res) {
 }
 // The Portal app's key is handed over without a Changes card: it is our own app and no PocketBase change is involved.
 const linkPortal = () => { try { const r = changes.linkPortal(); if (r) console.log('JoolzApp Portal: ' + r); } catch (e) { console.error('JoolzApp Portal link:', e.message); } };
-setTimeout(linkPortal, 3000).unref(); setInterval(linkPortal, 30e3).unref();
+const linkNew = () => changes.linkNewApps().then((d) => { if (d.length) console.log('Linked new app(s) to Portal API with their own limited login: ' + d.join(', ')); }).catch((e) => console.error('Linking new apps:', e.message));
+setTimeout(() => { linkPortal(); linkNew(); }, 3000).unref(); setInterval(() => { linkPortal(); linkNew(); }, 30e3).unref();
 
 // Listeners. PORT is the normal one (Umbrel's app address, behind Umbrel's login): the admin's own.
 // PUBLIC_PORT (host port 3892) used to be the dashboard for everyone. That is now a separate app, JoolzApp Portal (host port 3886,

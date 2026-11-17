@@ -28,6 +28,13 @@ so the dashboard UI (`src/portal-admin/public`) exists once and the two apps can
   Portal Admin always treats those as public, user-only requests. A new server route the dashboard needs must be added to both lists.
 - Portal Admin gives the Portal its key by itself (`linkPortal` in `changes.js`), never a superuser or service login, and hides it from app lists, Connect and Changes.
 
+## New apps and PocketBase logins (after the security changes)
+Once "Limited login for each app" has been applied in Portal Admin > Changes, a newly installed JoolzApp app is linked automatically within
+30 s (`linkNewApps` in `src/portal-admin/changes.js`): its data folder gets its own limited `app_service` login and a Portal API key, never the
+superuser login. So a new app must work that way from the start: copy `src/jolly-grocer/pocketbase.js` (Portal API hook included), use
+`pb.asApp`/`pb.appFetch` for its own data, and add a Changes card (like `009-app-data-storage.js`) that creates its collections and limits them
+to `@request.auth.collectionName = "app_service" && @request.auth.appId = "<slug>"`. Apps > Connect (superuser) is only for older apps.
+
 ## JoolzApp-account apps and pocketbase.env
 Any `joolay-*` app that signs people in with the JoolzApp account declares `POCKETBASE_APP_ID=<slug>` in its compose file and reads
 `<app data>/data/pocketbase.env` (copy `src/jolly-grocer/pocketbase.js`, the newest version). Portal Admin writes that file, and only after

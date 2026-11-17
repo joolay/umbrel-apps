@@ -170,13 +170,42 @@ module.exports = function makeSharing({ store, pb, clients, readBody, send, Stor
     for (const m of (await membershipsFor(user.id)).values()) if ((!needEdit || m.role === "edit") && !seen.has(m.ownerId)) { seen.add(m.ownerId); out.push(m.ownerId); }
     return out;
   }
+  // A member only reaches an owner's photo when it belongs to an item in a list shared with them (or they uploaded it themselves a moment
+  // ago and the item isn't saved yet). Knowing a photo's id is not enough.
+  const recentUploads = new Map();   // "<ownerId>:<photoId>" -> { userId, at }
+  const usesPhoto = (it, id) => !!it && (it.assetId === id || (typeof it.assetUrl === "string" && it.assetUrl.endsWith("/_blob/" + id)));
+  async function photoVisible(user, ownerId, id, needEdit) {
+    const up = recentUploads.get(ownerId + ":" + id);
+    if (up && up.userId === user.id && Date.now() - up.at < 15 * 60e3) return true;
+    const docs = await docsOf(ownerId), lists = new Set();
+    for (const [listId, m] of await membershipsFor(user.id)) if (m.ownerId === ownerId && (!needEdit || m.role === "edit")) lists.add(listId);
+    if (!lists.size) return false;
+    for (const [p, it] of Object.entries(docs)) if (p.startsWith("items/") && lists.has(String(it && it.listId)) && usesPhoto(it, id)) return true;
+    return false;
+  }
+  // An edit member may also tidy up a photo that no item of the owner uses any more (what the app does after deleting an item for good).
+  async function photoOrphaned(ownerId, id) {
+    for (const [p, it] of Object.entries(await docsOf(ownerId))) if (p.startsWith("items/") && usesPhoto(it, id)) return false;
+    return true;
+  }
   const photos = {
-    async get(user, id) { let b = await store.getPhoto(user, id); if (b) return b; for (const o of await photoOwners(user, false)) { b = await store.getPhoto({ id: o }, id); if (b) return b; } return null; },
+    async get(user, id) {
+      let b = await store.getPhoto(user, id); if (b) return b;
+      for (const o of await photoOwners(user, false)) if (await photoVisible(user, o, id, false)) { b = await store.getPhoto({ id: o }, id); if (b) return b; }
+      return null;
+    },
     async put(user, buf, listId) {
-      if (listId) { const m = (await membershipsFor(user.id)).get(String(listId)); if (m) { if (m.role !== "edit") throw err(403, "read_only", "This list is shared with you as view only."); return store.putPhoto({ id: m.ownerId }, buf); } }
+      if (listId) { const m = (await membershipsFor(user.id)).get(String(listId)); if (m) { if (m.role !== "edit") throw err(403, "read_only", "This list is shared with you as view only."); const r = await store.putPhoto({ id: m.ownerId }, buf); const pid = typeof r === "string" ? r : r && (r.id || r.pid); if (pid) { recentUploads.set(m.ownerId + ":" + pid, { userId: user.id, at: Date.now() }); if (recentUploads.size > 2000) recentUploads.delete(recentUploads.keys().next().value); } return r; } }
       return store.putPhoto(user, buf);
     },
-    async del(user, id) { for (const o of [user.id, ...(await photoOwners(user, true))]) { const u = { id: o }; if (await store.getPhoto(u, id).catch(() => null)) return store.delPhoto(u, id); } },
+    async del(user, id) {
+      if (await store.getPhoto(user, id).catch(() => null)) return store.delPhoto(user, id);
+      for (const o of await photoOwners(user, true)) {
+        if (!(await store.getPhoto({ id: o }, id).catch(() => null))) continue;
+        if ((await photoVisible(user, o, id, true)) || (await photoOrphaned(o, id))) return store.delPhoto({ id: o }, id);
+        throw err(403, "not_yours", "That photo isn't in a list shared with you.");
+      }
+    },
   };
 
   /* ---------- sharing endpoints ---------- */
