@@ -194,7 +194,11 @@ const ALLOWED_UPSTREAM = /^\/(?:[0-9a-fA-F]{40}\/|hlsv2\/|settings$|stats\.json$
 const HOP = new Set(["connection", "keep-alive", "transfer-encoding", "upgrade", "proxy-authenticate", "proxy-authorization", "te", "trailer"]);
 function proxyStream(req, res, st, rest) {
   if (!checkStream(st)) return send(res, 401, { code: "stream_token", message: "Stream session expired. Reload the title." });
-  if (!ALLOWED_UPSTREAM.test(rest.split("?")[0])) return send(res, 404, { code: "not_found" });
+  const pathOnly = rest.split("?")[0];
+  if (pathOnly === "/opensubHash") {   // subtitle fingerprint of a torrent file the streaming server already serves; never an arbitrary URL
+    const vu = new URLSearchParams(rest.split("?")[1] || "").get("videoUrl") || "";
+    if (vu.indexOf(INTERNAL + "/") !== 0 || !/^[0-9a-fA-F]{40}\/-?\d+(\?|$)/.test(vu.slice(INTERNAL.length + 1))) return send(res, 400, { code: "bad_request", message: "Not a file this server streams." });
+  } else if (!ALLOWED_UPSTREAM.test(pathOnly)) return send(res, 404, { code: "not_found" });
   if (req.method !== "GET" && req.method !== "HEAD") return send(res, 405, { code: "method" });
   const headers = {};
   ["range", "accept", "accept-encoding", "user-agent", "if-range", "if-none-match", "if-modified-since"].forEach(k => { if (req.headers[k]) headers[k] = req.headers[k]; });

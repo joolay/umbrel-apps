@@ -1,7 +1,7 @@
 /* localStorage wrapper (never throws). Profile-specific keys are namespaced per profile: flix.p<id>.<key>.
    resume / list are maps {id: entry-with-ts} that sync with the server (newest wins). */
 var Store = (function () {
-  var PROFILE = { resume: 1, list: 1, token: 1, email: 1, remember: 1 };
+  var PROFILE = { resume: 1, list: 1, token: 1, email: 1, remember: 1, subs: 1 };
   var SYNC = { resume: 1, list: 1 };
   var listeners = [];
 

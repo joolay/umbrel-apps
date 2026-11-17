@@ -465,6 +465,10 @@ var Views = (function () {
   }
 
   /* ---------- settings ---------- */
+  var PLAY_MODES = { auto: 'Automatic: transcode only when the TV cannot play the file', direct: 'Always direct (never transcode)', transcode: 'Always transcode (if video stutters or will not play)' };
+  function playMode() { var m = Store.get('playback', null); if (m === null) m = Store.get('transcode', false) ? 'transcode' : 'auto'; return m; }
+  function subPrefs() { var p = Store.get('subs', null) || {}; return { lang: p.lang || 'eng', lang2: p.lang2 || '', auto: !!p.auto }; }
+  function setSub(k, v) { var p = subPrefs(); p[k] = v; Store.set('subs', p); }
   function settingsPage() {
     ++browseToken;
     var pr = Profiles.active(), keep = !!Store.get('token', null);
@@ -477,8 +481,12 @@ var Views = (function () {
       '<div class="lbl">Sources (Torrentio)</div>' +
       '<input id="tio" class="field f" value="' + esc(Api.torrentioUrl()) + '" placeholder="https://torrentio.strem.fun/…">' +
       '<div class="srow f" data-act="savetio">Save Torrentio link</div><div class="srow f" data-act="testtio">Test Torrentio</div><div class="srow f" data-act="resettio">Reset Torrentio link to default</div>' +
+      '<div class="lbl">Subtitles</div>' +
+      '<div class="srow f" data-act="sublang">Subtitle language: <b>' + esc(Subs.langName(subPrefs().lang)) + '</b></div>' +
+      '<div class="srow f" data-act="sublang2">Second language: <b>' + esc(subPrefs().lang2 ? Subs.langName(subPrefs().lang2) : 'None') + '</b></div>' +
+      '<div class="srow f" data-act="subauto">Turn on the best matching subtitles automatically: <b>' + (subPrefs().auto ? 'ON' : 'OFF') + '</b></div>' +
       '<div class="lbl">Playback</div>' +
-      '<div class="srow f" data-act="toggletc">Always transcode to HLS (use if video stutters or will not play): <b>' + (Store.get('transcode', false) ? 'ON' : 'OFF') + '</b></div>' +
+      '<div class="srow f" data-act="playmode">Playback mode: <b>' + esc(PLAY_MODES[playMode()]) + '</b></div>' +
       '<div class="hint">JoolzTV ' + esc(window.FLIX_VERSION || '') + '. Sources come from Torrentio (top 3 by seeds per resolution), posters from Cinemeta, subtitles from OpenSubtitles. Video plays through your own streaming server behind your JoolzApp sign-in. ' + esc(Sync.status()) + '</div></div></div>';
     replaceAll('settings', h, { cls: 'noart', onBack: function () { page('home'); return true; } });
     Nav.first('.tab.on');
@@ -532,7 +540,12 @@ var Views = (function () {
         .then(function (j) { toast('Torrentio OK: ' + (j.streams || []).length + ' sources found for a test movie', 5000); })
         .catch(function (e) { toast('Cannot reach Torrentio: ' + e.message, 7000); });
     }
-    if (a === 'toggletc') { Store.set('transcode', !Store.get('transcode', false)); return settingsPage(); }
+    if (a === 'playmode') { var order = ['auto', 'direct', 'transcode']; Store.set('playback', order[(order.indexOf(playMode()) + 1) % 3]); return settingsPage(); }
+    if (a === 'subauto') { setSub('auto', !subPrefs().auto); return settingsPage(); }
+    if (a === 'sublang' || a === 'sublang2') {
+      var two = a === 'sublang2', cur = two ? subPrefs().lang2 : subPrefs().lang, ls = (two ? [['', 'None']] : []).concat(Subs.LANGS);
+      return menu(two ? 'Second subtitle language' : 'Subtitle language', ls.map(function (l) { return { label: l[1], code: l[0], selected: l[0] === cur }; }), function (o) { setSub(two ? 'lang2' : 'lang', o.code); settingsPage(); });
+    }
   }
   function doSignOut() { var id = Store.active(); if (id) { Store.delFor(id, 'token'); } Backend.setToken(null); Store.setActive(null); picker(); }
   function back() {

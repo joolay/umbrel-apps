@@ -18,6 +18,17 @@ browser / LG TV launcher ──>  web (server.js, port 3900; host 3901 = public 
 - **Streaming**: `POST /api/stream-token` gives a signed 12-hour token; video is `/s/<token>/<infoHash>/<file>` or `/hlsv2/...` proxied to the streaming server (only those paths, ranges supported, HLS playlists rewritten). The streaming server has no port published.
 - **Open on purpose**: `/healthz` (the TV launcher uses it), `/config.js`, the static UI, sign-in and password-reset requests. Everything else needs a household member's token (`x-jtv-token`).
 
+## Subtitles matched to the file
+OpenSubtitles (built in) is asked for subtitles for the exact file: first by file name and size, then again with the file's own fingerprint (`/opensubHash`, read by the streaming server from the torrent, through the sign-in proxy).
+`ui/js/subs.js` ranks the results: an exact fingerprint match first, then the same release (group, source such as BluRay/WEB-DL, resolution, codec, shared name words), grouped by the profile's language (Settings: language, second language).
+The Subtitles menu shows "Exact file" / "Best match" first, with "Subtitles earlier/later (±0.5 s)" once one is on. Settings can switch on automatic selection of the best match (per profile, off by default).
+
+## Direct play or transcoding
+Decided per file before playback (`Api.assess` in `ui/js/api.js`, checked by `test-subs.js`) from the release name and what the device reports it can decode (`canPlayType`):
+AV1, old formats (AVI/XviD), 10-bit H.264, Dolby Vision, DTS/TrueHD (TV), and HEVC / Dolby Digital (+) when the device lacks them are transcoded to HLS by the streaming server; everything else plays directly.
+The player shows which one it is ("Direct play" / "Transcoding: reason"). If a guess is wrong the player steps down by itself: direct, then transcode, then a safer transcode (H.264 + stereo AAC), then the next source.
+Settings > Playback mode can force "always direct" or "always transcode". Unknown releases are tried directly first.
+
 ## Two builds from one source
 `ui/` is written once. `node build.js` makes `dist/modern` (browsers) and `dist/compat` (Chromium 53 / LG webOS 4: converted syntax + core-js polyfills).
 `server.js` picks one from the User-Agent (`Web0S`/`webOS`/old Chrome < 70 → compat; `?compat=1` / `?modern=1` override; `?tv=1` forces compat).

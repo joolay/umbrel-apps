@@ -13,6 +13,7 @@ const upstream = http.createServer((q, r) => {
     r.writeHead(200, { "content-type": "video/mp4", "content-length": BODY.length, "accept-ranges": "bytes" }); return r.end(BODY);
   }
   if (q.url.indexOf("/hlsv2/x/master.m3u8") === 0) { r.writeHead(200, { "content-type": "application/vnd.apple.mpegurl" }); return r.end("#EXTM3U\n#EXT-X-MEDIA:URI=\"/hlsv2/x/audio.m3u8\"\n/hlsv2/x/video.m3u8\nhttp://127.0.0.1:11470/hlsv2/x/other.m3u8\nrelative.m3u8\n"); }
+  if (q.url.indexOf("/opensubHash") === 0) { r.writeHead(200, { "content-type": "application/json" }); return r.end('{"result":{"hash":"8e245d9679d31e12","size":1000}}'); }
   if (q.url === "/settings") { r.writeHead(200, { "content-type": "application/json" }); return r.end("{}"); }
   r.writeHead(200); r.end("SECRET-" + q.url);
 }).listen(U);
@@ -60,6 +61,9 @@ const T = tok => ({ "x-jtv-token": tok });
   r = await req("GET", "/s/" + st.slice(0, -2) + "xx/" + HASH + "/0"); ok(r.code === 401, "tampered stream token refused");
   r = await req("GET", "/s/" + st + "/proxy/secret"); ok(r.code === 404 && r.text.indexOf("SECRET") < 0, "only torrent/hls paths reach the streaming server");
   r = await req("GET", "/s/" + st + "/hlsv2/x/master.m3u8"); ok(r.text.indexOf("/s/" + st + "/hlsv2/x/video.m3u8") >= 0 && r.text.indexOf('URI="/s/' + st + '/hlsv2/x/audio.m3u8"') >= 0 && r.text.indexOf("127.0.0.1") < 0 && /\nrelative\.m3u8\n/.test(r.text), "HLS playlists rewritten to stay behind the sign-in");
+  r = await req("GET", "/s/" + st + "/opensubHash?videoUrl=" + encodeURIComponent("http://127.0.0.1:11470/" + HASH + "/0")); ok(r.code === 200 && r.json.result.hash, "subtitle fingerprint of a streamed file works through the proxy");
+  r = await req("GET", "/s/" + st + "/opensubHash?videoUrl=" + encodeURIComponent("http://evil.example/x.mkv")); ok(r.code === 400, "subtitle fingerprint refuses arbitrary URLs");
+  r = await req("GET", "/s/" + st + "/opensubHash"); ok(r.code === 400, "subtitle fingerprint needs a file");
   // roles
   r = await req("DELETE", "/api/household/profiles/" + annId, undefined, T(bob)); ok(r.code === 403, "a member cannot remove the owner");
   r = await req("PATCH", "/api/household/profiles/" + bobId, { name: "Robert" }, T(bob)); ok(r.code === 200 && r.json.profile.name === "Robert", "a member can rename their own profile");

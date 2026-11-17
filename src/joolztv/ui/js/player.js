@@ -9,7 +9,7 @@ var Player = (function () {
   function open(info) {
     if (S) close();
     var h = '<video id="pv" preload="auto"></video><div class="pspin" style="display:none"></div><div class="pmsg" style="display:none"></div>' +
-      '<div class="pov"><div class="ptop"><div class="t1">' + Views.esc(info.title || '') + '</div><div class="t2">' + Views.esc([info.sub, info.epTitle].filter(Boolean).join(' · ')) + '</div></div>' +
+      '<div class="pov"><div class="ptop"><div class="t1">' + Views.esc(info.title || '') + '</div><div class="t2">' + Views.esc([info.sub, info.epTitle].filter(Boolean).join(' · ')) + '</div><div class="pmode glass" id="pmode"></div></div>' +
       '<div class="pbar glass"><div class="seek f" id="seek"><div class="buf"></div><div class="pos"></div><div class="knob"></div></div>' +
       '<div class="times"><span id="tcur">0:00</span><span id="tdur">0:00</span></div>' +
       '<div class="pctl"><span class="cbtn f" data-pact="back10">⏪ 10</span><span class="cbtn big f" data-pact="toggle" id="bplay">❚❚</span><span class="cbtn f" data-pact="fwd10">10 ⏩</span>' +
@@ -39,14 +39,26 @@ var Player = (function () {
     });
   }
 
-  function start(i, forceHls) {
+  /* how this file will be played: "direct" (the device decodes it) or "transcode" (the server converts it to HLS) */
+  function playMode(s) { var m = Store.get('playback', null); if (m === null) m = Store.get('transcode', false) ? 'transcode' : 'auto'; return m; }
+  function decide(s) {
+    var m = playMode(s);
+    if (s._direct) return { hls: false, label: 'Direct' };
+    if (m === 'transcode') return { hls: true, label: 'Transcoding (your choice)' };
+    if (m === 'direct') return { hls: false, label: 'Direct play (your choice)' };
+    var a = Api.assess(s);
+    return a.transcode ? { hls: true, label: 'Transcoding: ' + a.reason } : { hls: false, label: 'Direct play' };
+  }
+  function setMode(label) { var m = $('#pmode'); if (m) { m.textContent = label; m.style.display = label ? 'inline-block' : 'none'; } }
+  function start(i, forceHls, safe) {
     if (!S) return;
     var s = S.streams[i]; if (!s) return;
     S.idx = i; S.ended = false; S.gotTime = false;
-    var hls = forceHls || (Store.get('transcode', false) && !s._direct);
-    var url = s._direct || (hls ? Api.hlsUrl(s) : Api.directUrl(s));
+    var d = decide(s), hls = forceHls || d.hls;
+    var url = s._direct || (hls ? Api.hlsUrl(s, safe) : Api.directUrl(s));
     if (!url) { return next('Unsupported source'); }
-    S.hls = !!hls; S.tried[i] = (S.tried[i] || 0) + 1;
+    S.hls = !!hls; S.safe = !!safe; S.tried[i] = (S.tried[i] || 0) + 1;
+    setMode(forceHls ? 'Transcoding: ' + (S.why || 'compatibility') : d.label);
     spin((hls ? 'Starting transcoded stream…' : 'Starting stream…') + (s._q && s._q.quality ? ' (' + s._q.quality + ')' : ''));
     say('');
     var v = S.v;
@@ -55,13 +67,15 @@ var Player = (function () {
     try { v.defaultPlaybackRate = 1; } catch (e) {}
     v.load();
     var p = v.play(); if (p && p.catch) p.catch(function () {});
-    if (!S.subs) loadSubs();
+    if (S.subsIdx !== i) { S.subsIdx = i; S.hash = null; S.size = 0; loadSubs(true); }     // new file: find subtitles for that file
     var btn = $('[data-pact=speed]'); if (btn) btn.textContent = 'Speed 1x';
   }
   function next(why) {
     if (!S) return;
     var i = S.idx, s = S.streams[i];
-    if (!S.hls && s && !s._direct) { say((why || 'Playback problem') + ' – trying transcoding…'); return start(i, true); }
+    S.why = why || 'playback problem';
+    if (!S.hls && s && !s._direct) { say((why || 'Playback problem') + ' – trying transcoding…'); return start(i, true, false); }
+    if (S.hls && !S.safe && s && !s._direct) { say((why || 'Playback problem') + ' – trying safer transcoding…'); return start(i, true, true); }
     for (var j = i + 1; j < S.streams.length && j < i + 6; j++) { if (!S.tried[j]) { say((why || 'Playback problem') + ' – trying another source…'); return start(j); } }
     spin(''); say((why || 'Playback failed') + '.\nPress OK to choose another source.');
     S.failed = true;
@@ -166,7 +180,7 @@ var Player = (function () {
       });
     });
     Views.menu('Choose a source – top 3 by seeds per resolution', opts, function (o) {
-      S.failed = false; S.tried = {}; S.resumed = false; S.info.startMs = S.v.currentTime * 1000 || S.info.startMs; start(o.idx);
+      S.failed = false; S.tried = {}; S.resumed = false; S.subOn = false; S.subManual = false; S.info.startMs = S.v.currentTime * 1000 || S.info.startMs; S.why = ''; start(o.idx);
     }, 'If a source will not play, try a different resolution.');
   }
   function pickSpeed() {
@@ -177,27 +191,67 @@ var Player = (function () {
       setTimeout(function () { if (S && Math.abs(S.v.playbackRate - S.rate) > 0.01) Views.toast('This TV cannot play at ' + S.rate + 'x'); }, 800);
     });
   }
-  function loadSubs() {
-    var sess = S; sess.subs = [];
-    Api.getSubtitles(sess.info.type, sess.info.videoId || sess.info.id).then(function (list) { if (S === sess) sess.subs = list; });
+  /* ---- subtitles matched to the file being watched ---- */
+  function subPrefs() { var p = Store.get('subs', null) || {}; return { lang: p.lang || 'eng', lang2: p.lang2 || '', auto: !!p.auto }; }
+  function fileCtx() { var st = S.streams[S.idx]; var f = st ? Api.fileInfo(st) : {}; return { filename: f.filename, size: f.size || S.size || 0, hash: S.hash || '' }; }
+  function loadSubs(fresh) {
+    var sess = S, sig = S.idx;
+    if (fresh) { sess.subs = []; sess.subsFor = sig; }
+    var ctx = fileCtx(), vid = sess.info.videoId || sess.info.id;
+    function fetchAll() {
+      return Api.getSubtitles(sess.info.type, vid, ctx).then(function (list) { if (S === sess && S.idx === sig) { sess.subs = list; autoPick(); } });
+    }
+    fetchAll().then(function () {
+      // second pass: the file's own hash (needs the streaming server to read the file's first and last bytes) finds the exact release
+      var url = S === sess && Api.opensubHashUrl(sess.streams[sig]);
+      if (!url || sess.hashTried === sig) return;
+      sess.hashTried = sig;
+      Api.getJSON(url, 20000).then(function (j) {
+        var r = (j && j.result) || j || {}, h = r.hash || r.moviehash || '';
+        if (S === sess && S.idx === sig && h) { sess.hash = h; sess.size = r.size || sess.size; ctx = fileCtx(); fetchAll(); }
+      }).catch(function () {});
+    });
+  }
+  function autoPick() {
+    if (!S || S.subManual || S.subOn) return;
+    var pr = subPrefs(); if (!pr.auto) return;
+    var r = Subs.rank(S.subs, fileCtx(), pr);
+    if (r.best) applySub(r.best.sub, true);
+  }
+  function applySub(sub, quiet) {
+    Array.prototype.forEach.call(S.v.querySelectorAll('track'), function (t) { t.parentNode.removeChild(t); });
+    if (!sub) { S.subOn = false; S.subCur = null; if (!quiet) Views.toast('Subtitles off'); return; }
+    if (!quiet) Views.toast('Loading subtitles…');
+    var sess = S;
+    function show(txt) {
+      if (S !== sess) return;
+      Array.prototype.forEach.call(S.v.querySelectorAll('track'), function (t) { t.parentNode.removeChild(t); });
+      var vtt = Subs.shift(Subs.toVtt(txt), S.subOffset || 0), url = URL.createObjectURL(new Blob([vtt], { type: 'text/vtt' })), tr = document.createElement('track');
+      tr.kind = 'subtitles'; tr.label = sub.lang; tr.src = url; tr.default = true; S.v.appendChild(tr);
+      setTimeout(function () { if (tr.track) tr.track.mode = 'showing'; }, 100);
+      S.subOn = true; S.subCur = sub; if (!quiet) Views.toast('Subtitles on: ' + Subs.langName(sub.lang) + (S.subOffset ? ' (' + (S.subOffset > 0 ? '+' : '') + (S.subOffset / 1000) + 's)' : ''));
+    }
+    if (sub._text) return show(sub._text);
+    fetch(sub.url).then(function (r) { return r.text(); }).then(function (txt) { sub._text = txt; show(txt); }).catch(function () { if (!quiet) Views.toast('Could not load those subtitles'); });
   }
   function pickSubs() {
-    var list = S.subs || [];
-    var opts = [{ label: 'Off', selected: !S.subOn }].concat(list.slice(0, 60).map(function (s) { return { label: (s.lang || 'unknown').toUpperCase(), sub: s.id || '' }; }));
+    var list = S.subs || [], pr = subPrefs(), r = Subs.rank(list, fileCtx(), pr), opts = [{ label: 'Off', selected: !S.subOn }];
     if (!list.length) Views.toast('No subtitles found (yet)');
-    Views.menu('Subtitles', opts, function (o, i) {
-      Array.prototype.forEach.call(S.v.querySelectorAll('track'), function (t) { t.parentNode.removeChild(t); });
-      if (i === 0) { S.subOn = false; return Views.toast('Subtitles off'); }
-      var sub = list[i - 1]; Views.toast('Loading subtitles…');
-      fetch(sub.url).then(function (r) { return r.text(); }).then(function (txt) {
-        if (!S) return;
-        if (!/^\s*WEBVTT/.test(txt)) txt = 'WEBVTT\n\n' + txt.replace(/\r/g, '').replace(/(\d{2}:\d{2}:\d{2}),(\d{3})/g, '$1.$2');
-        var url = URL.createObjectURL(new Blob([txt], { type: 'text/vtt' })), tr = document.createElement('track');
-        tr.kind = 'subtitles'; tr.label = sub.lang; tr.src = url; tr.default = true; S.v.appendChild(tr);
-        setTimeout(function () { if (tr.track) tr.track.mode = 'showing'; }, 100);
-        S.subOn = true; Views.toast('Subtitles on');
-      }).catch(function () { Views.toast('Could not load those subtitles'); });
+    var best = r.best && r.best.sub;
+    r.groups.forEach(function (g) {
+      opts.push({ header: (g.preferred ? '★ ' : '') + g.label });
+      g.items.slice(0, g.preferred ? 8 : 3).forEach(function (it, n) {
+        var tag = it.file ? 'Exact file' : (best === it.sub ? 'Best match' : '');
+        opts.push({ q: tag, label: (it.sub.subtitleFileName || it.sub.movieReleaseName || it.sub.id || 'Subtitle').slice(0, 70), sub: it.score > 60 && !it.file ? 'similar release' : '', sort: it.sub, selected: S.subCur === it.sub });
+      });
     });
+    if (S.subOn) { opts.push({ header: 'Sync' }); opts.push({ label: 'Subtitles earlier  (-0.5 s)', shift: -500 }); opts.push({ label: 'Subtitles later  (+0.5 s)', shift: 500 }); }
+    Views.menu('Subtitles – matched to this file', opts, function (o, i) {
+      if (o.shift) { S.subOffset = (S.subOffset || 0) + o.shift; return applySub(S.subCur); }
+      S.subManual = true;
+      if (!o.sort) return applySub(null);
+      S.subOffset = 0; applySub(o.sort);
+    }, 'Best match first: the same file (by its fingerprint), then the same release (group, source, resolution), in your language (Settings).');
   }
 
   document.addEventListener('click', function (e) {

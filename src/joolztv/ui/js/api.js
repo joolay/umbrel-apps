@@ -160,15 +160,52 @@ var Api = (function () {
     });
     return Promise.all(jobs).then(function () { return organise(found); });
   }
-  function getSubtitles(type, videoId) {
+  /* ctx: {filename, size, hash} of the file being watched. The subtitle addon uses them to find subtitles for exactly that file. */
+  function getSubtitles(type, videoId, ctx) {
+    var extra = [];
+    if (ctx && ctx.hash) extra.push('videoHash=' + encodeURIComponent(ctx.hash));
+    if (ctx && ctx.size) extra.push('videoSize=' + encodeURIComponent(ctx.size));
+    if (ctx && ctx.filename) extra.push('filename=' + encodeURIComponent(ctx.filename));
     var jobs = addons.filter(function (a) { return supports(a, 'subtitles', type, videoId); }).map(function (a) {
-      return getJSON(a.base + '/subtitles/' + type + '/' + encodeURIComponent(videoId) + '.json', 12000)
+      return getJSON(a.base + '/subtitles/' + type + '/' + encodeURIComponent(videoId) + (extra.length ? '/' + extra.join('&') : '') + '.json', 12000)
         .then(function (r) { return r.subtitles || []; }).catch(function () { return []; });
     });
-    return Promise.all(jobs).then(function (p) {
-      var all = [].concat.apply([], p);
-      return all.sort(function (a, b) { return (b.lang === 'eng') - (a.lang === 'eng'); });
-    });
+    return Promise.all(jobs).then(function (p) { return [].concat.apply([], p); });
+  }
+  function fileInfo(s) {                                              // what we know about the file behind a stream
+    var bh = s.behaviorHints || {};
+    return { filename: bh.filename || String(s.title || s.name || '').split('\n')[0], size: bh.videoSize || 0 };
+  }
+
+  /* ---- will this device play the file directly, or does the server have to transcode it? ---- */
+  function caps() {                                                     // what this browser/TV says it can decode
+    var v = document.createElement('video'), ok = function (t) { try { return !!v.canPlayType(t); } catch (e) { return false; } };
+    var ua = navigator.userAgent || '';
+    return {
+      hevc: ok('video/mp4; codecs="hvc1.1.6.L93.B0"') || ok('video/mp4; codecs="hev1.1.6.L93.B0"'),
+      hevc10: ok('video/mp4; codecs="hvc1.2.4.L120.B0"'),
+      ac3: ok('audio/mp4; codecs="ac-3"'), eac3: ok('audio/mp4; codecs="ec-3"'),
+      dts: ok('audio/mp4; codecs="dtsc"') || ok('audio/mp4; codecs="dtse"'),
+      tv: /Web0S|webOS|SMART-TV|SmartTV/i.test(ua)
+    };
+  }
+  /* decides from the release name (resolution, codec, audio, container) and the device. Returns {transcode, reason}. Wrong guesses are caught by the fallbacks in the player. */
+  function assess(s, c) {
+    c = c || caps();
+    var t = (' ' + [s.name, s.title, s.description, s.behaviorHints && s.behaviorHints.filename].join(' ') + ' ').toLowerCase().replace(/[._\-\[\]()]+/g, ' ');
+    var has = function (re) { return re.test(t); };
+    if (has(/ av1 /)) return { transcode: true, reason: 'AV1 video' };
+    if (has(/ (xvid|divx|wmv|vc 1|mpeg2) /) || has(/ (avi|wmv|flv|mpg|mpeg|iso|vob|m2ts) /)) return { transcode: true, reason: 'older video format' };
+    if (has(/ (hi10p|hi10) /)) return { transcode: true, reason: '10-bit H.264' };
+    if (has(/ (x265|h ?265|hevc) /)) {
+      if (!c.hevc) return { transcode: true, reason: 'HEVC video' };
+      if (has(/ (10 ?bit|main ?10|hdr10?|hdr10plus|dv|dovi|dolby vision) /) && !c.hevc10) return { transcode: true, reason: '10-bit HEVC' };
+    }
+    if (has(/ (dv|dovi|dolby vision) /)) return { transcode: true, reason: 'Dolby Vision' };
+    if (has(/ (dts ?hd|dts ?x|dts|truehd|true hd) /) && !c.dts) return { transcode: true, reason: 'DTS / TrueHD audio' };
+    if (has(/ (ddp|dd\+|eac3|e ac3|ec 3|atmos) /) && !c.eac3) return { transcode: true, reason: 'Dolby Digital Plus audio' };
+    if (has(/ (ac3|dd ?[257] ?1?|dd5 1|dolby digital) /) && !c.ac3) return { transcode: true, reason: 'Dolby Digital audio' };
+    return { transcode: false, reason: '' };
   }
 
   /* ---- turning a stream into a playable URL on the streaming server, always behind the sign-in (/s/<token>/...) ---- */
@@ -182,17 +219,19 @@ var Api = (function () {
     return tr.length ? u + '?' + tr.join('&') : u;
   }
   function directUrl(s) { if (s.url) return s.url; if (!s.infoHash) return null; return server() + torrentPath(s); }
-  function hlsUrl(s) {                                                  // transcoding: the streaming server reads the file from itself, not through the sign-in
-    var src = s.url || (internal() + torrentPath(s));
+  function hlsUrl(s, safe) {                                            // transcoding: the streaming server reads the file from itself, not through the sign-in
+    var src = s.url || (internal() + torrentPath(s)), c = safe ? {} : caps();
+    var video = ['h264'].concat(c.hevc && !c.tv ? ['hevc'] : []), audio = ['aac'].concat(c.ac3 ? ['ac3'] : []).concat(c.eac3 ? ['eac3'] : []);
     var id = Math.random().toString(36).slice(2) + Date.now().toString(36);
-    return server() + '/hlsv2/' + id + '/master.m3u8?mediaURL=' + encodeURIComponent(src) + '&videoCodecs=h264&audioCodecs=aac&maxAudioChannels=2';
+    return server() + '/hlsv2/' + id + '/master.m3u8?mediaURL=' + encodeURIComponent(src) + '&videoCodecs=' + video.join(',') + '&audioCodecs=' + audio.join(',') + '&maxAudioChannels=' + ((safe || c.tv) ? 2 : 6);
   }
+  function opensubHashUrl(s) { return s.infoHash ? server() + '/opensubHash?videoUrl=' + encodeURIComponent(internal() + '/' + s.infoHash + '/' + (s.fileIdx != null ? s.fileIdx : -1)) : null; }
 
   return {
     ensure: ensure, reload: function () { loaded = false; return loadAddons(); },
     catalogDefs: catalogDefs, fetchCatalog: fetchCatalog, search: search, getMeta: getMeta,
     getStreams: getStreams, torrentioUrl: torrentioUrl, defaultTorrentio: function () { return DEFAULT_TORRENTIO; },
-    getSubtitles: getSubtitles, directUrl: directUrl, hlsUrl: hlsUrl, server: server,
+    getSubtitles: getSubtitles, fileInfo: fileInfo, caps: caps, assess: assess, getJSON: getJSON, opensubHashUrl: opensubHashUrl, directUrl: directUrl, hlsUrl: hlsUrl, server: server,
     setStreamBase: function (b) { streamBase = b || ''; },
     addons: function () { return addons; }
   };
