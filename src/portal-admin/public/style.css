@@ -199,3 +199,4 @@ dialog#sheet,dialog#acct{position:fixed;margin:auto;width:min(440px,calc(100vw -
 .ic-tile.folder .mini i{background:linear-gradient(150deg,color-mix(in srgb,var(--c1) 80%,transparent),color-mix(in srgb,var(--c2) 80%,transparent))}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .ic-tile:not(:has(.ic-img)){border-color:rgba(255,255,255,.16);box-shadow:0 4px 12px rgba(0,0,0,.32),inset 0 1px 0 rgba(255,255,255,.14)}}
 :root[data-theme="dark"] .ic-tile:not(:has(.ic-img)){border-color:rgba(255,255,255,.16);box-shadow:0 4px 12px rgba(0,0,0,.32),inset 0 1px 0 rgba(255,255,255,.14)}
+.brand img{border-radius:24%;box-shadow:0 2px 6px rgba(15,23,42,.22)}   /* the icon file is a full square (the system rounds it on a phone); round it here too */

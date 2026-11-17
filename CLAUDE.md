@@ -6,6 +6,7 @@ Everything is managed here; never create a separate repo for a new app.
 ## Adding an app called `<name>`
 1. Source: `src/<name>/` with a `Dockerfile` (build context is that folder; keep `LABEL org.opencontainers.image.source=https://github.com/joolay/umbrel-apps`).
 2. Store entry: `joolay-<name>/` with `umbrel-app.yml` (`id: joolay-<name>`), `docker-compose.yml`, `icon.svg`.
+   - The icon is never drawn by hand: add the app to `templates/glass/make-icons.py` and run `python3 templates/glass/make-icons.py <name>` (see `templates/glass/README.md`, "Icons"). Same glass tile for every app, the Portal, Portal Admin and the home screen's built-in tiles.
    - compose `web.image` must be `ghcr.io/joolay/<name>:<version>`, equal to `version` in `umbrel-app.yml`.
    - `app_proxy` uses `APP_HOST: joolay-<name>_web_1`. Pick an unused `port`.
    - Ports must be unique across the WHOLE store: every `port:` in `umbrel-app.yml` and every host port published in a compose file (`"<host>:<container>"`) share one pool. Check with `grep -rn 'port:' joolay-*/umbrel-app.yml; grep -rn '"[0-9]*:[0-9]*"' joolay-*/docker-compose.yml` before picking one. A clash stops whichever app starts second.

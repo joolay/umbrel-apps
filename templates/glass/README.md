@@ -41,6 +41,16 @@ One look for every JoolzApp: soft gradient backdrop, frosted panels, rounded cor
 Edit `templates/glass/glass.css`, bump the version in its header comment, then copy it into every app's `public/` and bump each app's version.
 
 ## Icons
-Every app icon is a glass tile: brand gradient, soft highlight, frosted rounded panel, white glyph. `make-icons.py` builds them
-(`icon.svg`, `icon-180.png`, `icon-512.png`, `icon-maskable-512.png`, and the store icon in `joolay-<app>/`). Add a new app's glyph and
-two brand colours to the `icons` table in that script and run it from the repo root (needs `rsvg-convert` and ImageMagick).
+Every icon people see is the same glass tile: brand gradient, soft highlight, frosted rounded panel, bold white glyph (gold only for the
+JoolzApp bolt). That covers each app's own icon, JoolzApp Portal, Portal Admin, and the home screen's built-in tiles (Family, Settings, Admin).
+`make-icons.py` builds them all from one template, so nothing is drawn by hand:
+
+- **An app**: add its glyph and two brand colours to the `icons` table, then run `python3 templates/glass/make-icons.py <app>` from the repo root.
+  It writes `icon.svg`, `icon-180.png`, `icon-512.png`, `icon-maskable-512.png` in `src/<app>/public/` and the store icon in `joolay-<app>/`.
+- **Portal, Portal Admin and built-in tiles**: the `special` table (`portal`, `portal-admin`, `family`, `settings`). A new built-in home-screen
+  tile gets an entry there (a 24x24 line glyph via `line24()`), a file in `src/portal-admin/public/icons/`, and `img: 'icons/<name>.svg'` on its item in `homeModel()`.
+- Always name what to build. Run with no names and it only lists what it knows (it never rebuilds everything, so it can't overwrite an icon that was tuned later).
+- Needs `rsvg-convert` and ImageMagick.
+
+On the home screen, artwork is shown as it is (no gloss or glow added on top, see "Crisp glass icons" in `src/portal-admin/public/style.css`). An app with no
+artwork gets a tinted glass tile with its first letter, so give every new app an icon from this script before it ships.

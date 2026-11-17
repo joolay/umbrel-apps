@@ -1,11 +1,14 @@
-<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><defs>
-<linearGradient id="k8bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1b2748"/><stop offset=".55" stop-color="#10182f"/><stop offset="1" stop-color="#0a0f1f"/></linearGradient>
-<linearGradient id="k8sh" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".6"/><stop offset=".5" stop-color="#fff" stop-opacity=".06"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>
-<linearGradient id="k8w" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff"/><stop offset="1" stop-color="#fff" stop-opacity=".8"/></linearGradient>
-<linearGradient id="k8g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff3c4"/><stop offset="1" stop-color="#e0a92f"/></linearGradient>
-<filter id="k8d"><feGaussianBlur stdDeviation="1.8"/></filter>
-<clipPath id="k8c"><rect x="4" y="4" width="92" height="92" rx="23"/></clipPath></defs>
-<rect x="4" y="4" width="92" height="92" rx="23" fill="url(#k8bg)"/>
-<g clip-path="url(#k8c)"><ellipse cx="38" cy="8" rx="62" ry="38" fill="url(#k8sh)"/></g>
-<rect x="4.8" y="4.8" width="90.4" height="90.4" rx="22.5" fill="none" stroke="#fff" stroke-opacity=".5" stroke-width="1.4"/>
-<g filter="url(#k8d)" opacity=".35" transform="translate(0 2.5)"><path d="M50 10L24 46H42L34 72L62 36H44Z" fill="#000"/><path d="M68 28L48 56H62L54 88L82 50H66Z" fill="#000"/></g><path d="M50 10L24 46H42L34 72L62 36H44Z" fill="url(#k8w)"/><path d="M68 28L48 56H62L54 88L82 50H66Z" fill="url(#k8g)"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#27386b"/><stop offset="1" stop-color="#0a0f1f"/></linearGradient>
+    <radialGradient id="glow" cx="0.2" cy="0.12" r="0.85"><stop offset="0" stop-color="#fff" stop-opacity=".55"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+    <linearGradient id="panel" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".30"/><stop offset="1" stop-color="#fff" stop-opacity=".08"/></linearGradient>
+    <linearGradient id="rim" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".85"/><stop offset=".5" stop-color="#fff" stop-opacity=".12"/><stop offset="1" stop-color="#fff" stop-opacity=".4"/></linearGradient>
+    <filter id="sh" x="-20%" y="-20%" width="140%" height="150%"><feDropShadow dx="0" dy="10" stdDeviation="9" flood-color="#000" flood-opacity=".28"/></filter>
+  </defs>
+  <rect width="512" height="512" fill="url(#bg)"/>
+  <rect width="512" height="512" fill="url(#glow)"/>
+  <rect x="86" y="86" width="340" height="340" rx="90" fill="url(#panel)" stroke="url(#rim)" stroke-width="3"/>
+  <path d="M120 130a60 60 0 0 1 60-44h152" fill="none" stroke="#fff" stroke-opacity=".5" stroke-width="5" stroke-linecap="round"/>
+  <g filter="url(#sh)"><linearGradient id="gold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff3c4"/><stop offset="1" stop-color="#e0a92f"/></linearGradient><g transform="translate(70 86) scale(3.5)"><path d="M50 10L24 46H42L34 72L62 36H44Z" fill="#fff"/><path d="M68 28L48 56H62L54 88L82 50H66Z" fill="url(#gold)"/></g></g>
+</svg>
