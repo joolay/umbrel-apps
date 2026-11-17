@@ -23,6 +23,7 @@ const UPSTREAM = new URL(process.env.STREAM_UPSTREAM || "http://server:11470");
 const INTERNAL = process.env.STREAM_INTERNAL || "http://127.0.0.1:11470";   // how the streaming server reaches itself (for transcoding)
 const REQUIRE_ACCOUNTS = !/^(0|false|no)$/i.test(process.env.REQUIRE_ACCOUNTS || "1");
 const subsync = require("./subsync");
+const marks = require("./marks");
 const FFMPEG = process.env.FFMPEG || "ffmpeg", FFPROBE = process.env.FFPROBE || "ffprobe";
 const APP_NAME = process.env.POCKETBASE_APP_NAME || "JoolzTV";
 const MAX_PROFILES = 12, MAX_BODY = 2 * 1024 * 1024, MAX_RESUME = 200, MAX_LIST = 500, STREAM_TTL = 12 * 3600e3;
@@ -277,6 +278,56 @@ async function subsSync(req, res, u) {
   } finally { syncing.delete(u.id); syncActive--; }
 }
 
+/* ---------- skip intro / credit scenes: what the file says (chapters), what the tail of it looks like, and intros the household marked ---------- */
+const MARKS_FILE = path.join(DATA_DIR, "marks.json");
+const marksCache = new Map(); let marksActive = 0; const marksBusy = new Set();
+const cacheGet = k => { const e = marksCache.get(k); return e && Date.now() - e.at < 6 * 3600e3 ? e.v : null; };
+const cacheSet = (k, v) => { if (marksCache.size > 300) marksCache.delete(marksCache.keys().next().value); marksCache.set(k, { at: Date.now(), v }); };
+function fileOf(body) {
+  const hash = String(body.infoHash || ""), idx = Number.isInteger(body.fileIdx) ? body.fileIdx : parseInt(body.fileIdx, 10);
+  if (!/^[0-9a-fA-F]{40}$/.test(hash) || !(idx >= -1 && idx < 10000)) return null;
+  return { key: hash.toLowerCase() + ":" + idx, url: UPSTREAM.origin + "/" + hash + "/" + idx };
+}
+const markErr = (res, e) => {
+  if (e.code === "no_ffmpeg") return send(res, 503, { code: "marks_unavailable", message: "Skip buttons need ffmpeg, which is missing on this server." });
+  if (e.code === "unreadable" || e.code === "timeout") return send(res, 422, { code: "unreadable", message: "The file could not be read right now." });
+  console.error("marks:", e.message); return send(res, 500, { code: "error", message: "Could not check the file." });
+};
+async function marksRoutes(req, res, p, u) {
+  if (p === "/api/marks/scan" && req.method === "POST") {                      // chapters: cheap, reads the start of the file
+    const f = fileOf(await jsonBody(req)); if (!f) return send(res, 400, { code: "bad_request", message: "Needs a torrent source." });
+    const hit = cacheGet("c:" + f.key); if (hit) return send(res, 200, hit);
+    if (marksActive >= 4) return send(res, 429, { code: "busy", message: "Busy. Try again shortly." });
+    marksActive++;
+    try { const r = await marks.chapters(f.url, { ffprobe: FFPROBE }); cacheSet("c:" + f.key, r); return send(res, 200, r); } catch (e) { return markErr(res, e); } finally { marksActive--; }
+  }
+  if (p === "/api/marks/tail" && req.method === "POST") {                      // where the credits start and whether a scene follows: looks at the picture from `from` to the end
+    const body = await jsonBody(req), f = fileOf(body), from = +body.from, duration = +body.duration;
+    if (!f || !(duration >= 60 && duration <= 40000) || !(from >= 0 && from < duration)) return send(res, 400, { code: "bad_request", message: "Needs a torrent source and the position." });
+    const key = "t:" + f.key + ":" + Math.floor(from / 120), hit = cacheGet(key); if (hit) return send(res, 200, hit);
+    if (marksBusy.has(u.id)) return send(res, 429, { code: "busy", message: "Already looking at a file for you." });
+    if (marksActive >= 2) return send(res, 429, { code: "busy", message: "Busy. Try again shortly." });
+    marksBusy.add(u.id); marksActive++;
+    try { const r = await marks.tail(f.url, { from, duration, ffmpeg: FFMPEG }); cacheSet(key, r); return send(res, 200, r); } catch (e) { return markErr(res, e); } finally { marksBusy.delete(u.id); marksActive--; }
+  }
+  if (p === "/api/marks/show") {                                              // the intro the household marked for a show (same timing offered on every episode)
+    const m = readJson(MARKS_FILE, { shows: {} }); if (!m.shows) m.shows = {};
+    if (req.method === "GET") { const id = new URL(req.url, "http://x").searchParams.get("id") || ""; return send(res, 200, { intro: (m.shows[id] || {}).intro || null }); }
+    if (req.method === "PUT" || req.method === "DELETE") {
+      if (u.portal && u.portal.readonly && !u.isAdmin) return send(res, 403, { code: "view_only", message: "Your account is view-only, so it cannot change this." });
+      const body = req.method === "PUT" ? await jsonBody(req) : {}, id = String(body.id || new URL(req.url, "http://x").searchParams.get("id") || "");
+      if (!/^tt\d{5,12}$/.test(id)) return send(res, 400, { code: "bad_request", message: "Unknown title." });
+      if (req.method === "DELETE") { delete m.shows[id]; writeJson(MARKS_FILE, m); return send(res, 200, { intro: null }); }
+      const a = +(body.intro && body.intro.start), b = +(body.intro && body.intro.end);
+      if (!(a >= 0 && b > a && b - a >= 5 && b - a <= 300 && b < 36000)) return send(res, 400, { code: "bad_request", message: "The intro must last between 5 seconds and 5 minutes." });
+      if (Object.keys(m.shows).length > 2000) delete m.shows[Object.keys(m.shows)[0]];
+      m.shows[id] = { intro: { start: Math.round(a * 10) / 10, end: Math.round(b * 10) / 10 }, ts: Date.now() }; writeJson(MARKS_FILE, m);
+      return send(res, 200, { intro: m.shows[id].intro });
+    }
+  }
+  return send(res, 404, { code: "not_found" });
+}
+
 /* ---------- streaming server behind the sign-in ---------- */
 const SECRET_FILE = path.join(DATA_DIR, "secret.key");
 let SECRET = (() => { try { const s = fs.readFileSync(SECRET_FILE, "utf8").trim(); if (s.length >= 32) return s; } catch {} const s = crypto.randomBytes(32).toString("hex"); fs.writeFileSync(SECRET_FILE, s, { mode: 0o600 }); return s; })();
@@ -428,6 +479,7 @@ const server = http.createServer(async (req, res) => {
       if (!profileOf(hh(), u.id) && !u.isAdmin) return send(res, 403, { code: "not_in_household", message: "This account isn't part of this household." });
       if ((p === "/api/state" && req.method === "GET") || (p === "/api/sync" && req.method === "POST")) return await syncRoutes(req, res, p, u);
       if (p === "/api/subs/sync" && req.method === "POST") return await subsSync(req, res, u);
+      if (p.startsWith("/api/marks/")) return await marksRoutes(req, res, p, u);
       if (p === "/api/stream-token" && req.method === "POST") { const m = mintStream(u.id); return send(res, 200, { st: m.st, exp: m.exp }); }
       return send(res, 404, { code: "not_found" });
     }

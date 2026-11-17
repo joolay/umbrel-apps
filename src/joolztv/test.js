@@ -118,6 +118,19 @@ const T = tok => ({ "x-jtv-token": tok });
   r = await req("GET", "/api/state", undefined, T("s.dTE.zzzz." + "a".repeat(27))); ok(r.code === 401, "a forged session token is refused");
   const legacy = "legacy-ann";
   r = await req("GET", "/api/state", undefined, T(legacy)); ok(r.code === 200 && /^s\./.test(r.headers["x-jtv-renew"] || ""), "an older PocketBase token still works once and is swapped for a session token");
+  // skip intro / credit scenes
+  r = await req("POST", "/api/marks/scan", { infoHash: HASH, fileIdx: 0 }); ok(r.code === 401, "scan needs a sign-in");
+  r = await req("POST", "/api/marks/scan", { infoHash: "nothex", fileIdx: 0 }, T(ann)); ok(r.code === 400, "scan only takes a torrent source");
+  r = await req("POST", "/api/marks/scan", { infoHash: HASH, fileIdx: 0 }, T(ann)); ok(r.code === 422 && r.json.code === "unreadable", "a file that is not a video gives a clear 'could not read' (not a crash)");
+  r = await req("POST", "/api/marks/tail", { infoHash: HASH, fileIdx: 0, from: 5000, duration: 100 }, T(ann)); ok(r.code === 400, "tail: a position past the end is refused");
+  r = await req("POST", "/api/marks/tail", { infoHash: HASH, fileIdx: 0, from: 100, duration: 7000 }, T(ann)); ok(r.code === 503 && r.json.code === "marks_unavailable", "tail: missing ffmpeg gives a clear answer");
+  r = await req("GET", "/api/marks/show?id=tt0944947", undefined, T(ann)); ok(r.code === 200 && r.json.intro === null, "no intro marked yet");
+  r = await req("PUT", "/api/marks/show", { id: "tt0944947", intro: { start: 62, end: 20 } }, T(ann)); ok(r.code === 400, "an intro that ends before it starts is refused");
+  r = await req("PUT", "/api/marks/show", { id: "tt0944947", intro: { start: 62.04, end: 150 } }, T(ann)); ok(r.code === 200 && r.json.intro.start === 62 && r.json.intro.end === 150, "the household's intro mark is saved");
+  r = await req("GET", "/api/marks/show?id=tt0944947", undefined, T(carol)); ok(r.json.intro && r.json.intro.end === 150, "every member gets it for the next episode");
+  r = await req("PUT", "/api/marks/show", { id: "../x", intro: { start: 1, end: 60 } }, T(ann)); ok(r.code === 400, "only real titles can be marked");
+  r = await req("PUT", "/api/marks/show", { id: "tt0944947", intro: { start: 1, end: 60 } }, T(vw)); ok(r.code === 403, "a view-only account cannot change the mark");
+  r = await req("DELETE", "/api/marks/show?id=tt0944947", undefined, T(ann)); ok(r.code === 200 && r.json.intro === null, "a mark can be removed");
   // UI build selection
   r = await req("GET", "/", undefined, { "user-agent": "Mozilla/5.0 (Web0S; Linux/SmartTV) AppleWebKit/537.36 Chrome/53.0.2785.34 Safari/537.36 WebAppManager" }); ok(r.text === "COMPAT" && /User-Agent/i.test(r.headers.vary), "LG webOS TV gets the compat build");
   r = await req("GET", "/", undefined, { "user-agent": "Mozilla/5.0 (Macintosh) AppleWebKit/537.36 Chrome/126.0 Safari/537.36" }); ok(r.text === "MODERN", "modern browser gets the modern build");

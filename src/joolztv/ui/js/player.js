@@ -8,12 +8,12 @@ var Player = (function () {
 
   function open(info) {
     if (S) close();
-    var h = '<video id="pv" preload="auto"></video><div class="pspin" style="display:none"></div><div class="pmsg" style="display:none"></div>' +
+    var h = '<video id="pv" preload="auto"></video><div class="pspin" style="display:none"></div><div class="pmsg" style="display:none"></div><div class="skips" id="skips"></div>' +
       '<div class="pov"><div class="ptop"><div class="t1">' + Views.esc(info.title || '') + '</div><div class="t2">' + Views.esc([info.sub, info.epTitle].filter(Boolean).join(' · ')) + '</div><div class="pmode glass" id="pmode"></div></div>' +
       '<div class="pbar glass"><div class="seek f" id="seek"><div class="buf"></div><div class="pos"></div><div class="knob"></div></div>' +
       '<div class="times"><span id="tcur">0:00</span><span id="tdur">0:00</span></div>' +
       '<div class="pctl"><span class="cbtn f" data-pact="back10">⏪ 10</span><span class="cbtn big f" data-pact="toggle" id="bplay">❚❚</span><span class="cbtn f" data-pact="fwd10">10 ⏩</span>' +
-      '<span class="cbtn f" data-pact="speed">Speed 1x</span><span class="cbtn f" data-pact="subs">Subtitles</span><span class="cbtn f" data-pact="sources">Sources</span></div></div></div>';
+      '<span class="cbtn f" data-pact="speed">Speed 1x</span><span class="cbtn f" data-pact="subs">Subtitles</span><span class="cbtn f" data-pact="sources">Sources</span>' + (info.type === 'series' && showIdOf(info) ? '<span class="cbtn f" data-pact="skippoints">Skip points</span>' : '') + '</div></div></div>';
     var el = Views.mount('player', h, { cls: 'player', onBack: function () { close(); Views.pop(); return true; }, onClose: cleanup });
     S = { el: el, info: info, v: el.querySelector('#pv'), learnedFor: {}, buf: { speed: 0, peers: 0, len: 0, fill: null }, hold: false, streams: [], groups: [], idx: -1, tried: {}, rate: 1, subs: null, ui: true, uiT: null, lastSave: 0, tick: null, buffT: null, ended: false, gotTime: false };
     keepPitch(S.v);
@@ -121,7 +121,7 @@ var Player = (function () {
       }
     });
     v.addEventListener('playing', function () {
-      if (!alive()) return; sess.gotTime = true; spin(''); say(''); sess.failed = false; reapplyRate(); setPlayLabel(); showUi();
+      if (!alive()) return; sess.gotTime = true; spin(''); say(''); sess.failed = false; reapplyRate(); setPlayLabel(); showUi(); loadMarks();
       clearTimeout(sess.okT);
       if (!sess.hls) {                                          // played for a few seconds with a picture: remember this device can play these formats directly
         var base = v.currentTime, idx = sess.idx;
@@ -173,6 +173,85 @@ var Player = (function () {
   function setRate(r) { var v = S.v; S.rate = r; keepPitch(v); try { v.defaultPlaybackRate = r; } catch (e) {} try { v.playbackRate = r; } catch (e) {} keepPitch(v); }
   function reapplyRate() { if (S && S.v) { keepPitch(S.v); if (Math.abs(S.v.playbackRate - S.rate) > 0.01) { try { S.v.playbackRate = S.rate; } catch (e) {} } } }
   function setPlayLabel() { var b = $('#bplay'); if (b && S) b.textContent = S.v.paused ? '▶' : '❚❚'; }
+
+  /* ---- skip intro, and the credit scene after the credits ---- */
+  /* What is known about this file: the intro (from its chapters, or marked once for the show), where the credits start, and any mid-/end-credit scenes.
+     The server finds them; the player only shows one small button at the right moment (OK on the remote presses it). */
+  function showIdOf(info) { var id = String((info && (info.videoId || info.id)) || '').split(':')[0]; return /^tt\d{5,12}$/.test(id) ? id : ''; }
+  function fileKey(s) { return s && s.infoHash ? { infoHash: s.infoHash, fileIdx: s.fileIdx == null ? -1 : s.fileIdx } : null; }
+  function loadMarks() {
+    var sess = S, s = sess.streams[sess.idx], f = fileKey(s); if (!f) return;
+    var key = f.infoHash + ':' + f.fileIdx; if (sess.marksFor === key) return;
+    sess.marksFor = key; var M = sess.marks = { intro: null, introFrom: '', credits: null, scenes: [], tailAsked: false, tailAt: 0, done: {} };
+    Backend.call('POST', '/api/marks/scan', f, undefined, 30000).then(function (r) {
+      if (S !== sess || sess.marks !== M) return;
+      if (r.intro) { M.intro = r.intro; M.introFrom = 'file'; }
+      if (r.credits) M.credits = r.credits;
+      M.scenes = r.scenes || []; M.chapters = !!r.hasChapters;
+    }).catch(function () {}).then(function () {
+      var show = showIdOf(sess.info);
+      if (S !== sess || sess.marks !== M || M.intro || sess.info.type !== 'series' || !show) return;
+      return Backend.call('GET', '/api/marks/show?id=' + show).then(function (j) { if (S === sess && sess.marks === M && !M.intro && j.intro) { M.intro = j.intro; M.introFrom = 'show'; } }).catch(function () {});
+    });
+  }
+  /* the end: when about 20 minutes are left, ask the server to look at the rest of the picture (unless the download is too slow to spare the data) */
+  function askTail(t, d) {
+    var sess = S, M = sess.marks, f = fileKey(sess.streams[sess.idx]); if (!M || !f || M.tailAsked || d < 600) return;
+    if (Date.now() < M.tailAt || t < d - 1200) return;
+    if (sess.buf && sess.buf.plan && sess.buf.plan.slow) return;
+    if (M.chapters && M.credits && M.scenes.length) return;                                  // the file's own chapters already say it all
+    M.tailAsked = true;
+    var from = M.credits ? Math.max(t, M.credits.start - 12) : Math.max(t, d - 900);
+    Backend.call('POST', '/api/marks/tail', { infoHash: f.infoHash, fileIdx: f.fileIdx, from: from, duration: d }, undefined, 130000).then(function (r) {
+      if (S !== sess || sess.marks !== M) return;
+      if (!M.credits && r.creditsStart != null) M.credits = { start: r.creditsStart };
+      (r.scenes || []).forEach(function (x) { if (M.scenes.indexOf(x) < 0) M.scenes.push(x); }); M.scenes.sort(function (a, b) { return a - b; });
+    }).catch(function (e) { if (S === sess && sess.marks === M && e.status === 429) { M.tailAsked = false; M.tailAt = Date.now() + 60000; } });
+  }
+  function wantSkip(t, d) {
+    var M = S.marks; if (!M) return null;
+    if (M.intro && t >= M.intro.start - 0.5 && t < M.intro.end - 2 && !M.done['intro']) return { kind: 'intro', label: 'Skip intro', to: M.intro.end };
+    if (M.credits && t >= M.credits.start - 1) {
+      for (var i = 0; i < M.scenes.length; i++) if (M.scenes[i] > t + 3 && !M.done['scene' + i]) return { kind: 'scene' + i, label: 'Skip to extra scene', to: M.scenes[i] };
+      var n = S.info.getNext && S.info.getNext(S.info.videoId || S.info.id);
+      if (n && !M.scenes.some(function (x) { return x > t; }) && !M.done['next']) return { kind: 'next', label: 'Next episode', next: n };
+    }
+    return null;
+  }
+  function marksTick(t, d) {
+    if (!S.marks || S.hold || S.upnext) return;
+    askTail(t, d);
+    var w = wantSkip(t, d), K = S.skip, el = $('#skips'); if (!el) return;
+    if (!w) { if (K) { S.skip = null; el.innerHTML = ''; } return; }
+    if (!K || K.kind !== w.kind) {
+      S.skip = K = { kind: w.kind, w: w, shownAt: Date.now(), hidden: false };
+      el.innerHTML = '<div class="skip glass f" data-pact="skipgo">' + Views.esc(w.label) + ' <small>OK</small></div>'; el.className = 'skips' + (S.ui ? ' up' : '');
+    } else if (!K.hidden && !S.ui && Date.now() - K.shownAt > 10000) { K.hidden = true; el.firstChild.style.display = 'none'; }     // discreet: fades after 10 s, back with the controls
+  }
+  function skipsUi() {
+    var el = S && $('#skips'); if (!el) return;
+    el.className = 'skips' + (S.ui ? ' up' : '');
+    if (S.skip && S.ui && S.skip.hidden && el.firstChild) { S.skip.hidden = false; S.skip.shownAt = Date.now(); el.firstChild.style.display = ''; }
+  }
+  function doSkip() {
+    var K = S && S.skip; if (!K) return false;
+    var w = K.w, M = S.marks; M.done[w.kind] = 1;
+    if (w.next) { S.upnext = { n: w.next, left: 0 }; playNext(); return true; }
+    try { S.v.currentTime = w.to; } catch (e) {} S.skip = null; var el = $('#skips'); if (el) el.innerHTML = ''; update(); return true;
+  }
+  function pickSkipPoints() {
+    var M = S.marks || {}, show = showIdOf(S.info), t = S.v.currentTime, opts = [];
+    opts.push({ label: 'Intro starts here (' + Views.fmtTime(t * 1000) + ')', k: 'a' });
+    opts.push({ label: 'Intro ends here (' + Views.fmtTime(t * 1000) + ')', k: 'b' });
+    if (M.introFrom === 'show') opts.push({ label: 'Forget the saved intro for this show', k: 'x' });
+    Views.menu('Skip points for this show', opts, function (o) {
+      if (o.k === 'a') { S.markA = t; return Views.toast('Intro start set. Now play to where it ends and choose "Intro ends here".', 6000); }
+      if (o.k === 'x') return Backend.call('DELETE', '/api/marks/show?id=' + show).then(function () { if (S.marks) { S.marks.intro = null; S.marks.introFrom = ''; } Views.toast('Saved intro removed'); }).catch(function (e) { Views.toast(e.message, 5000); });
+      if (S.markA === undefined || t - S.markA < 5) return Views.toast('First choose "Intro starts here" at the start of the intro.', 6000);
+      var intro = { start: S.markA, end: t }; S.markA = undefined;
+      Backend.call('PUT', '/api/marks/show', { id: show, intro: intro }).then(function (r) { if (S.marks) { S.marks.intro = r.intro; S.marks.introFrom = 'show'; S.marks.done = {}; } Views.toast('Saved. "Skip intro" now appears on every episode of this show.', 6000); }).catch(function (e) { Views.toast(e.message, 6000); });
+    }, 'Shows keep the same opening every episode. Mark it once and everyone in the household gets the button.');
+  }
 
   /* ---- smart buffering ---- */
   function bufMode() { return Store.get('bufmode', 'auto'); }
@@ -226,6 +305,7 @@ var Player = (function () {
     if (buf && v.buffered && v.buffered.length) { var e = v.buffered.end(v.buffered.length - 1); buf.style.width = Math.min(100, e / d * 100) + '%'; }
     $('#tcur').textContent = Views.fmtTime(t * 1000); $('#tdur').textContent = '-' + Views.fmtTime(Math.max(0, d - t) * 1000);
     if (Date.now() - S.lastSave > 10000 && !v.paused) save();
+    marksTick(t, d);
   }
   function save(done) {
     if (!S || !S.v || !isFinite(S.v.duration) || !S.v.duration) return;
@@ -249,13 +329,13 @@ var Player = (function () {
   /* ---- UI ---- */
   function showUi(keep) {
     if (!S) return;
-    S.ui = true; S.el.querySelector('.pov').style.display = 'block';
+    S.ui = true; S.el.querySelector('.pov').style.display = 'block'; skipsUi();
     clearTimeout(S.uiT);
     if (!(S.v && S.v.paused) || !keep) S.uiT = setTimeout(hideUi, 5000);
   }
   function hideUi() {
     if (!S || S.v.paused || Views.hasMenu()) return;
-    S.ui = false; S.el.querySelector('.pov').style.display = 'none'; Nav.set(S.el.querySelector('#seek'), true);
+    S.ui = false; S.el.querySelector('.pov').style.display = 'none'; skipsUi(); Nav.set(S.el.querySelector('#seek'), true);
   }
   function seekBy(sec) {
     if (!S || !isFinite(S.v.duration)) return;
@@ -390,7 +470,8 @@ var Player = (function () {
     var el = e.target.closest ? e.target.closest('[data-pact]') : null;
     if (!el || !S) return;
     var a = el.getAttribute('data-pact');
-    if (a === 'toggle') toggle(); else if (a === 'back10') seekBy(-10); else if (a === 'fwd10') seekBy(10);
+    if (a === 'skipgo') { doSkip(); return; }
+    if (a === 'skippoints') pickSkipPoints(); else if (a === 'toggle') toggle(); else if (a === 'back10') seekBy(-10); else if (a === 'fwd10') seekBy(10);
     else if (a === 'speed') pickSpeed(); else if (a === 'subs') pickSubs(); else if (a === 'sources') pickSource();
     showUi(true);
   });
@@ -409,6 +490,7 @@ var Player = (function () {
     if (code === 413) { Views.back(); return true; }
     if (!S.ui && (code === 38 || code === 40)) { showUi(true); Nav.set(S.el.querySelector('#seek'), true); return true; }
     if (code === 13) {
+      if (S.skip && !S.skip.hidden && onSeek && doSkip()) return true;           // OK presses the button while it is showing (unless a control has the focus)
       if (!S.ui) { toggle(); showUi(true); return true; }
       if (onSeek) { toggle(); return true; }
       return false;
