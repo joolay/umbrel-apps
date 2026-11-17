@@ -428,9 +428,34 @@ var Views = (function () {
   /* ---------- search ---------- */
   function searchPage() {
     ++browseToken;
-    replaceAll('search', '<div class="art img"></div><div class="art-shade"></div>' + topbar('search') + '<div class="vs" id="main"><div class="grid" style="padding-top:150px"><input id="q" class="field f" style="width:1100px" placeholder="Search movies and TV shows" autocomplete="off"><div id="res"></div></div></div>',
+    replaceAll('search', '<div class="art img"></div><div class="art-shade"></div>' + topbar('search') + '<div class="vs" id="main"><div class="grid" style="padding-top:150px"><div class="sbar"><input id="q" class="field f" type="text" style="width:960px" placeholder="Search movies, TV shows and people" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="search"><div class="btn glass f mic" data-act="speak" aria-label="Search by voice">' + MIC + '<span>Speak</span></div></div><div class="hint" id="vhint"></div><div id="res"></div></div></div>',
       { cls: 'noart', onBack: function () { page('home'); return true; } });
     Nav.first('#q');
+    var q = document.getElementById('q');
+    // voice typed through the TV's keyboard microphone arrives as text without Enter: search once it stops changing
+    var lastQ = '';
+    function auto() { var v = q.value.trim(); if (v.length >= 2 && v !== lastQ) { lastQ = v; runSearch(v); } }
+    q.addEventListener('input', function () { clearTimeout(q._t); q._t = setTimeout(auto, 900); });
+    q.addEventListener('change', auto);
+  }
+  var MIC = '<svg class="ico" viewBox="0 0 48 48" width="34" height="34"><g fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><rect x="17" y="6" width="14" height="25" rx="7"/><path d="M10 23a14 14 0 0 0 28 0M24 37v6M17 43h14"/></g></svg>';
+  /* Voice search. webOS has no microphone access for web apps on most TVs, so: (1) speech recognition when this browser has it; otherwise
+     (2) the TV's own voice input: the microphone key on the on-screen keyboard (and the Magic Remote's) types what you say into the search box. */
+  function speak() {
+    var q = document.getElementById('q'), hint = document.getElementById('vhint'); if (!q) return;
+    var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (SR) {
+      try {
+        var r = new SR(); r.lang = Tmdb.locale ? Tmdb.locale() : (navigator.language || 'en-GB'); r.interimResults = false; r.maxAlternatives = 1;
+        if (hint) hint.textContent = 'Listening\u2026 say a title or a name';
+        r.onresult = function (e) { var t = e.results && e.results[0] && e.results[0][0] ? e.results[0][0].transcript : ''; if (t) { q.value = t; if (hint) hint.textContent = '\u201c' + t + '\u201d'; runSearch(t); } };
+        r.onerror = function (e) { if (hint) hint.textContent = e && e.error === 'not-allowed' ? 'Microphone access was refused. Use the microphone key on the keyboard instead.' : 'Could not hear that. Try again, or use the keyboard\u2019s microphone key.'; };
+        r.onend = function () { if (hint && /Listening/.test(hint.textContent)) hint.textContent = ''; };
+        r.start(); return;
+      } catch (e) {}
+    }
+    q.focus();
+    if (hint) hint.textContent = 'Press the microphone key on the keyboard that just opened (or hold the Magic Remote\u2019s microphone button) and say a title. The words are typed in and searched automatically.';
   }
   function runSearch(q) {
     var res = document.getElementById('res'); if (!res || !q) return;
@@ -766,6 +791,7 @@ var Views = (function () {
     if (a === 'open') { var m = reg[+el.getAttribute('data-k')]; if (!m.id && m.tmdb) return openTmdb(m); return detail(m.type, m.id, m); }
     if (a === 'play') return playChecked(reg[+el.getAttribute('data-k')]);
     if (a === 'season') return renderEpisodes(current().el, +el.getAttribute('data-s'));
+    if (a === 'speak') return speak();
     if (a === 'xtab') return xTab(current().el, el.getAttribute('data-t'));
     if (a === 'person') return personPage(el.getAttribute('data-id'));
     if (a === 'collection') return collectionPage(el.getAttribute('data-id'));

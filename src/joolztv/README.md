@@ -86,3 +86,9 @@ While a film plays, the player asks the server (`thumbs.js`, `GET /api/thumb`, f
 so nothing is pulled from the torrent ahead of the film; it pauses while the player is buffering, backs off when the server is busy (2 at a time, 1 per person, 500 kept in memory), and stops for the session if the server has no ffmpeg.
 Every jump (tap, hold, arrow on the bar, remote key) shows a small glass card above the bar with the picture nearest to where you land and the time; it fades after 1.7 s. Hovering the bar with a mouse shows the same for that spot. Files shorter than a minute get no pictures.
 Caveat: some files (MKV with the index at the end) make ffmpeg read the end of the file for the first picture, as the browser does when seeking; that is the only read outside the loaded part.
+
+## Voice search
+Search has a microphone ("Speak") button next to the box. webOS gives web apps no direct microphone access on most TVs (LG's own Voice Search is a system feature and is not handed to apps), so it works two ways:
+1. If the browser has speech recognition (`SpeechRecognition` / `webkitSpeechRecognition`: desktop and phone browsers), Speak listens and searches what it hears.
+2. Otherwise it opens the search box and the TV's own keyboard, whose microphone key (and the Magic Remote's) types what you say into the box. Anything that arrives without pressing Enter is searched on its own after 0.9 s.
+LG's help says voice input is unavailable in password fields; the search box is a plain text field. Not tested on a real TV: whether your webOS 4 build offers the keyboard's microphone key, and whether it works over the home address (voice may need the TV to be online).
