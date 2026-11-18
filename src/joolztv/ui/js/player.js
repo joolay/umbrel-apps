@@ -4,6 +4,9 @@ var Player = (function () {
   var Warm = {};  // next episodes whose first minute was read ahead: videoId -> {infoHash, fileIdx}
   /* control icons: drawn here (not emoji, which TVs colour in orange) and filled with the button's own text colour */
   var ICON2 = {
+    asy: '<svg class="ico" viewBox="0 0 48 48" width="46" height="46"><g fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 19h7l9-7v24l-9-7H6z"/><path d="M29 18a9 9 0 0 1 0 12M34 13a16 16 0 0 1 0 22"/></g></svg>',
+    asp: '<svg class="ico" viewBox="0 0 48 48" width="46" height="46"><g fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="11" width="36" height="26" rx="4"/><path d="M14 18v-3h3M34 15h3v3M37 30v3h-3M17 33h-3v-3"/></g></svg>',
+    fill: '<svg class="ico" viewBox="0 0 48 48" width="46" height="46"><g fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 18V7h11M41 18V7H30M7 30v11h11M41 30v11H30"/><path d="M7 7l9 9M41 7l-9 9M7 41l9-9M41 41l-9-9"/></g></svg>',
     speed: '<svg class="ico" viewBox="0 0 48 48" width="46" height="46"><g fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 33a17 17 0 1 1 34 0"/><path d="M24 33l8-10"/><path d="M12 33h3M33 33h3M24 17v3"/></g></svg>',
     subs: '<svg class="ico" viewBox="0 0 48 48" width="46" height="46"><g fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="10" width="38" height="28" rx="6"/><path d="M12 22h10M26 22h10M12 30h6M22 30h14"/></g></svg>',
     src: '<svg class="ico" viewBox="0 0 48 48" width="46" height="46"><g fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 14h32M8 24h32M8 34h32"/><circle cx="16" cy="14" r="3.5" fill="currentColor"/><circle cx="32" cy="24" r="3.5" fill="currentColor"/><circle cx="20" cy="34" r="3.5" fill="currentColor"/></g></svg>'
@@ -21,8 +24,10 @@ var Player = (function () {
       '<div class="pov"><div class="ptop"><div class="t1">' + Views.esc(info.title || '') + '</div><div class="t2">' + Views.esc([info.sub, info.epTitle].filter(Boolean).join(' · ')) + '</div><div class="pmode glass" id="pmode"></div><div class="pdl glass" id="pdl" style="display:none"></div></div>' +
       '<div class="tprev glass" id="tprev" style="display:none"><div class="timg img" id="timg"></div><div class="tt" id="ttime"></div></div><div class="pbar glass"><div class="seek f" id="seek"><div class="buf"></div><div class="pos"></div><div class="knob"></div></div>' +
       '<div class="times"><span id="tcur">0:00</span><span id="tdur">0:00</span></div>' +
-      '<div class="pctl"><span class="cbtn ic f" data-pact="back10" aria-label="Back 10 seconds">' + ICON.back + '</span><span class="cbtn ic big f" data-pact="toggle" id="bplay" aria-label="Play or pause">' + ICON.pause + '</span><span class="cbtn ic f" data-pact="fwd10" aria-label="Forward 10 seconds">' + ICON.fwd + '</span>' +
-      '<span class="cbtn ic f" data-pact="speed" aria-label="Playback speed" title="Speed">' + ICON2.speed + '<b class="rt">1x</b></span><span class="cbtn ic f" data-pact="subs" aria-label="Subtitles" title="Subtitles">' + ICON2.subs + '</span><span class="cbtn ic f" data-pact="sources" aria-label="Sources" title="Sources">' + ICON2.src + '</span>' + '</div></div></div>';
+      '<div class="pctl"><div class="pz l">' +
+      '<span class="cbtn ic f" data-pact="sources" aria-label="Sources" title="Sources">' + ICON2.src + '</span><span class="cbtn ic f" data-pact="subs" aria-label="Subtitles and subtitle sync" title="Subtitles">' + ICON2.subs + '</span><span class="cbtn ic f" data-pact="async" aria-label="Audio sync" title="Audio sync">' + ICON2.asy + '</span><span class="cbtn ic f" data-pact="speed" aria-label="Playback speed" title="Speed">' + ICON2.speed + '<b class="rt">1x</b></span></div>' +
+      '<div class="pz c"><span class="cbtn ic f" data-pact="back10" aria-label="Back 10 seconds">' + ICON.back + '</span><span class="cbtn ic big f" data-pact="toggle" id="bplay" aria-label="Play or pause">' + ICON.pause + '</span><span class="cbtn ic f" data-pact="fwd10" aria-label="Forward 10 seconds">' + ICON.fwd + '</span></div>' +
+      '<div class="pz r"><span class="cbtn ic f" data-pact="aspect" aria-label="Aspect ratio" title="Aspect ratio">' + ICON2.asp + '<b class="rt">Auto</b></span><span class="cbtn ic f" data-pact="fill" aria-label="Fill the screen" title="Fill the screen">' + ICON2.fill + '</span></div></div></div></div>';
     var el = Views.mount('player', h, { cls: 'player', onBack: function () { close(); Views.pop(); return true; }, onClose: cleanup });
     S = { el: el, info: info, v: el.querySelector('#pv'), learnedFor: {}, buf: { speed: 0, peers: 0, len: 0, fill: null }, hold: false, streams: [], groups: [], idx: -1, tried: {}, rate: 1, subs: null, ui: true, uiT: null, lastSave: 0, tick: null, buffT: null, ended: false, gotTime: false };
     keepPitch(S.v);
@@ -120,6 +125,7 @@ var Player = (function () {
     var v = S.v, sess = S;
     function alive() { return S === sess; }
     v.addEventListener('loadedmetadata', function () {
+      if (S && (S.fillOn || S.aspect)) applyShape();
       if (!alive()) return;
       sess.metaOk = true;
       var st = (sess.info.startMs || 0) / 1000;
@@ -478,6 +484,43 @@ var Player = (function () {
       S.failed = false; S.tried = {}; S.resumed = false; S.subOn = false; S.subManual = false; S.subOffset = 0; S.subScale = 1; S.info.startMs = S.v.currentTime * 1000 || S.info.startMs; S.why = ''; start(o.idx);
     }, missing ? 'Nothing was started. These are the files that exist, most seeds first in each resolution.' : 'If a source will not play, try a different resolution.');
   }
+
+  /* ---- picture shape: Aspect cycles the common shapes; Fill scales the picture (at its current shape) until it covers the screen, so there are no black bars ---- */
+  var ASPECTS = [['Auto', null], ['16:9', 16 / 9], ['4:3', 4 / 3], ['21:9', 21 / 9], ['1:1', 1]];
+  function applyShape() {
+    var v = S && S.v; if (!v) return;
+    var mode = ASPECTS[S.aspect || 0], r = mode[1] || ((v.videoWidth && v.videoHeight) ? v.videoWidth / v.videoHeight : 16 / 9), W = 1920, H = 1080;
+    var w = Math.min(W, H * r), h = w / r;
+    if (!S.aspect && !S.fillOn) { v.style.cssText = ''; return; }                  // untouched: the normal full-screen video
+    var k = S.fillOn ? Math.max(W / w, H / h) : 1;
+    v.style.cssText = 'position:absolute;object-fit:fill;width:' + Math.round(w) + 'px;height:' + Math.round(h) + 'px;left:' + Math.round((W - w) / 2) + 'px;top:' + Math.round((H - h) / 2) + 'px;-webkit-transform:scale(' + k + ');transform:scale(' + k + ');';
+  }
+  function shapeLabels() {
+    var a = $('[data-pact=aspect] .rt'); if (a) a.textContent = ASPECTS[S.aspect || 0][0];
+    var f = $('[data-pact=fill]'); if (f) f.classList.toggle('on', !!S.fillOn);
+  }
+  function cycleAspect() { S.aspect = ((S.aspect || 0) + 1) % ASPECTS.length; applyShape(); shapeLabels(); Views.toast('Aspect ratio: ' + ASPECTS[S.aspect][0], 1800); }
+  function toggleFill() { S.fillOn = !S.fillOn; applyShape(); shapeLabels(); Views.toast(S.fillOn ? 'Filling the screen (edges are cropped)' : 'Fill off', 2000); }
+
+  /* ---- audio sync: delays the sound (0 to 5 s) when it arrives before the picture; a browser cannot play sound earlier than the picture ---- */
+  function setAudioDelay(ms) {
+    ms = Math.max(0, Math.min(5000, ms));
+    var AC = window.AudioContext || window.webkitAudioContext; if (!AC) { Views.toast('This TV cannot adjust audio sync', 4000); return false; }
+    try {
+      if (!S.ac) { S.ac = new AC(); S.asrc = S.ac.createMediaElementSource(S.v); S.dly = S.ac.createDelay(5); S.asrc.connect(S.dly); S.dly.connect(S.ac.destination); }
+      if (S.ac.state === 'suspended' && S.ac.resume) S.ac.resume();
+      S.dly.delayTime.value = ms / 1000; S.audioMs = ms; return true;
+    } catch (e) { Views.toast('Audio sync is not available for this video', 4000); return false; }
+  }
+  function pickAudioSync() {
+    var cur = S.audioMs || 0;
+    var opts = [{ label: 'Audio later  (+0.1 s)', d: 100 }, { label: 'Audio later  (+0.5 s)', d: 500 }, { label: 'Audio earlier  (-0.1 s)', d: -100 }, { label: 'Audio earlier  (-0.5 s)', d: -500 }];
+    if (cur) opts.push({ label: 'Reset audio sync', reset: true });
+    Views.menu('Audio sync' + (cur ? ' – now ' + (cur / 1000).toFixed(1) + ' s later' : ''), opts, function (o) {
+      if (o.reset) { setAudioDelay(0); return Views.toast('Audio sync reset', 2000); }
+      if (setAudioDelay(cur + o.d)) Views.toast('Audio ' + ((S.audioMs || 0) / 1000).toFixed(1) + ' s later than the picture', 2500);
+    }, 'Use this when you hear things before you see them. Sound can only be moved later than the picture. Subtitle timing is under the Subtitles button.');
+  }
   function pickSpeed() {
     var rates = [0.75, 1, 1.25, 1.5, 1.75];
     Views.menu('Playback speed', rates.map(function (r) { return { label: r + 'x' + (r > 1 ? '  (sound speeds up, same pitch)' : ''), selected: r === S.rate }; }), function (o, i) {
@@ -595,7 +638,7 @@ var Player = (function () {
     if ((a === 'back10' || a === 'fwd10') && holdOn) { holdOn = false; return; }      // the click that ends a screen hold is not another jump
     if ((a === 'back10' || a === 'fwd10') && rep && S.lastJump && Date.now() - S.lastJump < 1000) return;
     if (a === 'toggle') toggle(); else if (a === 'back10') seekBy(-10, rep); else if (a === 'fwd10') seekBy(10, rep);
-    else if (a === 'speed') pickSpeed(); else if (a === 'subs') pickSubs(); else if (a === 'sources') pickSource();
+    else if (a === 'speed') pickSpeed(); else if (a === 'aspect') cycleAspect(); else if (a === 'fill') toggleFill(); else if (a === 'async') pickAudioSync(); else if (a === 'subs') pickSubs(); else if (a === 'sources') pickSource();
     showUi(true);
   });
   document.addEventListener('mousemove', function (e) {

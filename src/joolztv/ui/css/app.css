@@ -302,3 +302,9 @@ html.phone .form[style] { width: 640px !important; }
 /* a title that has a source but no cover art: a glass tile carrying the title */
 .card .img.np { background: linear-gradient(150deg, rgba(120,130,255,.45), rgba(255,120,190,.35)); display: -webkit-flex; display: flex; -webkit-align-items: center; align-items: center; -webkit-justify-content: center; justify-content: center; text-align: center; }
 .card .img.np .npt { padding: 14px; font-size: 24px; font-weight: 800; line-height: 1.2; color: rgba(255,255,255,.92); overflow: hidden; max-height: 100%; word-wrap: break-word; }
+
+/* player bar: left = sources / subtitles / audio sync / speed, centre = the 3 playback buttons, right = aspect / fill (room for more) */
+.pctl { display: -webkit-flex; display: flex; -webkit-align-items: center; align-items: center; padding: 0 30px; text-align: left; }
+.pctl .pz { -webkit-flex: 1 1 0; flex: 1 1 0; min-width: 0; white-space: nowrap; }
+.pctl .pz.l { text-align: left; } .pctl .pz.r { text-align: right; } .pctl .pz.c { -webkit-flex: none; flex: none; text-align: center; }
+.cbtn.ic.on { background: rgba(100,210,255,.3); border-color: #64d2ff; }
