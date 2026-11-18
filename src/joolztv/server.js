@@ -148,6 +148,8 @@ const COLORS = ["#0a84ff", "#30d158", "#ff9f0a", "#bf5af2", "#ff375f", "#64d2ff"
 const AV_RE = /^a(0[1-9]|1\d|2[0-4])$/;                                    // the 24 built-in pictures (a01..a24, drawn in the app)
 const nextAvatar = list => { const used = list.map(x => x.avatar); for (let i = 1; i <= 24; i++) { const id = "a" + String(i).padStart(2, "0"); if (!used.includes(id)) return id; } return "a" + String(1 + list.length % 24).padStart(2, "0"); };
 const pubProfile = (p, selfId) => ({ id: p.id, name: p.name, color: p.color, owner: !!p.owner, self: p.userId === selfId, avatar: p.avatar || "", hasPhoto: !!p.photo, maxAge: p.maxAge == null ? null : p.maxAge, kid: isKid(p), kidFlag: !!p.kid, mode: p.mode || "off", titleCount: Object.keys(p.titles || {}).length });
+const kidrules = require("./kidrules");
+const HOUSE_TZ = () => { const h = hh(); return h.tz || process.env.TZ || "Africa/Johannesburg"; };
 const AGE_LIMITS = [7, 10, 13, 16];
 /* ---------- parents: who may change a kid's limits ---------- */
 const isKid = p => !!(p.kid || p.minor);
@@ -402,7 +404,7 @@ const tmdbErr = (res, e) => {
 const idOk = v => /^\d{1,9}$/.test(String(v || ""));
 /* lists only show titles with at least one source (a title the sources add-on says has nothing is dropped; if it cannot be asked the title stays) */
 function sourcesBase(h) { return String(process.env.SOURCES_URL || Sources.url(Sources.normalize((h.prefs || {}).sources)) || "").replace(/\/+$/, ""); }
-async function withSources(h, r) { const base = sourcesBase(h); if (!base || !r) return r; if (Array.isArray(r.items)) r.items = await avail.filter(r.items, { base }); if (Array.isArray(r.titles)) r.titles = await avail.filter(r.titles, { base }); return r; }
+async function withSources(h, r) { const base = sourcesBase(h); if (!base || !r) return r; if (Array.isArray(r.items)) r.items = await avail.filter(r.items, { base }); if (Array.isArray(r.titles)) { const sp = await avail.split(r.titles, { base }); r.titles = sp.keep; r.unavailable = sp.other; } return r; }
 async function tmdbRoutes(req, res, p, u) {
   const url = new URL(req.url, "http://x"), q = url.searchParams, l = loc(url);
   if (p === "/api/tmdb/status") { await tmdb.refreshKey(!!u.isAdmin); return send(res, 200, { enabled: tmdb.enabled(), source: tmdb.keySource(), canSetKey: !!u.isAdmin && tmdb.keySource() !== "portal", limit: tmdb.enabled() ? ageLimitOf(hh(), u) : null }); }
@@ -432,6 +434,75 @@ async function tmdbRoutes(req, res, p, u) {
     return send(res, 404, { code: "not_found" });
   } catch (e) { return tmdbErr(res, e); }
 }
+/* ---------- kids: screen time, hide / recommend, what they are watching ---------- */
+const kidProfiles = h => live(h).filter(isKid);
+async function managedKids(h, u) { const out = []; for (const k of kidProfiles(h)) if (await canManage(h, u, k)) out.push(k); return out; }
+const titleOf = b => ({ imdb: String(b && b.imdb || ""), name: b && b.name, type: b && b.type, poster: b && b.poster });
+async function kidsRoutes(req, res, p, u) {
+  const h = hh(), now = Date.now(), me = profileOf(h, u.id), tz = HOUSE_TZ();
+  if (p === "/api/kids/tick" && req.method === "POST") {                          // the player reports every 30 s while a kid is actually playing
+    const b = await jsonBody(req); if (!me || !isKid(me)) return send(res, 200, { allowed: true, remaining: null });
+    const secs = Math.min(90, Math.max(0, Number(b.seconds) || 0));
+    if (secs > 0) kidrules.addPlay(h, me.id, secs, now, tz);
+    kidrules.noteWatch(h, me.id, b, now); writeJson(HH_FILE, h);
+    return send(res, 200, kidrules.status(h, me, now, tz));
+  }
+  if (me && isKid(me) && (p === "/api/kids/parents" || p === "/api/kids/ask-time")) {       // a kid asks for more time: a parent picks their name and types their own Quick Access code
+    const parents = [];
+    for (const x of live(h)) { if (isKid(x)) continue; let pu; try { pu = await withGuard(await pb.getUser(x.userId)); } catch { continue; } if (await canManage(h, pu, me)) parents.push({ x, pu }); }
+    if (p === "/api/kids/parents" && req.method === "GET") {
+      const out = []; for (const o of parents) { let kind = null; try { if (pb.portalOn && pb.portalOn()) { const q = await pb.portalCall("qa.status", [o.x.userId]); kind = (q && q.kind) || null; } } catch {} out.push({ id: o.x.id, name: o.x.name, color: o.x.color, avatar: o.x.avatar || "", kind }); }
+      return send(res, 200, { parents: out });
+    }
+    if (p === "/api/kids/ask-time" && req.method === "POST") {
+      const b = await jsonBody(req), par = parents.find(o => o.x.id === b.parent), mins = Number(b.minutes);
+      if (!par || !kidrules.EXTEND_CHOICES.includes(mins)) return send(res, 400, { code: "bad_request", message: "Pick a parent and a time." });
+      if (!(pb.portalOn && pb.portalOn())) return send(res, 503, { code: "quick_unavailable", message: "Extending time needs JoolzTV to be linked to Portal Admin." });
+      try { await pb.portalCall("qa.check", [par.x.userId, String(b.code || "")]); }
+      catch (e) { const st = Number(e.status) || 500; return send(res, st === 401 || st === 429 || st === 404 ? st : 502, { code: st === 404 ? "no_code" : "wrong_code", message: st === 404 ? par.x.name + " has not set up a Quick Access code." : String(e.message || "Wrong code.") }); }
+      kidrules.extend(h.profiles[me.id], mins, now); writeJson(HH_FILE, h); return send(res, 200, { ok: true, minutes: mins });
+    }
+    return send(res, 404, { code: "not_found" });
+  }
+  const kids = await managedKids(h, u);
+  if (p === "/api/kids/watching" && req.method === "GET") {
+    if (!kids.length) return send(res, 403, { code: "forbidden", message: "Only a parent or guardian sees this." });
+    return send(res, 200, { kids: kids.map(k => { const w = (h.watch && h.watch[k.id]) || {}, e = kidrules.effective(h, k), st = kidrules.status(h, k, now, tz);
+      return { id: k.id, name: k.name, color: k.color, avatar: k.avatar || "", usedMin: Math.round(st.usedMin), dailyMin: e.dailyMin, dailyCustom: e.dailyCustom, windDown: e.windDown, windCustom: e.windCustom, extendedUntil: k.ext && k.ext.until > now ? k.ext.until : 0,
+        recent: Object.keys(w).map(i => Object.assign({ imdb: i }, w[i])).sort((a, b) => b.at - a.at).slice(0, 20), recommended: Object.keys(k.recommended || {}).length }; }),
+      all: { dailyMin: (h.kidsAll || {}).dailyMin == null ? null : h.kidsAll.dailyMin, windDown: (h.kidsAll || {}).windDown || null }, hiddenCount: Object.keys(h.hidden || {}).length });
+  }
+  if (!kids.length) return send(res, 403, { code: "forbidden", message: "Only a parent or guardian can do this." });
+  if (p === "/api/kids/hidden" && req.method === "GET") return send(res, 200, { titles: Object.keys(h.hidden || {}).map(i => Object.assign({ imdb: i }, h.hidden[i])).sort((a, b) => b.ts - a.ts) });
+  if (req.method !== "POST") return send(res, 404, { code: "not_found" });
+  const b = await jsonBody(req);
+  if (p === "/api/kids/hide") { if (!kidrules.hide(h, titleOf(b), now)) return send(res, 400, { code: "bad_request", message: "Unknown title, or the hidden list is full." }); writeJson(HH_FILE, h); return send(res, 200, { ok: true }); }
+  if (p === "/api/kids/unhide") { kidrules.unhide(h, String(b.imdb || "")); writeJson(HH_FILE, h); return send(res, 200, { ok: true }); }
+  if (p === "/api/kids/recommend") {
+    const ids = b.profiles === "all" ? kids.map(k => k.id) : (Array.isArray(b.profiles) ? b.profiles : []).filter(i => kids.some(k => k.id === i));
+    if (!ids.length) return send(res, 400, { code: "bad_request", message: "Pick one or both kids." });
+    let n = 0; for (const k of kids) if (ids.includes(k.id) && kidrules.recommend(h.profiles[k.id], titleOf(b), now, me ? me.name : "")) n++;
+    writeJson(HH_FILE, h); return send(res, 200, { ok: true, sent: n });
+  }
+  if (p === "/api/kids/limits") {                                                    // profile: a kid's id, or "all"
+    const patch = {}; if ("dailyMin" in b) patch.dailyMin = b.dailyMin; if ("windDown" in b) patch.windDown = b.windDown;
+    let target = null; if (b.profile !== "all") { target = kids.find(k => k.id === b.profile); if (!target) return send(res, 404, { code: "not_found", message: "No such profile." }); }
+    const bad = kidrules.setLimits(h, target ? h.profiles[target.id] : null, patch); if (bad) return send(res, 400, { code: "bad_request", message: bad });
+    if (!target && b.resetAll === true) for (const k of kids) { const pk = h.profiles[k.id]; if (pk.limits) { for (const f of Object.keys(patch)) delete pk.limits[f]; if (!Object.keys(pk.limits).length) delete pk.limits; } }
+    writeJson(HH_FILE, h); return send(res, 200, { ok: true });
+  }
+  if (p === "/api/kids/extend") {                                                    // more time for one kid or all: the parent's Quick Access code is asked each time
+    if (!(pb.portalOn && pb.portalOn())) return send(res, 503, { code: "quick_unavailable", message: "Extending time needs JoolzTV to be linked to Portal Admin." });
+    try { await pb.portalCall("qa.check", [u.id, String(b.code || "")]); }
+    catch (e) { const st = Number(e.status) || 500; return send(res, st === 401 || st === 429 || st === 404 ? st : 502, { code: st === 404 ? "no_code" : "wrong_code", message: st === 404 ? "Set up a Quick Access code first (Settings)." : String(e.message || "Wrong code.") }); }
+    const mins = Number(b.minutes), list = b.profile === "all" ? kids : kids.filter(k => k.id === b.profile);
+    if (!list.length || !kidrules.EXTEND_CHOICES.includes(mins)) return send(res, 400, { code: "bad_request", message: "Pick a kid and a time." });
+    for (const k of list) kidrules.extend(h.profiles[k.id], mins, now);
+    writeJson(HH_FILE, h); return send(res, 200, { ok: true, minutes: mins });
+  }
+  return send(res, 404, { code: "not_found" });
+}
+
 /* ---------- what this profile may watch: the global adult block (everyone), then the kid rules ---------- */
 const adultCache = new Map();
 const CINEMETA = process.env.CINEMETA_URL || "https://v3-cinemeta.strem.io";
@@ -455,6 +526,10 @@ async function titleDecision(u, imdb, type, region) {
   const adult = await adultDecision(imdb, type);
   if (adult && adult.adult) return { ok: false, reason: "adult", message: "This title is blocked on JoolzTV for everyone (adult content)." };
   const h = hh(), me = profileOf(h, u.id), limit = ageLimitOf(h, u), mode = me && isKid(me) ? (me.mode || "off") : "off", listed = !!(me && me.titles && me.titles[imdb]);
+  if (me && isKid(me)) {
+    if (h.hidden && h.hidden[imdb]) return { ok: false, reason: "hidden", message: "This title is hidden from kids by a parent." };
+    const st = kidrules.status(h, me, Date.now(), HOUSE_TZ()); if (!st.allowed) return { ok: false, reason: "time", message: st.reason === "winddown" ? "It is past winding-down time. Ask a parent for more time." : "Today's screen time is used up. Ask a parent for more time." };
+  }
   if (mode === "allow") { if (listed) return { ok: true, limit, rating: adult && adult.cert ? adult.cert.rating : undefined }; return { ok: false, reason: "not_allowed", message: "Only titles chosen by your parents are available on this profile." }; }
   if (mode === "block" && listed) return { ok: false, reason: "blocked", message: "Your parents have blocked this title." };
   if (limit === null || !tmdb.enabled()) return { ok: true, limit };
@@ -472,7 +547,8 @@ async function playCheck(req, res, u) {                 // POST /api/title-check
 }
 function policyRoute(res, u) {                           // what this profile's home and search must respect
   const h = hh(), me = profileOf(h, u.id), kid = !!(me && isKid(me)), mode = kid ? (me.mode || "off") : "off";
-  send(res, 200, { kid, mode, limit: ageLimitOf(h, u), allowed: mode === "allow" ? Object.keys(me.titles || {}).map(k => Object.assign({ imdb: k }, me.titles[k])) : [] });
+  const out = { hidden: kid ? Object.keys(h.hidden || {}) : [], recommended: kid ? Object.keys(me.recommended || {}).map(k => Object.assign({ imdb: k }, me.recommended[k])).sort((a, b) => b.ts - a.ts).slice(0, 30) : [], screen: kid ? kidrules.status(h, me, Date.now(), HOUSE_TZ()) : null };
+  send(res, 200, { ...out, kid, mode, limit: ageLimitOf(h, u), allowed: mode === "allow" ? Object.keys(me.titles || {}).map(k => Object.assign({ imdb: k }, me.titles[k])) : [] });
 }
 
 /* ---------- seek preview pictures: one small picture at a time, only for parts of the file the player has already loaded ---------- */
@@ -913,6 +989,7 @@ const server = http.createServer(async (req, res) => {
       if (p.startsWith("/api/marks/")) return await marksRoutes(req, res, p, u);
       if (p.startsWith("/api/tmdb/")) return await tmdbRoutes(req, res, p, u);
       if ((p === "/api/play-check" || p === "/api/title-check") && req.method === "POST") return await playCheck(req, res, u);
+      if (p.startsWith("/api/kids/")) return await kidsRoutes(req, res, p, u);
       if (p === "/api/policy" && req.method === "GET") return policyRoute(res, u);
       if (p === "/api/stream-token" && req.method === "POST") { const m = mintStream(u.id); return send(res, 200, { st: m.st, exp: m.exp }); }
       return send(res, 404, { code: "not_found" });

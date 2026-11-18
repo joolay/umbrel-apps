@@ -38,8 +38,10 @@ var Views = (function () {
   var PAGES = ['home', 'movie', 'series', 'library', 'search', 'discover', 'collections', 'settings'];
   function tabs() {
     if (Policy.onlyAllowed()) return [['home', 'Home'], ['library', 'My List'], ['search', 'Search']];      // a profile that only gets what its parents chose
-    return Tmdb.on() ? TABS.slice(0, 4).concat(Tmdb.restricted() ? [] : [['collections', 'Collections']], TABS.slice(4)) : TABS;
+    var t = Tmdb.on() ? TABS.slice(0, 4).concat(Tmdb.restricted() ? [] : [['collections', 'Collections']], TABS.slice(4)) : TABS;
+    return isParent() ? t.concat([['kids', 'Kids']]) : t;                                                   // parents also get "What the kids are watching"
   }
+  function isParent() { return Profiles.manageable().length > 0 && !Policy.kid(); }
 
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function toast(msg, ms) {
@@ -129,7 +131,7 @@ var Views = (function () {
   function card(m, extra) {
     var k = ref(m), bar = '';
     if (extra && extra.pct != null) bar = '<div class="barbg"></div><div class="bar" style="width:' + Math.round(extra.pct * 206) + 'px"></div>';
-    return '<div class="card f" data-act="open" data-k="' + k + '">' + (m.poster ? '<div class="img" data-bg="' + esc(m.poster) + '"></div>' : '<div class="img np"><span class="npt">' + esc(m.name || '') + '</span></div>') + bar + '</div>';
+    return '<div class="card f" data-act="open" data-k="' + k + '">' + (m.poster ? '<div class="img" data-bg="' + esc(m.poster) + '"></div>' : '<div class="img np"><span class="npt">' + esc(m.name || '') + '</span></div>') + bar + (extra && extra.badge ? '<div class="bdg">' + esc(extra.badge) + '</div>' : '') + '</div>';
   }
   function rowHtml(title, metas, extraFn) {
     var h = '<div class="row"><h2>' + esc(title) + '</h2><div class="hs">';
@@ -574,6 +576,119 @@ var Views = (function () {
       toast(msg, 2500);
     }).catch(function (e) { toast(e.message, 5000); });
   }
+  /* ---------- parents: what the kids are watching, screen time, more time, hidden titles ---------- */
+  var KREG = [];
+  var DAILY = [30, 45, 60, 90, 120, 150, 180, 240], WINDS = ['18:00', '18:30', '19:00', '19:30', '20:00', '20:30', '21:00', '21:30', '22:00'], EXTRA = [15, 30, 60, 120];
+  function p2(n) { return (n < 10 ? '0' : '') + n; }
+  function hhmm(ts) { var d = new Date(ts); return p2(d.getHours()) + ':' + p2(d.getMinutes()); }
+  function fmtMin(m) { return m >= 60 ? Math.floor(m / 60) + ' h' + (m % 60 ? ' ' + (m % 60) + ' min' : '') : m + ' min'; }
+  function agoText(ts) {
+    var m = Math.round((Date.now() - ts) / 60000); if (m < 1) return 'just now'; if (m < 60) return m + ' min ago';
+    var h = Math.round(m / 60); if (h < 24) return h + ' h ago'; var d = Math.round(h / 24); return d === 1 ? 'yesterday' : d + ' days ago';
+  }
+  function limitText(daily, wd) { return (daily ? fmtMin(daily) + ' a day' : 'no daily limit') + ', ' + (wd ? 'winding down at ' + wd : 'no winding-down time'); }
+  function kidsPage() {
+    var token = ++browseToken;
+    replaceAll('kids', '<div class="art-shade"></div>' + topbar('kids') + '<div class="vs" id="main" data-pad-top="140"><div class="settings"><h1>What the kids are watching</h1><div id="kbody"><div class="loading">Loading…</div></div></div></div>', { cls: 'noart', onBack: function () { page('home'); return true; } });
+    Nav.first('.tab.on');
+    Backend.kidsWatching().then(function (r) { if (token === browseToken) paintKids(r); }).catch(function (e) { var b = document.getElementById('kbody'); if (b && token === browseToken) b.innerHTML = '<div class="empty">' + esc(e.message) + '</div>'; });
+  }
+  function paintKids(r) {
+    KREG = []; var b = document.getElementById('kbody'); if (!b) return;
+    var h = '<div class="srow f" data-act="klimit" data-id="all">All kids: <b>' + esc(limitText(r.all.dailyMin, r.all.windDown)) + '</b></div>';
+    r.kids.forEach(function (k) {
+      h += '<div class="lbl">' + esc(k.name) + ' – today ' + fmtMin(k.usedMin) + (k.dailyMin ? ' of ' + fmtMin(k.dailyMin) : '') + (k.extendedUntil ? ' · extra time until ' + hhmm(k.extendedUntil) : '') + '</div>' +
+        '<div class="srow f" data-act="klimit" data-id="' + k.id + '">Screen time: <b>' + esc(limitText(k.dailyMin, k.windDown)) + '</b> ' + (k.dailyCustom || k.windCustom ? '(custom)' : '(as All kids)') + '</div>' +
+        '<div class="srow f" data-act="kmore" data-id="' + k.id + '">Give ' + esc(k.name) + ' more time…</div>';
+      if (!k.recent.length) { h += '<div class="hint">Nothing watched yet.</div>'; return; }
+      h += '<div class="row"><div class="hs">';
+      k.recent.forEach(function (w) {
+        KREG.push({ w: w, k: k });
+        h += '<div class="card f" data-act="ktile" data-i="' + (KREG.length - 1) + '">' + (w.poster ? '<div class="img" data-bg="' + esc(w.poster) + '"></div>' : '<div class="img np"><span class="npt">' + esc(w.name || '') + '</span></div>') +
+          '<div class="barbg"></div><div class="bar" style="width:' + Math.round((w.pct || 0) * 206) + 'px"></div><div class="kcap"><b>' + esc(w.name || '') + (w.ep ? ' · ' + esc(w.ep) : '') + '</b>' + Math.round((w.pct || 0) * 100) + '% · ' + agoText(w.at) + '</div></div>';
+      });
+      h += '<span class="pad-end"></span></div></div>';
+    });
+    b.innerHTML = h; Nav.hydrate();
+  }
+  function kidTitleMenu(i) {
+    var x = KREG[i]; if (!x) return; var w = x.w, entry = { imdb: w.imdb, name: w.name, type: w.type, poster: w.poster || '' }, all = Profiles.all().filter(function (p) { return p.kid && Profiles.manageable().indexOf(p.id) >= 0; });
+    var opts = [{ label: 'Open', act: 'open' }, { label: 'Hide from all kids (undo only in Settings)', act: 'hide' }];
+    all.forEach(function (k) { opts.push({ label: 'Recommend to ' + k.name, act: 'rec', ids: [k.id] }); });
+    if (all.length > 1) opts.push({ label: 'Recommend to all kids', act: 'rec', ids: 'all' });
+    menu(w.name + ' – ' + x.k.name + ' watched ' + Math.round((w.pct || 0) * 100) + '% ' + agoText(w.at), opts, function (o) {
+      if (o.act === 'open') return detail(w.type, w.imdb, { type: w.type, id: w.imdb, name: w.name, poster: w.poster });
+      if (o.act === 'hide') return Backend.kidsHide(entry).then(function () { toast('Hidden from every kids profile. Undo it in Settings > Kids.', 4500); }).catch(function (e) { toast(e.message, 5000); });
+      Backend.kidsRecommend(entry, o.ids).then(function () { toast('Recommended', 3000); }).catch(function (e) { toast(e.message, 5000); });
+    });
+  }
+  function kidLimitMenu(id) {                                   // id: a kid's profile id, or 'all'
+    Backend.kidsWatching().then(function (r) {
+      var k = id === 'all' ? null : r.kids.filter(function (x) { return x.id === id; })[0], name = k ? k.name : 'All kids', d = k ? k.dailyMin : r.all.dailyMin, w = k ? k.windDown : r.all.windDown;
+      menu('Screen time – ' + name, [{ label: 'Total play time per day: ' + (d ? fmtMin(d) : 'no limit'), act: 'd' }, { label: 'Winding-down time (playing stops): ' + (w || 'none'), act: 'w' }].concat(k && (k.dailyCustom || k.windCustom) ? [{ label: 'Reset to All kids', act: 'reset' }] : []), function (o) {
+        if (o.act === 'reset') return sendLimits(id, { dailyMin: null, windDown: null }, 'Back to the All kids setting');
+        var isD = o.act === 'd', list = isD ? DAILY : WINDS, cur = isD ? d : w;
+        var opts = list.map(function (v) { return { label: isD ? fmtMin(v) : v, v: v, selected: v === cur }; });
+        opts.push(k ? { label: 'Same as All kids', v: undefined } : { label: isD ? 'No daily limit' : 'No winding-down time', v: null });
+        menu(isD ? 'Total play time per day' : 'Winding-down time', opts, function (c) {
+          var patch = {}; patch[isD ? 'dailyMin' : 'windDown'] = c.v === undefined ? null : c.v;
+          sendLimits(id, patch, isD ? 'Daily limit saved' : 'Winding-down time saved');
+        }, 'Only play time counts: paused video, menus and browsing do not. Warnings show at 15, 10 and 5 minutes.');
+      });
+    }).catch(function (e) { toast(e.message, 5000); });
+  }
+  function sendLimits(id, patch, msg) {
+    var b = { profile: id }; for (var f in patch) b[f] = patch[f];
+    Backend.kidsLimits(b).then(function () { toast(msg, 3000); var v = current(); if (v && v.name === 'kids') kidsPage(); else if (v && v.name === 'settings') settingsPage(); }).catch(function (e) { toast(e.message, 5000); });
+  }
+  /* the parent's own Quick Access code is asked every time more time is given */
+  function askCode(title, kindOf, back, go) {
+    kindOf.then(function (kind) {
+      if (!kind) { toast('No Quick Access code is set up for this person. Set one in Settings > Profile.', 6000); return back(); }
+      padScreen({ kind: kind, title: title, sub: kind === 'pattern' ? 'Draw your Quick Access pattern.' : 'Enter your Quick Access PIN.', onBack: back, onCode: function (c) { go(c); } });
+    });
+  }
+  function giveMoreTime(id) {
+    var kid = Profiles.get(id);
+    menu('More time for ' + (id === 'all' ? 'all kids' : kid ? kid.name : ''), EXTRA.map(function (m) { return { label: fmtMin(m), m: m }; }), function (o) {
+      askCode('Quick Access', Backend.quickStatus().then(function (s) { return s.kind; }, function () { return null; }), kidsPage, function (code) {
+        Backend.kidsExtend({ profile: id, minutes: o.m, code: code }).then(function () { toast('Added ' + fmtMin(o.m), 3500); kidsPage(); }).catch(function (e) { ferr(e.message); });
+      });
+    }, 'Playing may continue past the winding-down time and the daily total until this time runs out.');
+  }
+  function timesUp(st) {
+    var why = st && st.reason === 'winddown' ? 'It is winding-down time.' : 'Today\u2019s screen time is used up.';
+    replaceAll('timesup', '<div class="splash"><div class="center"><div class="form glass"><h1>Time\u2019s up</h1><div class="sub">' + why + ' See you soon!</div>' +
+      '<div class="btn primary f" data-act="askparent">Ask a parent for more time</div><div class="btn glass f" data-act="page" data-p="home">Back to home</div></div></div></div>', { onBack: function () { page('home'); return true; } });
+    Nav.set(Nav.root().querySelector('.btn.f'));
+  }
+  function askParent() {                                         // on a kid's profile: pick the parent, pick the time, the parent types their own code
+    Backend.kidsParents().then(function (r) {
+      if (!r.parents.length) return toast('No parent is linked to this profile', 4000);
+      menu('Which parent?', r.parents.map(function (p) { return { label: p.name + (p.kind ? '' : ' (no Quick Access code yet)'), p: p }; }), function (o) {
+        menu('How much more time?', EXTRA.map(function (m) { return { label: fmtMin(m), m: m }; }), function (t) {
+          askCode(o.p.name + ', enter your code', Promise.resolve(o.p.kind), function () { timesUp(Policy.screen()); }, function (code) {
+            Backend.kidsAskTime({ parent: o.p.id, minutes: t.m, code: code }).then(function () { return Policy.init(); }).then(function () { toast('Added ' + fmtMin(t.m), 3500); page('home'); }).catch(function (e) { ferr(e.message); });
+          });
+        });
+      });
+    }).catch(function (e) { toast(e.message, 5000); });
+  }
+  function fillKidsSettings() {
+    Backend.kidsWatching().then(function (r) {
+      var a = document.getElementById('kall'), hd = document.getElementById('khid');
+      if (a) a.innerHTML = 'All kids screen time: <b>' + esc(limitText(r.all.dailyMin, r.all.windDown)) + '</b>';
+      if (hd) hd.innerHTML = 'Hidden from kids: <b>' + r.hiddenCount + (r.hiddenCount === 1 ? ' title' : ' titles') + '</b>';
+    }).catch(function () {});
+  }
+  function hiddenMenu() {
+    Backend.kidsHidden().then(function (r) {
+      if (!r.titles.length) return toast('Nothing is hidden from the kids', 3000);
+      menu('Hidden from kids \u2013 choose one to unhide', r.titles.map(function (t) { return { label: t.name || t.imdb, t: t }; }), function (o) {
+        Backend.kidsUnhide(o.t.imdb).then(function () { toast('Unhidden: ' + (o.t.name || ''), 3000); settingsPage(); }).catch(function (e) { toast(e.message, 5000); });
+      }, 'Only here can a hidden title be shown to the kids again.');
+    }).catch(function (e) { toast(e.message, 5000); });
+  }
   /* on a title page: add it to a kid's list (parents) */
   function kidsMenu(type, id, m) {
     var kids = Profiles.all().filter(function (p) { return p.kid && Profiles.manageable().indexOf(p.id) >= 0; });
@@ -586,8 +701,14 @@ var Views = (function () {
         else if (x.mode === 'block') opts.push({ label: 'Block for ' + x.k.name, act: 'add', k: x.k });
         else { opts.push({ label: 'Block for ' + x.k.name + ' (turns on their block list)', act: 'block', k: x.k }); opts.push({ label: 'Allow for ' + x.k.name + ' (turns on \u201conly the titles on the list\u201d)', act: 'allow', k: x.k }); }
       });
+      opts.push({ header: 'Hide or recommend' });
+      opts.push({ label: 'Hide from all kids in the household (undo only in Settings)', act: 'hide' });
+      st.forEach(function (x) { opts.push({ label: 'Recommend to ' + x.k.name, act: 'rec', ids: [x.k.id] }); });
+      if (st.length > 1) opts.push({ label: 'Recommend to all kids', act: 'rec', ids: 'all' });
       menu('For kids', opts, function (o) {
         var entry = { imdb: id, name: m.name, type: type, poster: m.poster || '' };
+        if (o.act === 'hide') return Backend.kidsHide(entry).then(function () { toast('Hidden from every kids profile. Undo it in Settings > Kids.', 4500); }).catch(function (e) { toast(e.message, 5000); });
+        if (o.act === 'rec') return Backend.kidsRecommend(entry, o.ids).then(function () { toast('Recommended', 3000); }).catch(function (e) { toast(e.message, 5000); });
         if (o.act === 'rm') return listEdit(o.k.id, { remove: [id] }, 'Removed from ' + o.k.name + '\u2019s list');
         var after = function () { listEdit(o.k.id, { add: [entry] }, o.act === 'allow' || (o.act === 'add' && st.filter(function (x) { return x.k.id === o.k.id; })[0].mode === 'allow') ? 'Allowed for ' + o.k.name : 'Blocked for ' + o.k.name); };
         if (o.act === 'block' || o.act === 'allow') return Backend.setKidMode(o.k.id, { mode: o.act }).then(function (r) { Profiles.setAll(Profiles.all().map(function (x) { if (x.id === o.k.id) x.mode = r.profile.mode; return x; })); after(); }).catch(function (e) { toast(e.message, 5000); });
@@ -618,6 +739,7 @@ var Views = (function () {
     if (kind === 'settings') return settingsPage();
     if (kind === 'discover') return searchPage();
     if (kind === 'collections') return collectionsPage();
+    if (kind === 'kids') return isParent() ? kidsPage() : page('home');
     var token = ++browseToken, browse = kind !== 'library';
     replaceAll(kind, '<div class="art img"></div><div class="art-shade"></div>' + topbar(kind) + (browse ? '<div id="info"></div>' : '') +
       '<div class="vs' + (browse ? ' rows snap' : '') + '" id="main"><div class="loading">Loading…</div></div>', { cls: 'noart', onBack: function () { if (kind !== 'home') { page('home'); return true; } return false; } });
@@ -652,6 +774,10 @@ var Views = (function () {
       }
     }
     var tslots = trows.map(function () { var s = document.createElement('div'); rows.appendChild(s); return s; });
+    if (kind === 'home' && Policy.kid() && Policy.recommended().length) {
+      var slotRec = document.createElement('div'); rows.insertBefore(slotRec, rows.children[1] || null);
+      slotRec.innerHTML = rowHtml('Recommended by your parents', Policy.recommended().map(function (i) { return { type: i.type, id: i.imdb, name: i.name, poster: i.poster, description: '' }; })); Nav.hydrate(); focusFirst();
+    }
     if (kind === 'home' && Dl.ready().length) {
       var slotR = document.createElement('div'); rows.insertBefore(slotR, rows.children[1] || null);
       slotR.innerHTML = rowHtml('Ready to watch', Dl.ready().slice(0, 12).map(function (x) { return { type: x.type, id: x.imdb, name: x.name, poster: x.poster }; })); Nav.hydrate(); focusFirst();
@@ -757,17 +883,26 @@ var Views = (function () {
   function runSearch(q, quiet) {
     var res = document.getElementById('res'); if (!res || !q) return; if (!quiet) Recent.add(q);
     res.innerHTML = '<div class="skel">Searching…</div>';
-    var people = Tmdb.on() ? Tmdb.search(q).then(function (r) { return r.people || []; }).catch(function () { return []; }) : Promise.resolve([]);
-    Promise.all([Api.ensure().then(function () { return Api.search(q); }), people]).then(function (all) {
-      var metas = Policy.cleanMetas(all[0]), ppl = Policy.onlyAllowed() ? [] : all[1];
+    var viaTmdb = Tmdb.on() && !Policy.onlyAllowed();                         // TMDB's search is checked for sources; Cinemeta's is the fallback
+    var tm = Tmdb.on() ? Tmdb.search(q).catch(function () { return { people: [], titles: [] }; }) : Promise.resolve({ people: [], titles: [] });
+    tm.then(function (t) {
+      if (viaTmdb && ((t.titles || []).length || (t.unavailable || []).length)) return { people: t.people || [], metas: t.titles.map(tmdbMeta), other: (t.unavailable || []) };
+      return Api.ensure().then(function () { return Api.search(q); }).then(function (c) { return { people: t.people || [], metas: Policy.cleanMetas(c), other: [] }; });
+    }).then(function (all) {
+      var metas = all.metas, ppl = Policy.onlyAllowed() ? [] : all.people, other = all.other;
       if (Policy.onlyAllowed()) metas = metas.filter(function (m) { return Policy.isAllowed(m.id); });
       if (!document.getElementById('res')) return;
-      if (!metas.length && !ppl.length) { res.innerHTML = '<div class="skel">No results for “' + esc(q) + '”.</div>'; return; }
-      var h = ''; if (ppl.length) h += '<div class="gl">People</div><div class="prow">' + ppl.map(personCard).join('') + '</div><div class="gl">Titles</div>';
-      metas.slice(0, 48).forEach(function (m) { h += card(m); });
+      if (!metas.length && !ppl.length && !other.length) { res.innerHTML = '<div class="skel">No results for “' + esc(q) + '”.</div>'; return; }
+      var h = ''; if (ppl.length) h += '<div class="gl">People</div><div class="prow">' + ppl.map(personCard).join('') + '</div>';
+      if (metas.length) { if (ppl.length || other.length) h += '<div class="gl">Titles</div>'; metas.slice(0, 48).forEach(function (m) { h += card(m); }); }
+      if (other.length) {                                                    // no source yet, or not out yet: kept apart so the list above is all playable
+        h += '<div class="gl">Not available yet</div>';
+        other.forEach(function (x) { h += card(tmdbMeta(x), { badge: x.why === 'soon' ? 'Coming soon' + (x.release ? ' \u00b7 ' + fmtDate(x.release) : '') : 'No source yet' }); });
+      }
       res.innerHTML = h; Nav.hydrate();
     }).catch(function (e) { res.innerHTML = '<div class="skel">Search failed: ' + esc(e.message) + '</div>'; });
   }
+
 
   /* ---------- TMDB: rows, title extras, people, collections, discover ---------- */
   function tmdbMeta(x) { return { type: x.type, tmdb: x.tmdb, id: '', name: x.name, poster: x.poster, background: x.background, description: x.description, year: x.year, imdbRating: x.rating }; }
@@ -1038,11 +1173,14 @@ var Views = (function () {
         else { for (var i = 0; i < flat.length; i++) if (flat[i].id === last.videoId && flat[i + 1] && !unreleased(flat[i + 1])) { playVid = flat[i + 1].id; sub = 'S' + flat[i + 1].season + ':E' + flat[i + 1].episode; season = flat[i + 1].season; } }
       }
     } else if (last && !last.done) { start = last.t; playLabel = '▶  Resume'; }
+    else if (last && last.done) { playLabel = '\u21ba  Watch again'; }                                  // reached the credits: watched, start over on request
     var info = Object.assign({}, baseInfo, { videoId: playVid, startMs: start });
     if (isSeries) info.sub = sub;
-    var k = ref(info), k2 = ref(Object.assign({}, info, { pick: true }));
-    var h = '<h1>' + esc(m.name) + '</h1><div class="chips">' + meta1(m) + '</div><div class="desc">' + esc(m.description || '') + '</div>' +
+    var k = ref(info), k2 = ref(Object.assign({}, info, { pick: true })), k3 = ref(Object.assign({}, info, { startMs: 0 }));
+    var watched = !!(last && last.done) && !isSeries, restart = start > 0;                              // an unfinished one can also be started from the beginning
+    var h = '<h1>' + esc(m.name) + '</h1><div class="chips">' + (watched ? '<span class="chip">\u2713 Watched</span>' : '') + meta1(m) + '</div><div class="desc">' + esc(m.description || '') + '</div>' +
       '<div class="btns"><div class="btn primary f" data-act="play" data-k="' + k + '">' + playLabel + (isSeries && sub ? '  ' + sub : '') + '</div>' +
+      (restart ? '<div class="btn glass f" data-act="play" data-k="' + k3 + '">\u21ba  Play from beginning</div>' : '') +
       '<div class="btn glass f" data-act="play" data-k="' + k2 + '">Choose source</div>' +
       '<div class="btn glass f" data-act="togglelib" id="libbtn">' + (MyList.has(id) ? '✓  In My List' : '+  My List') + '</div>' +
       '<div class="btn glass f" data-act="dlahead" id="dlbtn">Download ahead</div>' +
@@ -1075,7 +1213,7 @@ var Views = (function () {
         return;
       }
       h += '<div class="ep glass f" data-ep="' + (v.episode || v.number || '') + '" data-act="play" data-k="' + ref(info) + '"><div class="img" data-bg="' + esc(v.thumbnail || D.m.background || '') + '"' + (v.thumbnail ? ' data-has="1"' : '') + '></div>' +
-        '<div class="t">' + (v.episode || v.number || '') + '. ' + esc(v.title || v.name || 'Episode') + '</div><div class="o">' + esc(v.overview || v.description || '') + '</div>' +
+        '<div class="t">' + (r && r.done ? '\u2713 ' : '') + (v.episode || v.number || '') + '. ' + esc(v.title || v.name || 'Episode') + '</div><div class="o">' + esc(v.overview || v.description || '') + '</div>' +
         (pct > 0.02 ? '<div class="bar" style="width:' + Math.round(pct * 440) + 'px"></div>' : '') + '</div>';
     });
     list.scrollLeft = 0;
@@ -1196,16 +1334,20 @@ var Views = (function () {
       '<div class="srow f" data-act="forgetdev">Forget what this device can play: <b>' + (rep.good.length + rep.bad.length) + ' formats remembered</b></div>' +
       '<div class="hint">' + (rep.good.length ? 'Plays directly: ' + esc(rep.good.join(', ')) + '. ' : '') + (rep.bad.length ? 'Needs transcoding: ' + esc(rep.bad.join(', ')) + '. ' : '') + (rep.good.length + rep.bad.length ? '' : 'JoolzTV learns what this device can decode as you watch, so the next file of that kind starts the right way straight away.') + '</div>',
       downloads: downloadsRows(),
+      kids: '<div class="lbl">Kids (parents only)</div><div class="srow f" data-act="klimit" data-id="all" id="kall">All kids screen time: <b>\u2026</b></div>' +
+        '<div class="srow f" data-act="khidden" id="khid">Hidden from kids: <b>\u2026</b></div>' +
+        '<div class="hint">A kid\u2019s own screen time (on the Kids tab) wins over All kids. Hidden titles disappear for every kids profile and can only be shown again here.</div>',
       more: '<div class="lbl">Typing</div>' +
       '<div class="srow f" data-act="kbdmode">On-screen keyboard: <b>' + (Kbd.enabled() ? 'Big keys' : 'The TV\u2019s own keyboard') + '</b></div>' +
       '<div class="hint">JoolzTV ' + esc(window.FLIX_VERSION || '') + '. The top 3 sources by seeds are offered per resolution; posters come from Cinemeta and subtitles from OpenSubtitles. Video plays through your own streaming server behind your JoolzApp sign-in. You stay signed in while anyone in the household uses JoolzTV; after 90 days with no use everyone signs in again. ' + esc(Sync.status()) + '</div></div></div>',
     };
-    var STABS = [['profile', 'Profile'], ['sources', 'Sources'], ['subtitles', 'Subtitles'], ['playback', 'Playback'], ['downloads', 'Downloads'], ['more', 'Typing and about']], tabsH = '<div class="seasons" id="stabs">';
+    var STABS = [['profile', 'Profile'], ['sources', 'Sources'], ['subtitles', 'Subtitles'], ['playback', 'Playback'], ['downloads', 'Downloads']].concat(isParent() ? [['kids', 'Kids']] : [], [['more', 'Typing and about']]), tabsH = '<div class="seasons" id="stabs">';
     STABS.forEach(function (t) { tabsH += '<span class="chip f' + (t[0] === tab ? ' on' : '') + '" data-act="stab" data-t="' + t[0] + '">' + t[1] + '</span>'; });
     tabsH += '</div>';
     var h = '<div class="art-shade"></div>' + topbar('settings') + '<div class="vs" id="main" data-pad-top="140"><div class="settings"><h1>Settings</h1>' + tabsH + (rowsBy[tab] || rowsBy.profile) + '</div></div>';
     replaceAll('settings', h, { cls: 'noart', onBack: function () { page('home'); return true; } });
     Nav.first('.tab.on');
+    if (tab === 'kids') fillKidsSettings();
     if (tab === 'downloads') { fillCacheRow(); Dl.refresh().then(function () { var v = current(); if (v && v.name === 'settings' && settingsTab === 'downloads' && document.querySelectorAll('[data-act=dljob]').length !== Math.min(12, Dl.jobs().length)) settingsPage(); }); }
   }
 
@@ -1308,6 +1450,11 @@ var Views = (function () {
     if (a === 'titles') return titlesPage(el.getAttribute('data-id'));
     if (a === 'addtitle') { var tm = reg[+el.getAttribute('data-k')]; return listEdit(el.getAttribute('data-id'), { add: [tm] }, 'Added ' + tm.name); }
     if (a === 'rmtitle') return listEdit(el.getAttribute('data-id'), { remove: [el.getAttribute('data-imdb')] }, 'Removed');
+    if (a === 'ktile') return kidTitleMenu(+el.getAttribute('data-i'));
+    if (a === 'klimit') return kidLimitMenu(el.getAttribute('data-id'));
+    if (a === 'kmore') return giveMoreTime(el.getAttribute('data-id'));
+    if (a === 'khidden') return hiddenMenu();
+    if (a === 'askparent') return askParent();
     if (a === 'kidsmenu') { var dv = current().el._detail; return kidsMenu(dv.type, dv.id, dv.m); }
     if (a === 'agelimit') { var pid = el.getAttribute('data-id'); return menu('Age limit for this profile', [{ label: 'No limit', v: null }, { label: 'Up to age 7', v: 7 }, { label: 'Up to age 10', v: 10 }, { label: 'Up to age 13', v: 13 }, { label: 'Up to age 16', v: 16 }], function (o) {
       Backend.setMaxAge(pid, o.v).then(function (r) { Profiles.setAll(Profiles.all().map(function (x) { if (x.id === pid) x.maxAge = r.profile.maxAge; return x; })); toast(o.v === null ? 'Age limit removed' : 'Age limit set', 3000); editProfile(pid); }).catch(function (e) { toast(e.message, 5000); }); }, 'Titles rated above this age are hidden and will not play on this profile. Accounts that JoolzApp knows are under 18 are limited to their own age automatically.'); }
@@ -1339,5 +1486,5 @@ var Views = (function () {
   });
 
   return { padKey: padKey, splash: splash, offline: offline, wizard: wizard, deviceSignin: deviceSignin, picker: picker, signedOut: signedOut, detail: detail, page: page, mount: mount, pop: pop, back: back,
-           menu: menu, closeMenu: closeMenu, toast: toast, esc: esc, fmtTime: fmtTime, act: act, runSearch: runSearch, current: current, hasMenu: function () { return !!menuEl; } };
+           menu: menu, closeMenu: closeMenu, toast: toast, timesUp: timesUp, esc: esc, fmtTime: fmtTime, act: act, runSearch: runSearch, current: current, hasMenu: function () { return !!menuEl; } };
 })();

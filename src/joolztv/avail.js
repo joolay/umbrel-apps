@@ -29,6 +29,11 @@ function make({ tmdb, fetchImpl }) {
     await Promise.race([Promise.all(Array.from({ length: workers }, work)), new Promise(r => setTimeout(r, budgetMs))]);
     return items.filter((it, i) => verdict[i] === true || (verdict[i] === null && !!it.poster));
   }
-  return { has, filter, _cache: cache };
+  /* like filter, but also hands back what was left out (for the search page's "Not available" section). Not-out-yet titles are told apart. */
+  async function split(items, o) {
+    const keep = await filter(items, o), set = new Set(keep), today = new Date().toISOString().slice(0, 10);
+    return { keep, other: items.filter(x => !set.has(x)).map(x => Object.assign({}, x, { why: String(x.release || "") > today ? "soon" : "none" })) };
+  }
+  return { has, filter, split, _cache: cache };
 }
 module.exports = { make };

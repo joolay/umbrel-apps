@@ -15,5 +15,7 @@ let fails = 0; const ok = (c, m) => { if (!c) { fails++; console.log("FAIL", m);
   ok(hits.some(u => /series\/tt4%3A1%3A1\.json/.test(u)), "a series is checked through its first episode");
   const n = hits.length; await a.filter(items, { base: "http://s" }); ok(hits.length - n <= 2, "answers are remembered (only the 'could not ask' ones are asked again)");
   ok((await a.filter(items, { base: "" })).length === items.length, "no sources add-on configured: nothing is filtered");
+  const sp = await a.split(items.map(x => Object.assign({}, x, { release: x.tmdb === 2 ? "2999-01-01" : "2001-01-01" })), { base: "http://s" });
+  ok(sp.other.length === 3 && sp.other.filter(x => x.why === "soon").length === 1 && sp.other.filter(x => x.why === "none").length === 2, "split: the left-out titles come back, a future date is 'soon', the rest 'none'");
   console.log(fails ? fails + " FAILED" : "ALL PASSED"); process.exit(fails ? 1 : 0);
 })();

@@ -171,7 +171,8 @@ var Player = (function () {
       // a "source not supported" error is also what a missing file or a dead download looks like: only blame the decoder when the file itself is reachable
       fetch(src, { headers: { Range: 'bytes=0-1' } }).then(function (r) { if (alive() && sess.idx === idx) next(msg, r.ok); }, function () { if (alive() && sess.idx === idx) next(msg, false); });
     });
-    sess.tick = setInterval(function () { if (alive()) update(); }, 500);
+    sess.tick = setInterval(function () { if (alive()) { update(); if (Policy.kid() && !sess.v.paused && !sess.v.ended && sess.gotTime) sess.kidAcc = (sess.kidAcc || 0) + 0.5; } }, 500);   // play time only: paused and loading do not count
+    if (Policy.kid()) { sess.kidT = setInterval(function () { if (alive()) kidTick(); }, 30000); sess.kidFirst = setTimeout(function () { if (alive()) kidTick(); }, 4000); }
     sess.watchdog = setTimeout(function wd() {
       if (!alive() || sess.gotTime || sess.failed || !sess.streams.length) return;
       if (sess.hold && Date.now() - (sess.buf.lastGrow || 0) < 15000) { sess.watchdog = setTimeout(wd, 15000); return; }   // still filling the buffer on purpose
@@ -311,12 +312,34 @@ var Player = (function () {
     if (!S || !S.v || !isFinite(S.v.duration) || !S.v.duration) return;
     var i = S.info, t = S.v.currentTime * 1000, d = S.v.duration * 1000; S.lastSave = Date.now();
     if (t < 20000 && !done) return;
-    var mm = /^([^:]*):(\d+):(\d+)$/.exec(i.videoId || ''), isDone = !!done || t / d > 0.93;
+    var mm = /^([^:]*):(\d+):(\d+)$/.exec(i.videoId || ''), cr = S.marks && S.marks.credits, isDone = !!done || t / d > 0.93 || !!(cr && t / 1000 >= cr.start - 1);   // watched = reached the credits
     Resume.put(i.videoId || i.id, { type: i.type, id: i.id, videoId: i.videoId || i.id, name: i.title, poster: i.poster, t: done ? d : t, d: d, ts: Date.now(), done: isDone,
       season: mm ? +mm[2] : undefined, episode: mm ? +mm[3] : undefined });
   }
+  /* kids: report play time every 30 s, show the 15 / 10 / 5 minute warnings, and stop for good when the time is up */
+  function kidTick(last) {
+    var sess = S; if (!sess || !Policy.kid()) return;
+    var i = sess.info, v = sess.v, secs = Math.floor(sess.kidAcc || 0), mm = /^([^:]*):(\d+):(\d+)$/.exec(i.videoId || ''); sess.kidAcc = (sess.kidAcc || 0) - secs;
+    var pct = v && isFinite(v.duration) && v.duration ? v.currentTime / v.duration : 0;
+    Backend.kidsTick({ imdb: /^tt\d+$/.test(i.id) ? i.id : '', name: i.title, type: i.type, poster: i.poster, pct: pct, seconds: secs, ep: mm ? 'S' + mm[2] + 'E' + mm[3] : undefined }).then(function (st) {
+      if (last || S !== sess || !st) return;
+      if (!st.allowed) return timesUp(st);
+      var w = st.remaining == null ? null : kidWarn(st.remaining, sess.warned || (sess.warned = []));
+      if (w) { sess.warned.push(w); warnBox(w, st); }
+    }).catch(function () {});
+  }
+  function kidWarn(rem, shown) { var ws = [5, 10, 15], k; for (k = 0; k < ws.length; k++) if (rem <= ws[k] && shown.indexOf(ws[k]) < 0) return ws[k]; return null; }
+  function warnBox(min, st) {
+    var old = S.el.querySelector('.kwarn'); if (old) old.parentNode.removeChild(old);
+    var d = document.createElement('div'); d.className = 'kwarn glass';
+    d.innerHTML = '<div class="kw1">' + min + ' minutes left</div><div class="kw2">' + (st.reason === 'winddown' ? 'Winding-down time is at ' + Views.esc(st.windDown || '') + '.' : 'That is all of today\u2019s screen time.') + '</div>';
+    S.el.appendChild(d); var sess = S; setTimeout(function () { if (d.parentNode) d.parentNode.removeChild(d); }, 12000);
+  }
+  function timesUp(st) { close(); Views.timesUp(st); }
   function cleanup() {
     if (!S) return;
+    try { kidTick(true); } catch (e) {}
+    clearInterval(S.kidT); clearTimeout(S.kidFirst);
     save();
     if (S.upnext) clearInterval(S.upnext.timer);
     var v = S.v; clearInterval(S.bufT); clearTimeout(S.statsT); clearInterval(S.tick); clearTimeout(S.uiT); clearTimeout(S.buffT); clearTimeout(S.watchdog); clearTimeout(S.decodeT1); clearTimeout(S.decodeT2); clearTimeout(S.okT); clearTimeout(S.flowT);
