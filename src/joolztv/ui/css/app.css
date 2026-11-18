@@ -295,9 +295,11 @@ html.phone .form[style] { width: 640px !important; }
 .cbtn.ic .rt { display: inline-block; vertical-align: middle; margin: -4px 0 0 -4px; font-size: 22px; font-weight: 800; }
 .cbtn.ic[data-pact=speed] { width: auto; min-width: 88px; padding: 0 18px 0 22px; }
 /* search: bar and results centred; the speak button sits right beside the bar */
-.grid.sc { padding-left: 0; padding-right: 0; text-align: center; }
-.grid.sc .sbar { text-align: center; } .grid.sc .hint, .grid.sc .skel, .grid.sc .gl { text-align: center; }
-.grid.sc .prow { text-align: center; white-space: normal; } .grid.sc .card { margin-left: 12px; margin-right: 12px; }
+/* every grid tab (Movies, Series, Library, Search, Collections): headings, filter chips, input bars and tiles are centred on the screen */
+.grid { padding-left: 0; padding-right: 0; text-align: center; }
+.grid .sbar, .grid .hint, .grid .skel, .grid .gl, .grid .gh, .grid .chips { text-align: center; }
+.grid .prow { text-align: center; white-space: normal; } .grid .card { margin-left: 12px; margin-right: 12px; }
+.grid .field { margin-left: auto; margin-right: auto; }
 .btn.mic.ic { padding: 0; width: 76px; height: 76px; line-height: 76px; border-radius: 38px; text-align: center; margin-left: 14px; } .btn.mic.ic svg { margin: -4px 0 0 0; }
 /* a title that has a source but no cover art: a glass tile carrying the title */
 .card .img.np { background: linear-gradient(150deg, rgba(120,130,255,.45), rgba(255,120,190,.35)); display: -webkit-flex; display: flex; -webkit-align-items: center; align-items: center; -webkit-justify-content: center; justify-content: center; text-align: center; }
