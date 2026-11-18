@@ -641,12 +641,22 @@ var Player = (function () {
     else if (a === 'speed') pickSpeed(); else if (a === 'aspect') cycleAspect(); else if (a === 'fill') toggleFill(); else if (a === 'async') pickAudioSync(); else if (a === 'subs') pickSubs(); else if (a === 'sources') pickSource();
     showUi(true);
   });
+  /* the bar's inner parts (buffer, position, knob) sit on top of it, so the pointer is usually over one of them: find the bar from any of them */
+  function seekOf(e) { var t = e.target; return t && t.closest ? t.closest('#seek') : null; }
   document.addEventListener('mousemove', function (e) {
-    if (!S || !e.target || e.target.id !== 'seek' || !S.v.duration) return;
-    var r = e.target.getBoundingClientRect(); previewAt(Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) * S.v.duration);
+    if (!S || !S.v.duration) return;
+    var sk = seekOf(e); if (!sk) return;
+    var r = sk.getBoundingClientRect(); if (!r.width) return;
+    showUi(); previewAt(Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) * S.v.duration, true);
+  });
+  document.addEventListener('mouseout', function (e) {
+    if (!S || !seekOf(e)) return; var to = e.relatedTarget;
+    if (to && to.closest && to.closest('#seek')) return;                    // still on the bar (moved onto one of its parts)
+    clearTimeout(S.prevT); S.prevT = setTimeout(function () { var e2 = S && $('#tprev'); if (e2) e2.style.display = 'none'; }, 300);
   });
   document.addEventListener('click', function (e) {
-    if (S && e.target.id === 'seek' && S.v.duration) { var r = e.target.getBoundingClientRect(); S.v.currentTime = (e.clientX - r.left) / r.width * S.v.duration; showUi(); }
+    var sk = S && seekOf(e);
+    if (sk && S.v.duration) { var r = sk.getBoundingClientRect(); S.v.currentTime = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) * S.v.duration; showUi(); }
   });
 
   /* holding a skip button with a mouse or finger: after a short hold it keeps jumping every second */

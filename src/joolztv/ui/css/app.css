@@ -310,3 +310,6 @@ html.phone .form[style] { width: 640px !important; }
 .pctl .pz { -webkit-flex: 1 1 0; flex: 1 1 0; min-width: 0; white-space: nowrap; }
 .pctl .pz.l { text-align: left; } .pctl .pz.r { text-align: right; } .pctl .pz.c { -webkit-flex: none; flex: none; text-align: center; }
 .cbtn.ic.on { background: rgba(100,210,255,.3); border-color: #64d2ff; }
+
+/* a taller invisible hit area, so the pointer finds the progress bar easily (hover shows the nearest thumbnail) */
+.seek:before { content: ""; position: absolute; left: 0; right: 0; top: -26px; bottom: -26px; }
