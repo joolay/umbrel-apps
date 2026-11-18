@@ -811,6 +811,16 @@ var Views = (function () {
       xTab(el, t.cast && t.cast.length ? 'cast' : 'similar');
     } else bar.insertAdjacentHTML('beforeend', tabsH);
     Nav.hydrate();
+    placeTabs(el);
+    var lg = el.querySelector('.dlogo'); if (lg && !lg.complete) lg.onload = function () { placeTabs(el); };      // a title logo changes the height of the text above
+  }
+  /* A long tagline, credit line or logo can push the buttons down into the tabs and cards below: keep them under the buttons. */
+  function placeTabs(el) {
+    var b = el.querySelector('.btns'), w = el.querySelector('.eps-wrap'); if (!b || !w) return;
+    var top = 0, n = b; while (n && n !== el && n !== document.body) { top += n.offsetTop || 0; n = n.offsetParent; }
+    var at = Math.max(560, top + b.offsetHeight + 24), list = el.querySelector('#eplist');
+    w.style.top = at + 'px'; w.style.height = (1080 - at) + 'px';
+    if (list) list.style.height = Math.min(440, 1080 - at - 70) + 'px';
   }
   function xTab(el, which) {
     var t = el._tm; if (!t) return;
