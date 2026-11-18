@@ -277,3 +277,8 @@ html.light .player, html.light .player * { --text:#f5f5f7; --dim:rgba(235,235,24
 .pdot.focus i { opacity: 1; box-shadow: 0 0 0 8px rgba(255,255,255,.35); -webkit-transform: scale(1.25); transform: scale(1.25); }
 html.light .pk { background: rgba(0,0,0,.07); border-color: rgba(0,0,0,.14); color: var(--text); }
 html.light .pk.focus { background: #1d1d1f; color: #fff; border-color: #1d1d1f; }
+
+/* Phone held upright: the TV layout is shrunk to ~20%, so forms are enlarged to fill the width (inputs end up about 16px, so iOS does not zoom on focus). */
+html.phone, html.phone body, html.phone #app, html.phone .view, html.phone .splash { height: var(--ph); }
+html.phone .form, html.phone .form.pad { width: 640px; padding: 40px 44px; zoom: 2.76; }
+html.phone .form[style] { width: 640px !important; }

@@ -6,7 +6,14 @@ window.FLIX_VERSION = 'v1.8.0';
   var DEFAULT_BTN = '[data-act=wizardgo],[data-act=devicego],[data-act=signingo],[data-act=addmembergo],[data-act=saveprofile]';
 
   (function fit() {            // scale the 1920x1080 layout to the window (browsers, phones in landscape); a 1080p TV stays at 1
-    function z() { var k = Math.min(window.innerWidth / 1920, window.innerHeight / 1080); document.documentElement.style.zoom = Math.abs(k - 1) < 0.01 ? '' : k; }
+    function z() {
+      var k = Math.min(window.innerWidth / 1920, window.innerHeight / 1080), d = document.documentElement;
+      d.style.zoom = Math.abs(k - 1) < 0.01 ? '' : k;
+      // A phone held upright: the sign-in / setup cards are enlarged to fill the width (see "phone" in app.css), on a page as tall as the screen.
+      var phone = window.innerWidth < 700 && window.innerHeight > window.innerWidth;
+      d.className = d.className.replace(/\s*\bphone\b/g, '') + (phone ? ' phone' : '');
+      d.style.setProperty('--ph', phone ? Math.round(window.innerHeight / k) + 'px' : '1080px');
+    }
     window.addEventListener('resize', z); z();
   })();
 
