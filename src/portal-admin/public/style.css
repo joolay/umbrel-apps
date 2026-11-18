@@ -207,3 +207,20 @@ dialog#sheet,dialog#acct{position:fixed;margin:auto;width:min(440px,calc(100vw -
    and the page doesn't rubber-band away from the top bar and dock. */
 html{background:var(--bg);overscroll-behavior-y:none}
 body{overscroll-behavior-y:none}
+
+/* ---- Quick Access: PIN pad and pattern lock ---- */
+.qa-dlg{border:0;padding:0;background:transparent;max-width:none;color:var(--text)}
+.qa-dlg::backdrop{background:rgba(10,12,24,.55)}
+.qa-in{position:relative;width:min(92vw,340px);padding:26px 22px 22px;border-radius:28px;background:var(--solid,#fff);border:1px solid var(--glass-line,rgba(0,0,0,.12));box-shadow:0 24px 60px rgba(0,0,0,.35);text-align:center}
+.qa-in h2{margin:0 0 4px;font-size:21px}.qa-sub{margin:0 0 14px}
+.qa-x{position:absolute;right:12px;top:10px;width:32px;height:32px;border-radius:50%;border:0;background:rgba(127,127,127,.18);color:inherit;font-size:20px;cursor:pointer}
+.qa-dots{display:flex;justify-content:center;gap:14px;margin:6px 0 20px}.qa-dots span{width:14px;height:14px;border-radius:50%;border:2px solid currentColor;opacity:.55}.qa-dots span.on{background:currentColor;opacity:1}
+.qa-keys{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;justify-items:center}
+.qa-keys button{width:72px;height:72px;border-radius:50%;border:1px solid var(--glass-line,rgba(0,0,0,.14));background:rgba(127,127,127,.12);color:inherit;font-size:26px;font-weight:600;cursor:pointer}
+.qa-keys button:active{background:rgba(127,127,127,.3)}
+.qa-pat{position:relative;width:240px;height:240px;margin:6px auto 10px;display:grid;grid-template-columns:repeat(3,1fr);touch-action:none;user-select:none;-webkit-user-select:none}
+.qa-lines{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}.qa-lines polyline{fill:none;stroke:var(--accent,#5b8cff);stroke-width:5;stroke-linecap:round;stroke-linejoin:round;opacity:.8}
+.qa-dot{display:grid;place-items:center}.qa-dot i{width:18px;height:18px;border-radius:50%;border:2px solid currentColor;opacity:.6;transition:transform .12s,background .12s}.qa-dot.on i{background:var(--accent,#5b8cff);border-color:var(--accent,#5b8cff);opacity:1;transform:scale(1.5)}
+.qa-msg{min-height:20px;margin:6px 0 0;color:#e5484d}
+.qa-btns{display:flex;flex-direction:column;gap:10px;margin-top:14px}.qa-btns .btn{display:flex;flex-direction:column;align-items:center;gap:2px}.qa-btns small{font-weight:400;opacity:.65}
+.qa-login{width:100%;margin:6px 0 2px}

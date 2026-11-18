@@ -259,3 +259,21 @@ html.light .player, html.light .player * { --text:#f5f5f7; --dim:rgba(235,235,24
 .qrbox { text-align: center; margin-bottom: 18px; min-height: 120px; }
 .qrbox svg { width: 360px; height: 360px; border-radius: 28px; display: block; margin: 0 auto 14px; }
 .qrurl { font-size: 21px; line-height: 1.35; color: var(--dim); word-break: break-all; }
+
+/* ---- Quick Access pad (PIN keys and pattern dots; flexbox / inline-block only for the old TV build) ---- */
+.form.pad { width: 760px; text-align: center; }
+.pdots { margin: 6px 0 26px 0; white-space: nowrap; }
+.pdots span { display: inline-block; width: 26px; height: 26px; margin: 0 14px; border-radius: 13px; border: 3px solid var(--text); opacity: .55; }
+.pdots span.on { background: var(--text); opacity: 1; }
+.pkeys { width: 520px; margin: 0 auto 10px auto; font-size: 0; }
+.pk { display: inline-block; width: 150px; height: 96px; line-height: 96px; margin: 8px 11px; border-radius: 48px; font-size: 46px; font-weight: 700; text-align: center; background: rgba(255,255,255,.14); border: 2px solid rgba(255,255,255,.28); }
+.pk.blank { background: none; border: 0; }
+.pk.focus { background: #f5f5f7; color: #111; border-color: #fff; -webkit-transform: scale(1.08); transform: scale(1.08); }
+.ppat { width: 420px; margin: 4px auto 14px auto; font-size: 0; }
+.pdot { display: inline-block; width: 140px; height: 120px; position: relative; text-align: center; }
+.pdot i { position: absolute; left: 50px; top: 35px; width: 40px; height: 40px; border-radius: 20px; border: 4px solid var(--text); opacity: .6; }
+.pdot.on i { background: var(--accent); border-color: var(--accent); opacity: 1; }
+.pdot.on:after { content: attr(data-n); position: absolute; left: 0; right: 0; top: 40px; font-size: 24px; font-weight: 800; color: #fff; line-height: 30px; }
+.pdot.focus i { opacity: 1; box-shadow: 0 0 0 8px rgba(255,255,255,.35); -webkit-transform: scale(1.25); transform: scale(1.25); }
+html.light .pk { background: rgba(0,0,0,.07); border-color: rgba(0,0,0,.14); color: var(--text); }
+html.light .pk.focus { background: #1d1d1f; color: #fff; border-color: #1d1d1f; }

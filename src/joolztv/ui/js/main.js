@@ -31,6 +31,7 @@ window.FLIX_VERSION = 'v1.8.0';
       if (BACK[code] && code !== 8) { ae.blur(); e.preventDefault(); return; }
       if (code === 38 || code === 40) { ae.blur(); } else { return; }   // normal typing
     }
+    if (Views.padKey && Views.padKey(code)) { e.preventDefault(); return; }
     if (Player.key(code, e)) { e.preventDefault(); return; }
     if (KEYS[code]) { e.preventDefault(); Nav.move(KEYS[code]); return; }
     if (code === 13) {

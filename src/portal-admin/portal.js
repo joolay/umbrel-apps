@@ -110,7 +110,7 @@ async function pocketbase(req, res, sub, search) {
 }
 
 // ---- Everything that needs Portal Admin's help ----
-const VIA_ADMIN = new Set(['/signup-config', '/signup', '/forgot', '/guardians', '/family', '/family/users', '/events', '/paywall', '/pay', '/pay/status', '/account/dob', '/account/username', '/account/guardian', '/qr', '/api/active', '/yoco/webhook']);
+const VIA_ADMIN = new Set(['/signup-config', '/signup', '/forgot', '/guardians', '/family', '/family/users', '/events', '/paywall', '/pay', '/pay/status', '/account/dob', '/account/username', '/account/guardian', '/qr', '/quick', '/api/active', '/yoco/webhook']);
 function viaAdmin(req, res, pathname, search) {
   const l = loadLink();
   if (!l.url || !l.key) return send(res, 503, { message: 'JoolzApp is still being set up. Try again in a minute.' });

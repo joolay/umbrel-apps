@@ -173,7 +173,7 @@ async function boot() {
   if (state.token) { try { await api('GET', '/api/collections/portal_apps/records?perPage=1').catch((e) => { if (e.status !== 404) throw e; }); return showShell(); } catch {} }
   showLogin();
 }
-function showLogin() { $('#shell').classList.add('hidden'); $('#reset').classList.add('hidden'); $('#signup').classList.add('hidden'); $('#login').classList.remove('hidden'); }
+function showLogin() { qaLoginButton(); $('#shell').classList.add('hidden'); $('#reset').classList.add('hidden'); $('#signup').classList.add('hidden'); $('#login').classList.remove('hidden'); }
 function resetToken() { const m = location.hash.match(/^#\/(?:reset|auth\/confirm-password-reset)\/([^/?]+)/); return m ? decodeURIComponent(m[1]) : ''; }
 $('#login-signup').onclick = (e) => { e.preventDefault(); $('#login').classList.add('hidden'); $('#signup').classList.remove('hidden'); $('#signup-err').textContent = ''; $('#signup-email').value = $('#login-email').value; $('#signup-email').focus(); };
 $('#signup-ai-prov').innerHTML = AI_PROVIDERS.map(([v, l]) => `<option value="${v}">${l}</option>`).join('');
@@ -209,7 +209,7 @@ $('#signup-form').onsubmit = async (e) => {
     state.pid = ''; state.pidTried = false;
     Object.assign(state, await signIn(email, password));
     state.usernameOk = true;
-    saveSession(false);
+    saveSession(false); qaMarkSignedIn();
     ['#signup-pass', '#signup-pass2'].forEach((id) => { $(id).value = ''; });
     const aiKey = $('#signup-ai-key').value.trim();
     if (aiKey) {
@@ -219,6 +219,7 @@ $('#signup-form').onsubmit = async (e) => {
     }
     ['#signup-ai-key'].forEach((id) => { $(id).value = ''; });
     $('#signup').classList.add('hidden'); await showShell();
+    await qaOffer();                                                    // "Add Quick Access?" right after the account is made
     if (signupApp) openAfterSignup(signupApp);
   } catch (err) { $('#signup-err').textContent = err.message; }
 };
@@ -248,7 +249,7 @@ async function showShell() {
   $('#who').textContent = state.actor; route(); startDetecting();
   homeModel().then((m) => { if (!HM) HM = m; renderDock(); }).catch(() => {});   // so the dock is there on every page
   if (selfId()) { seedRegional().then(loadDatePref).catch(loadDatePref); loadAppearance(); }
-  loadEvents();
+  loadEvents(); qaWatch();
   if (state.role !== 'user' && !state.public) rememberAdminUrl().catch(() => {});
 }
 // Portal Admin notes its own address on every admin's account (a private pref.* row each), so JoolzApp Portal can show them an Admin icon.
@@ -310,7 +311,7 @@ $('#login-form').onsubmit = async (e) => {
     state.pid = ''; state.pidTried = false;
     Object.assign(state, await signIn(email, $('#login-pass').value));
     const remember = $('#login-remember').checked;
-    saveSession(remember);
+    saveSession(remember); qaMarkSignedIn();
     store.lset('pa.remember', remember ? '1' : null); store.lset('pa.email', remember ? email : null);
     $('#login-ok').textContent = '';
     $('#login-pass').value = '';
@@ -729,10 +730,11 @@ async function userList(page = 1, search = '') {
   try { r = await api('GET', `/api/collections/${state.usersColl}/records?perPage=25&page=${page}&sort=-created${filter ? '&filter=' + q(filter) : ''}`); }
   catch (e) { main().innerHTML = `<h1>Users</h1><div class="card"><p class="error">${esc(e.message)}</p><p>Collection <code>${esc(state.usersColl)}</code> couldn't be read. Change it in <a href="#/setup">Setup</a>.</p></div>`; return; }
   const blocked = new Set((await listAll('portal_settings', { filter: 'scope = "user" && key = "portal.access" && app = ""' })).filter((s) => s.value === false).map((s) => s.user));
+  const qaPeople = (await acctFetch('/admin/quick').catch(() => ({ people: {} }))).people || {};
   main().innerHTML = `<div class="row spread"><div><h1>Users</h1><p class="sub">${r.totalItems} user${r.totalItems === 1 ? '' : 's'} in <code>${esc(state.usersColl)}</code></p></div><button id="new" class="btn primary">+ Add user</button></div>
     <div class="card"><div class="row" style="margin-bottom:10px"><input id="s" type="search" placeholder="Search email or name" value="${esc(search)}" style="flex:1"><button id="go" class="btn">Search</button></div>
     <table><thead><tr><th>User</th><th>Status</th><th>Created</th></tr></thead><tbody>${r.items.map((u) => `<tr class="click" data-id="${esc(u.id)}"><td><b>${esc(u.name || u.username || '—')}</b><div class="muted small">${esc(u.email)}</div></td>
-      <td>${u.verified ? '<span class="chip ok">verified</span>' : '<span class="chip">unverified</span>'} ${blocked.has(u.id) ? '<span class="chip bad">blocked</span>' : ''}</td><td class="muted small">${esc(fmtDate(u.created))}</td></tr>`).join('') || '<tr><td colspan="3" class="muted">No users.</td></tr>'}</tbody></table>
+      <td>${u.verified ? '<span class="chip ok">verified</span>' : '<span class="chip">unverified</span>'} ${blocked.has(u.id) ? '<span class="chip bad">blocked</span>' : ''} ${(qaPeople[u.id] || {}).devices ? '<span class="chip" title="Devices with Quick Access">Quick Access ×' + qaPeople[u.id].devices + '</span>' : ''}</td><td class="muted small">${esc(fmtDate(u.created))}</td></tr>`).join('') || '<tr><td colspan="3" class="muted">No users.</td></tr>'}</tbody></table>
     <div class="row spread" style="margin-top:10px"><button id="pv" class="btn small"${page <= 1 ? ' disabled' : ''}>← Prev</button><span class="muted small">Page ${page} of ${r.totalPages || 1}</span><button id="nx" class="btn small"${page >= r.totalPages ? ' disabled' : ''}>Next →</button></div></div>`;
   const again = (p, s) => guard(() => userList(p, s))();
   $('#go').onclick = () => again(1, $('#s').value.trim()); $('#s').onkeydown = (e) => e.key === 'Enter' && again(1, e.target.value.trim());
@@ -757,8 +759,17 @@ async function userDetail(id) {
   const u = await api('GET', `/api/collections/${state.usersColl}/records/${id}`);
   const apps = await listAll('portal_apps', { sort: 'name' });
   main().innerHTML = `<div class="crumb"><a href="#/users">← Users</a></div><h1>${esc(u.name || u.username || u.email)}</h1><p class="sub">${esc(u.email)} · <code>${esc(u.id)}</code></p>
-    <div class="tabs"><button class="active" data-t="prof">Profile</button><button data-t="acc">App access</button><button data-t="ovr">Settings overrides</button></div><div id="tab"></div>`;
-  const tabs = { prof: tabProfile, acc: tabAccess, ovr: tabOverrides };
+    <div class="tabs"><button class="active" data-t="prof">Profile</button><button data-t="acc">App access</button><button data-t="ovr">Settings overrides</button><button data-t="sess">Sign-in</button></div><div id="tab"></div>`;
+  // Sign-in: what Quick Access devices this person has, and signing them out everywhere (every JoolzTV and Portal sign-in, every Quick Access device).
+  async function tabSignin() {
+    const t = $('#tab'), j = await acctFetch('/admin/quick'), me = (j.people || {})[id] || { devices: 0, signedOutAt: 0 };
+    t.innerHTML = `<div class="card"><h2>Sign-in</h2><p>${me.devices ? `Quick Access is on for <b>${me.devices}</b> device${me.devices === 1 ? '' : 's'}.` : 'Quick Access is not on any device.'}</p>
+      <p class="muted small">${me.signedOutAt ? 'Last signed out everywhere: ' + esc(new Date(me.signedOutAt).toLocaleString()) + '.' : 'Never signed out by an admin.'}</p>
+      <p class="muted small">Signing out ends this person's JoolzApp sign-in on the Portal and on every TV (JoolzTV), and removes all of their Quick Access PINs and patterns. They can sign in again with their password.</p>
+      <button class="btn danger" id="so">Sign out everywhere</button></div>`;
+    $('#so').onclick = guard(async () => { if (!confirm('Sign ' + (u.name || u.email) + ' out everywhere?')) return; const r = await acctFetch('/admin/quick', { userId: id }); await audit('user.signout', id, { devices: r.devices }); toast('Signed out' + (r.devices ? ' and removed ' + r.devices + ' Quick Access device' + (r.devices === 1 ? '' : 's') : '')); tabSignin(); });
+  }
+  const tabs = { prof: tabProfile, acc: tabAccess, ovr: tabOverrides, sess: tabSignin };
   main().onclick = guard((e) => { const b = e.target.closest('.tabs button'); if (!b) return; document.querySelectorAll('.tabs button').forEach((x) => x.classList.toggle('active', x === b)); return tabs[b.dataset.t](); });
   tabProfile();
 
@@ -1263,7 +1274,7 @@ async function viewMe() {
     return `<label>${esc(label)}<select name="${key}">${opt('', '— not set —', v === '')}${list.map(([val, l]) => opt(val, l, v === val)).join('')}</select></label>`;
   };
   main().innerHTML = `<h1>My settings</h1><p class="sub">Signed in as ${esc(state.actor)}. These settings apply to every JoolzApp app you use.</p>
-    <div class="tabs"><button class="active" data-t="prefs">Preferences</button><button data-t="profile">Profile</button><button data-t="ai">AI</button><button data-t="account">Account</button></div>
+    <div class="tabs"><button class="active" data-t="prefs">Preferences</button><button data-t="profile">Profile</button><button data-t="ai">AI</button><button data-t="quick">Quick Access</button><button data-t="account">Account</button></div>
     <div data-pane="profile" hidden><div class="card" id="pane-profile"><p class="muted">Loading…</p></div></div>
     <div data-pane="prefs"><form id="prefs" class="card"><h2>Preferences</h2><div class="kv">${PREFS.map(field).join('')}</div>
       ${detected ? `<p class="muted small">Your device time zone: ${esc(detected)}. Defaults follow your region.</p>` : ''}<div class="row" style="gap:8px"><button class="btn primary">Save preferences</button><button type="button" class="btn" id="regional">Use my region</button></div></form></div>
@@ -1274,6 +1285,7 @@ async function viewMe() {
       <label id="ai-base-row">Base URL<input name="baseUrl" value="${esc(cur['ai.baseUrl'] ? cur['ai.baseUrl'].value : '')}" placeholder="https://your-host/v1" autocomplete="off"></label></div>
       <p class="muted small" id="ai-hint"></p>
       <div class="row" style="gap:8px"><button class="btn primary">Save AI settings</button>${cur['ai.apiKey'] ? ' <button type="button" class="btn danger" id="ai-clear">Remove my key</button>' : ''}</div></form></div>
+    <div data-pane="quick" hidden><div class="card" id="pane-quick"><p class="muted">Loading…</p></div></div>
     <div data-pane="account" hidden><div class="card"><h2>Delete my account</h2>${delPend
       ? `<p><span class="chip warn">deletion requested</span></p><p class="muted small">Sent ${esc(fmtDate(delPend.created))}. The admin will review it and confirm. Your account stays active until then.</p><button id="delcancel" class="btn">Cancel request</button>`
       : `<form id="del"><p class="muted small">This asks the admin to permanently delete your JoolzApp account and preferences from <b>every</b> Joolzapp app. Nothing is deleted until the admin confirms.</p>
@@ -1281,7 +1293,7 @@ async function viewMe() {
       <label>Reason (optional)<input name="reason" maxlength="300"></label>
       <button class="btn danger">Request account deletion</button></form>`}${delDenied && !delPend ? '<p class="muted small">Your last deletion request was declined.</p>' : ''}</div></div>`;
   const showTab = (t) => { main().querySelectorAll('.tabs button').forEach((x) => x.classList.toggle('active', x.dataset.t === t)); main().querySelectorAll('[data-pane]').forEach((x) => { x.hidden = x.dataset.pane !== t; }); };
-  main().onclick = (e) => { const b = e.target.closest('.tabs button'); if (b) showTab(b.dataset.t); };
+  main().onclick = (e) => { const b = e.target.closest('.tabs button'); if (b) { showTab(b.dataset.t); if (b.dataset.t === 'quick') qaPane($('#pane-quick')); } };
 
   // AI settings are stored as the person's own "pref.ai.*" rows, so every app can read them through the shared account.
   const setPref = async (key, val) => {

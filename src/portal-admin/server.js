@@ -18,6 +18,7 @@ const appkeys = require('./appkeys'), appnames = require('./appnames');
 const makeChanges = require('./changes');
 const makeAppApi = require('./appapi');
 const qrlogin = require('./qrlogin')();
+const quick = require('./quickaccess')();
 const CHILD_REQ = '__child_account__', SPOUSE_REQ = '__spouse_account__';
 
 const PORT = Number(process.env.PORT || 3000);
@@ -308,6 +309,27 @@ async function qrRoute(req, res) {
   return reply(() => qrlogin.decide(b.id, user, b.approve === true));
 }
 
+// ---- Quick Access (PIN / pattern): one route. `login` needs no token (it carries the device secret and the code); everything else needs the signed-in person. ----
+const quickTries = new Map();
+async function quickRoute(req, res) {
+  if (req.method !== 'POST') return send(res, 405, { message: 'Method not allowed' });
+  let b; try { b = JSON.parse(await readBody(req, 8192)); } catch { return send(res, 400, { message: 'Invalid request.' }); }
+  const reply = async (fn) => { try { return send(res, 200, await fn()); } catch (e) { return send(res, e.status || 500, { message: String(e.message || e), left: e.left }); } };
+  if (b.action === 'login') {
+    const ip = String(req.portalClientIp || req.socket.remoteAddress || ''), now = Date.now(), tries = (quickTries.get(ip) || []).filter((t) => now - t < 600e3);
+    if (tries.length >= 40) return send(res, 429, { message: 'Too many tries. Wait a few minutes.' });
+    quickTries.set(ip, [...tries, now]); if (quickTries.size > 5000) quickTries.clear();
+    return reply(async () => { const r = await quick.login(b.deviceId, b.deviceSecret, b.code), s = await quick.session(r.userId); return { token: s.token, kind: r.kind, record: s.record && { id: s.record.id, email: s.record.email, name: s.record.name } }; });
+  }
+  const tok = String(req.headers.authorization || ''), user = tok ? await personFromToken(tok) : null;
+  if (!user) return send(res, 401, { message: 'Sign in to continue.' });
+  if (b.action === 'setup') return reply(() => quick.setup(user.id, { kind: b.kind, code: b.code, label: b.label }));
+  if (b.action === 'list') return reply(async () => ({ devices: await quick.list(user.id) }));
+  if (b.action === 'remove') return reply(() => quick.remove(user.id, b.deviceId));
+  if (b.action === 'signout') return reply(() => quick.signOut(user.id));
+  return send(res, 400, { message: 'Unknown action.' });
+}
+
 // ---- Family and account details. These are managed here once for every JoolzApp app (the apps only link to this page). ----
 // Who is signed in, as a JoolzApp person: their own account token, or a PocketBase superuser token mapped to the account with the same email.
 // So the admin uses Family, Settings, events and everything else exactly as everyone else does.
@@ -448,7 +470,7 @@ async function signup(req, res) {
   } catch (e) { return send(res, e instanceof pbx.PBError && e.status === 503 ? 503 : 500, { message: String(e.message || e) }); }
 }
 
-const appapi = makeAppApi({ qrlogin, pbx, DATA_DIR: pbx.dataDir, readBody, send });
+const appapi = makeAppApi({ qrlogin, quick, pbx, DATA_DIR: pbx.dataDir, readBody, send });
 const notices = require('./notices')({ pbx, forgetTouch: appapi.forgetTouch });
 const changes = makeChanges({ pbx, installedApps, APPS_DIR, DATA_DIR: pbx.dataDir, appKeys: appapi.keys });
 const handle = async (req, res) => {
@@ -459,6 +481,7 @@ const handle = async (req, res) => {
     if (pathname === '/signup-config') { if (req.method !== 'GET') return send(res, 405, { message: 'Method not allowed' }); return signupConfig(req, res); }
     if (pathname === '/guardians') return guardiansRoute(req, res);
     if (pathname === '/qr') return qrRoute(req, res);
+    if (pathname === '/quick') return quickRoute(req, res);
     if (pathname === '/family' || pathname === '/events' || pathname === '/paywall' || pathname === '/pay' || pathname === '/pay/status' || pathname === '/family/users' || pathname === '/account/dob' || pathname === '/account/username' || pathname === '/account/guardian') return accountRoutes(req, res, pathname);
     if (pathname === '/yoco/webhook') {
       if (req.method !== 'POST') return send(res, 405, { message: 'Method not allowed' });
@@ -501,6 +524,16 @@ const handle = async (req, res) => {
         if (req.method === 'GET') return send(res, 200, await appnames.adminView());
         if (req.method !== 'POST') return send(res, 405, { message: 'Method not allowed' });
         return send(res, 200, await appnames.adminAction(JSON.parse(await readBody(req))));
+      } catch (e) { return send(res, e.status || 500, { message: String(e.message || e) }); }
+    }
+    if (pathname === '/admin/quick') {                                     // who has Quick Access, and signing a person out everywhere (admin only)
+      if (isPublicRequest(req)) return send(res, 403, { message: 'Only available from your home network or tailnet.' });
+      const tok = String(req.headers.authorization || '');
+      if (!tok || !(await pbx.isSuperuser(tok))) return send(res, 401, { message: 'Admin only.' });
+      try {
+        if (req.method === 'GET') return send(res, 200, { people: await quick.overview() });
+        if (req.method !== 'POST') return send(res, 405, { message: 'Method not allowed' });
+        const b = JSON.parse(await readBody(req)); return send(res, 200, await quick.signOut(String(b.userId || '')));
       } catch (e) { return send(res, e.status || 500, { message: String(e.message || e) }); }
     }
     if (pathname === '/admin/inactive/notice') {
@@ -580,7 +613,7 @@ const handle = async (req, res) => {
 
 // JoolzApp Portal (the separate, internet-facing home screen app) passes these on for people: /user/<route> on the apps-only port,
 // with its own Portal API key. They are ALWAYS handled as public, user-only requests, and only the routes listed here exist.
-const PORTAL_ROUTES = new Set(['/signup-config', '/signup', '/forgot', '/guardians', '/family', '/family/users', '/events', '/paywall', '/pay', '/pay/status', '/account/dob', '/account/username', '/account/guardian', '/qr', '/api/active', '/yoco/webhook']);
+const PORTAL_ROUTES = new Set(['/signup-config', '/signup', '/forgot', '/guardians', '/family', '/family/users', '/events', '/paywall', '/pay', '/pay/status', '/account/dob', '/account/username', '/account/guardian', '/qr', '/quick', '/api/active', '/yoco/webhook']);
 const portalBad = new Map();
 function fromPortal(req, res) {
   const ip = String(req.socket.remoteAddress || ''), now = Date.now(), fails = (portalBad.get(ip) || []).filter((t) => now - t < 600e3);

@@ -70,12 +70,12 @@ function gateOf(u) {
 const publicUser = u => ({ id: u.id, email: u.email || "", name: u.name || "", isAdmin: !!u.isAdmin });
 async function withGuard(u) { if (u) u.guard = await guardians.statusOf(u).catch(() => ({ minor: guardians.isMinor(u), approved: !guardians.isMinor(u) })); return u; }
 
-/* ---------- sessions: header token; the sign-in lasts while the household was used in the last 90 days ---------- */
+/* ---------- sessions: header token; a sign-in lasts until the person or an admin signs them out ---------- */
 const tokenCache = new Map(), checking = new Map();
 const CACHE_FRESH = test && process.env.JTV_CACHE_MS !== undefined ? +process.env.JTV_CACHE_MS : 15000, CACHE_STALE = CACHE_FRESH ? 600000 : 0;   // a signed-in profile is re-checked at most every 15 s
 const tokenOf = req => String(req.headers["x-jtv-token"] || "").trim();
 /* The server's own sign-in token: s.<user>.<issued>.<mac>. It carries no expiry. How long it lives is decided here, from the last time the HOUSEHOLD was used. */
-const SESSION_MS = 90 * 864e5, TOUCH_MS = 600e3;
+const TOUCH_MS = 600e3;
 const mintSession = userId => { const body = "s." + b64u(userId) + "." + Date.now().toString(36); return body + "." + mac("sess:" + body); };
 function parseSession(t) {
   const m = /^s\.([\w-]+)\.([0-9a-z]+)\.([\w-]{27})$/.exec(t); if (!m) return null;
@@ -88,13 +88,14 @@ function touchHousehold(h, userId, force) {
   const now = Date.now(), me = profileOf(h, userId); if (!me) return;
   if (force || now - (h.lastActive || 0) > TOUCH_MS) { h.lastActive = now; writeJson(HH_FILE, h); }
 }
-const householdIdle = (h, userId) => { const me = profileOf(h, userId); return !!me && Date.now() - (h.lastActive || me.created || 0) > SESSION_MS; };
+// A sign-in lasts until the person (or an admin, in Portal Admin) signs them out: no idle expiry any more.
+const householdIdle = () => false;
 async function sessionUser(t) {
   const s = parseSession(t); if (!s) return null;
   const h = hh(), me = profileOf(h, s.userId);
-  if (me ? householdIdle(h, s.userId) : Date.now() - s.iat > SESSION_MS) return null;       // 90 days without any use
   let u; try { u = await pb.getUser(s.userId); } catch (e) { if (e instanceof pb.PBError && [400, 401, 403, 404].includes(e.status)) return null; throw e; }
   if (!u) return null;
+  if (u.portal && u.portal.signedOutAt && s.iat < u.portal.signedOutAt) return null;       // an admin signed this person out after this sign-in began
   await withGuard(u);                                      // minor or not (the kid rules need it)
   touchHousehold(h, s.userId); rememberPhoto(h, u);
   return u;
@@ -699,6 +700,20 @@ async function notifyRoutes(req, res, p, u) {
   return send(res, 404, { code: "not_found" });
 }
 
+/* ---------- Quick Access on this TV: PIN or pattern, checked by Portal Admin and tied to this device ---------- */
+async function quickRoute(req, res, p, u) {
+  if (!(pb.portalOn && pb.portalOn())) return send(res, 503, { code: "quick_unavailable", message: "Quick Access needs JoolzTV to be linked to Portal Admin." });
+  const call = async (fn, args) => { try { return await pb.portalCall(fn, args); } catch (e) { if (e instanceof pb.PBError && e.status >= 400 && e.status < 500) { send(res, e.status, { code: "bad_request", message: e.message }); return undefined; } throw e; } };
+  if (p === "/api/quick" && req.method === "GET") { const r = await call("qa.list", [u.id]); return r === undefined ? undefined : send(res, 200, { devices: r }); }
+  if (p === "/api/quick" && req.method === "POST") {
+    const b = await jsonBody(req); const r = await call("qa.setup", [u.id, { kind: String(b.kind || ""), code: String(b.code || ""), label: String(b.label || "JoolzTV on a TV").slice(0, 40) }]);
+    return r === undefined ? undefined : send(res, 201, r);
+  }
+  const m = /^\/api\/quick\/([\w-]{22})$/.exec(p);
+  if (m && req.method === "DELETE") { const r = await call("qa.remove", [u.id, m[1]]); return r === undefined ? undefined : send(res, 200, { ok: true }); }
+  return send(res, 404, { code: "not_found" });
+}
+
 /* ---------- streaming server behind the sign-in ---------- */
 const SECRET_FILE = path.join(DATA_DIR, "secret.key");
 let SECRET = (() => { try { const s = fs.readFileSync(SECRET_FILE, "utf8").trim(); if (s.length >= 32) return s; } catch {} const s = crypto.randomBytes(32).toString("hex"); fs.writeFileSync(SECRET_FILE, s, { mode: 0o600 }); return s; })();
@@ -797,6 +812,12 @@ const configJs = () => "window.FLIX_CONFIG = " + JSON.stringify({ internalServer
 /* ---------- sign-in by password, or by an approved QR code ---------- */
 // Returns what pb.login returns ({ record }). A QR approval was made by a signed-in person in the JoolzApp Portal; from here on it is the same as a password sign-in.
 async function loginWith(body) {
+  if (body && body.quick && typeof body.quick === "object") {                  // PIN or pattern on a device that already signed in once
+    const q = body.quick; let r;
+    try { r = await pb.portalCall("qa.login", [String(q.deviceId || ""), String(q.deviceSecret || ""), String(q.code || "")]); }
+    catch (e) { if (e instanceof pb.PBError && [401, 423, 429].includes(e.status)) throw Object.assign(new Error(e.message), { code: "bad_login", status: e.status }); throw e; }
+    return { record: await pb.getUser(r.userId) };
+  }
   if (body && body.qr && typeof body.qr === "object") { const id = qrsignin.claim(body.qr.id, String(body.qr.secret || "")); return { record: await pb.getUser(id) }; }
   return pb.login(String(body.email || "").trim().toLowerCase(), String(body.password || ""));
 }
@@ -807,8 +828,8 @@ async function accountRoutes(req, res, p) {
   if (!pb.enabled) return send(res, 503, { code: "accounts_unavailable", message: "Accounts aren't set up yet. Ask the admin to connect PocketBase in Portal Admin." });
   try {
     if (p === "/api/account/login" && req.method === "POST") {
-      if (throttled(req, "login", 10, 600e3)) return send(res, 429, { code: "slow_down", message: "Too many attempts. Try again in a few minutes." });
       const body = await jsonBody(req);
+      if (throttled(req, body && body.quick ? "quick" : "login", body && body.quick ? 40 : 10, 600e3)) return send(res, 429, { code: "slow_down", message: "Too many attempts. Try again in a few minutes." });
       try {
         const j = await loginWith(body);
         await withGuard(j.record);
@@ -870,6 +891,7 @@ const server = http.createServer(async (req, res) => {
       if (p === "/api/thumb" && req.method === "GET") return await thumbRoute(req, res, u);
       if (p === "/api/server/cache" && (req.method === "GET" || req.method === "PUT")) return await cacheRoute(req, res, u);
       if (p.startsWith("/api/downloads")) return await downloadsRoutes(req, res, p, u);
+      if (p === "/api/quick" || p.startsWith("/api/quick/")) return await quickRoute(req, res, p, u);
       if (p === "/api/theme" && (req.method === "GET" || req.method === "PUT")) return await themeRoute(req, res, u);
       if (p.startsWith("/api/notify")) return await notifyRoutes(req, res, p, u);
       if (p === "/api/prefetch" && req.method === "POST") return await prefetchRoute(req, res, u);

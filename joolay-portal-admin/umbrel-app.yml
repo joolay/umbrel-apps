@@ -2,7 +2,7 @@ manifestVersion: 1
 id: joolay-portal-admin
 category: developer
 name: Portal Admin
-version: "0.26.0"
+version: "0.27.0"
 tagline: One admin panel for all your custom PocketBase apps
 description: >-
   A central admin panel for your custom apps that use PocketBase. Register each app, then manage
@@ -21,7 +21,7 @@ gallery: []
 path: ""
 defaultUsername: ""
 defaultPassword: ""
-releaseNotes: "People can rename the apps on their own home screen (Edit, then the pencil on a tile); Admin > App names shows every rename and lets you reset it. Also: QR sign-in for JoolzApp accounts (an app shows a QR code, a signed-in phone approves it) and the image start-up fix."
+releaseNotes: "New: Quick Access. Sign in with a 4 or 6 digit PIN or a pattern on a device you already signed in on (offered at sign-up, set in My settings; JoolzTV on the TV too). JoolzTV sign-ins now last until you sign out, and an admin can sign anyone out everywhere from Admin > Users > Sign-in. Also: People can rename the apps on their own home screen (Edit, then the pencil on a tile); Admin > App names shows every rename and lets you reset it. Also: QR sign-in for JoolzApp accounts (an app shows a QR code, a signed-in phone approves it) and the image start-up fix."
 submitter: joolay
 submission: https://github.com/joolay/umbrel-apps
 icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-portal-admin/icon.svg

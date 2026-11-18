@@ -255,14 +255,105 @@ var Views = (function () {
       if (e.status === 401 || e.status === 403) { Store.delFor(id, 'token'); signin(p, e.status === 403 ? e.message : 'Please sign in again.'); } else offline(e.message);
     });
   }
+  /* ---------- Quick Access: a PIN or pattern for this profile on this TV (checked by the server, tied to this TV) ---------- */
+  var Pad = null;                                           // the pad on screen: { kind, n, code, seq, cb, title }
+  function qaGet(id) { var q = Store.getFor(id, 'qa', null); return q && q.deviceId && q.deviceSecret ? q : null; }
+  function qaKindName(k) { return k === 'pattern' ? 'pattern' : 'PIN'; }
+  function padScreen(o) {                                   // o: { title, sub, kind, onCode(code), onBack, extra }
+    Pad = { kind: o.kind, n: o.kind === 'pin6' ? 6 : 4, code: '', seq: [], cb: o.onCode, onBack: o.onBack };
+    var pat = o.kind === 'pattern', h = '<div class="splash"><div class="center"><div class="form glass pad"><h1>' + esc(o.title) + '</h1><div class="sub">' + esc(o.sub || '') + '</div><div class="err" id="ferr"></div>';
+    if (!pat) {
+      h += '<div class="pdots" id="pdots">'; for (var i = 0; i < Pad.n; i++) h += '<span></span>'; h += '</div><div class="pkeys">';
+      ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', '\u232b'].forEach(function (k) { h += k === '' ? '<span class="pk blank"></span>' : '<div class="pk f" data-act="padk" data-k="' + k + '">' + k + '</div>'; });
+      h += '</div><div class="hint">Use the number keys on your remote, or pick the digits.</div>';
+    } else {
+      h += '<div class="ppat" id="ppat">'; for (var d = 0; d < 9; d++) h += '<div class="pdot f" data-act="padk" data-i="' + d + '"><i></i></div>'; h += '</div>' +
+        '<div class="hint">Move to a dot and press OK, in the order of your pattern (at least 4 dots).</div><div class="btn primary f" data-act="paddone">Done</div><div class="btn glass f" data-act="padclear">Start again</div>';
+    }
+    h += (o.extra || '') + '<div class="btn glass f" data-act="padback">Back</div></div></div></div>';
+    replaceAll('pad', h, { onBack: function () { Pad = null; o.onBack(); return true; } });
+    Nav.set(Nav.root().querySelector(pat ? '.pdot' : '.pk.f'));
+  }
+  function padPaint() {
+    if (!Pad) return;
+    if (Pad.kind === 'pattern') { Array.prototype.forEach.call(document.querySelectorAll('#ppat .pdot'), function (el) { var i = +el.getAttribute('data-i'), at = Pad.seq.indexOf(i); el.classList.toggle('on', at >= 0); el.setAttribute('data-n', at >= 0 ? at + 1 : ''); }); return; }
+    Array.prototype.forEach.call(document.querySelectorAll('#pdots span'), function (el, i) { el.classList.toggle('on', i < Pad.code.length); });
+  }
+  function padAdd(d) {
+    if (!Pad || Pad.kind === 'pattern' || Pad.code.length >= Pad.n) return;
+    Pad.code += d; padPaint(); ferr('');
+    if (Pad.code.length === Pad.n) { var cb = Pad.cb, c = Pad.code; setTimeout(function () { if (Pad) { Pad.code = ''; padPaint(); } cb(c); }, 150); }
+  }
+  function padDot(i) { if (!Pad || Pad.kind !== 'pattern' || Pad.seq.indexOf(i) >= 0) return; Pad.seq.push(i); padPaint(); ferr(''); }
+  function padDone() {
+    if (!Pad || Pad.kind !== 'pattern') return;
+    if (Pad.seq.length < 4) return ferr('Join at least 4 dots.');
+    var c = 'p:' + Pad.seq.join(''), cb = Pad.cb; Pad.seq = []; padPaint(); cb(c);
+  }
+  function padKey(code) {                                   // number keys on the remote (and Backspace to take one back)
+    if (!Pad || Pad.kind === 'pattern') return false;
+    var d = code >= 48 && code <= 57 ? code - 48 : code >= 96 && code <= 105 ? code - 96 : -1;
+    if (d >= 0) { padAdd(String(d)); return true; }
+    if (code === 8 && Pad.code.length) { Pad.code = Pad.code.slice(0, -1); padPaint(); return true; }
+    return false;
+  }
+  function qaAskTwice(kind, title, back, done) {            // choose a code, type it again, hand it over
+    padScreen({ kind: kind, title: title, sub: kind === 'pattern' ? 'Draw it with at least 4 dots.' : 'Choose ' + (kind === 'pin6' ? '6' : '4') + ' digits you will remember.', onBack: back, onCode: function (a) {
+      padScreen({ kind: kind, title: 'Once more', sub: 'To make sure it is right.', onBack: back, onCode: function (b) {
+        if (a !== b) { return qaAskTwice(kind, title, back, done), ferr('They did not match. Try again.'); }
+        done(a);
+      } });
+    } });
+  }
+  function qaSetup(id, kind, back) {
+    qaAskTwice(kind, 'Quick Access for ' + ((Profiles.get(id) || {}).name || 'you'), back, function (code) {
+      ferr('Saving…');
+      Backend.quickSetup(kind, code, 'JoolzTV on ' + (/Web0S|webOS/i.test(navigator.userAgent) ? 'an LG TV' : 'a browser')).then(function (r) {
+        Store.setFor(id, 'qa', { deviceId: r.deviceId, deviceSecret: r.deviceSecret, kind: kind }); Store.setFor(id, 'qaasked', 1);
+        toast('Quick Access is on for this TV', 5000); back(true);
+      }).catch(function (e) { ferr(e.message); setTimeout(function () { back(); }, 2500); });
+    });
+  }
+  var QA_KINDS = [{ label: '4 digit PIN', sub: 'Quickest to enter', k: 'pin4' }, { label: '6 digit PIN', sub: 'A bit harder to guess', k: 'pin6' }, { label: 'Pattern', sub: 'Join 4 or more dots', k: 'pattern' }];
+  function qaMenu(id, after) {                              // Settings > Quick Access (and the one-time offer after the first sign-in)
+    var cur = qaGet(id), opts = QA_KINDS.map(function (o) { return { label: o.label, sub: o.sub, k: o.k, selected: !!cur && cur.kind === o.k }; });
+    if (cur) opts.push({ label: 'Turn Quick Access off for this TV', k: 'off' });
+    menu('Quick Access', opts, function (o) {
+      if (o.k === 'off') { Backend.quickRemove(cur.deviceId).catch(function () {}); Store.delFor(id, 'qa'); toast('Quick Access is off for this TV', 4000); return after && after(); }
+      if (cur) { Backend.quickRemove(cur.deviceId).catch(function () {}); Store.delFor(id, 'qa'); }
+      qaSetup(id, o.k, function () { if (after) after(); });
+    }, 'Faster than a password, but less secure. 5 wrong tries switch it off.');
+  }
+  function qaOffer(id, next) {                              // asked once per profile, right after signing in
+    if (Store.getFor(id, 'qaasked', 0) || qaGet(id)) return next();
+    Store.setFor(id, 'qaasked', 1);
+    menu('Add Quick Access?', [{ label: 'Not now', k: 'no' }].concat(QA_KINDS), function (o) { if (o.k === 'no') return next(); qaSetup(id, o.k, function () { next(); }); }, 'Sign in to this profile with a PIN or pattern instead of your password. Faster, but less secure.');
+  }
+  function qaSignin(id) {
+    var q = qaGet(id), p = Profiles.get(id); if (!q || !p) return signin(p);
+    function ask(msg) {
+      padScreen({ kind: q.kind, title: 'Hi ' + p.name, sub: q.kind === 'pattern' ? 'Draw your pattern.' : 'Enter your PIN.', onBack: function () { signin(p); },
+        extra: '<div class="btn glass f" data-act="padpass" data-id="' + esc(id) + '">Use my password instead</div>', onCode: function (code) {
+          ferr('Signing in…');
+          Backend.login('', '', null, { deviceId: q.deviceId, deviceSecret: q.deviceSecret, code: code }).then(function (r) { return signinAfter(r, Store.getFor(id, 'email', ''), id); }).catch(function (e) {
+            if (e.status === 423 || (e.status === 401 && !/tries left/.test(e.message))) { Store.delFor(id, 'qa'); return signin(p, e.message); }
+            ask(); ferr(e.message);
+          });
+        } });
+      if (msg) ferr(msg);
+    }
+    ask();
+  }
   function signin(p, msg) {
     var em = Store.getFor(p.id, 'email', '');
     formView('signin', 'Hi ' + p.name, 'Sign in with your JoolzApp account to continue.',
       '<input id="em" class="field f" type="email" placeholder="JoolzApp email" autocomplete="off" value="' + esc(em) + '"><input id="pw" class="field f" type="password" placeholder="Password">' +
-      '<div class="btn primary f" data-act="signingo" data-id="' + esc(p.id) + '">Sign in</div><div class="btn glass f" data-act="qrsignin" data-id="' + esc(p.id) + '">Sign in with a QR code</div><div class="btn glass f" data-act="forgot">Forgot password</div><div class="btn glass f" data-act="picker">Back</div>',
+      (qaGet(p.id) ? '<div class="btn primary f" data-act="qasignin" data-id="' + esc(p.id) + '">Use my ' + qaKindName(qaGet(p.id).kind) + '</div>' : '') +
+      '<div class="btn ' + (qaGet(p.id) ? 'glass' : 'primary') + ' f" data-act="signingo" data-id="' + esc(p.id) + '">Sign in</div><div class="btn glass f" data-act="qrsignin" data-id="' + esc(p.id) + '">Sign in with a QR code</div><div class="btn glass f" data-act="forgot">Forgot password</div><div class="btn glass f" data-act="picker">Back</div>',
       function () { picker(); return true; });
     if (msg) ferr(msg);
-    if (em) Nav.set(document.getElementById('pw'));
+    if (qaGet(p.id)) Nav.set(Nav.root().querySelector('[data-act=qasignin]'));
+    else if (em) Nav.set(document.getElementById('pw'));
   }
   function signinGo(id) {
     var em = val('em').toLowerCase(), pw = document.getElementById('pw').value;
@@ -286,8 +377,9 @@ var Views = (function () {
       if (Store.active() !== id) return;
       Theme.load(); Dl.start(); watchLoad(); clearInterval(Watch.t); Watch.t = setInterval(function () { watchLoad(); }, 300000);
       Sync.run(function () { var v = current(); if (v && PAGES.indexOf(v.name) >= 0 && v.name === 'home') page('home'); });
-      if (!Api.quality()) return qualityStep(function () { page('home'); });          // a household set up before this question existed
-      page('home');
+      var goHome = function () { page('home'); setTimeout(function () { if (current() && current().name === 'home') qaOffer(id, function () {}); }, 1200); };
+      if (!Api.quality()) return qualityStep(goHome);          // a household set up before this question existed
+      goHome();
     });
   }
   function signedOut() {                       // the server said 401: this profile must sign in again
@@ -1016,6 +1108,7 @@ var Views = (function () {
       profile: '<div class="lbl">Profile – ' + esc(pr ? pr.name : '') + '</div>' +
       '<div class="srow f" data-act="members">Household: add, rename or remove profiles</div>' +
       '<div class="srow f" data-act="picker">Switch profile</div>' +
+      '<div class="srow f" data-act="qaset">Quick Access (PIN or pattern) on this TV: <b>' + (qaGet(Store.active()) ? ({ pin4: '4 digit PIN', pin6: '6 digit PIN', pattern: 'Pattern' })[qaGet(Store.active()).kind] : 'Off') + '</b></div>' +
       '<div class="srow f" data-act="theme">Appearance: <b>' + ({ dark: 'Dark', light: 'Light', auto: 'Auto (light from sunrise to sunset)' })[Theme.mode()] + '</b></div>' +
       '<div class="srow f" data-act="signout">Sign out of this profile on this TV</div>',
       sources: '<div class="lbl">Sources (the whole household)</div>' +
@@ -1115,6 +1208,13 @@ var Views = (function () {
       var bb = current().el.querySelector('#libbtn'); if (bb) bb.textContent = yes ? '✓  In My List' : '+  My List';
       return toast(yes ? 'Added to My List' : 'Removed from My List');
     }
+    if (a === 'qaset') return qaMenu(Store.active(), function () { settingsPage(); });
+    if (a === 'qasignin') return qaSignin(el.getAttribute('data-id'));
+    if (a === 'padk') { if (el.hasAttribute('data-i')) return padDot(+el.getAttribute('data-i')); var k = el.getAttribute('data-k'); if (k === '\u232b') { if (Pad && Pad.code.length) { Pad.code = Pad.code.slice(0, -1); padPaint(); } return; } return padAdd(k); }
+    if (a === 'paddone') return padDone();
+    if (a === 'padclear') { if (Pad) { Pad.seq = []; padPaint(); ferr(''); } return; }
+    if (a === 'padback') { var pb = Pad && Pad.onBack; Pad = null; return pb && pb(); }
+    if (a === 'padpass') { Pad = null; return signin(Profiles.get(el.getAttribute('data-id'))); }
     if (a === 'theme') return menu('Appearance', [{ label: 'Dark', m: 'dark' }, { label: 'Light', m: 'light' }, { label: 'Auto  –  light from sunrise to sunset where you are', m: 'auto' }].map(function (o) { o.selected = o.m === Theme.mode(); return o; }), function (o) { Theme.set(o.m); settingsPage(); });
     if (a === 'quality') return menu('Preferred quality', QUALITY_INFO.map(function (q) { return { label: q[0] + '  –  ' + q[1], q: q[0], selected: q[0] === Api.quality() }; }), function (o) { savePrefs({ quality: o.q }, function () { if (current() && current().name === 'sources') sourcesPage(null, 'quality'); else settingsPage(); }); });
     if (a === 'setquality') { var qq = el.getAttribute('data-q'); return savePrefs({ quality: qq }, function () { var cb = window._qcont; window._qcont = null; if (cb) cb(); }); }
@@ -1167,6 +1267,6 @@ var Views = (function () {
     if (el && Nav.root().contains(el)) act(el);
   });
 
-  return { splash: splash, offline: offline, wizard: wizard, deviceSignin: deviceSignin, picker: picker, signedOut: signedOut, detail: detail, page: page, mount: mount, pop: pop, back: back,
+  return { padKey: padKey, splash: splash, offline: offline, wizard: wizard, deviceSignin: deviceSignin, picker: picker, signedOut: signedOut, detail: detail, page: page, mount: mount, pop: pop, back: back,
            menu: menu, closeMenu: closeMenu, toast: toast, esc: esc, fmtTime: fmtTime, act: act, runSearch: runSearch, current: current, hasMenu: function () { return !!menuEl; } };
 })();
