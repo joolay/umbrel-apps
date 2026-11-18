@@ -114,6 +114,15 @@ function render() {
   tn.textContent = tk.error ? 'Last notice failed: ' + tk.error
     : 'To link it, open Portal Admin > Changes and apply "Portal API key for each app" and "Dashboard notices from apps". No restart is needed.';
 
+  const sf = d.self || {}, sc = $('#selfChip'), sn = $('#selfNote');
+  $('#selfSw').checked = !!sf.enabled;
+  sc.textContent = sf.phase === 'updating' ? 'Updating now' : sf.update ? 'Update ' + (sf.latest || '') + ' waiting' : 'v' + (sf.version || '?') + ', up to date';
+  sc.className = 'chip ' + (sf.phase === 'updating' || sf.update ? 'warn' : 'ok');
+  const sr = sf.result;
+  sn.hidden = !(sr || sf.phase === 'updating');
+  sn.textContent = sf.phase === 'updating' ? 'Updating App Updater. Checks are paused and resume when it restarts.'
+    : sr && sr.ok ? 'Last self-update worked: ' + sr.from + ' to ' + sr.to + '.'
+    : sr ? 'Last self-update failed: ' + sr.error + (sf.retryAt ? '. Next try ' + when(sf.retryAt) + '.' : '.') : '';
   $('#list').replaceChildren(...(d.apps.length ? renderGroups(d) : [h('div', { class: 'empty' }, d.umbrel.connected ? 'No apps found yet.' : 'Connect to umbrelOS to list your apps.')]));
 
   $('#log').replaceChildren(...(d.log.length
@@ -207,6 +216,7 @@ $('#pauseSw').addEventListener('change', (e) => save({ paused: !e.target.checked
 $('#nightly').addEventListener('change', (e) => e.target.value && save({ nightlyTime: e.target.value }));
 $('#tz').addEventListener('change', (e) => save({ timezone: e.target.value.trim() }));
 $('#poll').addEventListener('change', (e) => save({ pollSeconds: Number(e.target.value) }));
+$('#selfSw').addEventListener('change', (e) => save({ selfUpdate: { enabled: e.target.checked } }));
 $('#tickerSw').addEventListener('change', (e) => save({ ticker: { enabled: e.target.checked } }));
 $('#quietSw').addEventListener('change', (e) => save({ quiet: { enabled: e.target.checked } }));
 $('#qStart').addEventListener('change', (e) => e.target.value && save({ quiet: { start: e.target.value } }));

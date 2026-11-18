@@ -11,6 +11,7 @@ const PORT = Number(process.env.PORT) || 3000;
 const DATA_DIR = process.env.DATA_DIR || '/data';
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const SELF_APP_ID = 'joolay-app-updater';
+const SELF_VERSION = require('./package.json').version;   // the version this process is running
 
 const UMBREL_CANDIDATES = [
   process.env.UMBREL_URL,
@@ -23,12 +24,15 @@ const UMBREL_CANDIDATES = [
 const MODES = new Set(['off', 'nightly', 'immediate']);
 const FAIL_BACKOFF_MS = 30 * 60 * 1000;
 const NIGHTLY_WINDOW_MIN = 60;
+const SELF_FAIL_BACKOFF_MS = 6 * 60 * 60 * 1000;   // after a failed self-update, wait this long before trying again
+const SELF_WAIT_MS = 15 * 60 * 1000;               // how long to wait for Umbrel to replace this container
 
 /* ------------------------------ persistence ------------------------------ */
 
 const SESSION_FILE = path.join(DATA_DIR, 'session.json');
 const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json');
 const LOG_FILE = path.join(DATA_DIR, 'log.json');
+const SELF_FILE = path.join(DATA_DIR, 'selfupdate.json');   // exists only while App Updater is updating itself
 
 function readJson(file, fallback) {
   try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return fallback; }
@@ -52,10 +56,13 @@ const DEFAULTS = {
   ticker: { enabled: false },  // announce finished updates in the JoolzApp dashboard news ticker (everyone sees it)
   groupOpen: {},               // { storeId: true | false } expanded/collapsed state of each store group
   seen: {},                    // { appId: lastAnnouncedVersion }
+  selfUpdate: { enabled: true }, // update App Updater itself, but only once every other auto-update has cleared
+  selfFailedAt: 0,             // when a self-update last failed (no new attempt for SELF_FAIL_BACKOFF_MS)
 };
 const settings = Object.assign({}, DEFAULTS, readJson(SETTINGS_FILE, {}));
 settings.quiet = Object.assign({}, DEFAULTS.quiet, settings.quiet);
 settings.ticker = Object.assign({}, DEFAULTS.ticker, settings.ticker);
+settings.selfUpdate = Object.assign({}, DEFAULTS.selfUpdate, settings.selfUpdate);
 const saveSettings = () => writeJson(SETTINGS_FILE, settings);
 
 // session.json holds the umbrelOS session token. When "stay connected" is chosen it also holds the
@@ -311,6 +318,7 @@ function isNewer(latest, installed) {
 
 const status = {
   lastCheck: null, lastError: null, registryProc: null, registryCount: 0, stores: new Map(), ticker: { at: null, error: null }, busy: {}, lastResult: {}, failedAt: {}, detectedAt: {},
+  self: { latest: null, update: false, phase: 'idle', result: null }, // phase: idle | updating (checking is paused while updating)
 };
 let installedCache = [];
 
@@ -334,6 +342,10 @@ async function check() {
   const list = await umbrelCall('apps.list', 'query');
   const installed = (Array.isArray(list) ? list : []).filter((a) => a && a.id && !a.error && a.id !== SELF_APP_ID); // this app never lists or updates itself
   const registry = await fetchRegistry();
+  { const me = (Array.isArray(list) ? list : []).find((a) => a && a.id === SELF_APP_ID);
+    const latest = registry && registry.get(SELF_APP_ID) ? registry.get(SELF_APP_ID) : null;
+    status.self.latest = latest;
+    status.self.update = !!(latest && isNewer(latest, SELF_VERSION) && (!me || me.state !== 'updating')); }
   installedCache = installed.map((a) => {
     const latest = registry && registry.get(a.id) ? registry.get(a.id) : null;
     const flagged = typeof a.updateAvailable === 'boolean' ? a.updateAvailable : null; // newer umbrelOS builds may report it directly
@@ -397,6 +409,7 @@ function allowedNow(appId) {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let queue = Promise.resolve(); // one app at a time
+let queueDepth = 0;            // updates waiting in or running on the queue
 
 function updateApp(item, reason) {
   const run = async () => {
@@ -429,13 +442,80 @@ function updateApp(item, reason) {
       delete status.busy[item.id];
     }
   };
+  queueDepth++;
+  const done = () => { queueDepth--; };
   queue = queue.then(run, run);
+  queue.then(done, done);
   return queue;
+}
+
+
+/* -------------------------- updating App Updater itself -------------------------
+   Only when every other auto-update has cleared. Just before it starts, checking is paused. umbrelOS then replaces this container, which
+   ends this process. The plan is saved first (SELF_FILE), so the new process can compare versions when it starts and resume checking.
+   If this process is still alive afterwards (the update failed), it logs that and resumes by itself. */
+
+function othersCleared(items) {
+  if (queueDepth > 0 || Object.keys(status.busy).length) return false;
+  return items.every((i) => i.state !== 'updating' && !(i.update && (settings.apps[i.id] || 'off') !== 'off'));
+}
+
+async function maybeSelfUpdate(items) {
+  if (!settings.selfUpdate.enabled || settings.paused || !status.self.update || status.self.phase !== 'idle') return;
+  if (Date.now() - (settings.selfFailedAt || 0) < SELF_FAIL_BACKOFF_MS) return;
+  if (inQuietHours() || !othersCleared(items)) return;
+  await selfUpdate();
+}
+
+async function selfUpdate() {
+  const target = status.self.latest;
+  status.self.phase = 'updating';
+  clearTimeout(timer);                                  // pause checking
+  writeJson(SELF_FILE, { from: SELF_VERSION, target, at: Date.now() });
+  addLog('info', 'Every other update is done. Pausing checks and updating App Updater itself: ' + SELF_VERSION + ' → ' + (target || 'newer version') + '…', SELF_APP_ID);
+  try {
+    await umbrelCall('apps.update', 'mutation', { appId: SELF_APP_ID }, SELF_WAIT_MS);
+    const until = Date.now() + SELF_WAIT_MS;
+    while (Date.now() < until) {                        // normally this process is ended before here
+      const list = await umbrelCall('apps.list', 'query');
+      const me = (Array.isArray(list) ? list : []).find((x) => x && x.id === SELF_APP_ID);
+      if (me && me.state !== 'updating') {
+        if (me.version && me.version !== SELF_VERSION) { addLog('ok', 'App Updater was updated to ' + me.version + ' and is restarting', SELF_APP_ID); break; }
+        throw new Error('umbrelOS finished but the version did not change');
+      }
+      await sleep(10000);
+    }
+    if (Date.now() >= until) throw new Error('Still updating after 15 minutes, check the app in umbrelOS');
+  } catch (err) {
+    settings.selfFailedAt = Date.now(); saveSettings();
+    status.self.result = { ok: false, at: Date.now(), error: err.message };
+    addLog('error', 'App Updater could not update itself: ' + err.message + '. Will not try again for 6 hours.', SELF_APP_ID);
+    try { fs.unlinkSync(SELF_FILE); } catch {}
+  } finally {
+    status.self.phase = 'idle';                         // only reached if this process survived: resume checking
+    schedule();
+  }
+}
+
+// Runs once at start-up: if a self-update was in progress, compare versions, log the outcome and resume checking.
+function resumeAfterSelfUpdate() {
+  const plan = readJson(SELF_FILE, null);
+  if (!plan) return;
+  try { fs.unlinkSync(SELF_FILE); } catch {}
+  if (plan.from && plan.from !== SELF_VERSION) {
+    status.self.result = { ok: true, at: Date.now(), from: plan.from, to: SELF_VERSION };
+    delete settings.selfFailedAt; saveSettings();
+    addLog('ok', 'App Updater updated itself: ' + plan.from + ' → ' + SELF_VERSION + '. Checking has resumed.', SELF_APP_ID);
+  } else {
+    settings.selfFailedAt = Date.now(); saveSettings();
+    status.self.result = { ok: false, at: Date.now(), error: 'restarted on the same version ' + SELF_VERSION };
+    addLog('error', 'App Updater restarted but is still on ' + SELF_VERSION + ' (wanted ' + (plan.target || 'a newer version') + '). Checking has resumed; will not try again for 6 hours.', SELF_APP_ID);
+  }
 }
 
 let ticking = false;
 async function tick(force) {
-  if (ticking) return;
+  if (ticking || status.self.phase === 'updating') return;   // checking is paused while App Updater updates itself
   ticking = true;
   try {
     if (!umbrel.base || (!umbrel.token && !umbrel.password)) return;
@@ -445,6 +525,7 @@ async function tick(force) {
       const mode = settings.apps[item.id];
       await updateApp(item, mode === 'immediate' ? 'detected, updating straight away' : 'nightly window');
     }
+    await maybeSelfUpdate(await check());
   } catch (err) {
     status.lastError = err.message;
     if (err.status !== 401) console.error('check failed:', err.message);
@@ -456,6 +537,7 @@ async function tick(force) {
 let timer = null;
 function schedule() {
   clearTimeout(timer);
+  if (status.self.phase === 'updating') return;   // resumed by the self-update once it ends, or by the next start
   const secs = Math.max(30, Math.min(3600, Number(settings.pollSeconds) || 60));
   timer = setTimeout(async () => { await tick(); schedule(); }, secs * 1000);
   timer.unref();
@@ -476,6 +558,7 @@ function snapshot() {
   return {
     umbrel: { connected: !!umbrel.token || !!umbrel.password, signedIn: !!umbrel.token, remember: !!umbrel.password, base: umbrel.base, error: umbrel.error },
     settings: { nightlyTime: settings.nightlyTime, timezone: settings.timezone, quiet: settings.quiet, paused: settings.paused, pollSeconds: settings.pollSeconds, groupOpen: settings.groupOpen, ticker: { enabled: settings.ticker.enabled, linked: !!portalConfig(), at: status.ticker.at, error: status.ticker.error } },
+    self: { version: SELF_VERSION, latest: status.self.latest, update: status.self.update, phase: status.self.phase, enabled: settings.selfUpdate.enabled, result: status.self.result, retryAt: settings.selfFailedAt ? settings.selfFailedAt + SELF_FAIL_BACKOFF_MS : null },
     apps,
     check: { at: status.lastCheck, error: status.lastError, registryProc: status.registryProc, registryCount: status.registryCount },
     log: log.slice(-60).reverse(),
@@ -566,6 +649,7 @@ const server = http.createServer(async (req, res) => {
       if (b.timezone !== undefined) { if (b.timezone && !validZone(b.timezone)) throw Object.assign(new Error('Unknown time zone'), { status: 400 }); settings.timezone = b.timezone; }
       if (b.paused !== undefined) settings.paused = !!b.paused;
       if (b.ticker && b.ticker.enabled !== undefined) settings.ticker.enabled = !!b.ticker.enabled;
+      if (b.selfUpdate && b.selfUpdate.enabled !== undefined) settings.selfUpdate.enabled = !!b.selfUpdate.enabled;
       if (b.groupOpen && typeof b.groupOpen.id === 'string' && b.groupOpen.id.length < 80) {
         settings.groupOpen = Object.assign({}, settings.groupOpen, { [b.groupOpen.id]: !!b.groupOpen.open });
       }
@@ -614,8 +698,9 @@ const server = http.createServer(async (req, res) => {
 });
 
 if (require.main === module) {
+  resumeAfterSelfUpdate();
   server.listen(PORT, '0.0.0.0', () => console.log('App Updater listening on :' + PORT));
   setTimeout(() => tick().then(schedule), 3000).unref();
 }
 
-module.exports = { server, isNewer, collectVersions };
+module.exports = { server, isNewer, collectVersions, othersCleared, resumeAfterSelfUpdate };
