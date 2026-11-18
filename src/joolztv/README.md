@@ -3,6 +3,9 @@
 Apple TV style ("glass") front end for the Stremio streaming server, locked behind JoolzApp accounts. Also the interface of the LG webOS TV app
 (a tiny launcher in [joolay/homebrew](https://github.com/joolay/homebrew) opens this site on the TV).
 
+## TV app self-update
+`GET /tv/update` (public, like `/healthz`) answers `{launcher:{id,version}}` with the newest TV launcher version, read from the Homebrew manifest (`TV_MANIFEST_URL`, default `joolay/homebrew` `webosbrew/manifest-flix.json`) and cached for an hour (stale copy on errors; `version:null` if never reachable). The launcher asks this right after it connects; if it is behind it calls the TV Updater service (`joolay/homebrew`, `app-updater-service`), which re-reads the feed itself and checks sha256 before installing, so the server only gives a hint. Tests: `test-tvupdate.js`.
+
 ## How it fits together
 ```
 browser / LG TV launcher ──>  web (server.js, port 3900; host 3901 = public Funnel address)  ──>  server (Stremio streaming server, never published)
