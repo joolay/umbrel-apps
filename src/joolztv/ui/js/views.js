@@ -307,11 +307,14 @@ var Views = (function () {
   }
   function qaSetup(id, kind, back) {
     qaAskTwice(kind, 'Quick Access for ' + ((Profiles.get(id) || {}).name || 'you'), back, function (code) {
+      Pad = null;                                           // the keypad does nothing while it saves, so extra presses can't start a second save
+      var t0 = Date.now(), tick = setInterval(function () { var n = Math.round((Date.now() - t0) / 1000); ferr(n < 6 ? 'Saving…' : 'Still saving… ' + n + ' s'); }, 1000);
       ferr('Saving…');
       Backend.quickSetup(kind, code, 'JoolzTV on ' + (/Web0S|webOS/i.test(navigator.userAgent) ? 'an LG TV' : 'a browser')).then(function (r) {
+        clearInterval(tick);
         Store.setFor(id, 'qa', { deviceId: r.deviceId, deviceSecret: r.deviceSecret, kind: kind }); Store.setFor(id, 'qaasked', 1);
         toast('Quick Access is on for this TV', 5000); back(true);
-      }).catch(function (e) { ferr(e.message); setTimeout(function () { back(); }, 2500); });
+      }).catch(function (e) { clearInterval(tick); ferr(e.message); setTimeout(function () { back(); }, 6000); });
     });
   }
   var QA_KINDS = [{ label: '4 digit PIN', sub: 'Quickest to enter', k: 'pin4' }, { label: '6 digit PIN', sub: 'A bit harder to guess', k: 'pin6' }, { label: 'Pattern', sub: 'Join 4 or more dots', k: 'pattern' }];
