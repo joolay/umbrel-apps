@@ -1955,16 +1955,20 @@ async function viewChanges() {
   try { r = await Promise.race([acctFetch('/admin/changes'), new Promise((_, rej) => setTimeout(() => rej(new Error('Portal Admin did not answer in time.')), 60000))]); }
   catch (e) { main().innerHTML = `<h1>PocketBase changes</h1><div class="card"><p class="error">${esc(e.message)}</p><button class="btn primary" id="chg-retry">Try again</button></div>`; $('#chg-retry').onclick = () => route(); return; }
   const chip = (c) => c.status === 'done' ? '<span class="chip ok">up to date</span>' : c.status === 'error' ? '<span class="chip bad">problem</span>' : `<span class="chip warn">${c.plan.length} to do</span>`;
-  main().innerHTML = `<h1>PocketBase changes</h1><p class="sub">Changes that ship with Portal Admin. Each one shows exactly what it will do to PocketBase. Nothing happens until you press Apply, and applying twice is harmless.</p>
-    ${r.changes.map((c) => `<div class="card" data-id="${esc(c.id)}"><div class="row spread"><h2>${esc(c.title)}</h2>${chip(c)}</div><p class="muted small">${esc(c.summary)}</p>
-      ${c.error ? `<p class="error">${esc(c.error)}</p>` : c.plan.length ? `<ul>${c.plan.map((t) => `<li>${esc(t)}</li>`).join('')}</ul><button class="btn primary" data-apply>Apply ${c.plan.length} change${c.plan.length === 1 ? '' : 's'}</button>` : '<p class="muted small">Nothing to do.</p>'}
-      <div class="chg-out">${chgNotes.id === c.id ? chgNotes.notes.map((n) => `<p class="muted small">${esc(n)}</p>`).join('') : ''}</div></div>`).join('') || '<p class="muted">No changes are waiting.</p>'}
-    ${r.history.length ? `<div class="card"><h2>Recent</h2><table><tbody>${r.history.map((h) => `<tr><td class="small">${esc(fmtDay(h.at))}</td><td><code>${esc(h.id)}</code></td><td>${h.ok ? '<span class="chip ok">done</span>' : '<span class="chip warn">partly</span>'}</td></tr>`).join('')}</tbody></table></div>` : ''}`;
+  // Applied changes leave the list and live in the Archive (with the day they were applied, when known), so only what still needs you is shown.
+  const open = r.changes.filter((c) => c.status !== 'done'), archived = r.changes.filter((c) => c.status === 'done');
+  const when = (id) => { const h = r.history.find((x) => x.id === id && x.ok); return h ? fmtDay(h.at) : ''; };
+  const justDone = chgNotes.notes && chgNotes.notes.length ? r.changes.find((c) => c.id === chgNotes.id) : null;
+  main().innerHTML = `<h1>PocketBase changes</h1><p class="sub">Changes that ship with Portal Admin, or arrive through your change inbox. Each one shows exactly what it will do to PocketBase. Nothing happens until you press Apply, and applying twice is harmless. Applied changes move to the Archive.</p>
+    ${justDone ? `<div class="card"><h2>${esc(justDone.title)}</h2><span class="chip ok">applied</span>${chgNotes.notes.map((n) => `<p class="muted small">${esc(n)}</p>`).join('')}</div>` : ''}
+    ${open.map((c) => `<div class="card" data-id="${esc(c.id)}"><div class="row spread"><h2>${esc(c.title)}</h2>${chip(c)}</div><p class="muted small">${esc(c.summary)}</p>
+      ${c.error ? `<p class="error">${esc(c.error)}</p>` : `<ul>${c.plan.map((t) => `<li>${esc(t)}</li>`).join('')}</ul><button class="btn primary" data-apply>Apply ${c.plan.length} change${c.plan.length === 1 ? '' : 's'}</button>`}</div>`).join('') || '<p class="muted">No changes are waiting.</p>'}
+    ${archived.length ? `<details class="card"><summary><b>Archive</b> <span class="muted small">(${archived.length} applied)</span></summary><table><tbody>${archived.map((c) => `<tr><td>${esc(c.title)}</td><td class="small muted" style="white-space:nowrap">${esc(when(c.id))}</td><td><span class="chip ok">done</span></td></tr>`).join('')}</tbody></table></details>` : ''}`;
   main().onclick = guard(async (e) => {
     const b = e.target.closest('[data-apply]'); if (!b) return; const card = b.closest('.card'); b.disabled = true; b.textContent = 'Applying…';
     const j = await acctFetch('/admin/changes/apply', { id: card.dataset.id });
     await audit('pocketbase.change', card.dataset.id, { did: j.did, left: j.left });
-    toast(j.ok ? 'Applied' : 'Applied, but some items are still pending', !j.ok);
+    toast(j.ok ? 'Applied, moved to the Archive' : 'Applied, but some items are still pending', !j.ok);
     chgNotes = { id: card.dataset.id, notes: j.notes || [] }; await viewChanges();
   });
 }

@@ -78,7 +78,7 @@ module.exports = function makeChanges({ pbx, installedApps, APPS_DIR, DATA_DIR, 
         if (Date.now() - t0 > 5000) console.warn(`[changes] ${s.id} took ${Date.now() - t0} ms to check`);
         return o;
       }));
-      return { changes: out.filter((o) => !(o.inbox && o.status === 'done')), history: history().slice(0, 20) };
+      return { changes: out, history: history().slice(0, 20) };
     },
     // A JoolzApp app installed after the security changes were applied gets the same as the others had from them: its own limited
     // login and a Portal API key, written into its data folder as soon as it appears. It never gets the superuser login (Apps > Connect
