@@ -1,0 +1,8 @@
+{
+  "id": "portal-url",
+  "title": "Set the JoolzApp address",
+  "summary": "QR sign-in on the TV (JoolzTV) needs the public address of the JoolzApp Portal.",
+  "ops": [
+    { "op": "setting", "key": "portal.url", "value": "https://joolzapp.macaw-chroma.ts.net", "note": "Public address of the JoolzApp Portal (used by QR sign-in and Back to Dashboard)" }
+  ]
+}

@@ -61,6 +61,9 @@ module.exports = function makeChanges({ pbx, installedApps, APPS_DIR, DATA_DIR, 
     esc: (s) => String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'"),
   };
 
+  const inbox = require('./inbox')(ctx);   // small data-only change files from your own repo's portal-changes/ folder (see inbox.js)
+  const allSets = async () => [...sets(), ...(await inbox.load())];
+
   const history = () => { try { return JSON.parse(fs.readFileSync(HISTORY, 'utf8')); } catch { return []; } };
   const note = (entry) => { try { fs.mkdirSync(DATA_DIR, { recursive: true }); fs.writeFileSync(HISTORY, JSON.stringify([entry, ...history()].slice(0, 100), null, 1)); } catch {} };
 
@@ -68,14 +71,14 @@ module.exports = function makeChanges({ pbx, installedApps, APPS_DIR, DATA_DIR, 
   return {
     async list() {
       const limit = (p, ms) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error('PocketBase is taking too long to answer. Try again in a moment.')), ms))]);
-      const out = await Promise.all(sets().map(async (s) => {
-        const o = { id: s.id, title: s.title, summary: s.summary }, t0 = Date.now();
+      const out = await Promise.all((await allSets()).map(async (s) => {
+        const o = { id: s.id, title: s.title, summary: s.summary, inbox: !!s.inbox }, t0 = Date.now();
         try { await limit(ctx.needNewPocketBase(), 15000); o.plan = await limit(s.plan(ctx), 20000); o.status = o.plan.length ? 'pending' : 'done'; }
         catch (e) { o.plan = []; o.status = 'error'; o.error = String(e.message || e); }
         if (Date.now() - t0 > 5000) console.warn(`[changes] ${s.id} took ${Date.now() - t0} ms to check`);
         return o;
       }));
-      return { changes: out, history: history().slice(0, 20) };
+      return { changes: out.filter((o) => !(o.inbox && o.status === 'done')), history: history().slice(0, 20) };
     },
     // A JoolzApp app installed after the security changes were applied gets the same as the others had from them: its own limited
     // login and a Portal API key, written into its data folder as soon as it appears. It never gets the superuser login (Apps > Connect
@@ -102,7 +105,8 @@ module.exports = function makeChanges({ pbx, installedApps, APPS_DIR, DATA_DIR, 
       return 'linked (Portal API key written to its data folder)';
     },
     async apply(id) {
-      const s = sets().find((x) => x.id === id); if (!s) throw Object.assign(new Error('Unknown change.'), { status: 404 });
+      if (id.startsWith('inbox:')) inbox.refresh();
+      const s = (await allSets()).find((x) => x.id === id); if (!s) throw Object.assign(new Error('Unknown change.'), { status: 404 });
       if (busy) throw Object.assign(new Error('Another change is running. Try again in a moment.'), { status: 409 });
       busy = true;
       try {
