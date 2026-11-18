@@ -72,3 +72,7 @@ Admin > Paid apps (Yoco) locks an app behind payment using the existing `portal.
 
 ## Look for an existing community add-on or service first
 Before building a feature from scratch (skip intro/credits, subtitles, metadata, ...), search for a community Stremio add-on or public community database that already provides it, and say what was found. Build our own only when nothing usable exists, and keep it as the fallback.
+
+## TV-specific views and Quick Access
+- A specialised TV browsing view (remote/D-pad navigation, 1920x1080 layout, Chromium 53 build) belongs only in JoolzApp apps that are meant for the TV, such as JoolzTV. Do not bake TV-specific architecture into other apps unless asked.
+- Quick Access (PIN or pattern, `src/portal-admin/quickaccess.js`) is a convenience on top of the main password, never a replacement for it. Admins reset a person's main password as usual; there is no separate admin tool for Quick Access beyond "Sign out everywhere" (Admin > Users > Sign-in), which also removes the person's Quick Access devices.
