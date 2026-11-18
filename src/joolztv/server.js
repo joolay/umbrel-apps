@@ -703,7 +703,16 @@ async function notifyRoutes(req, res, p, u) {
 /* ---------- Quick Access on this TV: PIN or pattern, checked by Portal Admin and tied to this device ---------- */
 async function quickRoute(req, res, p, u) {
   if (!(pb.portalOn && pb.portalOn())) return send(res, 503, { code: "quick_unavailable", message: "Quick Access needs JoolzTV to be linked to Portal Admin." });
-  const call = async (fn, args) => { try { return await pb.portalCall(fn, args); } catch (e) { if (e instanceof pb.PBError && e.status >= 400 && e.status < 500) { send(res, e.status, { code: "bad_request", message: e.message }); return undefined; } throw e; } };
+  // Portal Admin has 15 s to answer; a hung call is cut off with a clear message (and a line in this app's log) instead of leaving the TV on "Saving…".
+  const call = async (fn, args) => {
+    const t0 = Date.now(); let timer;
+    try { return await Promise.race([pb.portalCall(fn, args), new Promise((_, rej) => { timer = setTimeout(() => rej(new pb.PBError(504, "Portal Admin did not answer in 15 seconds. Check that Portal Admin is running and up to date, then try again.")), 15000); })]); }
+    catch (e) {
+      console.error("Quick Access " + fn + " failed after " + (Date.now() - t0) + " ms: " + (e && e.message));
+      if (e instanceof pb.PBError && ((e.status >= 400 && e.status < 500) || e.status === 504)) { send(res, e.status, { code: e.status === 504 ? "portal_timeout" : "bad_request", message: e.message }); return undefined; }
+      throw e;
+    } finally { clearTimeout(timer); if (Date.now() - t0 > 3000) console.log("Quick Access " + fn + " took " + (Date.now() - t0) + " ms"); }
+  };
   if (p === "/api/quick" && req.method === "GET") { const r = await call("qa.list", [u.id]); return r === undefined ? undefined : send(res, 200, { devices: r }); }
   if (p === "/api/quick" && req.method === "POST") {
     const b = await jsonBody(req); const r = await call("qa.setup", [u.id, { kind: String(b.kind || ""), code: String(b.code || ""), label: String(b.label || "JoolzTV on a TV").slice(0, 40) }]);
