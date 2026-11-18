@@ -24,6 +24,7 @@ const INTERNAL = process.env.STREAM_INTERNAL || "http://127.0.0.1:11470";   // h
 const REQUIRE_ACCOUNTS = !/^(0|false|no)$/i.test(process.env.REQUIRE_ACCOUNTS || "1");
 const subsync = require("./subsync");
 const streamcfg = require("./streamcfg"), thumbs = require("./thumbs"), marks = require("./marks"), community = require("./community"), tmdb = require("./tmdb"), tvupdate = require("./tvupdate");
+const qrsignin = require("./qrsignin")({ portalCall: (fn, args) => pb.portalCall(fn, args), portalUrl: () => (pb.portalUrl ? pb.portalUrl() : "") });
 const FFMPEG = process.env.FFMPEG || "ffmpeg", FFPROBE = process.env.FFPROBE || "ffprobe";
 const APP_NAME = process.env.POCKETBASE_APP_NAME || "JoolzTV";
 const MAX_PROFILES = 12, MAX_BODY = 2 * 1024 * 1024, MAX_RESUME = 200, MAX_LIST = 500, STREAM_TTL = 12 * 3600e3;
@@ -227,11 +228,11 @@ async function householdRoutes(req, res, p) {
     let caller = null;
     if (list.length) { caller = await requireUser(req, res); if (!caller) return; if (!profileOf(h, caller.id) && !caller.isAdmin) return send(res, 403, { code: "not_in_household", message: "Only household members can add profiles." }); }
     if (list.length >= MAX_PROFILES) return send(res, 409, { code: "household_full", message: "A household can have up to " + MAX_PROFILES + " profiles." });
-    const email = String(body.email || "").trim().toLowerCase();
-    if (!validEmail(email) || !body.password) return send(res, 400, { code: "bad_login", message: "Enter that person's JoolzApp email and password." });
+    const email = String(body.email || "").trim().toLowerCase(), byQr = !!(body.qr && typeof body.qr === "object");
+    if (!byQr && (!validEmail(email) || !body.password)) return send(res, 400, { code: "bad_login", message: "Enter that person's JoolzApp email and password." });
     let j;
-    try { j = await pb.login(email, String(body.password)); await withGuard(j.record); }
-    catch (e) { if (e instanceof pb.PBError && e.status === 400) return send(res, 400, { code: "bad_login", message: "That email and password don't match a JoolzApp account." }); throw e; }
+    try { j = await loginWith(byQr ? { qr: body.qr } : { email, password: body.password }); await withGuard(j.record); }
+    catch (e) { if (e.code === "bad_login") return send(res, e.status, { code: e.code, message: e.message }); if (e instanceof pb.PBError && e.status === 400) return send(res, 400, { code: "bad_login", message: "That email and password don't match a JoolzApp account." }); throw e; }
     const g = gateOf(j.record); if (!g.ok) return send(res, 403, { code: g.reason, message: g.message });
     if (profileOf(h, j.record.id)) return send(res, 409, { code: "already_member", message: "That account already has a profile in this household." });
     const now = Date.now(), id = crypto.randomBytes(5).toString("hex");
@@ -793,6 +794,14 @@ function serveDevtest(req, res, name) {
 }
 const configJs = () => "window.FLIX_CONFIG = " + JSON.stringify({ internalServerUrl: INTERNAL, appName: APP_NAME, accounts: REQUIRE_ACCOUNTS }) + ";\nwindow.JTV = { backend: true, maxProfiles: " + MAX_PROFILES + " };\n";
 
+/* ---------- sign-in by password, or by an approved QR code ---------- */
+// Returns what pb.login returns ({ record }). A QR approval was made by a signed-in person in the JoolzApp Portal; from here on it is the same as a password sign-in.
+async function loginWith(body) {
+  if (body && body.qr && typeof body.qr === "object") { const id = qrsignin.claim(body.qr.id, String(body.qr.secret || "")); return { record: await pb.getUser(id) }; }
+  return pb.login(String(body.email || "").trim().toLowerCase(), String(body.password || ""));
+}
+const qrLabel = req => /Web0S|webOS/i.test(String(req.headers["user-agent"] || "")) ? "JoolzTV on an LG TV" : "JoolzTV on a browser";
+
 /* ---------- account routes (public, throttled) ---------- */
 async function accountRoutes(req, res, p) {
   if (!pb.enabled) return send(res, 503, { code: "accounts_unavailable", message: "Accounts aren't set up yet. Ask the admin to connect PocketBase in Portal Admin." });
@@ -801,12 +810,20 @@ async function accountRoutes(req, res, p) {
       if (throttled(req, "login", 10, 600e3)) return send(res, 429, { code: "slow_down", message: "Too many attempts. Try again in a few minutes." });
       const body = await jsonBody(req);
       try {
-        const j = await pb.login(String(body.email || "").trim().toLowerCase(), String(body.password || ""));
+        const j = await loginWith(body);
         await withGuard(j.record);
         const g = gateOf(j.record); if (!g.ok) return send(res, 403, { code: g.reason, message: g.message });
         touchHousehold(hh(), j.record.id, true);                 // signing in with a password is use: it restarts the household's 90 days
         return send(res, 200, { token: mintSession(j.record.id), user: publicUser(j.record) });
-      } catch (e) { if (e instanceof pb.PBError && e.status === 400) return send(res, 400, { code: "bad_login", message: "That email and password don't match." }); throw e; }
+      } catch (e) { if (e.code === "bad_login") return send(res, e.status, { code: e.code, message: e.message }); if (e instanceof pb.PBError && e.status === 400) return send(res, 400, { code: "bad_login", message: "That email and password don't match." }); throw e; }
+    }
+    if (p === "/api/account/qr/start" && req.method === "POST") {
+      if (throttled(req, "qrstart", 10, 600e3)) return send(res, 429, { code: "slow_down", message: "Too many QR codes. Try again in a few minutes." });
+      try { return send(res, 200, await qrsignin.start(qrLabel(req))); } catch (e) { if (e.code) return send(res, e.status, { code: e.code, message: e.message }); throw e; }
+    }
+    if (p === "/api/account/qr/poll" && req.method === "POST") {
+      if (throttled(req, "qrpoll", 400, 600e3)) return send(res, 429, { code: "slow_down", message: "Too many checks. Try again in a few minutes." });
+      const b = await jsonBody(req); return send(res, 200, await qrsignin.poll(b.id, String(b.secret || "")));
     }
     if (p === "/api/account/forgot" && req.method === "POST") {
       if (throttled(req, "forgot", 5, 3600e3)) return send(res, 429, { code: "slow_down", message: "Too many attempts. Try again later." });
