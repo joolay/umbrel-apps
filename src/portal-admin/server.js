@@ -324,7 +324,7 @@ async function quickRoute(req, res) {
   const tok = String(req.headers.authorization || ''), user = tok ? await personFromToken(tok) : null;
   if (!user) return send(res, 401, { message: 'Sign in to continue.' });
   if (b.action === 'setup') return reply(() => quick.setup(user.id, { kind: b.kind, code: b.code, label: b.label }));
-  if (b.action === 'list') return reply(async () => ({ devices: await quick.list(user.id) }));
+  if (b.action === 'list') return reply(async () => ({ devices: await quick.list(user.id), kind: (await quick.status(user.id)).kind }));
   if (b.action === 'remove') return reply(() => quick.remove(user.id, b.deviceId));
   if (b.action === 'signout') return reply(() => quick.signOut(user.id));
   return send(res, 400, { message: 'Unknown action.' });

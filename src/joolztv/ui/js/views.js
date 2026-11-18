@@ -305,32 +305,50 @@ var Views = (function () {
       } });
     } });
   }
-  function qaSetup(id, kind, back) {
+  var QA_KINDS = [{ label: '4 digit PIN', sub: 'Quickest to enter', k: 'pin4' }, { label: '6 digit PIN', sub: 'A bit harder to guess', k: 'pin6' }, { label: 'Pattern', sub: 'Join 4 or more dots', k: 'pattern' }];
+  function qaDevName() { return 'JoolzTV on ' + (/Web0S|webOS/i.test(navigator.userAgent) ? 'an LG TV' : 'a browser'); }
+  function qaStore(id, r, kind) { Store.setFor(id, 'qa', { deviceId: r.deviceId, deviceSecret: r.deviceSecret, kind: r.kind || kind }); Store.setFor(id, 'qaasked', 1); }
+  function qaOn(id, back) {                                 // the person already has their one code: just turn it on for this TV
+    toast('Turning Quick Access on…', 8000);
+    Backend.quickSetup('', '', qaDevName()).then(function (r) { qaStore(id, r); toast('Quick Access is on for this TV', 5000); back(true); }).catch(function (e) { toast(e.message, 6000); back(); });
+  }
+  function qaSetup(id, kind, back) {                        // choose (or change) the person's one code on this TV
     qaAskTwice(kind, 'Quick Access for ' + ((Profiles.get(id) || {}).name || 'you'), back, function (code) {
       Pad = null;                                           // the keypad does nothing while it saves, so extra presses can't start a second save
       var t0 = Date.now(), tick = setInterval(function () { var n = Math.round((Date.now() - t0) / 1000); ferr(n < 6 ? 'Saving…' : 'Still saving… ' + n + ' s'); }, 1000);
       ferr('Saving…');
-      Backend.quickSetup(kind, code, 'JoolzTV on ' + (/Web0S|webOS/i.test(navigator.userAgent) ? 'an LG TV' : 'a browser')).then(function (r) {
-        clearInterval(tick);
-        Store.setFor(id, 'qa', { deviceId: r.deviceId, deviceSecret: r.deviceSecret, kind: kind }); Store.setFor(id, 'qaasked', 1);
+      Backend.quickSetup(kind, code, qaDevName()).then(function (r) {
+        clearInterval(tick); qaStore(id, r, kind);
         toast('Quick Access is on for this TV', 5000); back(true);
       }).catch(function (e) { clearInterval(tick); ferr(e.message); setTimeout(function () { back(); }, 6000); });
     });
   }
-  var QA_KINDS = [{ label: '4 digit PIN', sub: 'Quickest to enter', k: 'pin4' }, { label: '6 digit PIN', sub: 'A bit harder to guess', k: 'pin6' }, { label: 'Pattern', sub: 'Join 4 or more dots', k: 'pattern' }];
-  function qaMenu(id, after) {                              // Settings > Quick Access (and the one-time offer after the first sign-in)
-    var cur = qaGet(id), opts = QA_KINDS.map(function (o) { return { label: o.label, sub: o.sub, k: o.k, selected: !!cur && cur.kind === o.k }; });
-    if (cur) opts.push({ label: 'Turn Quick Access off for this TV', k: 'off' });
-    menu('Quick Access', opts, function (o) {
-      if (o.k === 'off') { Backend.quickRemove(cur.deviceId).catch(function () {}); Store.delFor(id, 'qa'); toast('Quick Access is off for this TV', 4000); return after && after(); }
-      if (cur) { Backend.quickRemove(cur.deviceId).catch(function () {}); Store.delFor(id, 'qa'); }
-      qaSetup(id, o.k, function () { if (after) after(); });
-    }, 'Faster than a password, but less secure. 5 wrong tries switch it off.');
+  function qaChoices(have, cur) {                           // one code for the whole account: turn it on here, or set / change it
+    var opts = [];
+    if (have && !cur) opts.push({ label: 'Turn on for this TV', sub: 'Your ' + qaKindName(have) + ', the same on all your devices', k: 'on' });
+    QA_KINDS.forEach(function (o) { opts.push({ label: have ? 'Set a new ' + o.label : o.label, sub: o.sub, k: o.k, selected: have === o.k && !!cur }); });
+    return opts;
   }
-  function qaOffer(id, next) {                              // asked once per profile, right after signing in
-    if (Store.getFor(id, 'qaasked', 0) || qaGet(id)) return next();
+  function qaMenu(id, after) {                              // Settings > Quick Access
+    var cur = qaGet(id);
+    Backend.quickStatus().then(function (s) { return s.kind; }, function () { return null; }).then(function (have) {
+      var opts = qaChoices(have, cur);
+      if (cur) opts.push({ label: 'Turn Quick Access off for this TV', k: 'off' });
+      menu('Quick Access', opts, function (o) {
+        if (o.k === 'off') { Backend.quickRemove(cur.deviceId).catch(function () {}); Store.delFor(id, 'qa'); toast('Quick Access is off for this TV', 4000); return after && after(); }
+        if (cur) { Backend.quickRemove(cur.deviceId).catch(function () {}); Store.delFor(id, 'qa'); }
+        if (o.k === 'on') return qaOn(id, function () { if (after) after(); });
+        qaSetup(id, o.k, function () { if (after) after(); });
+      }, 'One code for all your JoolzApp devices. Faster than a password, but less secure. 5 wrong tries switch it off on this TV.');
+    });
+  }
+  function qaOffer(id, next) {                              // asked once per profile, right after signing in; next() brings the home screen back when it is done
+    if (Store.getFor(id, 'qaasked', 0) || qaGet(id)) return;
     Store.setFor(id, 'qaasked', 1);
-    menu('Add Quick Access?', [{ label: 'Not now', k: 'no' }].concat(QA_KINDS), function (o) { if (o.k === 'no') return next(); qaSetup(id, o.k, function () { next(); }); }, 'Sign in to this profile with a PIN or pattern instead of your password. Faster, but less secure.');
+    Backend.quickStatus().then(function (s) { return s.kind; }, function () { return null; }).then(function (have) {
+      var opts = [{ label: 'Not now', k: 'no' }].concat(have ? [{ label: 'Turn on Quick Access', sub: 'Your ' + qaKindName(have) + ', the same on all your devices', k: 'on' }] : QA_KINDS);
+      menu('Add Quick Access?', opts, function (o) { if (o.k === 'no') return next(); if (o.k === 'on') return qaOn(id, next); qaSetup(id, o.k, next); }, 'Sign in to this profile with a PIN or pattern instead of your password. Faster, but less secure.');
+    });
   }
   function qaSignin(id) {
     var q = qaGet(id), p = Profiles.get(id); if (!q || !p) return signin(p);
@@ -380,7 +398,7 @@ var Views = (function () {
       if (Store.active() !== id) return;
       Theme.load(); Dl.start(); watchLoad(); clearInterval(Watch.t); Watch.t = setInterval(function () { watchLoad(); }, 300000);
       Sync.run(function () { var v = current(); if (v && PAGES.indexOf(v.name) >= 0 && v.name === 'home') page('home'); });
-      var goHome = function () { page('home'); setTimeout(function () { if (current() && current().name === 'home') qaOffer(id, function () {}); }, 1200); };
+      var goHome = function () { page('home'); setTimeout(function () { if (current() && current().name === 'home') qaOffer(id, function () { page('home'); }); }, 1200); };
       if (!Api.quality()) return qualityStep(goHome);          // a household set up before this question existed
       goHome();
     });

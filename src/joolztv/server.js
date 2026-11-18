@@ -714,6 +714,7 @@ async function quickRoute(req, res, p, u) {
     } finally { clearTimeout(timer); if (Date.now() - t0 > 3000) console.log("Quick Access " + fn + " took " + (Date.now() - t0) + " ms"); }
   };
   if (p === "/api/quick" && req.method === "GET") { const r = await call("qa.list", [u.id]); return r === undefined ? undefined : send(res, 200, { devices: r }); }
+  if (p === "/api/quick/status" && req.method === "GET") { const r = await call("qa.status", [u.id]); return r === undefined ? undefined : send(res, 200, { kind: (r && r.kind) || null }); }   // the person's one code: which kind, or null
   if (p === "/api/quick" && req.method === "POST") {
     const b = await jsonBody(req); const r = await call("qa.setup", [u.id, { kind: String(b.kind || ""), code: String(b.code || ""), label: String(b.label || "JoolzTV on a TV").slice(0, 40) }]);
     return r === undefined ? undefined : send(res, 201, r);

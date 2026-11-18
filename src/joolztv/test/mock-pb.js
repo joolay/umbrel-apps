@@ -33,7 +33,7 @@ const flag = n => fs.existsSync(path.join(process.env.DATA_DIR || ".", n));
 exports.portalOn = () => Object.keys(secrets()).length > 0 || flag("portal-qa.on") || process.env.JTV_QA === "1";
 exports.__signedOut = () => { try { return JSON.parse(fs.readFileSync(path.join(process.env.DATA_DIR || ".", "signed-out.json"), "utf8")); } catch { return {}; } };
 // Quick Access as Portal Admin does it (in memory): setup / login with a lockout after 5 wrong codes / list / remove
-const qaDev = {};
+const qaDev = {}, qaAcct = {};
 // QR sign-in: the test writes <DATA_DIR>/qr-approve.json { "<id>": "<userId>" | "deny" } to play the phone that scans and approves.
 const qrs = {}, approvals = () => { try { return JSON.parse(fs.readFileSync(path.join(process.env.DATA_DIR || ".", "qr-approve.json"), "utf8")); } catch { return {}; } };
 exports.portalUrl = async () => "https://joolzapp.test";
@@ -41,7 +41,9 @@ exports.portalCall = async (fn, a) => {
   if (fn === "appSecret") return secrets()[a[0]] || "";
   if (fn === "qr.start") { const id = require("crypto").randomBytes(16).toString("base64url"), secret = "s" + id; qrs[id] = secret; return { id, secret, expiresIn: 120 }; }
   if (fn === "qr.poll") { const [id, secret] = a; if (qrs[id] !== secret) return { status: "expired" }; const v = approvals()[id]; if (!v) return { status: "pending" }; delete qrs[id]; return v === "deny" ? { status: "denied" } : { status: "approved", userId: v }; }
-  if (fn === "qa.setup") { const [uid, o] = a; if (!/^(\d{4}|\d{6}|p:[0-8]{4,9})$/.test(o.code)) throw new PBError(400, "That is not a valid PIN or pattern."); const id = require("crypto").randomBytes(16).toString("base64url"), secret = require("crypto").randomBytes(32).toString("base64url"); qaDev[id] = { uid, secret, code: o.code, kind: o.kind, label: o.label, fails: 0 }; return { deviceId: id, deviceSecret: secret }; }
+  if (fn === "qa.status") return { kind: (qaAcct[a[0]] || {}).kind || null };
+  if (fn === "qa.setup" && !a[1].code) { const [uid, o] = a, ac = qaAcct[uid]; if (!ac) throw new PBError(400, "Choose a PIN or pattern first."); const id = require("crypto").randomBytes(16).toString("base64url"), secret = require("crypto").randomBytes(32).toString("base64url"); qaDev[id] = { uid, secret, code: ac.code, kind: ac.kind, label: o.label, fails: 0 }; return { deviceId: id, deviceSecret: secret, kind: ac.kind }; }
+  if (fn === "qa.setup") { const [uid, o] = a; qaAcct[uid] = { kind: o.kind, code: o.code }; if (!/^(\d{4}|\d{6}|p:[0-8]{4,9})$/.test(o.code)) throw new PBError(400, "That is not a valid PIN or pattern."); const id = require("crypto").randomBytes(16).toString("base64url"), secret = require("crypto").randomBytes(32).toString("base64url"); qaDev[id] = { uid, secret, code: o.code, kind: o.kind, label: o.label, fails: 0 }; return { deviceId: id, deviceSecret: secret }; }
   if (fn === "qa.login") { const [id, secret, code] = a, d = qaDev[id]; if (!d || d.secret !== secret) throw new PBError(401, "Quick Access did not work. Sign in with your password."); if (d.code !== code) { d.fails++; if (d.fails >= 5) { delete qaDev[id]; throw new PBError(423, "Too many wrong tries. Quick Access was switched off on this device: sign in with your password."); } throw new PBError(401, "Wrong PIN. " + (5 - d.fails) + " tries left."); } d.fails = 0; return { userId: d.uid, kind: d.kind }; }
   if (fn === "qa.list") return Object.keys(qaDev).filter(k => qaDev[k].uid === a[0]).map(k => ({ id: k, kind: qaDev[k].kind, label: qaDev[k].label }));
   if (fn === "qa.remove") { if (qaDev[a[1]] && qaDev[a[1]].uid === a[0]) delete qaDev[a[1]]; return { removed: 1 }; }

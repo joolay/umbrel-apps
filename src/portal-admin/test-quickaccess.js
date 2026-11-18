@@ -2,7 +2,7 @@
 "use strict";
 const http = require("http"), path = require("path"), fs = require("fs"), os = require("os");
 let fails = 0; const ok = (c, m) => { if (!c) { fails++; console.log("FAIL", m); } else console.log("ok  ", m); };
-const rows = []; let nextId = 1, impersonate = true; const patches = [];
+const rows = []; const dev = (id) => rows.filter(x => x.key === "qa." + id)[0], devs = () => rows.filter(x => /^qa\./.test(x.key) && x.key !== "qa.code"); let nextId = 1, impersonate = true; const patches = [];
 const matchF = (f, r) => { const get = (k) => { const m = new RegExp(k + " = '([^']*)'").exec(f); return m ? m[1] : null; }; const u = get("user"), a = get("app"), k = get("key"), kk = /key ~ 'qa\.'/.test(f);
   if (u !== null && r.user !== u) return false; if (a !== null && r.app !== a) return false; if (k !== null && !(kk && /\|\|/.test(f)) && r.key !== k) return false;
   if (kk && !(r.key.startsWith("qa.") || (/portal\.signedOutAt/.test(f) && r.key === "portal.signedOutAt"))) return false; return r.scope === "user"; };
@@ -35,17 +35,24 @@ const nap = ms => new Promise(r => setTimeout(r, ms));
   e = await bad(Q.setup("userAAAA1", { kind: "pattern", code: "p:01210" })); ok(e && e.status === 400, "a pattern cannot use a dot twice");
   const d = await Q.setup("userAAAA1", { kind: "pin4", code: "4821", label: "Ann's <phone>" });
   ok(d.deviceId.length === 22 && d.deviceSecret.length >= 40, "setup hands the device an id and a secret");
-  ok(rows.length === 1 && rows[0].secret === true && rows[0].key === "qa." + d.deviceId && rows[0].scope === "user" && rows[0].user === "userAAAA1", "it is stored as a hidden per-person row");
+  ok(rows.length === 2 && dev(d.deviceId).secret === true && dev(d.deviceId).scope === "user" && dev(d.deviceId).user === "userAAAA1" && rows.some(x => x.key === "qa.code" && x.secret === true), "it is stored as hidden per-person rows: the one code and this device");
   const dump = JSON.stringify(rows); ok(!dump.includes("4821") && !dump.includes(d.deviceSecret), "neither the code nor the device secret is stored");
-  ok(rows[0].value.label === "Ann's phone", "the label is cleaned");
+  ok(dev(d.deviceId).value.label === "Ann's phone", "the label is cleaned");
   let r = await Q.login(d.deviceId, d.deviceSecret, "4821"); ok(r.userId === "userAAAA1" && r.kind === "pin4", "the right device secret and code sign in");
   await gap(); e = await bad(Q.login(d.deviceId, "x".repeat(43), "4821")); ok(e && e.status === 401 && !/tries/.test(e.message), "a wrong device secret is refused and reveals nothing");
   await gap(); e = await bad(Q.login(d.deviceId, d.deviceSecret, "0000")); ok(e && e.status === 401 && e.left === 4, "a wrong PIN is refused and counted (4 left)");
   e = await bad(Q.login(d.deviceId, d.deviceSecret, "4821")); ok(e && e.status === 429, "tries are spaced out");
-  await gap(); r = await Q.login(d.deviceId, d.deviceSecret, "4821"); ok(r.userId === "userAAAA1" && rows[0].value.fails === 0, "a right code resets the counter");
+  await gap(); r = await Q.login(d.deviceId, d.deviceSecret, "4821"); ok(r.userId === "userAAAA1" && dev(d.deviceId).value.fails === 0, "a right code resets the counter");
   for (let i = 0; i < 4; i++) { await gap(); e = await bad(Q.login(d.deviceId, d.deviceSecret, "1111")); }
-  await gap(); e = await bad(Q.login(d.deviceId, d.deviceSecret, "2222")); ok(e && e.status === 423 && rows.length === 0, "5 wrong codes in a row switch Quick Access off on that device");
+  await gap(); e = await bad(Q.login(d.deviceId, d.deviceSecret, "2222")); ok(e && e.status === 423 && devs().length === 0, "5 wrong codes in a row switch Quick Access off on that device");
   await gap(); e = await bad(Q.login(d.deviceId, d.deviceSecret, "4821")); ok(e && e.status === 401, "...and even the right code no longer works");
+  // one code per person: a second device needs no new code, a changed code applies to every device
+  const d2 = await Q.setup("userAAAA1", { label: "TV" }); ok(d2.kind === "pin4" && devs().length === 1 && (await Q.status("userAAAA1")).kind === "pin4", "a second device is turned on without choosing a code again");
+  await gap(); ok((await Q.login(d2.deviceId, d2.deviceSecret, "4821")).userId === "userAAAA1", "...and signs in with the same code");
+  e = await bad(Q.setup("userNEW0001", { label: "x" })); ok(e && e.status === 400, "turning it on needs a code to exist first");
+  await Q.setup("userAAAA1", { kind: "pin4", code: "9999", label: "Phone" }); await gap(); ok((await Q.login(d2.deviceId, d2.deviceSecret, "9999")).userId === "userAAAA1" && devs().length === 2, "changing the digits changes it for every device");
+  await Q.setup("userAAAA1", { kind: "pin6", code: "123456", label: "Phone" }); ok(devs().length === 1 && (await Q.status("userAAAA1")).kind === "pin6", "changing the kind switches the other devices off (they must be turned on again)");
+  await gap(); e = await bad(Q.login(d2.deviceId, d2.deviceSecret, "9999")); ok(e && e.status === 401, "...the old code no longer works");
   // pattern + 6 digit
   const p = await Q.setup("userAAAA1", { kind: "pattern", code: "p:03678" }); await gap();
   r = await Q.login(p.deviceId, p.deviceSecret, "p:03678"); ok(r.kind === "pattern", "a pattern signs in");
