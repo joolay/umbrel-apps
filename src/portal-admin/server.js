@@ -17,6 +17,7 @@ const paywall = require('./paywall');
 const appkeys = require('./appkeys');
 const makeChanges = require('./changes');
 const makeAppApi = require('./appapi');
+const qrlogin = require('./qrlogin')();
 const CHILD_REQ = '__child_account__', SPOUSE_REQ = '__spouse_account__';
 
 const PORT = Number(process.env.PORT || 3000);
@@ -295,6 +296,18 @@ async function guardiansRoute(req, res) {
   } catch (e) { return send(res, 500, { message: String(e.message || e) }); }
 }
 
+// ---- QR sign-in, phone side: a signed-in person looks at a request from a TV (GET ?id=) and approves or denies it (POST {id, approve}). ----
+async function qrRoute(req, res) {
+  const tok = String(req.headers.authorization || '');
+  const user = tok ? await personFromToken(tok) : null;
+  if (!user) return send(res, 401, { message: 'Sign in to continue.' });
+  const reply = (fn) => { try { return send(res, 200, fn()); } catch (e) { return send(res, e.status || 500, { message: String(e.message || e) }); } };
+  if (req.method === 'GET') return reply(() => qrlogin.info(new URL(req.url, 'http://x').searchParams.get('id'), user));
+  if (req.method !== 'POST') return send(res, 405, { message: 'Method not allowed' });
+  let b; try { b = JSON.parse(await readBody(req, 4096)); } catch { return send(res, 400, { message: 'Invalid request.' }); }
+  return reply(() => qrlogin.decide(b.id, user, b.approve === true));
+}
+
 // ---- Family and account details. These are managed here once for every JoolzApp app (the apps only link to this page). ----
 // Who is signed in, as a JoolzApp person: their own account token, or a PocketBase superuser token mapped to the account with the same email.
 // So the admin uses Family, Settings, events and everything else exactly as everyone else does.
@@ -435,7 +448,7 @@ async function signup(req, res) {
   } catch (e) { return send(res, e instanceof pbx.PBError && e.status === 503 ? 503 : 500, { message: String(e.message || e) }); }
 }
 
-const appapi = makeAppApi({ pbx, DATA_DIR: pbx.dataDir, readBody, send });
+const appapi = makeAppApi({ qrlogin, pbx, DATA_DIR: pbx.dataDir, readBody, send });
 const notices = require('./notices')({ pbx, forgetTouch: appapi.forgetTouch });
 const changes = makeChanges({ pbx, installedApps, APPS_DIR, DATA_DIR: pbx.dataDir, appKeys: appapi.keys });
 const handle = async (req, res) => {
@@ -445,6 +458,7 @@ const handle = async (req, res) => {
 
     if (pathname === '/signup-config') { if (req.method !== 'GET') return send(res, 405, { message: 'Method not allowed' }); return signupConfig(req, res); }
     if (pathname === '/guardians') return guardiansRoute(req, res);
+    if (pathname === '/qr') return qrRoute(req, res);
     if (pathname === '/family' || pathname === '/events' || pathname === '/paywall' || pathname === '/pay' || pathname === '/pay/status' || pathname === '/family/users' || pathname === '/account/dob' || pathname === '/account/username' || pathname === '/account/guardian') return accountRoutes(req, res, pathname);
     if (pathname === '/yoco/webhook') {
       if (req.method !== 'POST') return send(res, 405, { message: 'Method not allowed' });
@@ -556,7 +570,7 @@ const handle = async (req, res) => {
 
 // JoolzApp Portal (the separate, internet-facing home screen app) passes these on for people: /user/<route> on the apps-only port,
 // with its own Portal API key. They are ALWAYS handled as public, user-only requests, and only the routes listed here exist.
-const PORTAL_ROUTES = new Set(['/signup-config', '/signup', '/forgot', '/guardians', '/family', '/family/users', '/events', '/paywall', '/pay', '/pay/status', '/account/dob', '/account/username', '/account/guardian', '/api/active', '/yoco/webhook']);
+const PORTAL_ROUTES = new Set(['/signup-config', '/signup', '/forgot', '/guardians', '/family', '/family/users', '/events', '/paywall', '/pay', '/pay/status', '/account/dob', '/account/username', '/account/guardian', '/qr', '/api/active', '/yoco/webhook']);
 const portalBad = new Map();
 function fromPortal(req, res) {
   const ip = String(req.socket.remoteAddress || ''), now = Date.now(), fails = (portalBad.get(ip) || []).filter((t) => now - t < 600e3);

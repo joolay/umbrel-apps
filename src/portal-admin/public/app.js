@@ -333,12 +333,30 @@ $('#login-forgot').onclick = async (e) => {
 window.addEventListener('hashchange', () => { if (resetToken()) return showReset(); state.token && route(); });
 function route() {
   let [, view = 'home', arg] = location.hash.split('/');
-  if (state.role === 'user') view = (view === 'me' || view === 'family' || view === 'paid') ? view : 'home';
-  const v = { home: viewHome, overview: viewOverview, global: viewGlobal, apps: viewApps, users: viewUsers, requests: viewRequests, cleanup: viewCleanup, audit: viewAudit, changes: viewChanges, setup: viewSetup, me: viewMe, family: viewFamily, paywall: viewPaywall, keys: viewKeys, paid: viewPaid }[view] || viewHome;
+  if (state.role === 'user') view = (view === 'me' || view === 'family' || view === 'paid' || view === 'qr') ? view : 'home';
+  const v = { home: viewHome, overview: viewOverview, global: viewGlobal, apps: viewApps, users: viewUsers, requests: viewRequests, cleanup: viewCleanup, audit: viewAudit, changes: viewChanges, setup: viewSetup, me: viewMe, family: viewFamily, paywall: viewPaywall, keys: viewKeys, paid: viewPaid, qr: viewQr }[view] || viewHome;
   if (!v || v === viewHome) view = 'home';
   setBar(view); $('#acct').open && $('#acct').close(); $('#sheet').open && $('#sheet').close();
   main().innerHTML = '<p class="muted">Loading…</p>';
   guard(async (a) => { if (await needDob()) return; if (await needUsername()) return; await v(a); })(arg ? decodeURIComponent(arg) : undefined);
+}
+
+/* ---------- QR sign-in: the phone side. A TV (or any device) shows a QR code that opens #/qr/<id>; you approve it here. ---------- */
+async function viewQr(id) {
+  const show = (h) => { main().innerHTML = `<h1>Sign in a TV</h1><div class="card">${h}</div>`; };
+  const back = '<p><a class="btn" href="#/home">Back to the dashboard</a></p>';
+  let info;
+  try { info = await acctFetch('/qr?id=' + encodeURIComponent(id || '')); }
+  catch (e) { return show(`<p>${esc(e.message)}</p>${back}`); }
+  show(`<p><b>${esc(info.label)}</b> wants to sign in as <b>${esc(state.actor)}</b>.</p>
+    <p class="muted small">Only approve if you just opened this on your own TV or device and scanned its QR code yourself. Asked ${esc(String(info.ageSeconds))} seconds ago.</p>
+    <p><button class="btn primary" id="qr-ok">Approve</button> <button class="btn" id="qr-no">Deny</button></p>`);
+  const decide = (approve) => guard(async () => {
+    $('#qr-ok').disabled = $('#qr-no').disabled = true;
+    try { await acctFetch('/qr', { id, approve }); show(approve ? `<p><b>Done.</b> ${esc(info.label)} is signing you in. You can close this page.</p>${back}` : `<p>Denied. Nothing was signed in.</p>${back}`); }
+    catch (e) { show(`<p>${esc(e.message)}</p>${back}`); }
+  });
+  $('#qr-ok').onclick = decide(true); $('#qr-no').onclick = decide(false);
 }
 
 /* ---------- Setup banner ---------- */

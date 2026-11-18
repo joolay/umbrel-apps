@@ -30,4 +30,12 @@ exports.requestPasswordReset = async () => {};
 const fs = require("fs"), path = require("path");
 const secrets = () => { try { return JSON.parse(fs.readFileSync(path.join(process.env.DATA_DIR || ".", "portal-secrets.json"), "utf8")); } catch { return {}; } };
 exports.portalOn = () => Object.keys(secrets()).length > 0;
-exports.portalCall = async (fn, a) => { if (fn === "appSecret") return secrets()[a[0]] || ""; throw new PBError(404, "no " + fn); };
+// QR sign-in: the test writes <DATA_DIR>/qr-approve.json { "<id>": "<userId>" | "deny" } to play the phone that scans and approves.
+const qrs = {}, approvals = () => { try { return JSON.parse(fs.readFileSync(path.join(process.env.DATA_DIR || ".", "qr-approve.json"), "utf8")); } catch { return {}; } };
+exports.portalUrl = async () => "https://joolzapp.test";
+exports.portalCall = async (fn, a) => {
+  if (fn === "appSecret") return secrets()[a[0]] || "";
+  if (fn === "qr.start") { const id = require("crypto").randomBytes(16).toString("base64url"), secret = "s" + id; qrs[id] = secret; return { id, secret, expiresIn: 120 }; }
+  if (fn === "qr.poll") { const [id, secret] = a; if (qrs[id] !== secret) return { status: "expired" }; const v = approvals()[id]; if (!v) return { status: "pending" }; delete qrs[id]; return v === "deny" ? { status: "denied" } : { status: "approved", userId: v }; }
+  throw new PBError(404, "no " + fn);
+};

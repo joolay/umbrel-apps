@@ -2,7 +2,7 @@ manifestVersion: 1
 id: joolay-portal-admin
 category: developer
 name: Portal Admin
-version: "0.24.0"
+version: "0.25.0"
 tagline: One admin panel for all your custom PocketBase apps
 description: >-
   A central admin panel for your custom apps that use PocketBase. Register each app, then manage
@@ -21,7 +21,7 @@ gallery: []
 path: ""
 defaultUsername: ""
 defaultPassword: ""
-releaseNotes: "New: Admin > App keys. Each app that needs a private key (JoolzTV: TMDB) gets a box here; paste it once and it is stored hidden in PocketBase and never shown again. Run Changes > App keys first."
+releaseNotes: "New: QR sign-in for JoolzApp accounts. An app (JoolzTV first) shows a QR code, a signed-in phone approves it in the Portal, and the app signs that person in; nothing secret travels to the TV. Also fixes the image start-up (appkeys.js was missing from the Docker image). Also: New: Admin > App keys. Each app that needs a private key (JoolzTV: TMDB) gets a box here; paste it once and it is stored hidden in PocketBase and never shown again. Run Changes > App keys first."
 submitter: joolay
 submission: https://github.com/joolay/umbrel-apps
 icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-portal-admin/icon.svg
