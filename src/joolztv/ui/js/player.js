@@ -3,9 +3,15 @@ var Player = (function () {
   var S = null;   // active session
   var Warm = {};  // next episodes whose first minute was read ahead: videoId -> {infoHash, fileIdx}
   /* control icons: drawn here (not emoji, which TVs colour in orange) and filled with the button's own text colour */
+  var ICON2 = {
+    speed: '<svg class="ico" viewBox="0 0 48 48" width="46" height="46"><g fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 33a17 17 0 1 1 34 0"/><path d="M24 33l8-10"/><path d="M12 33h3M33 33h3M24 17v3"/></g></svg>',
+    subs: '<svg class="ico" viewBox="0 0 48 48" width="46" height="46"><g fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="10" width="38" height="28" rx="6"/><path d="M12 22h10M26 22h10M12 30h6M22 30h14"/></g></svg>',
+    src: '<svg class="ico" viewBox="0 0 48 48" width="46" height="46"><g fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 14h32M8 24h32M8 34h32"/><circle cx="16" cy="14" r="3.5" fill="currentColor"/><circle cx="32" cy="24" r="3.5" fill="currentColor"/><circle cx="20" cy="34" r="3.5" fill="currentColor"/></g></svg>'
+  };
   var ICON = { back: '<svg class="ico" viewBox="0 0 48 48" width="46" height="46"><g fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M24.4 14.9 L17.0 13.9 L19.8 6.9"/><path d="M17.0 13.9 A14 14 0 1 1 10.1 27.2"/></g><text x="24" y="31" text-anchor="middle" font-size="13.5" font-weight="800" fill="currentColor" style="font-family:inherit">10</text></svg>', fwd: '<svg class="ico" viewBox="0 0 48 48" width="46" height="46"><g transform="matrix(-1 0 0 1 48 0)" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M24.4 14.9 L17.0 13.9 L19.8 6.9"/><path d="M17.0 13.9 A14 14 0 1 1 10.1 27.2"/></g><text x="24" y="31" text-anchor="middle" font-size="13.5" font-weight="800" fill="currentColor" style="font-family:inherit">10</text></svg>', play: '<svg class="ico" viewBox="0 0 48 48" width="46" height="46"><path d="M17 11.5v25a1.6 1.6 0 0 0 2.4 1.4l21-12.5a1.6 1.6 0 0 0 0-2.8l-21-12.5A1.6 1.6 0 0 0 17 11.5z" fill="currentColor"/></svg>', pause: '<svg class="ico" viewBox="0 0 48 48" width="46" height="46"><rect x="13" y="11" width="7.5" height="26" rx="2.6" fill="currentColor"/><rect x="27.5" y="11" width="7.5" height="26" rx="2.6" fill="currentColor"/></svg>' };
 
   function $(sel) { return S && S.el.querySelector(sel); }
+  function speedLabel(r) { var b = $('[data-pact=speed] .rt'); if (b) b.textContent = r + 'x'; }
   function say(msg) { var m = $('.pmsg'); if (m) { m.textContent = msg || ''; m.style.display = msg ? 'block' : 'none'; } }
   function spin(msg) { var s = $('.pspin'); if (s) { s.textContent = msg || ''; s.style.display = msg ? 'block' : 'none'; } }
 
@@ -16,7 +22,7 @@ var Player = (function () {
       '<div class="tprev glass" id="tprev" style="display:none"><div class="timg img" id="timg"></div><div class="tt" id="ttime"></div></div><div class="pbar glass"><div class="seek f" id="seek"><div class="buf"></div><div class="pos"></div><div class="knob"></div></div>' +
       '<div class="times"><span id="tcur">0:00</span><span id="tdur">0:00</span></div>' +
       '<div class="pctl"><span class="cbtn ic f" data-pact="back10" aria-label="Back 10 seconds">' + ICON.back + '</span><span class="cbtn ic big f" data-pact="toggle" id="bplay" aria-label="Play or pause">' + ICON.pause + '</span><span class="cbtn ic f" data-pact="fwd10" aria-label="Forward 10 seconds">' + ICON.fwd + '</span>' +
-      '<span class="cbtn f" data-pact="speed">Speed 1x</span><span class="cbtn f" data-pact="subs">Subtitles</span><span class="cbtn f" data-pact="sources">Sources</span>' + '</div></div></div>';
+      '<span class="cbtn ic f" data-pact="speed" aria-label="Playback speed" title="Speed">' + ICON2.speed + '<b class="rt">1x</b></span><span class="cbtn ic f" data-pact="subs" aria-label="Subtitles" title="Subtitles">' + ICON2.subs + '</span><span class="cbtn ic f" data-pact="sources" aria-label="Sources" title="Sources">' + ICON2.src + '</span>' + '</div></div></div>';
     var el = Views.mount('player', h, { cls: 'player', onBack: function () { close(); Views.pop(); return true; }, onClose: cleanup });
     S = { el: el, info: info, v: el.querySelector('#pv'), learnedFor: {}, buf: { speed: 0, peers: 0, len: 0, fill: null }, hold: false, streams: [], groups: [], idx: -1, tried: {}, rate: 1, subs: null, ui: true, uiT: null, lastSave: 0, tick: null, buffT: null, ended: false, gotTime: false };
     keepPitch(S.v);
@@ -96,7 +102,7 @@ var Player = (function () {
       }).catch(function () {});
     }, 9000);
     if (S.subsIdx !== i) { S.subsIdx = i; S.hash = null; S.size = 0; loadSubs(true); }     // new file: find subtitles for that file
-    var btn = $('[data-pact=speed]'); if (btn) btn.textContent = 'Speed 1x';
+    speedLabel(1);
   }
   function next(why, strong) {
     if (!S) return;
@@ -465,7 +471,7 @@ var Player = (function () {
       opts.push({ header: g.label === 'Other' ? 'Other resolutions' : g.label });
       g.items.forEach(function (s) {
         var i = S.streams.indexOf(s), name = String(s.title || s.name || 'Stream').split('\n')[0], q = s._q || {};
-        opts.push({ q: '👤 ' + q.seeds, label: name.slice(0, 90), sub: q.size, idx: i, selected: i === S.idx });
+        opts.push({ q: '👤 ' + q.seeds, label: name, sub: q.size, idx: i, selected: i === S.idx, file: true, now: i === S.idx, pref: i === 0 });
       });
     });
     Views.menu(missing ? missing + ' is not available – choose an alternative' : 'Choose a source – top 3 by seeds per resolution', opts, function (o) {
@@ -477,13 +483,13 @@ var Player = (function () {
     Views.menu('Playback speed', rates.map(function (r) { return { label: r + 'x' + (r > 1 ? '  (sound speeds up, same pitch)' : ''), selected: r === S.rate }; }), function (o, i) {
       var sess = S, r = rates[i], v = S.v, t0 = v.currentTime, w0 = Date.now(), paused = v.paused;
       setRate(r);
-      var b = $('[data-pact=speed]'); if (b) b.textContent = 'Speed ' + r + 'x';
+      speedLabel(r);
       if (r === 1 || paused || S.hold) return;
       // check the device really runs at that speed (some TVs ignore it); if not, go back to normal speed instead of leaving picture and sound out of step
       setTimeout(function () {
         if (S !== sess || sess.rate !== r || v.paused || sess.hold || v.seeking) return;
         var wall = (Date.now() - w0) / 1000, ran = (v.currentTime - t0) / wall;
-        if (wall > 1.5 && ran < r * 0.75) { setRate(1); var bb = $('[data-pact=speed]'); if (bb) bb.textContent = 'Speed 1x'; Views.toast('This device cannot play at ' + r + 'x, so it is back to normal speed', 5000); }
+        if (wall > 1.5 && ran < r * 0.75) { setRate(1); speedLabel(1); Views.toast('This device cannot play at ' + r + 'x, so it is back to normal speed', 5000); }
       }, 3500);
     });
   }

@@ -88,6 +88,11 @@ var Views = (function () {
     var h = '<div class="menu glass"><h3>' + esc(title) + '</h3><div class="list mvs" data-pad-top="10">';
     opts.forEach(function (o, i) {
       if (o.header) { h += '<div class="mh">' + esc(o.header) + '</div>'; return; }
+      if (o.file) {                                       // a source file: the name is cropped to fit, the size sits at the right edge, the playing and preferred ones are marked
+        h += '<div class="opt src f' + (o.now ? ' now' : '') + (o.pref ? ' pref' : '') + '" data-act="pick" data-i="' + i + '"><span class="q">' + esc(o.q) + '</span><span class="ol">' + esc(o.label) + '</span>' +
+          (o.now ? '<span class="tagx now">\u25b6 Playing</span>' : '') + (o.pref ? '<span class="tagx pref">\u2605 Preferred</span>' : '') + '<small class="os">' + esc(o.sub || '') + '</small></div>';
+        return;
+      }
       h += '<div class="opt f" data-act="pick" data-i="' + i + '">' + (o.q != null ? '<span class="q">' + esc(o.q) + '</span>' : '') + esc(o.label) + (o.sub ? '<small>' + esc(o.sub) + '</small>' : '') + '</div>';
     });
     h += '</div>' + (hint ? '<div class="hint">' + esc(hint) + '</div>' : '') + '</div>';
@@ -124,7 +129,7 @@ var Views = (function () {
   function card(m, extra) {
     var k = ref(m), bar = '';
     if (extra && extra.pct != null) bar = '<div class="barbg"></div><div class="bar" style="width:' + Math.round(extra.pct * 206) + 'px"></div>';
-    return '<div class="card f" data-act="open" data-k="' + k + '"><div class="img" data-bg="' + esc(m.poster || '') + '"></div>' + bar + '</div>';
+    return '<div class="card f" data-act="open" data-k="' + k + '">' + (m.poster ? '<div class="img" data-bg="' + esc(m.poster) + '"></div>' : '<div class="img np"><span class="npt">' + esc(m.name || '') + '</span></div>') + bar + '</div>';
   }
   function rowHtml(title, metas, extraFn) {
     var h = '<div class="row"><h2>' + esc(title) + '</h2><div class="hs">';
@@ -678,7 +683,7 @@ var Views = (function () {
   /* ---------- search ---------- */
   function searchPage() {
     ++browseToken;
-    replaceAll('search', '<div class="art img"></div><div class="art-shade"></div>' + topbar('search') + '<div class="vs" id="main"><div class="grid" style="padding-top:150px"><div class="sbar"><input id="q" class="field f" type="text" style="width:960px" placeholder="Search movies, TV shows and people" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="search"><div class="btn glass f mic" data-act="speak" aria-label="Search by voice">' + MIC + '<span>Speak</span></div></div><div class="hint" id="vhint"></div><div id="res"></div></div></div>',
+    replaceAll('search', '<div class="art img"></div><div class="art-shade"></div>' + topbar('search') + '<div class="vs" id="main"><div class="grid sc" style="padding-top:150px"><div class="sbar"><input id="q" class="field f" type="text" style="width:960px" placeholder="Search movies, TV shows and people" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="search"><div class="btn glass f mic ic" data-act="speak" aria-label="Search by voice" title="Speak">' + MIC + '</div></div><div class="hint" id="vhint"></div><div id="res"></div></div></div>',
       { cls: 'noart', onBack: function () { page('home'); return true; } });
     Nav.first('#q');
     var q = document.getElementById('q');

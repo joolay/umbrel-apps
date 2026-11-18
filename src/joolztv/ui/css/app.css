@@ -96,6 +96,14 @@ body.pointer { cursor: pointer; }
 .opt .q { display: inline-block; min-width: 130px; font-weight: 800; color: #64d2ff; }
 .opt.focus { background: #f5f5f7; color: #111; }
 .opt.focus small { color: #555; } .opt.focus .q { color: #0a63c9; }
+.opt.src { display: -webkit-flex; display: flex; -webkit-align-items: center; align-items: center; }
+.opt.src .q { -webkit-flex: none; flex: none; }
+.opt.src .ol { -webkit-flex: 1 1 0; flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.opt.src .os { -webkit-flex: none; flex: none; margin-left: 24px; min-width: 110px; text-align: right; }
+.tagx { -webkit-flex: none; flex: none; margin-left: 14px; padding: 2px 12px; border-radius: 99px; font-size: 18px; font-weight: 800; letter-spacing: .3px; }
+.tagx.now { background: rgba(100,210,255,.22); color: #64d2ff; } .tagx.pref { background: rgba(255,214,10,.2); color: #ffd60a; }
+.opt.src.pref { box-shadow: inset 0 0 0 2px rgba(255,214,10,.55); } .opt.src.now { background: rgba(100,210,255,.16); }
+.opt.focus .tagx.now { background: rgba(10,99,201,.15); color: #0a63c9; } .opt.focus .tagx.pref { background: rgba(176,128,0,.2); color: #8a6400; }
 .mh { margin: 18px 0 10px 8px; font-size: 22px; font-weight: 800; letter-spacing: 1.5px; color: var(--dim); text-transform: uppercase; }
 .hint { color: var(--dim); font-size: 22px; margin-top: 18px; line-height: 1.4; }
 #toast { position: absolute; left: 50%; bottom: 70px; -webkit-transform: translateX(-50%); transform: translateX(-50%); z-index: 99; padding: 16px 34px; border-radius: 34px; font-size: 26px; display: none; max-width: 1500px; background: rgba(30,32,40,.92); border: 2px solid var(--line); box-shadow: 0 20px 50px rgba(0,0,0,.5); }
@@ -282,3 +290,15 @@ html.light .pk.focus { background: #1d1d1f; color: #fff; border-color: #1d1d1f; 
 html.phone, html.phone body, html.phone #app, html.phone .view, html.phone .splash { height: var(--ph); }
 html.phone .form, html.phone .form.pad { width: 640px; padding: 40px 44px; zoom: 2.76; }
 html.phone .form[style] { width: 640px !important; }
+
+/* player: icon buttons for speed / subtitles / sources; the speed shows its value beside the icon */
+.cbtn.ic .rt { display: inline-block; vertical-align: middle; margin: -4px 0 0 -4px; font-size: 22px; font-weight: 800; }
+.cbtn.ic[data-pact=speed] { width: auto; min-width: 88px; padding: 0 18px 0 22px; }
+/* search: bar and results centred; the speak button sits right beside the bar */
+.grid.sc { padding-left: 0; padding-right: 0; text-align: center; }
+.grid.sc .sbar { text-align: center; } .grid.sc .hint, .grid.sc .skel, .grid.sc .gl { text-align: center; }
+.grid.sc .prow { text-align: center; white-space: normal; } .grid.sc .card { margin-left: 12px; margin-right: 12px; }
+.btn.mic.ic { padding: 0; width: 76px; height: 76px; line-height: 76px; border-radius: 38px; text-align: center; margin-left: 14px; } .btn.mic.ic svg { margin: -4px 0 0 0; }
+/* a title that has a source but no cover art: a glass tile carrying the title */
+.card .img.np { background: linear-gradient(150deg, rgba(120,130,255,.45), rgba(255,120,190,.35)); display: -webkit-flex; display: flex; -webkit-align-items: center; align-items: center; -webkit-justify-content: center; justify-content: center; text-align: center; }
+.card .img.np .npt { padding: 14px; font-size: 24px; font-weight: 800; line-height: 1.2; color: rgba(255,255,255,.92); overflow: hidden; max-height: 100%; word-wrap: break-word; }
