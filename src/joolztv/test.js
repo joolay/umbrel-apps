@@ -145,6 +145,13 @@ const T = tok => ({ "x-jtv-token": tok });
   r = await req("POST", "/api/prefetch", { infoHash: HASH, fileIdx: 0, from: 600, to: 100 }, T(ann)); ok(r.code === 400, "prefetch: the range must go forward");
   r = await req("POST", "/api/prefetch", { infoHash: HASH, fileIdx: 0, from: 0, to: 999999999 }, T(ann)); ok(r.code === 400, "prefetch: a range over 80 MB is refused");
   r = await req("POST", "/api/prefetch", { infoHash: HASH, fileIdx: 0, from: 100, to: 399 }, T(ann)); ok(r.code === 200 && r.json.ok === true && r.json.bytes === 300, "prefetch reads exactly that range and keeps nothing (" + (r.json && r.json.bytes) + " bytes)");
+  // appearance (saved on the account)
+  r = await req("GET", "/api/theme"); ok(r.code === 401, "theme needs a sign-in");
+  r = await req("GET", "/api/theme", undefined, T(ann)); ok(r.json.mode === "dark", "the default appearance is dark");
+  r = await req("PUT", "/api/theme", { mode: "purple" }, T(ann)); ok(r.code === 400, "an unknown appearance is refused");
+  r = await req("PUT", "/api/theme", { mode: "auto" }, T(ann)); ok(r.json.mode === "auto", "auto is saved");
+  await req("POST", "/api/sync", { state: { resume: {}, list: {} } }, T(ann));
+  r = await req("GET", "/api/theme", undefined, T(ann)); ok(r.json.mode === "auto", "syncing watch progress does not wipe it");
   // notify me: an episode that is not out yet
   const nbr = (await req("POST", "/api/account/login", { email: "p4@x.com", password: "pw4" })).json.token;
   const nap = ms => new Promise(x => setTimeout(x, ms)), VID = "tt0111161:1:2";

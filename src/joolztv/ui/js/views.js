@@ -281,7 +281,7 @@ var Views = (function () {
     Api.setStreamBase('');
     Backend.household().then(function (h) { Profiles.setAll(h.profiles); Profiles.setManageable(h.manageable); Api.setPrefs(h.prefs); }).catch(function () {}).then(function () { return Tmdb.init(); }).then(function () {
       if (Store.active() !== id) return;
-      Dl.start(); watchLoad(); clearInterval(Watch.t); Watch.t = setInterval(function () { watchLoad(); }, 300000);
+      Theme.load(); Dl.start(); watchLoad(); clearInterval(Watch.t); Watch.t = setInterval(function () { watchLoad(); }, 300000);
       Sync.run(function () { var v = current(); if (v && PAGES.indexOf(v.name) >= 0 && v.name === 'home') page('home'); });
       if (!Api.quality()) return qualityStep(function () { page('home'); });          // a household set up before this question existed
       page('home');
@@ -977,6 +977,7 @@ var Views = (function () {
       profile: '<div class="lbl">Profile – ' + esc(pr ? pr.name : '') + '</div>' +
       '<div class="srow f" data-act="members">Household: add, rename or remove profiles</div>' +
       '<div class="srow f" data-act="picker">Switch profile</div>' +
+      '<div class="srow f" data-act="theme">Appearance: <b>' + ({ dark: 'Dark', light: 'Light', auto: 'Auto (light from sunrise to sunset)' })[Theme.mode()] + '</b></div>' +
       '<div class="srow f" data-act="signout">Sign out of this profile on this TV</div>',
       sources: '<div class="lbl">Sources (the whole household)</div>' +
       '<div class="srow f" data-act="quality">Preferred quality for automatic playback: <b>' + esc(Api.quality() || 'Not chosen') + '</b></div>' +
@@ -1070,6 +1071,7 @@ var Views = (function () {
       var bb = current().el.querySelector('#libbtn'); if (bb) bb.textContent = yes ? '✓  In My List' : '+  My List';
       return toast(yes ? 'Added to My List' : 'Removed from My List');
     }
+    if (a === 'theme') return menu('Appearance', [{ label: 'Dark', m: 'dark' }, { label: 'Light', m: 'light' }, { label: 'Auto  –  light from sunrise to sunset where you are', m: 'auto' }].map(function (o) { o.selected = o.m === Theme.mode(); return o; }), function (o) { Theme.set(o.m); settingsPage(); });
     if (a === 'quality') return menu('Preferred quality', QUALITY_INFO.map(function (q) { return { label: q[0] + '  –  ' + q[1], q: q[0], selected: q[0] === Api.quality() }; }), function (o) { savePrefs({ quality: o.q }, function () { if (current() && current().name === 'sources') sourcesPage(null, 'quality'); else settingsPage(); }); });
     if (a === 'setquality') { var qq = el.getAttribute('data-q'); return savePrefs({ quality: qq }, function () { var cb = window._qcont; window._qcont = null; if (cb) cb(); }); }
     if (a === 'sourcespage') return sourcesPage();

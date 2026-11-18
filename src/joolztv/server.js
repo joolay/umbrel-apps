@@ -307,7 +307,15 @@ function mergeMap(cur, src, cap) {
   if (ids.length > cap) ids.sort((a, b) => (cur[b].ts || 0) - (cur[a].ts || 0)).slice(cap).forEach(id => { delete cur[id]; });
   return cur;
 }
-function userData(id) { const d = readJson(userFile(id), {}); return { resume: d.resume || {}, list: d.list || {} }; }
+function userData(id) { const d = readJson(userFile(id), {}); return { resume: d.resume || {}, list: d.list || {}, theme: d.theme }; }
+/* dark / light / auto (sunrise to sunset) belongs to the person's account, not the device */
+async function themeRoute(req, res, u) {
+  const d = readJson(userFile(u.id), {});
+  if (req.method === "GET") return send(res, 200, { mode: ["dark", "light", "auto"].includes(d.theme) ? d.theme : "dark" });
+  const m = (await jsonBody(req)).mode;
+  if (!["dark", "light", "auto"].includes(m)) return send(res, 400, { code: "bad_request", message: "Pick Dark, Light or Auto." });
+  d.theme = m; writeJson(userFile(u.id), d); return send(res, 200, { mode: m });
+}
 function syncRoutes(req, res, p, u) {
   if (p === "/api/state" && req.method === "GET") return send(res, 200, { state: userData(u.id) });
   return (async () => {
@@ -844,6 +852,7 @@ const server = http.createServer(async (req, res) => {
       if (p === "/api/thumb" && req.method === "GET") return await thumbRoute(req, res, u);
       if (p === "/api/server/cache" && (req.method === "GET" || req.method === "PUT")) return await cacheRoute(req, res, u);
       if (p.startsWith("/api/downloads")) return await downloadsRoutes(req, res, p, u);
+      if (p === "/api/theme" && (req.method === "GET" || req.method === "PUT")) return await themeRoute(req, res, u);
       if (p.startsWith("/api/notify")) return await notifyRoutes(req, res, p, u);
       if (p === "/api/prefetch" && req.method === "POST") return await prefetchRoute(req, res, u);
       if (p.startsWith("/api/marks/")) return await marksRoutes(req, res, p, u);
