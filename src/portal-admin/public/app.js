@@ -334,7 +334,7 @@ window.addEventListener('hashchange', () => { if (resetToken()) return showReset
 function route() {
   let [, view = 'home', arg] = location.hash.split('/');
   if (state.role === 'user') view = (view === 'me' || view === 'family' || view === 'paid') ? view : 'home';
-  const v = { home: viewHome, overview: viewOverview, global: viewGlobal, apps: viewApps, users: viewUsers, requests: viewRequests, cleanup: viewCleanup, audit: viewAudit, changes: viewChanges, setup: viewSetup, me: viewMe, family: viewFamily, paywall: viewPaywall, keys: viewKeys, paid: viewPaid }[view] || viewHome;
+  const v = { home: viewHome, overview: viewOverview, global: viewGlobal, apps: viewApps, users: viewUsers, requests: viewRequests, cleanup: viewCleanup, audit: viewAudit, changes: viewChanges, setup: viewSetup, me: viewMe, family: viewFamily, paywall: viewPaywall, keys: viewKeys, names: viewNames, paid: viewPaid }[view] || viewHome;
   if (!v || v === viewHome) view = 'home';
   setBar(view); $('#acct').open && $('#acct').close(); $('#sheet').open && $('#sheet').close();
   main().innerHTML = '<p class="muted">Loading…</p>';
@@ -487,6 +487,8 @@ async function detectApps() {
     if (!d.available) return { available: false, added: [], pending: [] };
     const existing = await listAll('portal_apps'), have = new Set(existing.map((a) => a.slug));
     const urlFor = appUrlFinder(existing);
+    // A name that only differs from the app's own name by capital letters (an older "joolztv") is tidied up; a name you chose yourself is never changed.
+    for (const e of existing) { const m = d.apps.find((x) => x.slug === e.slug), mn = m && (m.pbName || m.name); if (mn && e.name && e.name !== mn && e.name.toLowerCase() === mn.toLowerCase()) { await api('PATCH', `/api/collections/portal_apps/records/${e.id}`, { name: mn }).catch(() => {}); e.name = mn; HM = null; } }
     // Apps added before their address was known get it filled in now (an address you set yourself is never changed).
     for (const e of existing) { if (e.url) continue; const m = d.apps.find((x) => x.slug === e.slug), u = m && urlFor(m); if (u) { await api('PATCH', `/api/collections/portal_apps/records/${e.id}`, { url: u }).catch(() => {}); await audit('app.url', e.slug, { url: u, detected: true }); } }
     const added = [], pending = [];
@@ -1094,6 +1096,16 @@ async function viewKeys() {
     const clr = form.querySelector('.keyclear'); if (clr) clr.onclick = () => { if (confirm('Remove this key? The app will stop using it until you add one again.')) send(card, '', 'Key removed'); };
   });
 }
+async function viewNames() {
+  const j = await acctFetch('/admin/app-names');
+  const by = {}; j.items.forEach((i) => { (by[i.user] = by[i.user] || { who: i.userName || i.email || i.user, email: i.email, rows: [] }).rows.push(i); });
+  main().innerHTML = `<h1>App names</h1><p class="sub">People can rename the apps on their own home screen (Edit, then the pencil on a tile). Their names show only to them. Here you can see every rename and put the original name back.</p>
+    ${Object.keys(by).length ? Object.entries(by).map(([uid, g]) => `<div class="card" data-user="${esc(uid)}"><div class="row spread"><h2>${esc(g.who)}${g.email && g.email !== g.who ? ` <span class="muted small">${esc(g.email)}</span>` : ''}</h2>${g.rows.length > 1 ? '<button class="btn namesall">Reset all</button>' : ''}</div>
+      <table class="tbl"><thead><tr><th>App</th><th>Their name</th><th></th></tr></thead><tbody>${g.rows.map((r) => `<tr data-slug="${esc(r.slug)}"><td>${esc(r.original)}</td><td><b>${esc(r.custom)}</b></td><td style="text-align:right"><button class="btn namereset">Reset</button></td></tr>`).join('')}</tbody></table></div>`).join('') : '<div class="card"><p class="muted">Nobody has renamed an app.</p></div>'}`;
+  const go = guard(async (body, msg) => { await acctFetch('/admin/app-names', body); toast(msg); viewNames(); });
+  main().querySelectorAll('.namereset').forEach((b) => { b.onclick = () => { const tr = b.closest('tr'), card = b.closest('[data-user]'); go({ user: card.dataset.user, slug: tr.dataset.slug }, 'Name reset'); }; });
+  main().querySelectorAll('.namesall').forEach((b) => { b.onclick = () => { if (confirm('Put back every original app name for this person?')) go({ user: b.closest('[data-user]').dataset.user, all: true }, 'Names reset'); }; });
+}
 async function viewPaywall() {
   const j = await acctFetch('/admin/paywall'), apps = await listAll('portal_apps', { sort: 'name' });
   const y = j.yoco, origin = location.origin;
@@ -1489,12 +1501,13 @@ const ICON_WARN = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 7v6M
 const ADMIN_TOOLS = [
   ['overview', 'Overview', ['#5b8cff', '#7c5cf0']], ['global', 'Global settings', ['#94a3b8', '#475569']], ['apps', 'Apps', ['#a855f7', '#6366f1']],
   ['users', 'Users', ['#10b981', '#0ea5e9']], ['requests', 'Access requests', ['#f43f5e', '#fb923c']], ['cleanup', 'Cleanup', ['#14b8a6', '#22c55e']],
-  ['paywall', 'Paid apps', ['#22c55e', '#0ea5e9']], ['keys', 'App keys', ['#f59e0b', '#ef4444']], ['audit', 'Audit log', ['#eab308', '#f97316']], ['changes', 'Changes', ['#8b5cf6', '#ec4899']], ['setup', 'Setup', ['#0ea5e9', '#6366f1']],
+  ['paywall', 'Paid apps', ['#22c55e', '#0ea5e9']], ['keys', 'App keys', ['#f59e0b', '#ef4444']], ['names', 'App names', ['#06b6d4', '#6366f1']], ['audit', 'Audit log', ['#eab308', '#f97316']], ['changes', 'Changes', ['#8b5cf6', '#ec4899']], ['setup', 'Setup', ['#0ea5e9', '#6366f1']],
 ];
-const VIEW_TITLES = { overview: 'Overview', global: 'Global settings', apps: 'Apps', users: 'Users', requests: 'Access requests', cleanup: 'Cleanup', audit: 'Audit log', changes: 'PocketBase changes', setup: 'Setup & integration', me: 'My settings', family: 'Family', paywall: 'Paid apps', keys: 'App keys', paid: 'Payment' };
+const VIEW_TITLES = { overview: 'Overview', global: 'Global settings', apps: 'Apps', users: 'Users', requests: 'Access requests', cleanup: 'Cleanup', audit: 'Audit log', changes: 'PocketBase changes', setup: 'Setup & integration', me: 'My settings', family: 'Family', paywall: 'Paid apps', keys: 'App keys', names: 'App names', paid: 'Payment' };
 const PROTECTED = new Set(['sys:me', 'sys:admin']);
 const canFolder = (id) => !PROTECTED.has(id) && !String(id).startsWith('folder:');   // folders hold apps and Family, never nest, never hide the way back to Settings/Admin   // can't be hidden, so nobody loses the way back to their settings
 
+const cleanName = (s) => String(s == null ? '' : s).replace(/[\u0000-\u001f\u007f<>]/g, '').trim().slice(0, 30);
 let HM = null, editing = false, saveChain = Promise.resolve();
 const isAdminRole = () => state.role !== 'user';
 
@@ -1517,7 +1530,9 @@ async function homeModel() {
     const last = rs[rs.length - 1]; return !(last && last.value === false);
   };
   const items = {};
-  apps.forEach((a) => { items['app:' + a.slug] = { id: 'app:' + a.slug, kind: 'app', name: a.name, app: a, grad: GRADS[hashN(a.slug) % GRADS.length], letter: (a.name || '?').trim().charAt(0).toUpperCase(), ok: allowed(a.slug) }; });
+  // Names people gave their own apps (saved in their layout row, `names`). Only text, 30 characters at most; the admin can see and reset them.
+  const names = {}; if (lrows[0] && lrows[0].value && typeof lrows[0].value.names === 'object' && lrows[0].value.names) for (const [k, v] of Object.entries(lrows[0].value.names)) { const c = cleanName(v); if (c && /^[a-z0-9][a-z0-9_-]{0,60}$/.test(k)) names[k] = c; }
+  apps.forEach((a) => { const nm = names[a.slug] || a.name; items['app:' + a.slug] = { id: 'app:' + a.slug, kind: 'app', name: nm, orig: a.name, app: a, grad: GRADS[hashN(a.slug) % GRADS.length], letter: (nm || '?').trim().charAt(0).toUpperCase(), ok: allowed(a.slug) }; });
   if (isAdmin) items['sys:admin'] = { id: 'sys:admin', kind: 'folder', name: 'Admin', grad: ['#64748b', '#334155'], badge: pend };
   if (!isAdmin || selfId()) {
     items['sys:family'] = { id: 'sys:family', kind: 'sys', name: 'Family', glyph: 'family', img: 'icons/family.svg', grad: ['#fb7185', '#f59e0b'], href: '#/family' };
@@ -1543,7 +1558,7 @@ async function homeModel() {
   const hidden = keep(saved.hidden, (id) => !PROTECTED.has(id));
   const order = keep(saved.order);
   Object.keys(items).forEach((id) => { if (!seen.has(id)) { order.push(id); seen.add(id); } });   // new apps appear at the end
-  return { apps, reqs, items, ssoSlugs, isAdmin, uid, layout: { order, dock, hidden, folders, view: saved.view === 'icons' || saved.view === 'tiles' ? saved.view : '' }, lrow: lrows[0] || null, fresh, pend, pw };
+  return { apps, reqs, items, ssoSlugs, isAdmin, uid, layout: { order, dock, hidden, folders, names, view: saved.view === 'icons' || saved.view === 'tiles' ? saved.view : '' }, lrow: lrows[0] || null, fresh, pend, pw };
 }
 
 function saveLayout() {
@@ -1612,8 +1627,9 @@ function iconHTML(it, o = {}) {
   const badge = it.badge ? `<span class="ic-badge">${it.badge > 9 ? '9+' : it.badge}</span>` : '';
   const x = !o.tray && it.kind === 'ufolder' ? `<button class="ic-x" data-delfolder="${esc(it.fid)}" aria-label="Remove folder ${esc(it.name)}">${ICON_X}</button>` : !o.tray && !PROTECTED.has(it.id) ? `<button class="ic-x" data-hide="${esc(it.id)}" aria-label="Hide ${esc(it.name)}">${ICON_X}</button>` : '';
   const ed = !o.tray && isAdminRole() && it.kind === 'app' ? `<button class="ic-ed" data-edit-app="${esc(a.slug)}" aria-label="Edit ${esc(a.name)}">${ICON_PEN}</button>` : '';
+  const rn = !o.tray && it.kind === 'app' ? `<button class="ic-rn" data-rename="${esc(a.slug)}" aria-label="Rename ${esc(it.name)}">${ICON_PEN}</button>` : '';
   const add = o.tray ? `<button class="ic-add" data-show="${esc(it.id)}" aria-label="Add ${esc(it.name)} back">${ICON_ADD}</button>` : '';
-  return `<div class="ic${a && !a.enabled ? ' off' : ''}" data-id="${esc(it.id)}" style="${c}"><div class="ic-w">${tile}${st}${badge}${x}${ed}${add}<span class="ic-label">${esc(it.name)}</span>${tileText(it)}</div></div>`;
+  return `<div class="ic${a && !a.enabled ? ' off' : ''}" data-id="${esc(it.id)}" style="${c}"><div class="ic-w">${tile}${st}${badge}${x}${ed}${rn}${add}<span class="ic-label">${esc(it.name)}</span>${tileText(it)}</div></div>`;
 }
 function renderTray() {
   const l = HM.layout, hid = $('#hid'); if (!hid) return;
@@ -1808,6 +1824,15 @@ document.addEventListener('click', guard(async (e) => {
   if (nf && HM) { const fid = newFid(); HM.layout.folders[fid] = { name: 'Folder', items: [] }; registerFolder(fid); HM.layout.order.push('folder:' + fid); renderAll(); return; }
   const di = e.target.closest('[data-info]'); if (di && !editing) return infoSheet(di.dataset.info);
   if (e.target.closest('[data-folder]') && !editing) return folderSheet();
+  const rnb = e.target.closest('[data-rename]');
+  if (rnb && HM) {
+    const slug = rnb.dataset.rename, it = HM.items['app:' + slug]; if (!it) return;
+    const v = prompt(`Rename "${it.orig}" on your home screen.\nLeave it empty to go back to "${it.orig}".`, it.name === it.orig ? '' : it.name); if (v === null) return;
+    const c = cleanName(v); HM.layout.names = HM.layout.names || {};
+    if (!c || c.toLowerCase() === String(it.orig).toLowerCase() && c === it.orig) delete HM.layout.names[slug]; else HM.layout.names[slug] = c;
+    it.name = HM.layout.names[slug] || it.orig; it.letter = (it.name || '?').trim().charAt(0).toUpperCase();
+    renderSb(); renderDock(); saveLayout(); return;
+  }
   const ea = e.target.closest('[data-edit-app]'); if (ea) return infoSheet(ea.dataset.editApp, true);
   const hide = e.target.closest('[data-hide]');
   if (hide && HM) { const id = hide.dataset.hide, l = HM.layout; l.order = l.order.filter((x) => x !== id); l.dock = l.dock.filter((x) => x !== id); if (!l.hidden.includes(id)) l.hidden.push(id); renderSb(); renderDock(); saveLayout(); return; }

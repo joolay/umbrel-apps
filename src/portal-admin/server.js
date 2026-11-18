@@ -14,7 +14,7 @@ const guardians = require('./guardians');
 const family = require('./family');
 const events = require('./events');
 const paywall = require('./paywall');
-const appkeys = require('./appkeys');
+const appkeys = require('./appkeys'), appnames = require('./appnames');
 const makeChanges = require('./changes');
 const makeAppApi = require('./appapi');
 const CHILD_REQ = '__child_account__', SPOUSE_REQ = '__spouse_account__';
@@ -477,6 +477,16 @@ const handle = async (req, res) => {
         if (req.method === 'GET') return send(res, 200, await appkeys.adminView());
         if (req.method !== 'POST') return send(res, 405, { message: 'Method not allowed' });
         return send(res, 200, await appkeys.adminAction(JSON.parse(await readBody(req))));
+      } catch (e) { return send(res, e.status || 500, { message: String(e.message || e) }); }
+    }
+    if (pathname === '/admin/app-names') {                                 // the names people gave their apps on their own home screen: admin sees them and can reset
+      if (isPublicRequest(req)) return send(res, 403, { message: 'Only available from your home network or tailnet.' });
+      const tok = String(req.headers.authorization || '');
+      if (!tok || !(await pbx.isSuperuser(tok))) return send(res, 401, { message: 'Admin only.' });
+      try {
+        if (req.method === 'GET') return send(res, 200, await appnames.adminView());
+        if (req.method !== 'POST') return send(res, 405, { message: 'Method not allowed' });
+        return send(res, 200, await appnames.adminAction(JSON.parse(await readBody(req))));
       } catch (e) { return send(res, e.status || 500, { message: String(e.message || e) }); }
     }
     if (pathname === '/admin/inactive/notice') {

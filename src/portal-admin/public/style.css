@@ -54,11 +54,13 @@ main{margin:0 auto;padding-bottom:calc(120px + var(--safe-b))}
 .ic-st{position:absolute;right:-2px;bottom:18px;width:20px;height:20px;border-radius:50%;display:grid;place-items:center;background:var(--solid);border:1px solid var(--glass-line);z-index:2;pointer-events:none}
 .ic-st svg{width:12px;height:12px;fill:none;stroke:var(--text);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .ic-st.warn svg{stroke:var(--warn)}
-.ic-x,.ic-ed{display:none;position:absolute;top:-7px;left:0;width:24px;height:24px;border-radius:50%;padding:0;place-items:center;cursor:pointer;z-index:3;
+.ic-x,.ic-ed,.ic-rn{display:none;position:absolute;top:-7px;left:0;width:24px;height:24px;border-radius:50%;padding:0;place-items:center;cursor:pointer;z-index:3;
   background:var(--solid);color:var(--text);border:1px solid var(--glass-line);box-shadow:0 2px 8px rgba(0,0,0,.25)}
 .ic-ed{left:auto;right:0}
-.ic-x svg,.ic-ed svg{width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
-.editing .ic-x,.editing .ic-ed{display:grid}
+.ic-x svg,.ic-ed svg,.ic-rn svg{width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+.editing .ic-x,.editing .ic-ed,.editing .ic-rn{display:grid}
+.ic-rn{left:auto;right:0}
+.ic-ed + .ic-rn{right:28px}
 .editing .ic-badge,.editing .ic-st{display:none}
 .editing .sb .ic,.editing .dock .ic{touch-action:none}
 @keyframes jig{0%{transform:rotate(-1.7deg) translate(.5px,0)}50%{transform:rotate(1.4deg) translate(-.5px,.6px)}100%{transform:rotate(-1.2deg) translate(.4px,-.5px)}}
