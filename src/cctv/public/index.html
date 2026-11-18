@@ -1,0 +1,399 @@
+<!doctype html>
+<html lang="en" data-theme="dark"><head><meta charset="utf-8">
+<title>JoolzCCTV</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0b0d12">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="CCTV">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="glass.css">
+<style>
+/* Runs on phones, browsers and the LG TV (Chromium 53): the wall is laid out in JS, so no CSS grid, gap, inset, min()/clamp() below. */
+:root{--accent:#5b4bd6;--accent-2:#a27bff;--accent-t:#fff}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--accent:#8b7dff;--accent-2:#c0a6ff;--accent-t:#14102e}}
+:root[data-theme="dark"]{--accent:#8b7dff;--accent-2:#c0a6ff;--accent-t:#14102e}
+html,body{height:100%;margin:0;overflow:hidden}
+body{padding:0;background:#0b0d12;color:#f2f4f8}
+.hide{display:none!important}
+#bar{position:absolute;left:0;right:0;top:0;height:56px;display:flex;align-items:center;padding:0 12px;background:rgba(18,21,30,.92);z-index:5;overflow-x:auto;overflow-y:hidden;white-space:nowrap;box-sizing:border-box}#bar>*{flex:none}
+#bar .brand{font-weight:700;margin-right:14px;white-space:nowrap}
+#bar .sp{flex:1}
+#bar select,#bar .btn{margin-right:8px;background:rgba(255,255,255,.1);color:#fff;border:1px solid rgba(255,255,255,.14);border-radius:999px;padding:6px 14px;font-size:14px}
+#bar select option{color:#000}
+#bar .btn.on{background:var(--accent);color:var(--accent-t)}
+#lay{display:flex}
+#wall{position:absolute;left:0;right:0;top:56px;bottom:30px;background:#000}
+.tile{position:absolute;overflow:hidden;background:#10131a;border:3px solid #000;box-sizing:border-box;outline:0}
+.tile img{position:absolute;left:0;top:0;width:100%;height:100%;object-fit:contain;background:#000}
+.tile.focus{border-color:var(--accent-2)}
+.cap{position:absolute;left:0;right:0;bottom:0;padding:3px 10px;font-size:14px;background:rgba(0,0,0,.55);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cap small{opacity:.65;margin-left:8px}
+.st{position:absolute;left:0;right:0;top:50%;margin-top:-18px;text-align:center;font-size:15px;color:#cfd6e4;padding:0 10px}
+.st.err{color:#ff8f8f}
+.empty{position:absolute;left:0;right:0;top:50%;margin-top:-14px;text-align:center;color:#6b7488;font-size:15px}
+body.edit .tile{border:3px dashed rgba(255,255,255,.35)}
+body.edit .tile.focus{border-color:var(--accent-2)}
+body.names-off .cap{display:none}
+#full{position:absolute;left:0;right:0;top:0;bottom:0;background:#000;z-index:6}
+#full img{position:absolute;left:0;top:0;width:100%;height:100%;object-fit:contain}
+#fcap{position:absolute;left:16px;top:12px;font-size:20px;background:rgba(0,0,0,.55);padding:5px 14px;border-radius:12px}
+#fx{position:absolute;right:14px;top:10px}
+#fx .btn,#fnav .btn{background:rgba(0,0,0,.55);color:#fff;border:1px solid rgba(255,255,255,.3)}
+#fnav{position:absolute;left:0;right:0;bottom:14px;text-align:center}
+.screen{position:absolute;left:0;right:0;top:0;bottom:0;overflow:auto;z-index:8;background:#0b0d12;padding:18px 20px 60px}
+.wrap{max-width:900px;margin:0 auto}
+.screen h1{margin:0 0 4px;font-size:24px}.screen h2{font-size:18px;margin:18px 0 8px}
+.muted{color:#9aa3b2}.err{color:#ff8f8f}.ok{color:#6ee7a0}
+.row2{display:flex;align-items:center;flex-wrap:wrap}.row2>*{margin-right:8px}.sp{flex:1}
+.card{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:14px;margin-bottom:12px}
+.card input,.card select{margin:4px 8px 4px 0;background:rgba(255,255,255,.08);color:#fff;border:1px solid rgba(255,255,255,.18);border-radius:10px;padding:8px 10px;font-size:15px}
+.card select option{color:#000}
+.field{display:inline-block;vertical-align:top;margin-right:10px}.field span{display:block;font-size:12px;color:#9aa3b2}
+.crow{display:flex;align-items:center;padding:4px 0}.crow input[type=text]{flex:1;margin:0 8px}
+.crow .tag{font-size:12px;color:#9aa3b2;margin-right:8px}
+#login{position:absolute;left:0;right:0;top:0;bottom:0;z-index:9;background:#0b0d12;overflow:auto}
+.lbox{width:420px;max-width:92%;margin:8vh auto 0;padding:26px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:22px}
+.lbox input{display:block;width:100%;box-sizing:border-box;margin:6px 0 12px;background:rgba(255,255,255,.08);color:#fff;border:1px solid rgba(255,255,255,.18);border-radius:12px;padding:12px 14px;font-size:17px}
+.lbox .btn{width:100%;text-align:center;padding:12px}
+#modal{position:absolute;left:0;right:0;top:0;bottom:0;z-index:10;background:rgba(0,0,0,.6)}
+#mbox{width:560px;max-width:94%;max-height:86%;overflow:auto;margin:6vh auto 0;background:#171b26;border:1px solid rgba(255,255,255,.15);border-radius:20px;padding:18px}
+#mbox h3{margin:0 0 10px}
+.pick{display:block;width:100%;text-align:left;margin:0 0 6px;padding:10px 14px;border-radius:12px;background:rgba(255,255,255,.07);color:#fff;border:2px solid transparent;font:inherit;cursor:pointer}
+.pick:focus,.btn:focus,select:focus,input:focus{outline:0;border-color:var(--accent-2)}
+.pick.used{opacity:.55}.pick small{color:#9aa3b2;margin-left:8px}
+.grp{margin:12px 0 6px;color:#9aa3b2;font-size:13px;text-transform:uppercase;letter-spacing:.06em}
+#hint{position:absolute;left:0;right:0;bottom:0;padding:6px 14px;font-size:13px;color:#9aa3b2;background:rgba(18,21,30,.85);text-align:center;z-index:4}
+body.tv #bar{height:64px}body.tv #wall{top:64px;bottom:34px}body.tv .cap{font-size:22px}body.tv .st{font-size:22px}
+#toast{position:absolute;left:50%;bottom:44px;transform:translateX(-50%);z-index:20;background:#222a3c;color:#fff;padding:10px 18px;border-radius:14px;font-size:15px;max-width:90%}
+#toast.err{background:#a33}
+@media (max-width:640px){.screen{padding:14px 12px 60px}.crow{flex-wrap:wrap}.card input,.card select{max-width:100%;box-sizing:border-box}#bar .brand,#bRen,#bDel{display:none}#bar select,#bar .btn{padding:6px 10px;font-size:13px;margin-right:5px}.lbl{display:none}}
+</style></head>
+<body>
+
+<div id="bar" class="hide">
+  <span class="brand">JoolzCCTV</span>
+  <select id="viewSel" aria-label="View"></select>
+  <button class="btn" id="bNew">+ View</button>
+  <button class="btn" id="bRen">Rename</button>
+  <button class="btn" id="bDel">Delete</button>
+  <span id="lay"></span>
+  <span class="sp"></span>
+  <button class="btn" id="bFill"><span class="lbl">Auto-fill</span></button>
+  <button class="btn" id="bEdit">Choose cameras</button>
+  <button class="btn hide" id="bAdmin">Admin</button>
+  <button class="btn" id="bOut">Sign out</button>
+</div>
+<div id="wall" class="hide"></div>
+<div id="hint" class="hide"></div>
+
+<div id="full" class="hide"><img id="fimg" alt=""><div id="fcap"></div><div id="fx"><button class="btn" id="fclose">Close</button></div><div id="fnav"><button class="btn" id="fprev">&#9664; Previous</button> <button class="btn" id="fnext">Next &#9654;</button></div></div>
+
+<div id="login">
+  <div class="lbox">
+    <h1 style="margin:0 0 4px">JoolzCCTV</h1><div class="muted" id="lmsg" style="margin-bottom:14px">Sign in with your JoolzApp account.</div>
+    <div id="lform">
+      <input id="lem" type="email" placeholder="Email" autocomplete="username"><input id="lpw" type="password" placeholder="Password" autocomplete="current-password">
+      <label style="display:flex;align-items:center;margin:0 0 12px;color:#9aa3b2"><input id="lrem" type="checkbox" checked style="width:auto;margin:0 8px 0 0">Keep me signed in</label>
+      <button class="btn primary" id="lgo">Sign in</button>
+    </div>
+    <div id="lblocked" class="hide"><button class="btn" id="lcheck">Check again</button><div style="height:8px"></div><button class="btn" id="lout">Sign out</button></div>
+    <div class="muted" style="margin-top:14px;font-size:13px" id="lportal"></div>
+  </div>
+</div>
+
+<div id="admin" class="screen hide"></div>
+<div id="modal" class="hide"><div id="mbox"></div></div>
+<div id="toast" class="hide"></div>
+
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var tv = /Web0S|webOS|SMART-TV|SmartTV/i.test(navigator.userAgent) || /[?&]tv=1/.test(location.search);
+  if (tv) document.body.className += " tv";
+  var LAYOUTS = [1, 2, 4, 6, 9, 12, 16], GEOM = { 1: [1, 1], 2: [2, 1], 4: [2, 2], 6: [3, 2], 9: [3, 3], 12: [4, 3], 16: [4, 4] };
+  var S = { me: null, cams: [], byId: {}, views: [], cur: "all", edit: false, fi: 0, full: null, ws: null, wsTry: 0, tiles: [], states: [], saveT: null, accounts: false };
+
+  function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+  function api(method, path, body, cb) {
+    var x = new XMLHttpRequest(); x.open(method, path); x.setRequestHeader("content-type", "application/json");
+    x.onload = function () { var j = {}; try { j = JSON.parse(x.responseText); } catch (e) {} cb(x.status, j); };
+    x.onerror = function () { cb(0, { message: "Can't reach the server" }); };
+    x.send(body ? JSON.stringify(body) : null);
+  }
+  var toastT;
+  function toast(msg, bad) { var t = $("toast"); t.textContent = msg; t.className = bad ? "err" : ""; clearTimeout(toastT); toastT = setTimeout(function () { t.className = "hide"; }, 3500); }
+
+  /* ---------- sign in ---------- */
+  function showLogin(msg, blocked) {
+    closeAll(); $("login").className = ""; $("bar").className = "hide"; $("wall").className = "hide"; $("hint").className = "hide";
+    $("lmsg").textContent = msg || "Sign in with your JoolzApp account."; $("lform").className = blocked ? "hide" : ""; $("lblocked").className = blocked ? "" : "hide";
+    wsClose(); if (!blocked) setTimeout(function () { $("lem").focus(); }, 50);
+  }
+  $("lgo").onclick = function () {
+    api("POST", "/api/account/login", { email: $("lem").value, password: $("lpw").value, remember: $("lrem").checked }, function (st, j) {
+      if (st === 200) { $("lpw").value = ""; start(); } else $("lmsg").innerHTML = '<span class="err">' + esc(j.message || "Sign-in failed") + "</span>";
+    });
+  };
+  $("lpw").onkeydown = function (e) { if (e.keyCode === 13) $("lgo").onclick(); };
+  $("lcheck").onclick = start;
+  function signOut() { api("POST", "/api/account/logout", {}, function () { S.me = null; showLogin("Signed out."); }); }
+  $("lout").onclick = signOut; $("bOut").onclick = signOut;
+
+  /* ---------- load ---------- */
+  function start() {
+    api("GET", "/api/app-config", null, function (st, c) {
+      S.accounts = !!c.accounts; $("lportal").innerHTML = c.portalUrl ? 'No account? Create one on the <a style="color:#a27bff" href="' + esc(c.portalUrl) + '">JoolzApp Portal</a>.' : "";
+      api("GET", "/api/cctv/config", null, function (st2, j) {
+        if (st2 === 401) return showLogin();
+        if (st2 === 403) return showLogin(j.message, true);
+        if (st2 !== 200) return showLogin(j.message || "The server isn't ready yet.", true);
+        S.me = j.user; S.cams = j.cameras || []; S.byId = {}; S.cams.forEach(function (c) { S.byId[c.id] = c; });
+        S.views = j.views || []; S.cur = j.last && findView(j.last) ? j.last : (S.views[0] ? S.views[0].id : "all");
+        $("login").className = "hide"; $("bar").className = ""; $("wall").className = ""; $("hint").className = "";
+        $("bAdmin").className = "btn" + (S.me.isAdmin && !tv ? "" : " hide"); $("bEdit").className = "btn";
+        buildBar(); render(); connect();
+      });
+    });
+  }
+
+  /* ---------- views ---------- */
+  function findView(id) { for (var i = 0; i < S.views.length; i++) if (S.views[i].id === id) return S.views[i]; return null; }
+  function autoLayout(n) { for (var i = 0; i < LAYOUTS.length; i++) if (LAYOUTS[i] >= n) return LAYOUTS[i]; return 16; }
+  function allView() { var l = autoLayout(Math.max(1, S.cams.length)), s = []; for (var i = 0; i < l; i++) s.push(S.cams[i] ? S.cams[i].id : null); return { id: "all", name: "All cameras", layout: l, slots: s, virtual: true }; }
+  function view() { return findView(S.cur) || (S.cur === "all" ? allView() : (S.cur = "all", allView())); }
+  // Changing the automatic "All cameras" view makes it your own saved view.
+  function own() { var v = view(); if (!v.virtual) return v; v = { id: Math.random().toString(36).slice(2, 10), name: "My view", layout: v.layout, slots: v.slots.slice() }; S.views.push(v); S.cur = v.id; return v; }
+  function save() { clearTimeout(S.saveT); S.saveT = setTimeout(function () { api("PUT", "/api/cctv/views", { views: S.views, last: S.cur === "all" ? "" : S.cur }, function (st, j) { if (st !== 200) toast(j.message || "Couldn't save the view", true); }); }, 500); }
+  function buildBar() {
+    var h = "", v = view();
+    h += '<option value="all"' + (S.cur === "all" ? " selected" : "") + ">All cameras</option>";
+    S.views.forEach(function (x) { h += '<option value="' + esc(x.id) + '"' + (x.id === S.cur ? " selected" : "") + ">" + esc(x.name) + " (" + x.layout + ")</option>"; });
+    $("viewSel").innerHTML = h;
+    var l = ""; LAYOUTS.forEach(function (n) { l += '<button class="btn' + (n === v.layout ? " on" : "") + '" data-l="' + n + '" title="' + n + ' camera view">' + n + "</button>"; }); $("lay").innerHTML = l;
+    $("bEdit").className = "btn" + (S.edit ? " on" : ""); $("bEdit").textContent = S.edit ? "Done" : "Choose cameras";
+    $("bRen").className = "btn" + (v.virtual ? " hide" : ""); $("bDel").className = "btn" + (v.virtual ? " hide" : "");
+    $("hint").textContent = tv ? "OK full screen  ·  Red choose camera  ·  Green layout  ·  Yellow next view  ·  Blue names  ·  1-9 jump to a camera" : (S.edit ? "Choose cameras: click a tile to pick which camera it shows" : "Click a tile for full screen");
+    S.cams.length || ($("hint").textContent = S.me && S.me.isAdmin ? "No cameras yet. Open Admin to add a recorder." : "No cameras have been shared with you yet. Ask the admin.");
+  }
+  $("viewSel").onchange = function () { S.cur = this.value; S.fi = 0; save(); buildBar(); render(); };
+  $("lay").onclick = function (e) { var n = +(e.target.getAttribute && e.target.getAttribute("data-l")); if (n) setLayout(n); };
+  function setLayout(n) {
+    var v = own(); var s = []; for (var i = 0; i < n; i++) s.push(v.slots[i] || null); v.layout = n; v.slots = s; S.fi = Math.min(S.fi, n - 1); save(); buildBar(); render();
+  }
+  function nextLayout() { var v = view(), i = LAYOUTS.indexOf(v.layout); setLayout(LAYOUTS[(i + 1) % LAYOUTS.length]); }
+  function nextView(d) { var ids = ["all"].concat(S.views.map(function (v) { return v.id; })), i = ids.indexOf(S.cur); S.cur = ids[(i + d + ids.length) % ids.length]; S.fi = 0; save(); buildBar(); render(); }
+  $("bNew").onclick = function () { ask("Name for the new view", "", function (name) { var v = view(), n = { id: Math.random().toString(36).slice(2, 10), name: name || "New view", layout: v.layout, slots: v.slots.slice() }; S.views.push(n); S.cur = n.id; save(); buildBar(); render(); }); };
+  $("bRen").onclick = function () { var v = view(); ask("Rename view", v.name, function (name) { if (name) { v.name = name; save(); buildBar(); } }); };
+  $("bDel").onclick = function () { var v = view(); if (v.virtual) return; ask('Delete "' + v.name + '"? Type yes to confirm', "", function (a) { if (/^y/i.test(a)) { S.views = S.views.filter(function (x) { return x.id !== v.id; }); S.cur = "all"; save(); buildBar(); render(); } }); };
+  $("bFill").onclick = autoFill;
+  function autoFill() {
+    var v = own(), used = {}; v.slots.forEach(function (c) { if (c) used[c] = 1; });
+    var free = S.cams.filter(function (c) { return !used[c.id]; }), n = 0;
+    for (var i = 0; i < v.slots.length; i++) if (!v.slots[i] && free[n]) v.slots[i] = free[n++].id;
+    save(); render(); toast(n ? "Filled " + n + " empty tile" + (n > 1 ? "s" : "") : "No empty tiles to fill");
+  }
+  $("bEdit").onclick = function () { S.edit = !S.edit; document.body.className = document.body.className.replace(" edit", "") + (S.edit ? " edit" : ""); buildBar(); };
+
+  /* ---------- the wall ---------- */
+  function render() {
+    var v = view(), g = GEOM[v.layout], W = $("wall"), w = W.clientWidth, h = W.clientHeight, cols = g[0], rows = g[1], tw = Math.floor(w / cols), th = Math.floor(h / rows), html = "";
+    for (var i = 0; i < v.layout; i++) {
+      var c = v.slots[i] && S.byId[v.slots[i]], x = (i % cols) * tw, y = Math.floor(i / cols) * th;
+      html += '<div class="tile' + (i === S.fi ? " focus" : "") + '" tabindex="0" data-i="' + i + '" style="left:' + x + "px;top:" + y + "px;width:" + tw + "px;height:" + th + 'px">' +
+        (c ? '<img alt=""><div class="st">Connecting…</div><div class="cap">' + esc(c.name) + "<small>" + esc(c.siteName) + "</small></div>" : '<div class="empty">' + (S.edit ? "Choose a camera" : "Empty") + "</div>") + "</div>";
+    }
+    W.innerHTML = html; S.tiles = []; S.states = [];
+    var els = W.querySelectorAll(".tile"); for (var k = 0; k < els.length; k++) S.tiles.push({ el: els[k], img: els[k].querySelector("img"), st: els[k].querySelector(".st") });
+    sendWatch();
+  }
+  window.addEventListener("resize", function () { if (S.me) render(); });
+  $("wall").addEventListener("click", function (e) { var t = e.target; while (t && t !== this && !(t.getAttribute && t.getAttribute("data-i") !== null)) t = t.parentNode; if (!t || t === this) return; S.fi = +t.getAttribute("data-i"); focusTile(); activate(); });
+  function focusTile() { for (var i = 0; i < S.tiles.length; i++) S.tiles[i].el.className = "tile" + (i === S.fi ? " focus" : ""); }
+  function activate() { var v = view(), id = v.slots[S.fi]; if (S.edit || !id) pick(S.fi); else openFull(id); }
+
+  /* ---------- pick a camera for a tile ---------- */
+  function pick(slot) {
+    var v = view(), used = {}; v.slots.forEach(function (c) { if (c) used[c.id || c] = 1; });
+    var sites = {}, order = []; S.cams.forEach(function (c) { if (!sites[c.siteName]) { sites[c.siteName] = []; order.push(c.siteName); } sites[c.siteName].push(c); });
+    var h = "<h3>Tile " + (slot + 1) + "</h3>" + '<button class="pick" data-c="">Empty tile</button>';
+    order.forEach(function (n) { h += '<div class="grp">' + esc(n) + "</div>"; sites[n].forEach(function (c) { h += '<button class="pick' + (used[c.id] && v.slots[slot] !== c.id ? " used" : "") + '" data-c="' + c.id + '">' + esc(c.name) + (v.slots[slot] === c.id ? "<small>shown here</small>" : used[c.id] ? "<small>in another tile</small>" : "") + "</button>"; }); });
+    h += '<div style="height:8px"></div><button class="pick" data-x="1">Cancel</button>';
+    $("mbox").innerHTML = h; $("modal").className = ""; var f = $("mbox").querySelector(".pick"); if (f) f.focus();
+    $("mbox").onclick = function (e) {
+      var b = e.target; while (b && b !== this && !(b.getAttribute && (b.getAttribute("data-c") !== null || b.getAttribute("data-x")))) b = b.parentNode; if (!b || b === this) return;
+      if (b.getAttribute("data-x")) return closeModal();
+      var o = own(); o.slots[slot] = b.getAttribute("data-c") || null; closeModal(); save(); render();
+    };
+  }
+  function ask(title, value, cb) {
+    $("mbox").innerHTML = "<h3>" + esc(title) + '</h3><input id="aq" type="text" style="width:100%;box-sizing:border-box;padding:12px;border-radius:12px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.08);color:#fff;font-size:17px"><div style="height:12px"></div><button class="btn primary" id="aok">OK</button> <button class="btn" id="ano">Cancel</button>';
+    $("mbox").onclick = null; $("modal").className = ""; var q = $("aq"); q.value = value || ""; q.focus();
+    $("aok").onclick = function () { var v = q.value.trim(); closeModal(); cb(v); }; $("ano").onclick = closeModal; q.onkeydown = function (e) { if (e.keyCode === 13) $("aok").onclick(); };
+  }
+  function closeModal() { $("modal").className = "hide"; $("mbox").innerHTML = ""; }
+  function closeAll() { closeModal(); closeFull(true); $("admin").className = "screen hide"; }
+
+  /* ---------- full screen for one camera ---------- */
+  function openFull(id) {
+    S.full = id; var c = S.byId[id], tile = S.tiles[S.fi]; $("fcap").textContent = c ? c.name + " · " + c.siteName : "";
+    if (tile && tile.img && tile.img.src) $("fimg").src = tile.img.src; else $("fimg").removeAttribute("src");
+    $("full").className = ""; sendWatch();
+  }
+  function closeFull(quiet) { if (S.full === null) return; S.full = null; $("full").className = "hide"; $("fimg").removeAttribute("src"); if (!quiet) sendWatch(); }
+  function stepFull(d) {
+    var ids = view().slots.filter(function (c) { return c; }); if (ids.length < 2) return; var i = ids.indexOf(S.full); i = (i + d + ids.length) % ids.length; S.fi = view().slots.indexOf(ids[i]); focusTile(); openFull(ids[i]);
+  }
+  $("fclose").onclick = function () { closeFull(); }; $("fprev").onclick = function () { stepFull(-1); }; $("fnext").onclick = function () { stepFull(1); };
+
+  /* ---------- live connection ---------- */
+  function wsClose() { if (S.ws) { S.ws.onclose = null; try { S.ws.close(); } catch (e) {} S.ws = null; } clearTimeout(S.wsRetry); }
+  function connect() {
+    wsClose();
+    var ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws"); ws.binaryType = "arraybuffer"; S.ws = ws;
+    ws.onopen = function () { S.wsTry = 0; sendWatch(); };
+    ws.onmessage = function (ev) {
+      if (typeof ev.data === "string") { var m; try { m = JSON.parse(ev.data); } catch (e) { return; } if (m.t === "state") setState(m.slot, m.s, m.m); return; }
+      var slot = new Uint8Array(ev.data, 0, 1)[0], img = S.full !== null ? $("fimg") : (S.tiles[slot] && S.tiles[slot].img);
+      if (!img) return;
+      var url = URL.createObjectURL(new Blob([new Uint8Array(ev.data, 1)], { type: "image/jpeg" })), old = img._u; img.src = url; img._u = url; if (old) URL.revokeObjectURL(old);
+      if (S.full === null && S.tiles[slot] && S.tiles[slot].st && S.tiles[slot].st.className !== "st hide") S.tiles[slot].st.className = "st hide";
+    };
+    ws.onclose = function () { S.ws = null; if (!S.me) return; S.wsTry++; S.wsRetry = setTimeout(function () { api("GET", "/api/cctv/config", null, function (st) { if (st === 401 || st === 403) start(); else connect(); }); }, Math.min(8000, 800 * S.wsTry)); };
+  }
+  function setState(slot, s, msg) {
+    var t = S.full !== null ? null : S.tiles[slot]; if (!t || !t.st) return;
+    if (s === "live") t.st.className = "st hide"; else { t.st.className = "st" + (s === "error" ? " err" : ""); t.st.textContent = s === "error" ? msg || "No picture" : "Connecting…"; }
+  }
+  var lastSent = "";
+  function sendWatch() {
+    if (!S.ws || S.ws.readyState !== 1 || !S.me) return;
+    var slots = [], v = view();
+    if (S.full !== null) slots.push({ cam: S.full, q: "main" }); else for (var i = 0; i < v.layout; i++) slots.push(v.slots[i] && S.byId[v.slots[i]] ? { cam: v.slots[i], q: v.layout <= 2 ? "main" : "sub" } : null);
+    S.ws.send(JSON.stringify({ t: "watch", slots: slots }));
+  }
+  // Pause the video while the page is hidden (saves the recorders and your data).
+  document.addEventListener("visibilitychange", function () { if (!S.ws || S.ws.readyState !== 1) return; if (document.hidden) S.ws.send(JSON.stringify({ t: "watch", slots: [] })); else sendWatch(); });
+
+  /* ---------- remote control and keyboard ---------- */
+  document.addEventListener("keydown", function (e) {
+    var k = e.keyCode, tag = e.target && e.target.tagName, typing = tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA";
+    var back = k === 461 || k === 27 || (k === 8 && !typing);
+    if (!$("modal").className.match(/hide/)) { if (back) { closeModal(); e.preventDefault(); } else if (k === 38 || k === 40) { moveFocus($("mbox"), k === 40 ? 1 : -1); e.preventDefault(); } return; }
+    if (!$("admin").className.match(/hide/)) { if (back && !typing) { $("admin").className = "screen hide"; e.preventDefault(); } return; }
+    if (!$("login").className.match(/hide/)) { if (k === 38 || k === 40) { moveFocus($("login"), k === 40 ? 1 : -1); e.preventDefault(); } return; }
+    if (typing && !(k >= 403 && k <= 406)) return;
+    if (S.full !== null) {
+      if (back || k === 13) closeFull(); else if (k === 37 || k === 33 || k === 427) stepFull(-1); else if (k === 39 || k === 34 || k === 428) stepFull(1); else return; e.preventDefault(); return;
+    }
+    var v = view(), g = GEOM[v.layout], cols = g[0], n = v.layout, h = true;
+    if (k === 37) S.fi = Math.max(0, S.fi - 1); else if (k === 39) S.fi = Math.min(n - 1, S.fi + 1);
+    else if (k === 38) S.fi = S.fi - cols >= 0 ? S.fi - cols : S.fi; else if (k === 40) S.fi = S.fi + cols < n ? S.fi + cols : S.fi;
+    else if (k === 13 && document.activeElement && /^(BUTTON|SELECT|INPUT)$/.test(document.activeElement.tagName)) return;
+    else if (k === 13) activate();
+    else if (k === 403) pick(S.fi); else if (k === 404) nextLayout(); else if (k === 405 || k === 428) nextView(1); else if (k === 427) nextView(-1);
+    else if (k === 406) { document.body.className = /names-off/.test(document.body.className) ? document.body.className.replace(" names-off", "") : document.body.className + " names-off"; }
+    else if (k >= 49 && k <= 57 && !typing) { var id = v.slots[k - 49]; if (id) { S.fi = k - 49; focusTile(); openFull(id); } }
+    else if (back && tv) { try { window.close(); } catch (er) {} }
+    else h = false;
+    if (h) { focusTile(); e.preventDefault(); }
+  });
+  function moveFocus(root, d) { var f = root.querySelectorAll("button,input,select"), a = []; for (var i = 0; i < f.length; i++) if (f[i].offsetParent !== null) a.push(f[i]); var i2 = a.indexOf(document.activeElement); i2 = Math.max(0, Math.min(a.length - 1, (i2 < 0 ? 0 : i2) + d)); if (a[i2]) a[i2].focus(); }
+
+  /* ---------- admin (sites, cameras, viewers) ---------- */
+  var A = { tab: "sites", ov: null, adding: false, open: {} };
+  $("bAdmin").onclick = function () { $("admin").className = "screen"; loadAdmin(); };
+  function loadAdmin() { api("GET", "/api/admin/overview", null, function (st, j) { if (st !== 200) { toast(j.message || "Couldn't load", true); return; } A.ov = j; drawAdmin(); }); }
+  function siteCams(id) { return A.ov.cameras.filter(function (c) { return c.site === id; }); }
+  function drawAdmin() {
+    var o = A.ov, h = '<div class="wrap"><div class="row2"><h1>Admin</h1><span class="sp"></span><button class="btn" id="aClose">Close</button></div>' +
+      '<div class="row2" style="margin:8px 0 14px"><button class="btn' + (A.tab === "sites" ? " on" : "") + '" data-t="sites">Sites &amp; cameras</button><button class="btn' + (A.tab === "viewers" ? " on" : "") + '" data-t="viewers">Viewers</button></div>';
+    h += A.tab === "sites" ? sitesHtml(o) : viewersHtml(o);
+    $("admin").innerHTML = h + "</div>";
+  }
+  function sitesHtml(o) {
+    var h = '<p class="muted">A site is one recorder (or camera) in one place. Add as many sites as you like, Hikvision or Dahua, at home or at another premises; their cameras can then be mixed on any wall. For another premises use its public address (or a Tailscale address) with a port that reaches the recorder.</p>';
+    o.sites.forEach(function (s) {
+      var cams = siteCams(s.id);
+      h += '<div class="card"><div class="row2"><b>' + esc(s.name) + '</b><span class="muted">' + esc(s.vendor === "hikvision" ? "Hikvision" : s.vendor === "dahua" ? "Dahua" : "RTSP") + (s.host ? " · " + esc(s.host) + ":" + s.httpPort + " (video " + s.rtspPort + ")" : "") + '</span><span class="sp"></span>' +
+        (s.vendor !== "rtsp" ? '<button class="btn small" data-act="refresh" data-id="' + s.id + '">Find new cameras</button> <button class="btn small" data-act="editsite" data-id="' + s.id + '">Edit</button> ' : "") + '<button class="btn small" data-act="rmsite" data-id="' + s.id + '">Remove</button></div>';
+      cams.forEach(function (c) { h += '<div class="crow"><span class="tag">' + (c.channel || "") + '</span><input type="text" value="' + esc(c.name) + '" data-cam="' + c.id + '"><label style="display:flex;align-items:center;margin:0 8px;color:#9aa3b2"><input type="checkbox" data-en="' + c.id + '"' + (c.enabled ? " checked" : "") + ' style="width:auto;margin:0 6px 0 0">Shown</label>' + (s.vendor === "rtsp" ? '<button class="btn small" data-act="rmcam" data-id="' + c.id + '">Remove</button>' : "") + "</div>"; });
+      if (!cams.length) h += '<div class="muted" style="margin-top:6px">No cameras yet.</div>';
+      if (s.vendor === "rtsp") h += '<div style="margin-top:8px" class="row2"><input type="text" id="rn' + s.id + '" placeholder="Camera name"><input type="text" id="rm' + s.id + '" placeholder="rtsp://… main stream" style="min-width:240px"><input type="text" id="rs' + s.id + '" placeholder="rtsp://… small stream (optional)" style="min-width:240px"><button class="btn small" data-act="addcam" data-id="' + s.id + '">Add camera</button></div>';
+      h += '<div id="se' + s.id + '"></div></div>';
+    });
+    if (!o.sites.length) h += '<div class="card muted">No sites yet.</div>';
+    h += A.adding ? siteForm(null) : '<button class="btn primary" data-act="addsite">Add a site</button>';
+    return h;
+  }
+  function siteForm(s) {
+    var id = s ? s.id : "new";
+    return '<div class="card" id="sf"><b>' + (s ? "Edit " + esc(s.name) : "New site") + '</b><div style="margin-top:8px">' +
+      '<div class="field"><span>Name</span><input id="f_name" value="' + esc(s ? s.name : "") + '" placeholder="Home, Shop…"></div>' +
+      '<div class="field"><span>Make</span><select id="f_vendor"' + (s ? " disabled" : "") + '><option value="hikvision">Hikvision</option><option value="dahua">Dahua</option><option value="rtsp">Other (RTSP address)</option></select></div>' +
+      '<div class="fv"><div class="field"><span>Address</span><input id="f_host" value="' + esc(s ? s.host : "") + '" placeholder="192.168.1.64 or shop.example.com"></div>' +
+      '<div class="field"><span>Web port</span><input id="f_http" size="5" value="' + (s ? s.httpPort : 80) + '"></div><div class="field"><span>Video (RTSP) port</span><input id="f_rtsp" size="5" value="' + (s ? s.rtspPort : 554) + '"></div>' +
+      '<div class="field"><span>User</span><input id="f_user" value="' + esc(s ? s.user : "admin") + '" size="12"></div>' +
+      '<div class="field"><span>Password' + (s ? " (blank keeps it)" : "") + '</span><input id="f_pass" type="password" size="14" autocomplete="new-password"></div></div></div>' +
+      '<div class="muted" style="font-size:13px;margin:4px 0 8px">The login is checked before anything is saved. Use a view-only user on the recorder rather than admin. A wrong password is tried once only, so the recorder never locks you out.</div>' +
+      '<button class="btn primary" data-act="savesite" data-id="' + (s ? s.id : "") + '">Test and ' + (s ? "save" : "add") + '</button> <button class="btn" data-act="cancelsite">Cancel</button><span id="sfmsg" style="margin-left:10px"></span></div>';
+  }
+  function viewersHtml(o) {
+    if (!o.accounts) return '<div class="card muted">Accounts are switched off, so everyone who opens this is an admin. Viewers appear here once JoolzApp accounts are connected.</div>';
+    var h = '<p class="muted">Admins see every camera. For everyone else, choose which cameras they may watch. They can then build their own views from those cameras only.</p>';
+    o.users.forEach(function (u) {
+      if (u.isAdmin) { h += '<div class="card"><b>' + esc(u.name || u.email) + '</b> <span class="muted">' + esc(u.email) + ' · admin, sees everything</span></div>'; return; }
+      var g = o.grants[u.id] || { all: false, cams: [] }, n = g.all ? "all cameras" : (g.cams.length + " of " + o.cameras.length), open = A.open[u.id];
+      h += '<div class="card"><div class="row2"><b>' + esc(u.name || u.email) + '</b><span class="muted">' + esc(u.email) + '</span><span class="sp"></span><span class="' + (g.all || g.cams.length ? "ok" : "muted") + '">' + n + '</span><button class="btn small" data-act="toggleu" data-id="' + u.id + '">' + (open ? "Close" : "Choose") + "</button></div>";
+      if (open) {
+        h += '<div style="margin-top:8px"><label style="display:flex;align-items:center;margin-bottom:6px"><input type="checkbox" id="ga' + u.id + '"' + (g.all ? " checked" : "") + ' style="width:auto;margin:0 8px 0 0"><b>All cameras (including ones added later)</b></label>';
+        var sites = {}; o.cameras.forEach(function (c) { (sites[c.siteName] = sites[c.siteName] || []).push(c); });
+        Object.keys(sites).forEach(function (sn) { h += '<div class="grp">' + esc(sn) + "</div>"; sites[sn].forEach(function (c) { h += '<label style="display:inline-flex;align-items:center;margin:0 16px 6px 0"><input type="checkbox" data-gc="' + u.id + '" value="' + c.id + '"' + (g.cams.indexOf(c.id) >= 0 ? " checked" : "") + ' style="width:auto;margin:0 6px 0 0">' + esc(c.name) + "</label>"; }); });
+        h += '<div style="margin-top:8px"><button class="btn primary small" data-act="savegrant" data-id="' + u.id + '">Save</button></div></div>';
+      }
+      h += "</div>";
+    });
+    if (!o.users.length) h += '<div class="card muted">No JoolzApp accounts found yet.</div>';
+    return h;
+  }
+  function msg(id, text, bad) { var e = $(id); if (e) e.innerHTML = '<span class="' + (bad ? "err" : "ok") + '">' + esc(text) + "</span>"; }
+  function reload() { loadAdmin(); api("GET", "/api/cctv/config", null, function (st, j) { if (st === 200) { S.cams = j.cameras; S.byId = {}; S.cams.forEach(function (c) { S.byId[c.id] = c; }); buildBar(); render(); } }); }
+  $("admin").addEventListener("click", function (e) {
+    var b = e.target; while (b && b !== this && !(b.getAttribute && (b.getAttribute("data-act") || b.getAttribute("data-t") || b.id === "aClose"))) b = b.parentNode; if (!b || b === this) return;
+    if (b.id === "aClose") { $("admin").className = "screen hide"; return; }
+    if (b.getAttribute("data-t")) { A.tab = b.getAttribute("data-t"); return drawAdmin(); }
+    var act = b.getAttribute("data-act"), id = b.getAttribute("data-id");
+    if (act === "addsite") { A.adding = true; drawAdmin(); return syncForm(); }
+    if (act === "cancelsite") { A.adding = false; return drawAdmin(); }
+    if (act === "editsite") { var s = A.ov.sites.filter(function (x) { return x.id === id; })[0], box = $("se" + id); box.innerHTML = siteForm(s); $("f_vendor").value = s.vendor; return; }
+    if (act === "savesite") {
+      var vend = $("f_vendor").value, body = { name: $("f_name").value, vendor: vend, host: $("f_host").value, httpPort: $("f_http").value, rtspPort: $("f_rtsp").value, user: $("f_user").value, pass: $("f_pass").value };
+      $("sfmsg").innerHTML = '<span class="muted">Testing the login…</span>';
+      return api(id ? "PUT" : "POST", id ? "/api/admin/site/" + id : "/api/admin/site", body, function (st, j) {
+        if (st !== 200) return msg("sfmsg", j.message || "Failed", true);
+        A.adding = false; toast(id ? "Saved." : "Added with " + j.added + " camera" + (j.added === 1 ? "" : "s") + (j.model ? " (" + j.model + ")" : "")); reload();
+      });
+    }
+    if (act === "refresh") return api("POST", "/api/admin/site/" + id + "/refresh", {}, function (st, j) { if (st !== 200) return toast(j.message || "Failed", true); toast(j.added ? "Found " + j.added + " new camera" + (j.added > 1 ? "s" : "") : "No new cameras"); reload(); });
+    if (act === "rmsite") return ask("Remove this site and its cameras? Type yes", "", function (a) { if (/^y/i.test(a)) api("DELETE", "/api/admin/site/" + id, null, function () { reload(); }); });
+    if (act === "rmcam") return api("DELETE", "/api/admin/camera/" + id, null, function () { reload(); });
+    if (act === "addcam") return api("POST", "/api/admin/camera", { site: id, name: $("rn" + id).value, rtsp: $("rm" + id).value, rtspSub: $("rs" + id).value }, function (st, j) { if (st !== 200) return toast(j.message || "Failed", true); reload(); });
+    if (act === "toggleu") { A.open[id] = !A.open[id]; return drawAdmin(); }
+    if (act === "savegrant") {
+      var cams = [], boxes = document.querySelectorAll('input[data-gc="' + id + '"]'); for (var i = 0; i < boxes.length; i++) if (boxes[i].checked) cams.push(boxes[i].value);
+      return api("PUT", "/api/admin/grant/" + id, { all: $("ga" + id).checked, cams: cams }, function (st, j) { if (st !== 200) return toast(j.message || "Failed", true); toast("Saved."); loadAdmin(); });
+    }
+  });
+  $("admin").addEventListener("change", function (e) {
+    var t = e.target;
+    if (t.id === "f_vendor") return syncForm();
+    if (t.getAttribute("data-en")) api("PUT", "/api/admin/camera/" + t.getAttribute("data-en"), { enabled: t.checked }, function (st, j) { if (st !== 200) toast(j.message || "Failed", true); else reload(); });
+    if (t.getAttribute("data-cam")) api("PUT", "/api/admin/camera/" + t.getAttribute("data-cam"), { name: t.value }, function (st, j) { if (st !== 200) toast(j.message || "Failed", true); else reload(); });
+  });
+  function syncForm() { var v = $("f_vendor"); if (!v) return; var fv = document.querySelector("#sf .fv"); if (fv) fv.className = "fv" + (v.value === "rtsp" ? " hide" : ""); var r = $("f_rtsp"), hp = $("f_http"); if (v.value === "dahua" && r && !r.getAttribute("d")) { r.setAttribute("d", 1); } }
+
+  start();
+})();
+</script></body></html>

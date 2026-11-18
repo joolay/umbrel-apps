@@ -1,0 +1,25 @@
+manifestVersion: 1
+id: joolay-cctv
+category: networking
+name: JoolzCCTV
+version: "1.0.0"
+tagline: Live cameras from every recorder on one wall
+description: >-
+  JoolzCCTV shows live video from your Hikvision and Dahua recorders (and any camera with an RTSP address) on a single wall, in the
+  browser, on your phone and on the LG TV. Add a recorder at home and one at another premises, then mix cameras from any of them into
+  1, 2, 4, 6, 9, 12 or 16 camera views and save the views you like. Choose which JoolzApp users may watch which cameras. Recorder
+  passwords stay on the server and are never sent to a viewer.
+developer: joolay
+website: https://github.com/joolay/umbrel-apps/tree/main/src/cctv
+dependencies: []
+repo: https://github.com/joolay/umbrel-apps
+support: https://github.com/joolay/umbrel-apps/issues
+port: 3902
+gallery: []
+path: ""
+defaultUsername: ""
+defaultPassword: ""
+releaseNotes: "First release: live 16-channel wall, Hikvision, Dahua and RTSP sites, saved views, per-viewer camera access."
+submitter: joolay
+submission: https://github.com/joolay/umbrel-apps
+icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-cctv/icon.svg
