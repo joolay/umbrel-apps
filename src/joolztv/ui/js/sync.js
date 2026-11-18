@@ -10,10 +10,11 @@ var Sync = (function () {
     if (!Backend.token() || busy) return cb && cb(false);
     busy = true;
     var pid = Store.active();
-    Backend.sync({ resume: Store.get('resume', {}), list: Store.get('list', {}) }).then(function (j) {
+    Backend.sync({ resume: Store.get('resume', {}), list: Store.get('list', {}), searches: Store.get('searches', {}) }).then(function (j) {
       if (Store.active() === pid) {
         Store.setFor(pid, 'resume', mergeMaps(Store.getFor(pid, 'resume', {}), j.state.resume), true);
         Store.setFor(pid, 'list', mergeMaps(Store.getFor(pid, 'list', {}), j.state.list), true);
+        Store.setFor(pid, 'searches', mergeMaps(Store.getFor(pid, 'searches', {}), j.state.searches || {}), true);
       }
       status = 'Synced ' + new Date().toLocaleTimeString(); if (cb) cb(true);
     }).catch(function (e) { status = 'Sync failed: ' + e.message; if (e.status === 401 && window.Views && Views.signedOut) Views.signedOut(); if (cb) cb(false); })

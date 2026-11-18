@@ -38,7 +38,7 @@ var Views = (function () {
   var PAGES = ['home', 'movie', 'series', 'library', 'search', 'discover', 'collections', 'settings'];
   function tabs() {
     if (Policy.onlyAllowed()) return [['home', 'Home'], ['library', 'My List'], ['search', 'Search']];      // a profile that only gets what its parents chose
-    return Tmdb.on() ? TABS.slice(0, 4).concat([['discover', 'Discover']], Tmdb.restricted() ? [] : [['collections', 'Collections']], TABS.slice(4)) : TABS;
+    return Tmdb.on() ? TABS.slice(0, 4).concat(Tmdb.restricted() ? [] : [['collections', 'Collections']], TABS.slice(4)) : TABS;
   }
 
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
@@ -139,9 +139,19 @@ var Views = (function () {
   function setArt(el, url) { var a = el && el.querySelector('.art'); if (!a) return; if (url) { a.style.backgroundImage = 'url("' + url + '")'; el.classList.remove('noart'); } }
   function showInfo(m) {
     var el = document.getElementById('info'); if (!el || !m) return;
-    var r = m._resume ? '<div class="chips"><span class="chip">Resume at ' + esc(fmtTime(m._resume.t)) + '</span></div>' : '<div class="chips">' + meta1(m) + '</div>';
+    var r = '<div class="chips" id="icp">' + (m._resume ? '<span class="chip">Resume at ' + esc(fmtTime(m._resume.t)) + '</span>' : '') + meta1(m) + '</div>';      // the facts show on every tab, also on Home, next to "Resume at"
     el.innerHTML = '<h1>' + esc(m.name) + '</h1>' + r + '<div class="desc">' + esc(m.description || '') + '</div>';
     var v = current(); if (v) setArt(v.el, m.background || m.poster);
+    if (Tmdb.on() && /^tt\d+$/.test(m.id || '')) {                                                      // age rating, runtime and genre from TMDB
+      el._for = m.id;
+      Tmdb.title(m.type, m.id).then(function (t) {
+        var box = el._for === m.id && document.getElementById('icp'); if (!box || !t) return;
+        var add = certChip(t.cert);
+        if (!m.runtime && t.runtime) add += '<span class="chip">' + (t.runtime >= 60 ? Math.floor(t.runtime / 60) + 'h ' + (t.runtime % 60) + 'm' : t.runtime + ' min') + '</span>';
+        if ((!m.genres || !m.genres.length) && t.genres && t.genres.length) add += '<span class="chip">' + esc(t.genres.slice(0, 3).map(function (g) { return g.name || g; }).join(' \u00b7 ')) + '</span>';
+        box.innerHTML = add + box.innerHTML;
+      }).catch(function () {});
+    }
   }
   Nav.onFocus(function (el) {
     if (!el || !el.classList || !el.classList.contains('card')) return;
@@ -603,10 +613,10 @@ var Views = (function () {
   function page(kind) {
     closeMenu(true);
     if (!Tmdb.known() && Backend.token()) return Tmdb.init().then(function () { page(kind); });          // is TMDB set up? (asked once after signing in)
-    if (kind === 'search') return searchPage();
+    if (kind === 'search') { LASTQ = ''; return searchPage(); }
     if (Policy.onlyAllowed() && kind !== 'home' && kind !== 'library') return page('home');
     if (kind === 'settings') return settingsPage();
-    if (kind === 'discover') return discoverPage();
+    if (kind === 'discover') return searchPage();
     if (kind === 'collections') return collectionsPage();
     var token = ++browseToken, browse = kind !== 'library';
     replaceAll(kind, '<div class="art img"></div><div class="art-shade"></div>' + topbar(kind) + (browse ? '<div id="info"></div>' : '') +
@@ -681,16 +691,47 @@ var Views = (function () {
   }
 
   /* ---------- search ---------- */
+  /* ---------- Search + Discover in one tab: the bar and the last 5 searches on top, the Discover choices below; with nothing typed the page shows Discover ---------- */
+  var Recent = {                                                            // kept on the person's account (rides the sync), each can be deleted
+    key: function (q) { return String(q).toLowerCase().replace(/\s+/g, ' ').trim().slice(0, 60); },
+    all: function () { return Store.get('searches', {}); },
+    list: function () { var m = Recent.all(); return Object.keys(m).filter(function (k) { return !m[k].del; }).sort(function (x, y) { return m[y].ts - m[x].ts; }).slice(0, 5).map(function (k) { return m[k]; }); },
+    add: function (q) {
+      q = String(q || '').replace(/\s+/g, ' ').trim().slice(0, 80); if (q.length < 2) return;
+      var m = Recent.all(), ks = Object.keys(m); m[Recent.key(q)] = { q: q, ts: Date.now() };
+      if (ks.length > 30) ks.sort(function (x, y) { return m[y].ts - m[x].ts; }).slice(25).forEach(function (k) { delete m[k]; });
+      Store.set('searches', m);
+    },
+    del: function (q) { var m = Recent.all(); m[Recent.key(q)] = { q: Recent.key(q), ts: Date.now(), del: true }; Store.set('searches', m); }
+  };
+  function recentPaint() {
+    var box = document.getElementById('recent'), q = document.getElementById('q'); if (!box) return;
+    var list = (q && q.value.trim()) ? [] : Recent.list(), h = '';
+    list.forEach(function (r) { h += '<span class="rs"><span class="chip f" data-act="recent" data-q="' + esc(r.q) + '">' + esc(r.q) + '</span><span class="chip f rx" data-act="recentdel" data-q="' + esc(r.q) + '" aria-label="Remove ' + esc(r.q) + '">\u00d7</span></span>'; });
+    box.innerHTML = h ? '<div class="gl">Recent searches</div>' + h : ''; Nav.hydrate();
+  }
+  var LASTQ = '';
   function searchPage() {
-    ++browseToken;
-    replaceAll('search', '<div class="art img"></div><div class="art-shade"></div>' + topbar('search') + '<div class="vs" id="main"><div class="grid sc" style="padding-top:150px"><div class="sbar"><input id="q" class="field f" type="text" style="width:960px" placeholder="Search movies, TV shows and people" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="search"><div class="btn glass f mic ic" data-act="speak" aria-label="Search by voice" title="Speak">' + MIC + '</div></div><div class="hint" id="vhint"></div><div id="res"></div></div></div>',
+    ++browseToken; var token = browseToken, disc = Tmdb.on();
+    var chips = disc ? '<span class="chip f" data-act="dtype">' + (DISC.type === 'movie' ? 'Films' : 'TV shows') + '</span><span class="chip f" data-act="dgenre">' + esc(DISC.genreName) + '</span>' +
+      '<span class="chip f" data-act="dyear">' + (DISC.year || 'Any year') + '</span><span class="chip f" data-act="dsort">' + esc(SORT_NAMES[DISC.sort]) + '</span>' : '';
+    replaceAll('search', '<div class="art img"></div><div class="art-shade"></div>' + topbar('search') + '<div class="vs" id="main"><div class="grid sc" id="gridp" style="padding-top:150px"><div class="sbar"><input id="q" class="field f" type="text" style="width:960px" placeholder="Search movies, TV shows and people" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="search" value="' + esc(LASTQ) + '"><div class="btn glass f mic ic" data-act="speak" aria-label="Search by voice" title="Speak">' + MIC + '</div></div><div class="hint" id="vhint"></div><div id="recent"></div>' +
+      (chips ? '<div id="dchips" class="chips" style="margin:18px 0 8px 0">' + chips + '</div>' : '') + '<div id="res"></div><div id="gcards"></div><div id="gmoreh"></div></div></div>',
       { cls: 'noart', onBack: function () { page('home'); return true; } });
     Nav.first('#q');
     var q = document.getElementById('q');
+    function showMode() {                                                    // typed: search results; empty: Discover
+      var typed = !!q.value.trim(), dc = document.getElementById('dchips'), gc = document.getElementById('gcards'), gm = document.getElementById('gmoreh'), rs = document.getElementById('res');
+      if (dc) dc.style.display = typed ? 'none' : ''; if (gc) gc.style.display = typed ? 'none' : ''; if (gm) gm.style.display = typed ? 'none' : ''; if (rs) rs.style.display = typed ? '' : 'none';
+      recentPaint();
+    }
+    showMode();
+    if (disc) discoverLoad(token); else { var g = document.getElementById('gcards'); if (g) g.innerHTML = ''; }
+    if (LASTQ.trim().length >= 2) runSearch(LASTQ.trim(), true);
     // voice typed through the TV's keyboard microphone arrives as text without Enter: search once it stops changing
-    var lastQ = '';
-    function auto() { var v = q.value.trim(); if (v.length >= 2 && v !== lastQ) { lastQ = v; runSearch(v); } }
-    q.addEventListener('input', function () { clearTimeout(q._t); q._t = setTimeout(auto, 900); });
+    var lastQ = LASTQ.trim();
+    function auto() { var v = q.value.trim(); LASTQ = q.value; showMode(); if (v.length >= 2 && v !== lastQ) { lastQ = v; runSearch(v); } else if (!v) { lastQ = ''; var rs = document.getElementById('res'); if (rs) rs.innerHTML = ''; } }
+    q.addEventListener('input', function () { clearTimeout(q._t); q._t = setTimeout(auto, 900); showMode(); });
     q.addEventListener('change', auto);
   }
   var MIC = '<svg class="ico" viewBox="0 0 48 48" width="34" height="34"><g fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><rect x="17" y="6" width="14" height="25" rx="7"/><path d="M10 23a14 14 0 0 0 28 0M24 37v6M17 43h14"/></g></svg>';
@@ -713,8 +754,8 @@ var Views = (function () {
     q.focus();
     if (hint) hint.textContent = 'Press the microphone key on the keyboard that just opened (or hold the Magic Remote\u2019s microphone button) and say a title. The words are typed in and searched automatically.';
   }
-  function runSearch(q) {
-    var res = document.getElementById('res'); if (!res || !q) return;
+  function runSearch(q, quiet) {
+    var res = document.getElementById('res'); if (!res || !q) return; if (!quiet) Recent.add(q);
     res.innerHTML = '<div class="skel">Searching…</div>';
     var people = Tmdb.on() ? Tmdb.search(q).then(function (r) { return r.people || []; }).catch(function () { return []; }) : Promise.resolve([]);
     Promise.all([Api.ensure().then(function () { return Api.search(q); }), people]).then(function (all) {
@@ -913,15 +954,7 @@ var Views = (function () {
   }
   var DISC = { type: 'movie', genre: '', genreName: 'Any genre', year: '', sort: 'popular', page: 1 };
   var SORT_NAMES = { popular: 'Most popular', rating: 'Highest rated', newest: 'Newest', az: 'A to Z' };
-  function discoverPage() {
-    var token = ++browseToken;
-    var chips = '<span class="chip f" data-act="dtype">' + (DISC.type === 'movie' ? 'Films' : 'TV shows') + '</span><span class="chip f" data-act="dgenre">' + esc(DISC.genreName) + '</span>' +
-      '<span class="chip f" data-act="dyear">' + (DISC.year || 'Any year') + '</span><span class="chip f" data-act="dsort">' + esc(SORT_NAMES[DISC.sort]) + '</span>';
-    replaceAll('discover', '<div class="art-shade"></div>' + topbar('discover') + '<div class="vs" id="main"><div class="grid" id="gridp"><div class="gh"><h1>Discover</h1><div class="chips">' + chips + '</div></div><div id="gcards"><div class="skel">Loading…</div></div><div id="gmoreh"></div></div></div>',
-      { cls: 'noart', onBack: function () { page('home'); return true; } });
-    Nav.first('.tab.on');
-    discoverLoad(token);
-  }
+  function discoverPage() { return searchPage(); }
   function discoverLoad(token) {
     token = token || browseToken;
     Tmdb.discover({ type: DISC.type, genre: DISC.genre, year: DISC.year, sort: DISC.sort, page: DISC.page }).then(function (r) {
@@ -1199,6 +1232,8 @@ var Views = (function () {
     if (a === 'person') return personPage(el.getAttribute('data-id'));
     if (a === 'collection') return collectionPage(el.getAttribute('data-id'));
     if (a === 'dtype' || a === 'dsort' || a === 'dyear' || a === 'dgenre') return discoverMenu(a);
+    if (a === 'recent') { var rq = el.getAttribute('data-q') || '', qi = document.getElementById('q'); if (qi) { qi.value = rq; LASTQ = rq; qi.dispatchEvent(new Event('change')); } return; }
+    if (a === 'recentdel') { Recent.del(el.getAttribute('data-q') || ''); recentPaint(); Nav.first('#q'); return; }
     if (a === 'dmore') { DISC.page++; var mh = document.getElementById('gmoreh'); if (mh) mh.innerHTML = ''; return discoverLoad(); }
     if (a === 'pick') { var mm = menuEl, i = +el.getAttribute('data-i'), cb = mm._pick, o = mm._opts[i]; closeMenu(); return cb(o, i); }
     if (a === 'toggle') return el.classList.toggle('on');

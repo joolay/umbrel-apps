@@ -23,7 +23,7 @@ const UPSTREAM = new URL(process.env.STREAM_UPSTREAM || "http://server:11470");
 const INTERNAL = process.env.STREAM_INTERNAL || "http://127.0.0.1:11470";   // how the streaming server reaches itself (for transcoding)
 const REQUIRE_ACCOUNTS = !/^(0|false|no)$/i.test(process.env.REQUIRE_ACCOUNTS || "1");
 const subsync = require("./subsync");
-const streamcfg = require("./streamcfg"), thumbs = require("./thumbs"), marks = require("./marks"), community = require("./community"), tmdb = require("./tmdb"), tvupdate = require("./tvupdate");
+const streamcfg = require("./streamcfg"), thumbs = require("./thumbs"), marks = require("./marks"), community = require("./community"), tmdb = require("./tmdb"), avail = require("./avail").make({ tmdb }), tvupdate = require("./tvupdate");
 const qrsignin = require("./qrsignin")({ portalCall: (fn, args) => pb.portalCall(fn, args), portalUrl: () => (pb.portalUrl ? pb.portalUrl() : "") });
 const FFMPEG = process.env.FFMPEG || "ffmpeg", FFPROBE = process.env.FFPROBE || "ffprobe";
 const APP_NAME = process.env.POCKETBASE_APP_NAME || "JoolzTV";
@@ -309,7 +309,9 @@ function mergeMap(cur, src, cap) {
   if (ids.length > cap) ids.sort((a, b) => (cur[b].ts || 0) - (cur[a].ts || 0)).slice(cap).forEach(id => { delete cur[id]; });
   return cur;
 }
-function userData(id) { const d = readJson(userFile(id), {}); return { resume: d.resume || {}, list: d.list || {}, theme: d.theme }; }
+/* recent searches: only {q, ts, del} survives, so nothing else can be stored through this */
+function cleanSearches(m) { const out = {}; Object.keys(m && typeof m === "object" ? m : {}).slice(0, 60).forEach(k => { const e = m[k]; if (validEntry(e) && typeof e.q === "string") out[String(k).slice(0, 64)] = { q: e.q.slice(0, 80), ts: e.ts, del: e.del === true }; }); return out; }
+function userData(id) { const d = readJson(userFile(id), {}); return { resume: d.resume || {}, list: d.list || {}, searches: d.searches || {}, theme: d.theme }; }
 /* dark / light / auto (sunrise to sunset) belongs to the person's account, not the device */
 async function themeRoute(req, res, u) {
   const d = readJson(userFile(u.id), {});
@@ -322,7 +324,7 @@ function syncRoutes(req, res, p, u) {
   if (p === "/api/state" && req.method === "GET") return send(res, 200, { state: userData(u.id) });
   return (async () => {
     const body = await jsonBody(req), st = body.state || {}, d = userData(u.id);
-    mergeMap(d.resume, st.resume, MAX_RESUME); mergeMap(d.list, st.list, MAX_LIST);
+    mergeMap(d.resume, st.resume, MAX_RESUME); mergeMap(d.list, st.list, MAX_LIST); mergeMap(d.searches, cleanSearches(st.searches), 40);
     writeJson(userFile(u.id), d);
     send(res, 200, { state: d });
   })();
@@ -398,6 +400,9 @@ const tmdbErr = (res, e) => {
   console.error("tmdb:", e.message); return send(res, 502, { code: "upstream", message: "TMDB could not be reached." });
 };
 const idOk = v => /^\d{1,9}$/.test(String(v || ""));
+/* lists only show titles with at least one source (a title the sources add-on says has nothing is dropped; if it cannot be asked the title stays) */
+function sourcesBase(h) { return String(process.env.SOURCES_URL || Sources.url(Sources.normalize((h.prefs || {}).sources)) || "").replace(/\/+$/, ""); }
+async function withSources(h, r) { const base = sourcesBase(h); if (!base || !r) return r; if (Array.isArray(r.items)) r.items = await avail.filter(r.items, { base }); if (Array.isArray(r.titles)) r.titles = await avail.filter(r.titles, { base }); return r; }
 async function tmdbRoutes(req, res, p, u) {
   const url = new URL(req.url, "http://x"), q = url.searchParams, l = loc(url);
   if (p === "/api/tmdb/status") { await tmdb.refreshKey(!!u.isAdmin); return send(res, 200, { enabled: tmdb.enabled(), source: tmdb.keySource(), canSetKey: !!u.isAdmin && tmdb.keySource() !== "portal", limit: tmdb.enabled() ? ageLimitOf(hh(), u) : null }); }
@@ -416,13 +421,13 @@ async function tmdbRoutes(req, res, p, u) {
       return send(res, 200, await tmdb.title({ imdb: /^tt/.test(imdb) ? imdb : "", tmdb: idOk(t) ? t : "", type: q.get("type") || "movie", locale: l.locale, region: l.region }));
     }
     if (p === "/api/tmdb/season") { if (!idOk(q.get("tmdb")) || !idOk(q.get("season"))) return send(res, 400, { code: "bad_request", message: "Unknown season." }); return send(res, 200, await tmdb.season({ tmdb: q.get("tmdb"), season: q.get("season"), locale: l.locale })); }
-    if (p === "/api/tmdb/list") return send(res, 200, await tmdb.list({ kind: q.get("kind") || "popular", type: q.get("type") || "movie", locale: l.locale, region: l.region, page: Math.min(+q.get("page") || 1, 20) }));
+    if (p === "/api/tmdb/list") { const kind = q.get("kind") || "popular"; return send(res, 200, await withSources(h, await tmdb.list({ kind, type: q.get("type") || "movie", locale: l.locale, region: l.region, page: Math.min(+q.get("page") || 1, 20), released: kind !== "soon" && kind !== "now", noPoster: !!sourcesBase(h) }))); }
     if (p === "/api/tmdb/genres") return send(res, 200, { genres: await tmdb.genres({ type: q.get("type") || "movie", locale: l.locale }) });
-    if (p === "/api/tmdb/discover") return send(res, 200, await tmdb.discover({ type: q.get("type") || "movie", genre: q.get("genre"), year: q.get("year"), sort: q.get("sort"), locale: l.locale, region: l.region, page: Math.min(+q.get("page") || 1, 50), maxAge: limit }));
+    if (p === "/api/tmdb/discover") return send(res, 200, await tmdb.discover({ type: q.get("type") || "movie", genre: q.get("genre"), year: q.get("year"), sort: q.get("sort"), locale: l.locale, region: l.region, page: Math.min(+q.get("page") || 1, 50), maxAge: limit, released: true, noPoster: !!sourcesBase(h) }).then(r => withSources(h, r)));
     if (p === "/api/tmdb/person") { if (!idOk(q.get("id"))) return send(res, 400, { code: "bad_request", message: "Unknown person." }); return send(res, 200, await tmdb.person({ id: q.get("id"), locale: l.locale })); }
     if (p === "/api/tmdb/collections") return send(res, 200, { collections: await tmdb.collections({ q: q.get("q"), locale: l.locale }) });
     if (p === "/api/tmdb/collection") { if (!idOk(q.get("id"))) return send(res, 400, { code: "bad_request", message: "Unknown collection." }); return send(res, 200, await tmdb.collection({ id: q.get("id"), locale: l.locale })); }
-    if (p === "/api/tmdb/search") { const s = String(q.get("q") || "").trim(); if (s.length < 2) return send(res, 200, { people: [], titles: [] }); return send(res, 200, await tmdb.search({ q: s, locale: l.locale })); }
+    if (p === "/api/tmdb/search") { const s = String(q.get("q") || "").trim(); if (s.length < 2) return send(res, 200, { people: [], titles: [] }); return send(res, 200, await withSources(h, await tmdb.search({ q: s, locale: l.locale, noPoster: !!sourcesBase(h) }))); }
     if (p === "/api/tmdb/resolve") { if (!idOk(q.get("tmdb"))) return send(res, 400, { code: "bad_request", message: "Unknown title." }); return send(res, 200, await tmdb.resolve({ tmdb: q.get("tmdb"), type: q.get("type") || "movie" })); }
     return send(res, 404, { code: "not_found" });
   } catch (e) { return tmdbErr(res, e); }

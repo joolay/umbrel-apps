@@ -83,6 +83,9 @@ const T = tok => ({ "x-jtv-token": tok });
   r = await req("POST", "/api/sync", { state: { resume: { tt1: { ts: 100, t: 5 } }, list: { tt9: { ts: 100, name: "x" }, bad: { name: "no ts" } } } }, T(ann));
   ok(r.code === 200 && r.json.state.resume.tt1 && r.json.state.list.tt9 && !r.json.state.list.bad, "ann's progress/list saved; invalid entry dropped");
   r = await req("POST", "/api/sync", { state: { resume: { tt1: { ts: 50, t: 99 }, tt2: { ts: 200, t: 1 } } } }, T(ann)); ok(r.json.state.resume.tt1.t === 5 && r.json.state.resume.tt2, "newest entry wins, new one added");
+  r = await req("POST", "/api/sync", { state: { searches: { "star wars": { q: "Star Wars", ts: 10, del: false }, "junk": { q: 5, ts: 1 }, "x": { q: "evil", ts: 5, extra: "<script>" } } } }, T(ann));
+  ok(r.json.state.searches["star wars"].q === "Star Wars" && !r.json.state.searches.junk && r.json.state.searches.x.extra === undefined, "recent searches sync (only q, ts and del are kept)");
+  r = await req("POST", "/api/sync", { state: { searches: { "star wars": { q: "star wars", ts: 20, del: true } } } }, T(ann)); ok(r.json.state.searches["star wars"].del === true, "a deleted recent search stays deleted on every device");
   r = await req("GET", "/api/state", undefined, T(bob)); ok(Object.keys(r.json.state.resume).length === 0 && Object.keys(r.json.state.list).length === 0, "bob cannot see ann's data (one account per profile)");
   // streaming through the sign-in
   r = await req("POST", "/api/stream-token", {}); ok(r.code === 401, "no stream token without sign-in");

@@ -313,3 +313,6 @@ html.phone .form[style] { width: 640px !important; }
 
 /* a taller invisible hit area, so the pointer finds the progress bar easily (hover shows the nearest thumbnail) */
 .seek:before { content: ""; position: absolute; left: 0; right: 0; top: -26px; bottom: -26px; }
+
+/* recent searches: each one is a chip with its own small remove button */
+#recent { margin: 8px 0 4px 0; } #recent .gl { margin: 6px 0 10px 0; } .rs { display: inline-block; margin: 0 14px 12px 0; white-space: nowrap; } .rs .chip { margin: 0 6px 0 0; } .rs .rx { min-width: 40px; padding-left: 14px; padding-right: 14px; font-weight: 800; }
