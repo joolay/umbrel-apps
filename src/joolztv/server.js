@@ -23,7 +23,7 @@ const UPSTREAM = new URL(process.env.STREAM_UPSTREAM || "http://server:11470");
 const INTERNAL = process.env.STREAM_INTERNAL || "http://127.0.0.1:11470";   // how the streaming server reaches itself (for transcoding)
 const REQUIRE_ACCOUNTS = !/^(0|false|no)$/i.test(process.env.REQUIRE_ACCOUNTS || "1");
 const subsync = require("./subsync");
-const streamcfg = require("./streamcfg"), thumbs = require("./thumbs"), marks = require("./marks"), community = require("./community"), tmdb = require("./tmdb");
+const streamcfg = require("./streamcfg"), thumbs = require("./thumbs"), marks = require("./marks"), community = require("./community"), tmdb = require("./tmdb"), tvupdate = require("./tvupdate");
 const FFMPEG = process.env.FFMPEG || "ffmpeg", FFPROBE = process.env.FFPROBE || "ffprobe";
 const APP_NAME = process.env.POCKETBASE_APP_NAME || "JoolzTV";
 const MAX_PROFILES = 12, MAX_BODY = 2 * 1024 * 1024, MAX_RESUME = 200, MAX_LIST = 500, STREAM_TTL = 12 * 3600e3;
@@ -837,6 +837,7 @@ const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, "http://x"), p = decodeURIComponent(url.pathname);
     if (p === "/healthz") { res.writeHead(200, { "content-type": "application/json", "access-control-allow-origin": "*", "cache-control": "no-store" }); return res.end(JSON.stringify({ ok: true, app: "joolztv" })); }
+    if (p === "/tv/update") { const l = await tvupdate.latest(); res.writeHead(200, { "content-type": "application/json", "access-control-allow-origin": "*", "cache-control": "no-store" }); return res.end(JSON.stringify({ launcher: l })); }
     if (p === "/config.js") { res.writeHead(200, { "content-type": "text/javascript; charset=utf-8", "cache-control": "no-store" }); return res.end(configJs()); }
     const dm = /^\/devtest\/([^/]+)$/.exec(url.pathname);
     if (dm && (req.method === "GET" || req.method === "HEAD")) return serveDevtest(req, res, dm[1]);
