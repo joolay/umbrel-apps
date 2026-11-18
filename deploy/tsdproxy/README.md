@@ -10,6 +10,7 @@ the store is what publishes it**. No per-app Tailscale steps.
 | `https://shutterworth.<tailnet>.ts.net` | ShutterWorth | 3882 |
 | `https://diner-bell.<tailnet>.ts.net` | Diner Bell | 3894 |
 | `https://listify.<tailnet>.ts.net` | Listify | 3887 |
+| `https://joolztv.<tailnet>.ts.net` | JoolzTV | 3901 |
 
 ## One-time setup (Umbrel, over SSH)
 Needs (already done): HTTPS certificates on, `tag:public` with the `funnel` attribute in your policy, and a reusable auth key tagged `tag:public`.
@@ -49,3 +50,9 @@ Then register its address under Portal Admin > Apps > URL so it gets an Open but
 - **Funnel is public:** anyone on the internet can reach a labelled app. Portal Admin's public port is user-only on purpose.
 - **Not working?** Set `log: level: trace` in `config/tsdproxy.yaml`, then `sudo docker compose restart tsdproxy`. The log shows which addresses it tried for each app.
 - **Switch off:** `sudo docker compose down` removes every public address. The apps keep running.
+- **Addresses fail on a phone that has Tailscale ON (but work with it off):** a device on your tailnet reaches a `*.ts.net` address over the private tailnet, not the public Funnel route, and your access rules must allow it. Add a rule letting your own devices reach the proxy machines on HTTPS, in Tailscale admin > Access controls, then save (it applies at once):
+  ```json
+  "grants": [ { "src": ["autogroup:member"], "dst": ["tag:public"], "ip": ["443"] } ]
+  ```
+  or, in the older ACL style: `"acls": [ { "action": "accept", "src": ["autogroup:member"], "dst": ["tag:public:443"] } ]`. The Access controls page also has a preview that tests whether a device can reach `tag:public:443`.
+- **A machine shows as offline or gets a `-1` name:** delete the old machine in Tailscale admin > Machines, then restart the TSDProxy container (Services Manager can do this). Otherwise the new one is registered as `<name>-1`.
