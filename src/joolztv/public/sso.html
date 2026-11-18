@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="referrer" content="no-referrer"><title>JoolzTV</title></head>
+<body style="font:16px system-ui,sans-serif;padding:2rem;text-align:center;background:#0b0d14;color:#fff">
+<p>Opening JoolzTV…</p>
+<noscript><p><a href="./" style="color:#fff">Continue to JoolzTV</a></p></noscript>
+<script>
+// The JoolzApp dashboard opens every JoolzApp app at /sso.html#t=<sign-in>. JoolzTV signs people in per profile
+// (profile picker, PIN, pattern or QR), so it does not take the dashboard's sign-in: the token is dropped from the
+// address bar and the app opens on its own sign-in screen. Written in ES5 so it also runs on the LG TV browser.
+(function () {
+  try { history.replaceState(null, "", location.pathname); } catch (e) {}
+  location.replace("./");
+})();
+</script></body></html>
