@@ -2,7 +2,7 @@ manifestVersion: 1
 id: joolay-joolztv
 category: media
 name: JoolzTV
-version: "1.10.0"
+version: "1.11.0"
 tagline: A glassy, Apple TV style front end for your streaming server, behind your JoolzApp account
 description: >-
   JoolzTV gives your TV, phone and computer a clean, glassy Apple TV style interface. It includes its own Stremio streaming server and replaces the old Stremio app.
@@ -26,6 +26,6 @@ icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-joolztv/i
 path: ""
 defaultUsername: ""
 defaultPassword: ""
-releaseNotes: "New Appearance setting: Dark, Light, or Auto (light from sunrise to sunset where you are), saved on your JoolzApp account. Also: Episodes that are not out yet are greyed out with their date, and Notify me checks every 3 hours after release, reading the first minute (or downloading ahead). Also: The TMDB key now comes from Portal Admin > App keys (stored hidden in PocketBase), so each admin enters their own once. Also: You can watch a title while it is downloading ahead (downloads step aside whenever a player runs short and carry on afterwards), the first minute of the next episode is read ahead near the end of a fully downloaded episode, and Settings has tabs. Also: 50 GB cache, Download ahead, big-key keyboard, collections in My List, Also on Netflix, parental controls, TMDB, glass player controls, seek previews, voice search, skip intro / credits."
+releaseNotes: "TMDB answers are now kept on disk and refreshed only when TMDB reports a change (or after a week or two), with a size limit, and are rate-limit friendly. Also: New Appearance setting: Dark, Light, or Auto (light from sunrise to sunset where you are), saved on your JoolzApp account. Also: Episodes that are not out yet are greyed out with their date, and Notify me checks every 3 hours after release, reading the first minute (or downloading ahead). Also: The TMDB key now comes from Portal Admin > App keys (stored hidden in PocketBase), so each admin enters their own once. Also: You can watch a title while it is downloading ahead (downloads step aside whenever a player runs short and carry on afterwards), the first minute of the next episode is read ahead near the end of a fully downloaded episode, and Settings has tabs. Also: 50 GB cache, Download ahead, big-key keyboard, collections in My List, Also on Netflix, parental controls, TMDB, glass player controls, seek previews, voice search, skip intro / credits."
 submitter: joolay
 submission: https://github.com/joolay/umbrel-apps

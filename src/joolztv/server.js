@@ -28,7 +28,7 @@ const FFMPEG = process.env.FFMPEG || "ffmpeg", FFPROBE = process.env.FFPROBE || 
 const APP_NAME = process.env.POCKETBASE_APP_NAME || "JoolzTV";
 const MAX_PROFILES = 12, MAX_BODY = 2 * 1024 * 1024, MAX_RESUME = 200, MAX_LIST = 500, STREAM_TTL = 12 * 3600e3;
 const USERS_DIR = path.join(DATA_DIR, "users");
-tmdb.configure(path.join(DATA_DIR, "tmdb.key"), async name => (pb.portalOn && pb.portalOn() && pb.portalCall ? pb.portalCall("appSecret", [name]) : ""));
+tmdb.configure(path.join(DATA_DIR, "tmdb.key"), async name => (pb.portalOn && pb.portalOn() && pb.portalCall ? pb.portalCall("appSecret", [name]) : ""), path.join(DATA_DIR, "tmdb-cache.json"));
 tmdb.refreshKey(true).catch(() => {});
 fs.mkdirSync(USERS_DIR, { recursive: true });
 

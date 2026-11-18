@@ -6,39 +6,98 @@ const fs = require("fs");
 const API = process.env.TMDB_URL || "https://api.themoviedb.org/3";
 const IMG = process.env.TMDB_IMG || "https://image.tmdb.org/t/p/";
 let keyFile = null, memKey = (process.env.TMDB_KEY || "").trim();
-const cache = new Map();
+/* ---- cache: kept on disk, least recently used entries roll out when it is full, answers are refreshed when TMDB says they changed (daily /changes feed)
+   or when they get old, and an old copy is still served when TMDB cannot be reached. TMDB's terms allow caching for at most 6 months; we keep at most 90 days. ---- */
+const cache = new Map();                               // url -> { at, ttl, v, n } (n = approximate bytes); Map order = least recently used first
+const MAX_AGE = 90 * 864e5, MAX_ENTRIES = +process.env.JTV_TMDB_MAX_ENTRIES || 6000, MAX_BYTES = +process.env.JTV_TMDB_MAX_BYTES || 80e6;
+let cacheFile = null, cacheBytes = 0, saveT = null, lastSweep = 0, sweepT = null;
+const entryId = url => { const m = /^[^?]*?\/(movie|tv)\/(\d+)(\/|\?|$)/.exec(url.slice(API.length)); return m ? m[1] + ":" + m[2] : ""; };
+function cachePut(url, v, ttl) {
+  const old = cache.get(url); if (old) { cacheBytes -= old.n; cache.delete(url); }
+  const n = JSON.stringify(v).length; cache.set(url, { at: Date.now(), ttl, v, n }); cacheBytes += n;
+  while ((cache.size > MAX_ENTRIES || cacheBytes > MAX_BYTES) && cache.size > 1) { const k = cache.keys().next().value; cacheBytes -= cache.get(k).n; cache.delete(k); }      // roll over the oldest-used
+  scheduleSave();
+}
+function cacheLoad() {
+  if (!cacheFile) return;
+  try { const j = JSON.parse(fs.readFileSync(cacheFile, "utf8")); lastSweep = j.sweep || 0; (j.entries || []).forEach(e => { if (e && e.k && Date.now() - e.at < MAX_AGE) { cache.set(e.k, { at: e.at, ttl: e.ttl, v: e.v, n: JSON.stringify(e.v).length }); cacheBytes += cache.get(e.k).n; } }); } catch {}
+}
+function cacheSave() {
+  if (!cacheFile) return; clearTimeout(saveT); saveT = null;
+  try { const tmp = cacheFile + ".tmp"; fs.writeFileSync(tmp, JSON.stringify({ sweep: lastSweep, entries: Array.from(cache, ([k, e]) => ({ k, at: e.at, ttl: e.ttl, v: e.v })) }), { mode: 0o600 }); fs.renameSync(tmp, cacheFile); } catch {}
+}
+function scheduleSave() { if (cacheFile && !saveT) { saveT = setTimeout(cacheSave, 20000); if (saveT.unref) saveT.unref(); } }
+if (typeof process !== "undefined") process.on("exit", () => { if (saveT) cacheSave(); });
+/* the daily sweep: ask TMDB which films and series changed since last time and mark just those entries as out of date (they are re-fetched on next use) */
+async function sweep() {
+  if (!theKey()) return;
+  const day = t => new Date(t).toISOString().slice(0, 10), now = Date.now(), from = Math.max(lastSweep || now - 2 * 864e5, now - 13 * 864e5), ids = new Set();
+  for (const t of ["movie", "tv"]) {
+    for (let page = 1; page <= 40; page++) {
+      let d; try { d = await rawCall("/" + t + "/changes", { start_date: day(from), end_date: day(now), page }); } catch { return; }       // try again tomorrow
+      (d.results || []).forEach(r => ids.add(t + ":" + r.id));
+      if (page >= (d.total_pages || 1)) break;
+    }
+  }
+  let n = 0; cache.forEach((e, k) => { if (ids.has(entryId(k))) { e.at = 0; n++; } });
+  lastSweep = now; cacheSave(); return { changed: ids.size, marked: n };
+}
+function startSweeps() { clearInterval(sweepT); sweepT = setInterval(() => { if (Date.now() - lastSweep > 20 * 3600e3) sweep().catch(() => {}); }, 3600e3); if (sweepT.unref) sweepT.unref(); setTimeout(() => { if (Date.now() - lastSweep > 20 * 3600e3) sweep().catch(() => {}); }, 30000).unref(); }
+/* ---- being polite: at most 12 calls in flight, one retry after a 429, a short pause for everyone if TMDB keeps refusing ---- */
+let inflight = 0, pauseUntil = 0; const waiting = [], shared = new Map();
+const MAXFLY = +process.env.JTV_TMDB_FLY || 12;
+const slot = () => new Promise(res => { if (inflight < MAXFLY) { inflight++; res(); } else waiting.push(res); });
+const free = () => { const n = waiting.shift(); if (n) n(); else inflight--; };
+const nap = ms => new Promise(r => setTimeout(r, ms));
 
 let portalKey = "", secretFn = null, lastPull = 0;
 const theKey = () => portalKey || memKey;               // the key saved in Portal Admin > App keys wins over the local one
-function configure(file, fn) { keyFile = file; secretFn = fn || null; if (!memKey) { try { memKey = fs.readFileSync(file, "utf8").trim(); } catch {} } }
+function configure(file, fn, cache_file) { keyFile = file; secretFn = fn || null; if (cache_file) { cacheFile = cache_file; cacheLoad(); startSweeps(); } if (!memKey) { try { memKey = fs.readFileSync(file, "utf8").trim(); } catch {} } }
 async function refreshKey(force) {                      // re-read the PocketBase-held key at most every 5 minutes; failures keep the last good value
   if (!secretFn || (!force && Date.now() - lastPull < 300e3)) return;
   lastPull = Date.now();
-  try { const v = String(await secretFn("tmdb") || "").trim(); if (v !== portalKey) { portalKey = /^[\w.\-]{16,900}$/.test(v) ? v : ""; cache.clear(); } } catch { lastPull = Date.now() - 270e3; }
+  try { const v = String(await secretFn("tmdb") || "").trim(); if (v !== portalKey) portalKey = /^[\w.\-]{16,900}$/.test(v) ? v : ""; } catch { lastPull = Date.now() - 270e3; }
 }
 const keySource = () => portalKey ? "portal" : memKey ? "local" : "none";
 function setKey(k) {
   if (portalKey) throw Object.assign(new Error("The TMDB key is managed in Portal Admin > App keys."), { code: "bad_key" });                                  // admin pastes a key in Settings; it is stored on the server only
   k = String(k || "").trim();
   if (k && !/^[\w.\-]{16,800}$/.test(k)) throw Object.assign(new Error("That does not look like a TMDB key."), { code: "bad_key" });
-  memKey = k; cache.clear();
+  memKey = k;
   if (keyFile) { if (k) fs.writeFileSync(keyFile, k, { mode: 0o600 }); else { try { fs.unlinkSync(keyFile); } catch {} } }
 }
 const enabled = () => !!theKey();
 
-async function call(path, params, ttl = 12 * 3600e3) {
+async function rawCall(path, params) {
   await refreshKey(); const memKey = theKey();
   if (!memKey) throw Object.assign(new Error("TMDB is not set up"), { code: "off" });
   const q = new URLSearchParams(params || {}); const bearer = memKey.indexOf(".") > 0;       // a v4 read token is a JWT, a v3 key is plain hex
   if (!bearer) q.set("api_key", memKey);
+  const url = API + path + "?" + q.toString();
+  for (let attempt = 0; ; attempt++) {
+    if (Date.now() < pauseUntil) throw Object.assign(new Error("TMDB is busy"), { code: "busy" });
+    await slot(); let r;
+    try { r = await fetch(url, { headers: Object.assign({ accept: "application/json", "user-agent": "JoolzTV" }, bearer ? { authorization: "Bearer " + memKey } : {}), signal: AbortSignal.timeout(10000) }); } finally { free(); }
+    if (r.status === 429) { const ra = Number(r.headers.get("retry-after")); if (attempt === 0) { await nap(Math.min(5000, (ra > 0 ? ra : 1) * 1000)); continue; } pauseUntil = Date.now() + 5000; throw Object.assign(new Error("TMDB is busy"), { code: "busy" }); }
+    if (r.status === 401) throw Object.assign(new Error("TMDB refused the key"), { code: "bad_key" });
+    if (r.status === 404) throw Object.assign(new Error("not found"), { code: "not_found" });
+    if (!r.ok) throw Object.assign(new Error("TMDB answered " + r.status), { code: "upstream" });
+    return r.json();
+  }
+}
+async function call(path, params, ttl = 14 * 864e5) {
+  ttl = Math.min(ttl, MAX_AGE);
+  await refreshKey(); if (!theKey()) throw Object.assign(new Error("TMDB is not set up"), { code: "off" });
+  const q = new URLSearchParams(params || {}); const bearer = theKey().indexOf(".") > 0; if (!bearer) q.set("api_key", theKey());
   const url = API + path + "?" + q.toString(), hit = cache.get(url);
-  if (hit && Date.now() - hit.at < ttl) return hit.v;
-  const r = await fetch(url, { headers: Object.assign({ accept: "application/json", "user-agent": "JoolzTV" }, bearer ? { authorization: "Bearer " + memKey } : {}), signal: AbortSignal.timeout(10000) });
-  if (r.status === 401) throw Object.assign(new Error("TMDB refused the key"), { code: "bad_key" });
-  if (r.status === 404) throw Object.assign(new Error("not found"), { code: "not_found" });
-  if (r.status === 429) throw Object.assign(new Error("TMDB is busy"), { code: "busy" });
-  if (!r.ok) throw Object.assign(new Error("TMDB answered " + r.status), { code: "upstream" });
-  const v = await r.json(); if (cache.size > 800) cache.delete(cache.keys().next().value); cache.set(url, { at: Date.now(), v }); return v;
+  if (hit && Date.now() - hit.at < hit.ttl && Date.now() - hit.at < ttl) { cache.delete(url); cache.set(url, hit); return hit.v; }        // fresh: mark as recently used
+  if (shared.has(url)) return shared.get(url);                                           // the same question is already on its way
+  const job = (async () => {
+    try { const v = await rawCall(path, params); cachePut(url, v, ttl); return v; }
+    catch (e) { if (hit && e.code !== "not_found" && e.code !== "off" && e.code !== "bad_key") return hit.v; throw e; }       // TMDB cannot be reached: an older copy beats nothing
+    finally { shared.delete(url); }
+  })();
+  shared.set(url, job); return job;
 }
 const img = (p, size) => (p ? IMG + size + p : "");
 const L = (o, region) => ({ language: o.locale || "en-US", region: region || undefined });
@@ -198,4 +257,4 @@ async function ageOf({ imdb, type, region }) {
   const d = await call("/" + t + "/" + f.tmdb, { append_to_response: t === "tv" ? "content_ratings" : "release_dates" }, 7 * 864e5);
   return pickCert(d, t, region);
 }
-module.exports = { adultOf, adultReason, collections, FRANCHISES, configure, setKey, enabled, refreshKey, keySource, find, title, season, list, genres, discover, person, search, collection, resolve, ageOf, certAge, pickCert, LISTS };
+module.exports = { adultOf, adultReason, collections, FRANCHISES, configure, setKey, enabled, refreshKey, keySource, sweep, _call: call, cacheSave, cacheStats: () => ({ entries: cache.size, bytes: cacheBytes, lastSweep }), find, title, season, list, genres, discover, person, search, collection, resolve, ageOf, certAge, pickCert, LISTS };
