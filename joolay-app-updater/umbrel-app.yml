@@ -2,7 +2,7 @@ manifestVersion: 1
 id: joolay-app-updater
 category: developer
 name: App Updater
-version: "1.0.3"
+version: "1.0.4"
 tagline: Update the Umbrel apps you choose automatically, nightly or the moment a new version appears
 description: >-
   Umbrel never updates apps by itself. App Updater does it for the apps you pick, including Portal Admin.
@@ -21,7 +21,7 @@ gallery: []
 path: ""
 defaultUsername: ""
 defaultPassword: ""
-releaseNotes: "No longer shown on the JoolzApp home screen; open it from Umbrel."
+releaseNotes: "Sharper icon: a larger glass square with no outer border. No longer shown on the JoolzApp home screen; open it from Umbrel."
 submitter: joolay
 submission: https://github.com/joolay/umbrel-apps
 icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-app-updater/icon.svg

@@ -1,19 +1,18 @@
 import subprocess,os
 D=os.path.abspath(os.path.join(os.path.dirname(__file__),'..','..'))  # repo root
 def svg(a,c1,c2,glyph):
+    # v2 (crisper): the frosted square is much larger (444 of 512, was 340) and has no outline, rim line or corner arc, the glyph is 16% larger,
+    # and the soft haze is gone: a clean gradient, one light sheen on the square and a tight shadow under the glyph.
     return f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="{c2}"/><stop offset="1" stop-color="{c1}"/></linearGradient>
-    <radialGradient id="glow" cx="0.2" cy="0.12" r="0.85"><stop offset="0" stop-color="#fff" stop-opacity=".55"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
-    <linearGradient id="panel" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".30"/><stop offset="1" stop-color="#fff" stop-opacity=".08"/></linearGradient>
-    <linearGradient id="rim" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".85"/><stop offset=".5" stop-color="#fff" stop-opacity=".12"/><stop offset="1" stop-color="#fff" stop-opacity=".4"/></linearGradient>
-    <filter id="sh" x="-20%" y="-20%" width="140%" height="150%"><feDropShadow dx="0" dy="10" stdDeviation="9" flood-color="#000" flood-opacity=".28"/></filter>
+    <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".30"/><stop offset=".55" stop-color="#fff" stop-opacity=".04"/><stop offset="1" stop-color="#000" stop-opacity=".10"/></linearGradient>
+    <filter id="sh" x="-20%" y="-20%" width="140%" height="150%"><feDropShadow dx="0" dy="6" stdDeviation="5" flood-color="#000" flood-opacity=".30"/></filter>
   </defs>
   <rect width="512" height="512" fill="url(#bg)"/>
-  <rect width="512" height="512" fill="url(#glow)"/>
-  <rect x="86" y="86" width="340" height="340" rx="90" fill="url(#panel)" stroke="url(#rim)" stroke-width="3"/>
-  <path d="M120 130a60 60 0 0 1 60-44h152" fill="none" stroke="#fff" stroke-opacity=".5" stroke-width="5" stroke-linecap="round"/>
-  <g filter="url(#sh)">{glyph}</g>
+  <rect x="34" y="34" width="444" height="444" rx="108" fill="#fff" fill-opacity=".16"/>
+  <rect x="34" y="34" width="444" height="444" rx="108" fill="url(#sheen)"/>
+  <g filter="url(#sh)"><g transform="translate(256 256) scale(1.16) translate(-256 -256)">{glyph}</g></g>
 </svg>
 '''
 W='fill="none" stroke="#fff" stroke-linecap="round" stroke-linejoin="round"'

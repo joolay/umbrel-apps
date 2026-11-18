@@ -42,7 +42,7 @@ One look for every JoolzApp: soft gradient backdrop, frosted panels, rounded cor
 Edit `templates/glass/glass.css`, bump the version in its header comment, then copy it into every app's `public/` and bump each app's version.
 
 ## Icons
-Every icon people see is the same glass tile: brand gradient, soft highlight, frosted rounded panel, bold white glyph (gold only for the
+Every icon people see is the same glass tile: brand gradient, one light sheen, a large frosted rounded square (444 of 512, no outline or outer border), a bold white glyph (gold only for the
 JoolzApp bolt). That covers each app's own icon, JoolzApp Portal, Portal Admin, and the home screen's built-in tiles (Family, Settings, Admin).
 `make-icons.py` builds them all from one template, so nothing is drawn by hand:
 
