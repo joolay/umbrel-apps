@@ -201,6 +201,11 @@ const T = tok => ({ "x-jtv-token": tok });
   r = await req("POST", "/api/account/login", { quick: { deviceId: pat.deviceId, deviceSecret: pat.deviceSecret, code: "p:03678" } }); ok(r.code === 200, "a pattern signs in");
   r = await req("DELETE", "/api/quick/" + pat.deviceId, undefined, T(qnb)); r = await req("GET", "/api/quick", undefined, T(ann)); ok(r.json.devices.length === 1, "another person cannot remove it");
   r = await req("DELETE", "/api/quick/" + pat.deviceId, undefined, T(ann)); r = await req("GET", "/api/quick", undefined, T(ann)); ok(r.json.devices.length === 0, "a person can remove it");
+  r = await req("GET", "/api/quick/status", undefined, T(ann)); ok(r.code === 200 && r.json.kind === "pattern", "the person's one code kind is reported");
+  r = await req("GET", "/api/quick/status", undefined, T(qnb)); ok(r.code === 200 && r.json.kind === null, "...and null when they have none");
+  const one = (await req("POST", "/api/quick", { label: "Bedroom TV" }, T(ann))); ok(one.code === 201 && one.json.deviceId, "a second TV is turned on without choosing a code again");
+  r = await req("POST", "/api/account/login", { quick: { deviceId: one.json.deviceId, deviceSecret: one.json.deviceSecret, code: "p:03678" } }); ok(r.code === 200, "...and signs in with the same code");
+  r = await req("POST", "/api/quick", { label: "TV" }, T(qnb)); ok(r.code === 400, "turning it on with no code set yet is refused");
   fs.unlinkSync(path.join(dir, "portal-qa.on"));
   // notify me: an episode that is not out yet
   const nbr = (await req("POST", "/api/account/login", { email: "p4@x.com", password: "pw4" })).json.token;

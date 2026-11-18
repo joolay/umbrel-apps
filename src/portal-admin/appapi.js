@@ -46,7 +46,7 @@ module.exports = function makeAppApi({ qrlogin, quick, pbx, DATA_DIR, readBody, 
     const cl = makeClient({ url: pbx.url(), email: c.email, pass: c.pass, app });
     clients.set(app, { sig, cl }); return cl;
   }
-  const ALLOWED = new Set([...Object.entries(makeClient({ url: '', email: '', pass: '', app: 'x' })).filter(([k, v]) => typeof v === 'function' && !RAW.has(k)).map(([k]) => k), ...GUARD.map((n) => 'guardians.' + n), ...FAMILY.map((n) => 'family.' + n), ...QR.map((n) => 'qr.' + n), ...['login', 'setup', 'list', 'remove'].map((n) => 'qa.' + n), 'touchActive']);
+  const ALLOWED = new Set([...Object.entries(makeClient({ url: '', email: '', pass: '', app: 'x' })).filter(([k, v]) => typeof v === 'function' && !RAW.has(k)).map(([k]) => k), ...GUARD.map((n) => 'guardians.' + n), ...FAMILY.map((n) => 'family.' + n), ...QR.map((n) => 'qr.' + n), ...['login', 'setup', 'list', 'remove', 'status'].map((n) => 'qa.' + n), 'touchActive']);
 
   // Apps say "this person just used me"; Portal Admin keeps one date per person so accounts unused for a year can be reviewed (Cleanup page).
   const lastTouch = new Map();

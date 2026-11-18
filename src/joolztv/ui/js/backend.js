@@ -26,6 +26,7 @@ var Backend = (function () {
     call: call,
     login: function (email, password, qr, quick) { return call('POST', '/api/account/login', quick ? { quick: quick } : qr ? { qr: qr } : { email: email, password: password }, null); },
     quickSetup: function (kind, code, label) { return call('POST', '/api/quick', { kind: kind, code: code, label: label }); },
+    quickStatus: function () { return call('GET', '/api/quick/status'); },
     quickRemove: function (id) { return call('DELETE', '/api/quick/' + id); },
     qrStart: function () { return call('POST', '/api/account/qr/start', {}, null); },
     qrPoll: function (id, secret) { return call('POST', '/api/account/qr/poll', { id: id, secret: secret }, null); },

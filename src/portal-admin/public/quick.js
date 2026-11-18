@@ -57,8 +57,16 @@ function qaChoice({ title, text, buttons }) {                      // a small di
   });
 }
 /* ---- set up on this device (needs a signed-in person) ---- */
-async function qaSetup() {
-  const kind = await qaChoice({ title: 'Quick Access', text: 'Pick how you want to unlock JoolzApp on this device. It is quicker than a password but less secure, so only use it on a device that is yours.',
+const qaLabel = () => (navigator.userAgentData && navigator.userAgentData.platform) || (/iPhone|iPad/.test(navigator.userAgent) ? 'iPhone / iPad' : /Android/.test(navigator.userAgent) ? 'Android' : /Mac/.test(navigator.userAgent) ? 'Mac' : /Windows/.test(navigator.userAgent) ? 'Windows PC' : 'This device');
+/* One Quick Access code per person (a 4 digit PIN, a 6 digit PIN or a pattern), the same on every device and every app that offers it.
+   qaSetup() turns it on for this device (no new code when the person already has one); qaSetup(true) sets or changes the code. */
+async function qaSetup(change) {
+  let have = null; try { have = (await qaCall({ action: 'list' })).kind; } catch { /* no code yet, or the list is not reachable */ }
+  if (have && !change) {
+    try { const d = await qaCall({ action: 'setup', label: qaLabel() }); qaPut({ deviceId: d.deviceId, deviceSecret: d.deviceSecret, kind: d.kind || have, email: state.actor }); toast('Quick Access is on for this device.'); return true; }
+    catch (e) { toast(e.message, true); return false; }
+  }
+  const kind = await qaChoice({ title: 'Quick Access', text: have ? 'This sets your one Quick Access code for every device. Choosing a different type turns it off on your other devices until you turn it on again there.' : 'Pick how you want to unlock JoolzApp. It is one code for all your devices and apps. It is quicker than a password but less secure, so only use it on devices that are yours.',
     buttons: QA_KINDS.map(([v, l, h]) => ({ value: v, label: l, hint: h })).concat([{ value: null, label: 'Cancel' }]) });
   if (!kind) return false;
   for (let tries = 0; tries < 5; tries++) {
@@ -66,7 +74,7 @@ async function qaSetup() {
     const b = await qaAsk({ title: kind === 'pattern' ? 'Draw it again' : 'Type it again', sub: 'To make sure it is right.', kind }); if (b === null) return false;
     if (a !== b) { toast('They did not match. Try again.', true); continue; }
     try {
-      const d = await qaCall({ action: 'setup', kind, code: a, label: (navigator.userAgentData && navigator.userAgentData.platform) || (/iPhone|iPad/.test(navigator.userAgent) ? 'iPhone / iPad' : /Android/.test(navigator.userAgent) ? 'Android' : /Mac/.test(navigator.userAgent) ? 'Mac' : /Windows/.test(navigator.userAgent) ? 'Windows PC' : 'This device') });
+      const d = await qaCall({ action: 'setup', kind, code: a, label: qaLabel() });
       qaPut({ deviceId: d.deviceId, deviceSecret: d.deviceSecret, kind, email: state.actor }); toast('Quick Access is on for this device.'); return true;
     } catch (e) { toast(e.message, true); return false; }
   }
@@ -77,7 +85,7 @@ async function qaOffer() {
   if (state.role !== 'user') return;
   const v = await qaChoice({ title: 'Add Quick Access?', text: 'Get back in with a 4 or 6 digit PIN or a pattern instead of typing your password. It is faster but less secure. You can change this any time in My settings.',
     buttons: [{ value: 'yes', label: 'Add Quick Access', primary: true }, { value: null, label: 'Not now' }] });
-  if (v === 'yes') await qaSetup();
+  if (v === 'yes') await qaSetup();   // turns it on here; sets the code first when there is none
 }
 /* ---- sign in with it (login screen) ---- */
 async function qaLogin() {
@@ -104,13 +112,14 @@ function qaLoginButton() {                                          // shown on 
 }
 /* ---- My settings: Quick Access ---- */
 async function qaPane(box) {
-  const mine = qaGet(); let devices = []; try { devices = (await qaCall({ action: 'list' })).devices; } catch { /* the list just stays empty */ }
+  const mine = qaGet(); let devices = [], have = null; try { const j = await qaCall({ action: 'list' }); devices = j.devices; have = j.kind || null; } catch { /* the list just stays empty */ }
   const kindName = { pin4: '4 digit PIN', pin6: '6 digit PIN', pattern: 'Pattern' };
-  box.innerHTML = `<h2>Quick Access</h2><p class="muted small">Unlock JoolzApp on a device with a 4 or 6 digit PIN or a pattern instead of your password. Faster, but less secure: use it only on devices that are yours. After 5 wrong tries it switches itself off on that device.</p>
-    <div class="row" style="gap:8px;flex-wrap:wrap;margin:10px 0"><button class="btn primary" id="qa-add">${mine ? 'Change on this device' : 'Add to this device'}</button><button class="btn danger" id="qa-out">Sign out everywhere</button></div>
+  box.innerHTML = `<h2>Quick Access</h2><p class="muted small">One code, a 4 or 6 digit PIN or a pattern, unlocks JoolzApp on every device you turn it on for, instead of your password. Faster, but less secure: use it only on devices that are yours. After 5 wrong tries it switches itself off on that device.${have ? ` Your code is a <b>${esc(kindName[have] || '')}</b>.` : ''}</p>
+    <div class="row" style="gap:8px;flex-wrap:wrap;margin:10px 0">${have && !mine ? '<button class="btn primary" id="qa-add">Turn on for this device</button>' : ''}<button class="btn ${have && !mine ? '' : 'primary'}" id="qa-chg">${have ? 'Change my code' : 'Add Quick Access'}</button><button class="btn danger" id="qa-out">Sign out everywhere</button></div>
     ${devices.length ? `<table class="tbl"><thead><tr><th>Device</th><th>Type</th><th>Last used</th><th></th></tr></thead><tbody>${devices.map((d) => `<tr><td>${esc(d.label)}${mine && mine.deviceId === d.id ? ' <span class="chip ok">this device</span>' : ''}</td><td>${esc(kindName[d.kind] || '')}</td><td>${d.lastUsed ? esc(new Date(d.lastUsed).toLocaleDateString()) : 'Never'}</td><td style="text-align:right"><button class="btn qa-rm" data-id="${esc(d.id)}">Remove</button></td></tr>`).join('')}</tbody></table>` : '<p class="muted">Quick Access is not on any device yet.</p>'}
     <p class="muted small">"Sign out everywhere" ends your sign-in and every Quick Access on all your devices, including your TVs.</p>`;
-  box.querySelector('#qa-add').onclick = guard(async () => { if (mine) { try { await qaCall({ action: 'remove', deviceId: mine.deviceId }); } catch { /* the old one may be gone already */ } qaPut(null); } if (await qaSetup()) qaPane(box); });
+  const add = box.querySelector('#qa-add'); if (add) add.onclick = guard(async () => { if (await qaSetup()) qaPane(box); });
+  box.querySelector('#qa-chg').onclick = guard(async () => { const old = mine; if (await qaSetup(true)) { if (old) { try { await qaCall({ action: 'remove', deviceId: old.deviceId }); } catch { /* the old one may be gone already */ } } qaPane(box); } });
   box.querySelectorAll('.qa-rm').forEach((b) => { b.onclick = guard(async () => { await qaCall({ action: 'remove', deviceId: b.dataset.id }); if (mine && mine.deviceId === b.dataset.id) qaPut(null); qaPane(box); }); });
   box.querySelector('#qa-out').onclick = guard(async () => { if (!confirm('Sign out of everything, on every device?')) return; await qaCall({ action: 'signout' }); qaPut(null); logout(); });
 }
