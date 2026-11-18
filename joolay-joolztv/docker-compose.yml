@@ -12,7 +12,7 @@ services:
       PROXY_AUTH_ADD: "false"
 
   web:
-    image: ghcr.io/joolay/joolztv:1.11.1
+    image: ghcr.io/joolay/joolztv:1.13.1
     restart: on-failure
     stop_grace_period: 1m
     extra_hosts:

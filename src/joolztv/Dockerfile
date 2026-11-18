@@ -13,7 +13,7 @@ FROM node:22-alpine
 LABEL org.opencontainers.image.source="https://github.com/joolay/umbrel-apps"
 RUN apk add --no-cache ffmpeg      # subtitle auto-sync listens to the file's audio
 WORKDIR /app
-COPY server.js subsync.js streamcfg.js thumbs.js marks.js community.js tmdb.js make-clips.js pocketbase.js portal-client.js guardians.js guardians-legacy.js activity.js ./
+COPY server.js subsync.js streamcfg.js thumbs.js marks.js community.js tmdb.js tvupdate.js qr.js qrsignin.js make-clips.js pocketbase.js portal-client.js guardians.js guardians-legacy.js activity.js ./
 # the server shares this one file with the UI (it builds the Sources address for Notify me); every file the server require()s must be listed here
 COPY ui/js/sources.js ./ui/js/sources.js
 COPY --from=build /src/dist ./dist

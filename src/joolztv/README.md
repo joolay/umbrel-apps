@@ -3,6 +3,12 @@
 Apple TV style ("glass") front end for the Stremio streaming server, locked behind JoolzApp accounts. Also the interface of the LG webOS TV app
 (a tiny launcher in [joolay/homebrew](https://github.com/joolay/homebrew) opens this site on the TV).
 
+## QR code sign-in
+Every sign-in screen on the TV (first run, new TV, add a household member, a profile's sign-in) has *Sign in with a QR code*. The TV asks Portal Admin (Portal API `qr.start`, with this app's key) for a request, draws the code itself (`qr.js`, no library; the SVG is sent to the TV) and polls `POST /api/account/qr/poll`. The code opens `<portal.url>/#/qr/<id>` in the JoolzApp Portal; a phone that is signed in there sees "JoolzTV on an LG TV wants to sign in as you" and taps Approve. Portal Admin then tells this server WHICH PERSON approved (once, within 2 minutes); the server signs that person in with its own session exactly like a password sign-in (`loginWith` in `server.js`: same access checks, guardian rules, household checks). No PocketBase token or password reaches the TV. Needs Portal Admin 0.25.0+ and `portal.url` set (Portal Admin > Settings); without it the button says so and passwords still work. Tests: `test-qr.js` (the encoder; verified with a decoder), `test-qrsignin` cases in `test.js`.
+
+## TV app self-update
+`GET /tv/update` (public, like `/healthz`) answers `{launcher:{id,version}}` with the newest TV launcher version, read from the Homebrew manifest (`TV_MANIFEST_URL`, default `joolay/homebrew` `webosbrew/manifest-flix.json`) and cached for an hour (stale copy on errors; `version:null` if never reachable). The launcher asks this right after it connects; if it is behind it calls the TV Updater service (`joolay/homebrew`, `app-updater-service`), which re-reads the feed itself and checks sha256 before installing, so the server only gives a hint. Tests: `test-tvupdate.js`.
+
 ## How it fits together
 ```
 browser / LG TV launcher ──>  web (server.js, port 3900; host 3901 = public Funnel address)  ──>  server (Stremio streaming server, never published)

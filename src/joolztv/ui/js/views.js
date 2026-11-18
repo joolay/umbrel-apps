@@ -194,34 +194,36 @@ var Views = (function () {
   function wizard() {
     formView('wizard', 'Welcome to JoolzTV', 'Sign in with your JoolzApp account to set up your household. Each person who watches uses their own JoolzApp account; you can add up to ' + Profiles.max() + ' profiles.',
       '<input id="em" class="field f" type="email" placeholder="JoolzApp email" autocomplete="off"><input id="pw" class="field f" type="password" placeholder="Password">' +
-      '<div class="btn primary f" data-act="wizardgo">Sign in and continue</div>', null);
+      '<div class="btn primary f" data-act="wizardgo">Sign in and continue</div><div class="btn glass f" data-act="qrwizard">Sign in with a QR code</div>', null);
   }
   function wizardGo() {
     var em = val('em').toLowerCase(), pw = document.getElementById('pw').value;
     if (!em || !pw) return ferr('Enter your JoolzApp email and password.');
     ferr('Signing in…');
-    Backend.addProfile(em, pw, '', null).then(function (r) {
-      Profiles.setAll(r.profiles); finishSignIn(r.profile.id, em, r.token);
-      Backend.setToken(r.token); deviceCheck(function () { qualityStep(function () { members(true); }); });
-    }).catch(function (e) { ferr(e.message); });
+    Backend.addProfile(em, pw, '', null).then(function (r) { wizardAfter(r, em); }).catch(function (e) { ferr(e.message); });
+  }
+  function wizardAfter(r, em) {
+    Profiles.setAll(r.profiles); finishSignIn(r.profile.id, em, r.token);
+    Backend.setToken(r.token); deviceCheck(function () { qualityStep(function () { members(true); }); });
   }
   /* a new device for an existing household: sign in with any member's account, the household comes down with it */
   function deviceSignin() {
     formView('devicesignin', 'Sign in to JoolzTV', 'Sign in with your JoolzApp account to use this household on this TV.',
       '<input id="em" class="field f" type="email" placeholder="JoolzApp email" autocomplete="off"><input id="pw" class="field f" type="password" placeholder="Password">' +
-      '<div class="btn primary f" data-act="devicego">Sign in</div>', null);
+      '<div class="btn primary f" data-act="devicego">Sign in</div><div class="btn glass f" data-act="qrdevice">Sign in with a QR code</div>', null);
   }
   function deviceGo() {
     var em = val('em').toLowerCase(), pw = document.getElementById('pw').value;
     if (!em || !pw) return ferr('Enter your JoolzApp email and password.');
     ferr('Signing in…');
-    Backend.login(em, pw).then(function (r) {
-      return Backend.household(r.token).then(function (h) {
-        var me = h.profiles.filter(function (p) { return p.self; })[0];
-        if (!me) throw new Error('That account is not part of this household.');
-        Profiles.setAll(h.profiles); finishSignIn(me.id, em, r.token); enter(me.id);
-      });
-    }).catch(function (e) { ferr(e.message); });
+    Backend.login(em, pw).then(function (r) { return deviceAfter(r, em); }).catch(function (e) { ferr(e.message); });
+  }
+  function deviceAfter(r, em) {
+    return Backend.household(r.token).then(function (h) {
+      var me = h.profiles.filter(function (p) { return p.self; })[0];
+      if (!me) throw new Error('That account is not part of this household.');
+      Profiles.setAll(h.profiles); finishSignIn(me.id, em, r.token); enter(me.id);
+    });
   }
   /* The sign-in is always kept on the device. How long it lasts is the server's call: 90 days since the household was last used. */
   function finishSignIn(id, email, token) {
@@ -257,7 +259,7 @@ var Views = (function () {
     var em = Store.getFor(p.id, 'email', '');
     formView('signin', 'Hi ' + p.name, 'Sign in with your JoolzApp account to continue.',
       '<input id="em" class="field f" type="email" placeholder="JoolzApp email" autocomplete="off" value="' + esc(em) + '"><input id="pw" class="field f" type="password" placeholder="Password">' +
-      '<div class="btn primary f" data-act="signingo" data-id="' + esc(p.id) + '">Sign in</div><div class="btn glass f" data-act="forgot">Forgot password</div><div class="btn glass f" data-act="picker">Back</div>',
+      '<div class="btn primary f" data-act="signingo" data-id="' + esc(p.id) + '">Sign in</div><div class="btn glass f" data-act="qrsignin" data-id="' + esc(p.id) + '">Sign in with a QR code</div><div class="btn glass f" data-act="forgot">Forgot password</div><div class="btn glass f" data-act="picker">Back</div>',
       function () { picker(); return true; });
     if (msg) ferr(msg);
     if (em) Nav.set(document.getElementById('pw'));
@@ -266,13 +268,14 @@ var Views = (function () {
     var em = val('em').toLowerCase(), pw = document.getElementById('pw').value;
     if (!em || !pw) return ferr('Enter your JoolzApp email and password.');
     ferr('Signing in…');
-    Backend.login(em, pw).then(function (r) {
-      return Backend.household(r.token).then(function (h) {
-        var me = h.profiles.filter(function (p) { return p.self; })[0];
-        if (!me || me.id !== id) throw new Error('That account belongs to a different profile. Pick that profile instead.');
-        Profiles.setAll(h.profiles); finishSignIn(id, em, r.token); enter(id, r.token);
-      });
-    }).catch(function (e) { ferr(e.message); });
+    Backend.login(em, pw).then(function (r) { return signinAfter(r, em, id); }).catch(function (e) { ferr(e.message); });
+  }
+  function signinAfter(r, em, id) {
+    return Backend.household(r.token).then(function (h) {
+      var me = h.profiles.filter(function (p) { return p.self; })[0];
+      if (!me || me.id !== id) throw new Error('That account belongs to a different profile. Pick that profile instead.');
+      Profiles.setAll(h.profiles); finishSignIn(id, em, r.token); enter(id, r.token);
+    });
   }
   function enter(id, token) {
     if (!DeviceTest.done()) { Store.setActive(id); if (token) Backend.setToken(token); else Backend.setToken(Store.getFor(id, 'token', null) || Backend.token()); return deviceCheck(function () { enter(id, token); }); }
@@ -314,18 +317,54 @@ var Views = (function () {
   function addMember() {
     formView('addmember', 'Add a household member', 'Each profile is one JoolzApp account. Enter that person\'s JoolzApp email and password. They stay signed in as long as anyone in the household keeps using JoolzTV.',
       '<input id="em" class="field f" type="email" placeholder="Their JoolzApp email" autocomplete="off"><input id="pw" class="field f" type="password" placeholder="Their password">' +
-      '<div class="btn primary f" data-act="addmembergo">Add to household</div><div class="btn glass f" data-act="membersback">Cancel</div>',
+      '<div class="btn primary f" data-act="addmembergo">Add to household</div><div class="btn glass f" data-act="qrmember">Sign in with a QR code</div><div class="btn glass f" data-act="membersback">Cancel</div>',
       function () { members(false); return true; });
   }
   function addMemberGo() {
     var em = val('em').toLowerCase(), pw = document.getElementById('pw').value;
     if (!em || !pw) return ferr('Enter their JoolzApp email and password.');
     ferr('Adding…');
-    Backend.addProfile(em, pw, '', Backend.token()).then(function (r) {
-      Profiles.setAll(r.profiles); Store.setFor(r.profile.id, 'email', em);
-      toast(r.profile.name + ' added'); members(false);
-    }).catch(function (e) { ferr(e.message); });
+    Backend.addProfile(em, pw, '', Backend.token()).then(function (r) { memberAfter(r, em); }).catch(function (e) { ferr(e.message); });
   }
+  function memberAfter(r, em) {
+    Profiles.setAll(r.profiles); Store.setFor(r.profile.id, 'email', em);
+    toast(r.profile.name + ' added'); members(false);
+  }
+
+  /* ---- Sign in with a QR code: scan with a phone that is signed in to the JoolzApp Portal and tap Approve ---- */
+  var qrRun = 0;
+  function qrStop() { qrRun++; }
+  function qrScreen(title, sub, back, done) {
+    var run = ++qrRun, tries = 0;
+    formView('qr', title, sub, '<div id="qrbox" class="qrbox">Making a code…</div><div class="btn glass f" data-act="qrback">Back</div>', function () { qrStop(); back(); return true; });
+    window.__qrBack = function () { qrStop(); back(); };
+    function alive() { return run === qrRun && document.getElementById('qrbox'); }
+    function fresh() {
+      Backend.qrStart().then(function (q) {
+        if (!alive()) return;
+        document.getElementById('qrbox').innerHTML = q.svg + '<div class="qrurl">Scan with your phone, then tap Approve.<br>No camera? Open ' + esc(q.url) + ' on a phone signed in to JoolzApp.</div>';
+        ferr('');
+        var until = Date.now() + (q.expiresIn || 120) * 1000;
+        (function tick() {
+          if (!alive()) return;
+          if (Date.now() > until) { if (++tries < 5) return fresh(); return ferr('That took too long. Go back and try again.'); }
+          Backend.qrPoll(q.id, q.secret).then(function (p) {
+            if (!alive()) return;
+            if (p.status === 'approved') { qrStop(); ferr('Approved. Signing in…'); return done({ id: q.id, secret: q.secret }); }
+            if (p.status === 'denied') { qrStop(); return ferr('That was denied on the phone.'); }
+            if (p.status === 'expired') return fresh();
+            setTimeout(tick, 2000);
+          }).catch(function () { setTimeout(tick, 3000); });
+        })();
+      }).catch(function (e) { if (alive()) { document.getElementById('qrbox').innerHTML = ''; ferr(e.message); } });
+    }
+    fresh();
+  }
+  var QRSUB = 'Open the JoolzApp Portal on your phone (signed in), scan this code and tap Approve.';
+  function qrWizard() { qrScreen('Sign in with a QR code', QRSUB, wizard, function (qr) { Backend.addProfile('', '', '', null, qr).then(function (r) { wizardAfter(r, (r.user && r.user.email) || ''); }).catch(function (e) { ferr(e.message); }); }); }
+  function qrDevice() { qrScreen('Sign in with a QR code', QRSUB, deviceSignin, function (qr) { Backend.login('', '', qr).then(function (r) { return deviceAfter(r, (r.user && r.user.email) || ''); }).catch(function (e) { ferr(e.message); }); }); }
+  function qrMember() { qrScreen('Add by QR code', 'Ask them to scan this with their phone (signed in to their own JoolzApp account) and tap Approve.', addMember, function (qr) { Backend.addProfile('', '', '', Backend.token(), qr).then(function (r) { memberAfter(r, (r.user && r.user.email) || ''); }).catch(function (e) { ferr(e.message); }); }); }
+  function qrSignin(p) { qrScreen('Hi ' + p.name, QRSUB, function () { signin(p); }, function (qr) { Backend.login('', '', qr).then(function (r) { return signinAfter(r, (r.user && r.user.email) || '', p.id); }).catch(function (e) { ferr(e.message); }); }); }
   function editProfile(id) {
     var p = Profiles.get(id); if (!p) return;
     var h = '<div class="center"><div class="form glass"><h1>' + esc(p.name) + '</h1><div class="sub">' + (p.owner ? 'Household owner' : 'Household member') + '</div><div class="err" id="ferr"></div>' +
@@ -1043,6 +1082,11 @@ var Views = (function () {
     if (a === 'retryboot') return window.JTVBoot && JTVBoot();
     if (a === 'wizardgo') return wizardGo();
     if (a === 'devicego') return deviceGo();
+    if (a === 'qrwizard') return qrWizard();
+    if (a === 'qrdevice') return qrDevice();
+    if (a === 'qrmember') return qrMember();
+    if (a === 'qrsignin') return qrSignin(Profiles.get(el.getAttribute('data-id')));
+    if (a === 'qrback') return window.__qrBack && window.__qrBack();
     if (a === 'selprofile') return selectProfile(el.getAttribute('data-id'));
     if (a === 'signingo') return signinGo(el.getAttribute('data-id'));
     if (a === 'picker') return picker();
