@@ -1,6 +1,6 @@
 "use strict";
 // Minimal WebSocket (RFC 6455) for the TV Remote: used by the Umbrel server (accepts the TV's connection) and by the TV agent (connects out).
-// No dependencies, plain Node (works on the TV's Node 8 and on Node 22). THIS FILE IS IDENTICAL in joolay/umbrel-apps (src/tv-remote/ws.js)
+// No dependencies, plain Node (works on the TV's Node 0.12 (webOS 4) and on Node 22). THIS FILE IS IDENTICAL in joolay/umbrel-apps (src/tv-remote/ws.js)
 // and joolay/homebrew (app-remote/agent/ws.js): change both together.
 var crypto = require("crypto");
 var net = require("net");
@@ -8,16 +8,21 @@ var tls = require("tls");
 var urlmod = require("url");
 var EventEmitter = require("events").EventEmitter;
 
+// Node 0.12 (webOS 4) has no Buffer.alloc / Buffer.from: use them when present, the old constructor otherwise.
+var NEWBUF = typeof Buffer.alloc === "function";
+function bAlloc(n) { if (NEWBUF) return Buffer.alloc(n); var b = new Buffer(n); b.fill(0); return b; }
+function bFrom(x, enc) { return NEWBUF ? Buffer.from(x, enc) : new Buffer(x, enc); }
+
 var GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 var MAX_PAYLOAD = 16 * 1024 * 1024;
 
 function encode(opcode, payload, mask) {
-  var p = Buffer.isBuffer(payload) ? payload : Buffer.from(String(payload), "utf8"), n = p.length, h, m = mask ? 0x80 : 0;
-  if (n < 126) h = Buffer.from([0x80 | opcode, m | n]);
-  else if (n < 65536) h = Buffer.from([0x80 | opcode, m | 126, n >> 8, n & 255]);
-  else { h = Buffer.alloc(10); h[0] = 0x80 | opcode; h[1] = m | 127; h.writeUInt32BE(0, 2); h.writeUInt32BE(n, 6); }
+  var p = Buffer.isBuffer(payload) ? payload : bFrom(String(payload), "utf8"), n = p.length, h, m = mask ? 0x80 : 0;
+  if (n < 126) h = bFrom([0x80 | opcode, m | n]);
+  else if (n < 65536) h = bFrom([0x80 | opcode, m | 126, n >> 8, n & 255]);
+  else { h = bAlloc(10); h[0] = 0x80 | opcode; h[1] = m | 127; h.writeUInt32BE(0, 2); h.writeUInt32BE(n, 6); }
   if (!mask) return Buffer.concat([h, p]);
-  var key = crypto.randomBytes(4), body = Buffer.alloc(n);
+  var key = crypto.randomBytes(4), body = bAlloc(n);
   for (var i = 0; i < n; i++) body[i] = p[i] ^ key[i % 4];
   return Buffer.concat([h, key, body]);
 }
@@ -25,7 +30,7 @@ function encode(opcode, payload, mask) {
 // A connection: events 'message' (Buffer, isBinary) and 'close'. mask = true on the client side (clients must mask what they send).
 function Conn(socket, mask) {
   EventEmitter.call(this);
-  var self = this, buf = Buffer.alloc(0), frag = null, fragBin = false, closed = false;
+  var self = this, buf = bAlloc(0), frag = null, fragBin = false, closed = false;
   this.socket = socket; this.mask = mask; this.alive = true;
   function fail() { self.close(); }
   function onFrame(fin, op, data) {
@@ -44,7 +49,7 @@ function Conn(socket, mask) {
       if (len > MAX_PAYLOAD) return fail();
       var need = off + (masked ? 4 : 0) + len; if (buf.length < need) return;
       var data = buf.slice(off + (masked ? 4 : 0), need);
-      if (masked) { var k = buf.slice(off, off + 4), out = Buffer.alloc(len); for (var i = 0; i < len; i++) out[i] = data[i] ^ k[i % 4]; data = out; }
+      if (masked) { var k = buf.slice(off, off + 4), out = bAlloc(len); for (var i = 0; i < len; i++) out[i] = data[i] ^ k[i % 4]; data = out; }
       buf = buf.slice(need);
       onFrame(fin, op, data);
       if (closed) return;
@@ -53,12 +58,12 @@ function Conn(socket, mask) {
   socket.on("data", function (d) { self.alive = true; self.feed(d); });
   socket.on("close", function () { if (!closed) { closed = true; self.emit("close"); } });
   socket.on("error", function () { try { socket.destroy(); } catch (e) {} });
-  this.close = function () { if (closed) return; try { socket.end(encode(0x8, Buffer.alloc(0), mask)); } catch (e) {} setTimeout(function () { try { socket.destroy(); } catch (e) {} }, 500); };
+  this.close = function () { if (closed) return; try { socket.end(encode(0x8, bAlloc(0), mask)); } catch (e) {} setTimeout(function () { try { socket.destroy(); } catch (e) {} }, 500); };
 }
 require("util").inherits(Conn, EventEmitter);
 Conn.prototype.sendText = function (s) { if (!this.socket.destroyed) this.socket.write(encode(0x1, s, this.mask)); };
 Conn.prototype.sendBinary = function (b) { if (!this.socket.destroyed) this.socket.write(encode(0x2, b, this.mask)); };
-Conn.prototype.ping = function () { if (!this.socket.destroyed) this.socket.write(encode(0x9, Buffer.alloc(0), this.mask)); };
+Conn.prototype.ping = function () { if (!this.socket.destroyed) this.socket.write(encode(0x9, bAlloc(0), this.mask)); };
 
 // Server side: finish the upgrade of an http request. Returns a Conn.
 function accept(req, socket, head) {
@@ -74,7 +79,7 @@ function accept(req, socket, head) {
 
 // Client side: connect to ws:// or wss:// with extra headers. cb(err, Conn).
 function connect(urlStr, headers, cb) {
-  var u = urlmod.parse(urlStr), secure = u.protocol === "wss:", key = crypto.randomBytes(16).toString("base64"), done = false, raw = Buffer.alloc(0);
+  var u = urlmod.parse(urlStr), secure = u.protocol === "wss:", key = crypto.randomBytes(16).toString("base64"), done = false, raw = bAlloc(0);
   var opts = { host: u.hostname, port: Number(u.port) || (secure ? 443 : 80) };
   var s = secure ? tls.connect(opts) : net.connect(opts);
   function finish(err, conn) { if (done) return; done = true; s.setTimeout(0); if (err) { try { s.destroy(); } catch (e) {} } cb(err, conn); }
@@ -87,9 +92,9 @@ function connect(urlStr, headers, cb) {
     s.write(h + "\r\n"); s.setNoDelay(true);
   });
   function onData(d) {
-    raw = Buffer.concat([raw, d]); var i = raw.indexOf("\r\n\r\n"); if (i < 0) return;
+    raw = Buffer.concat([raw, d]); var i = raw.toString("binary").indexOf("\r\n\r\n"); if (i < 0) return;
     s.removeListener("data", onData);
-    var head = raw.slice(0, i).toString("latin1"), rest = raw.slice(i + 4);
+    var head = raw.slice(0, i).toString("binary"), rest = raw.slice(i + 4);
     if (!/^HTTP\/1\.1 101/.test(head)) return finish(new Error("refused: " + head.split("\r\n")[0]));
     var want = crypto.createHash("sha1").update(key + GUID).digest("base64");
     if (head.indexOf(want) < 0) return finish(new Error("bad WebSocket handshake"));
@@ -98,4 +103,4 @@ function connect(urlStr, headers, cb) {
   s.on("data", onData);
 }
 
-module.exports = { accept: accept, connect: connect, encode: encode, Conn: Conn };
+module.exports = { accept: accept, connect: connect, encode: encode, Conn: Conn, alloc: bAlloc, from: bFrom };
