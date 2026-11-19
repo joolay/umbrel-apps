@@ -1,0 +1,23 @@
+# TV Remote: the LG TV's agent connects out to this app; people use the page through Umbrel's login.
+# Source: src/tv-remote in this repo (built by .github/workflows/build-images.yml).
+# Keep the image tag equal to `version` in umbrel-app.yml.
+services:
+  app_proxy:
+    environment:
+      APP_HOST: joolay-tv-remote_web_1
+      APP_PORT: 3000
+      # Umbrel's login stays ON: this page can control the TV.
+      PROXY_AUTH_ADD: "true"
+
+  web:
+    image: ghcr.io/joolay/tv-remote:0.1.0
+    restart: on-failure
+    stop_grace_period: 10s
+    volumes:
+      - ${APP_DATA_DIR}/data:/data
+    ports:
+      # The TV's agent (TV Remote app on the TV) connects here with its own token; the page itself is only reachable through Umbrel's login.
+      - "3905:3905"
+    environment:
+      # Owner-only tool, opened from Umbrel: no icon on the JoolzApp home screen.
+      - JOOLZAPP_DASHBOARD=hidden

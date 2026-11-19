@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b6e8a">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" sizes="180x180" href="icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="TV Remote">
+<title>TV Remote</title>
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="glass.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2.5"/><path d="M8 20h8M12 16v4"/></svg>
+      <h1 id="title">TV Remote</h1>
+    </div>
+    <div class="row">
+      <button id="backBtn" class="btn small" hidden>All TVs</button>
+      <button id="addBtn" class="btn primary small">Add TV</button>
+    </div>
+  </header>
+
+  <main>
+    <section id="listView">
+      <p class="sub">Watch and control your TVs from here. The TV connects to this app, so you never connect to the TV itself.</p>
+      <div id="tiles" class="tiles"></div>
+      <div id="empty" class="card" hidden>
+        <h2>No TV yet</h2>
+        <p class="muted">Press <b>Add TV</b>, then open the <b>TV Remote</b> app on your LG TV (from Homebrew Channel) and enter the address and 4-digit code shown here.</p>
+      </div>
+    </section>
+
+    <section id="remoteView" hidden>
+      <div class="screenwrap"><img id="screen" alt="TV screen"><div id="offline" class="offline" hidden>TV is offline</div></div>
+      <div class="row spread bar">
+        <div class="seg" id="speed" role="group" aria-label="Picture speed"><button data-s="slow">Eco</button><button data-s="normal" class="on">Normal</button><button data-s="fast">Fast</button></div>
+        <span id="note" class="muted small"></span>
+      </div>
+      <div class="card">
+        <div class="pad">
+          <span></span><button class="k" data-k="UP">▲</button><span></span>
+          <button class="k" data-k="LEFT">◀</button><button class="k ok" data-k="ENTER">OK</button><button class="k" data-k="RIGHT">▶</button>
+          <span></span><button class="k" data-k="DOWN">▼</button><span></span>
+        </div>
+        <div class="keys c3"><button class="k" data-k="BACK">Back</button><button class="k" data-k="HOME">Home</button><button class="k" data-k="EXIT">Exit</button></div>
+        <div class="keys c3"><button class="k" data-k="VOLUMEDOWN">Vol −</button><button class="k" data-k="MUTE">Mute</button><button class="k" data-k="VOLUMEUP">Vol +</button></div>
+        <div class="keys c5"><button class="k" data-k="REWIND">⏪</button><button class="k" data-k="PLAY">▶︎</button><button class="k" data-k="PAUSE">⏸</button><button class="k" data-k="STOP">⏹</button><button class="k" data-k="FASTFORWARD">⏩</button></div>
+        <details><summary class="muted small">More keys</summary>
+          <div class="keys c4"><button class="k red" data-k="RED">Red</button><button class="k grn" data-k="GREEN">Green</button><button class="k yel" data-k="YELLOW">Yellow</button><button class="k blu" data-k="BLUE">Blue</button></div>
+          <div class="keys c5"><button class="k" data-k="1">1</button><button class="k" data-k="2">2</button><button class="k" data-k="3">3</button><button class="k" data-k="4">4</button><button class="k" data-k="5">5</button></div>
+          <div class="keys c5"><button class="k" data-k="6">6</button><button class="k" data-k="7">7</button><button class="k" data-k="8">8</button><button class="k" data-k="9">9</button><button class="k" data-k="0">0</button></div>
+          <div class="keys c3"><button class="k" data-k="MENU">Menu</button><button class="k" data-k="INFO">Info</button><button class="k" data-k="CHANNELUP">Ch +</button></div>
+          <div class="keys c3"><button class="k" data-k="DASH">−</button><button class="k" data-k="ASTERISK">*</button><button class="k" data-k="CHANNELDOWN">Ch −</button></div>
+        </details>
+      </div>
+      <div class="card">
+        <div class="row nowrap"><input id="txt" placeholder="Type into the TV's open keyboard" maxlength="200"><button id="sendTxt" class="btn">Send</button></div>
+      </div>
+      <div class="card">
+        <div class="keys c3">
+          <button class="app" data-a="io.stremio.flix.tv">JoolzTV</button><button class="app" data-a="netflix">Netflix</button><button class="app" data-a="youtube.leanback.v4">YouTube</button>
+          <button class="app" data-a="io.joolay.tvcctv">JoolzCCTV</button><button class="app" data-a="io.joolay.tvupdater">Updater</button><button class="app" data-a="com.webos.app.browser">Browser</button>
+        </div>
+        <div class="row nowrap" style="margin-top:10px"><input id="aid" placeholder="Other app id, e.g. com.webos.app.settings"><button id="launch" class="btn">Open</button></div>
+      </div>
+      <details class="card"><summary>This TV</summary>
+        <div class="row nowrap" style="margin-top:10px"><input id="rename" maxlength="40"><button id="renameBtn" class="btn">Rename</button></div>
+        <p class="muted small" id="info"></p>
+        <button id="removeBtn" class="btn danger small">Remove this TV</button>
+      </details>
+      <p class="muted small">Keyboard: arrows, Enter, Backspace or Esc = Back, Home = Home, + / − volume.</p>
+    </section>
+  </main>
+
+  <dialog id="pairDlg">
+    <h2>Add a TV</h2>
+    <p class="muted">On the TV, open <b>TV Remote</b>, then enter:</p>
+    <div class="kv"><div><span class="muted small">Umbrel address</span><br><b id="pairAddr"></b></div><div><span class="muted small">4-digit code</span><br><b id="pairCode" class="code">····</b></div></div>
+    <p class="muted small" id="pairLeft"></p>
+    <div class="row" style="margin-top:12px"><button id="pairCancel" class="btn">Close</button></div>
+  </dialog>
+  <div id="toast" class="toast" hidden></div>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,26 @@
+manifestVersion: 1
+id: joolay-tv-remote
+category: automation
+name: TV Remote
+version: "0.1.0"
+tagline: See and control your LG TV from anywhere, through your Umbrel
+description: >-
+  TV Remote shows the screen of your rooted LG webOS TV and sends remote-control keys, text and app launches from a phone or computer.
+  Your TV connects out to this app (the TV Remote app from Homebrew Channel), so you only ever connect to your Umbrel, never to the TV itself,
+  and the TV does nothing at all while nobody is watching. Add a TV by pressing Add TV here and typing the 4-digit code on the TV.
+  Several TVs and several viewers work at once; the TV is asked for one picture at a time and shares it with everyone watching.
+  Umbrel's own login protects the page.
+developer: joolay
+website: https://github.com/joolay/umbrel-apps/tree/main/src/tv-remote
+dependencies: []
+repo: https://github.com/joolay/umbrel-apps
+support: https://github.com/joolay/umbrel-apps/issues
+port: 3904
+gallery: []
+path: ""
+defaultUsername: ""
+defaultPassword: ""
+releaseNotes: "First release. Add a TV with a 4-digit code, then watch and control it from here."
+submitter: joolay
+submission: https://github.com/joolay/umbrel-apps
+icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-tv-remote/icon.svg
