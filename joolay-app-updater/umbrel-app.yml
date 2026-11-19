@@ -2,7 +2,7 @@ manifestVersion: 1
 id: joolay-app-updater
 category: developer
 name: App Updater
-version: "1.2.0"
+version: "1.3.0"
 tagline: Update the Umbrel apps you choose automatically, nightly or the moment a new version appears
 description: >-
   Umbrel never updates apps by itself. App Updater does it for the apps you pick, including Portal Admin.
@@ -21,4 +21,4 @@ gallery: []
 path: ""
 defaultUsername: ""
 defaultPassword: ""
-releaseNotes: "New: settings now live behind a gear icon in the top bar, with the umbrelOS connection and the Automatic updates section moved there. Check now sits above the app list. App tiles are much shorter, with a green tick for up to date and a taller button showing the new version to update. Immediately is now called Instant."
+releaseNotes: "New: hold an app tile (right-click on a computer) to hide it. Hidden apps move to a Hidden apps list at the bottom of Settings, their automatic updates stay off, and Unhide brings them back."

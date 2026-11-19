@@ -48,6 +48,7 @@ function writeJson(file, value, mode) {
 
 const DEFAULTS = {
   apps: {},                    // { appId: 'off' | 'nightly' | 'immediate' }
+  hidden: {},                  // { appId: true } apps hidden from the list; their auto-update is always off
   nightlyTime: '03:00',        // 24-hour, in `timezone`
   timezone: '',                // seeded from the browser the first time the page opens
   quiet: { enabled: false, start: '22:00', end: '06:00' }, // "Instant" apps wait while this is active
@@ -63,6 +64,7 @@ const settings = Object.assign({}, DEFAULTS, readJson(SETTINGS_FILE, {}));
 settings.quiet = Object.assign({}, DEFAULTS.quiet, settings.quiet);
 settings.ticker = Object.assign({}, DEFAULTS.ticker, settings.ticker);
 settings.selfUpdate = Object.assign({}, DEFAULTS.selfUpdate, settings.selfUpdate);
+settings.hidden = Object.assign({}, settings.hidden);
 const saveSettings = () => writeJson(SETTINGS_FILE, settings);
 
 // session.json holds the umbrelOS session token. When "stay connected" is chosen it also holds the
@@ -399,7 +401,7 @@ function inQuietHours() {
 function allowedNow(appId) {
   const mode = settings.apps[appId] || 'off';
   if (appId === SELF_APP_ID) return false;          // never restarts itself mid-update
-  if (settings.paused || mode === 'off') return false;
+  if (settings.paused || mode === 'off' || settings.hidden[appId]) return false;
   if (status.failedAt[appId] && Date.now() - status.failedAt[appId] < FAIL_BACKOFF_MS) return false;
   if (mode === 'immediate') return !inQuietHours();
   return inNightlyWindow();
@@ -548,7 +550,8 @@ function schedule() {
 function snapshot() {
   const apps = installedCache.map((a) => ({
     ...a,
-    mode: settings.apps[a.id] || 'off',
+    mode: settings.hidden[a.id] ? 'off' : (settings.apps[a.id] || 'off'),
+    hidden: !!settings.hidden[a.id],
     busy: !!status.busy[a.id] || a.state === 'updating',
     detectedAt: status.detectedAt[a.id] ? status.detectedAt[a.id].at : null,
     result: status.lastResult[a.id] || null,
@@ -638,9 +641,17 @@ const server = http.createServer(async (req, res) => {
       const { appId, mode } = await readBody(req);
       if (!appId || !MODES.has(mode)) throw Object.assign(new Error('Unknown mode'), { status: 400 });
       if (appId === SELF_APP_ID) throw Object.assign(new Error('App Updater cannot update itself. Update it by hand from the App Store.'), { status: 400 });
+      if (settings.hidden[appId]) throw Object.assign(new Error('This app is hidden. Unhide it in Settings first.'), { status: 400 });
       if (mode === 'off') delete settings.apps[appId]; else settings.apps[appId] = mode;
       saveSettings();
       if (mode === 'immediate') tick();
+      return send(res, 200, { ok: true });
+    }
+    if (url.pathname === '/api/hide' && req.method === 'POST') {
+      const { appId, hidden } = await readBody(req);
+      if (typeof appId !== 'string' || !appId || appId.length > 120) throw Object.assign(new Error('Unknown app'), { status: 400 });
+      if (hidden) { settings.hidden[appId] = true; delete settings.apps[appId]; } else delete settings.hidden[appId];
+      saveSettings();
       return send(res, 200, { ok: true });
     }
     if (url.pathname === '/api/settings' && req.method === 'POST') {

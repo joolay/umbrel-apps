@@ -93,3 +93,9 @@ dialog label.check{display:flex;gap:8px;align-items:center}
 .ghead .gname{flex:none}
 .ghead .gupd{margin-left:auto;flex:none}
 .ghead .gupd{align-self:center;display:inline-flex;align-items:center;min-height:36px;padding:0 14px;font-size:13px;font-weight:600;border-radius:var(--r-pill);background:color-mix(in srgb,var(--accent) 14%,transparent);border:1px solid color-mix(in srgb,var(--accent) 40%,transparent)}
+
+.card.app{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;touch-action:manipulation}
+.hlist{display:grid;gap:4px;margin-top:10px}
+.hrow{display:flex;align-items:center;gap:8px;padding:4px 2px;border-top:1px solid var(--glass-line)}
+.hrow .name{font-weight:600;font-size:13.5px;flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hnone{padding:6px 2px}

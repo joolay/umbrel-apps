@@ -94,10 +94,11 @@ function render() {
   else if (d.umbrel.connected && !d.umbrel.remember) showBanner('Connected without "Stay connected": automatic updates stop when the umbrelOS session expires. Disconnect and connect again with Stay connected on.');
   else showBanner('');
 
-  const updates = d.apps.filter((a) => a.update).length;
-  const auto = d.apps.filter((a) => a.mode !== 'off').length;
+  const shown = d.apps.filter((a) => !a.hidden), hiddenApps = d.apps.filter((a) => a.hidden);
+  const updates = shown.filter((a) => a.update).length;
+  const auto = shown.filter((a) => a.mode !== 'off').length;
   const stat = (n, label) => h('div', { class: 'stat' }, h('b', {}, String(n)), h('span', {}, label));
-  $('#stats').replaceChildren(stat(d.apps.length, 'Installed apps'), stat(updates, 'Updates waiting'), stat(auto, 'On auto-update'), stat(d.check.at ? when(d.check.at).slice(11) : '--:--', 'Last check'));
+  $('#stats').replaceChildren(stat(shown.length, 'Installed apps'), stat(updates, 'Updates waiting'), stat(auto, 'On auto-update'), stat(d.check.at ? when(d.check.at).slice(11) : '--:--', 'Last check'));
 
   $('#pauseSw').checked = !d.settings.paused;
   $('#pauseSub').textContent = d.settings.paused ? 'Paused: nothing updates by itself.' : 'On: apps set to Nightly or Instant update by themselves.';
@@ -125,7 +126,12 @@ function render() {
   sn.textContent = sf.phase === 'updating' ? 'Updating App Updater. Checks are paused and resume when it restarts.'
     : sr && sr.ok ? 'Last self-update worked: ' + sr.from + ' to ' + sr.to + '.'
     : sr ? 'Last self-update failed: ' + sr.error + (sf.retryAt ? '. Next try ' + when(sf.retryAt) + '.' : '.') : '';
-  $('#list').replaceChildren(...(d.apps.length ? renderGroups(d) : [h('div', { class: 'empty' }, d.umbrel.connected ? 'No apps found yet.' : 'Connect to umbrelOS to list your apps.')]));
+  $('#list').replaceChildren(...(shown.length ? renderGroups(d) : [h('div', { class: 'empty' }, d.umbrel.connected ? 'No apps found yet.' : 'Connect to umbrelOS to list your apps.')]));
+
+  $('#hiddenCount').textContent = hiddenApps.length ? hiddenApps.length + ' hidden' : 'None';
+  $('#hiddenList').replaceChildren(...(hiddenApps.length
+    ? hiddenApps.map((a) => h('div', { class: 'hrow' }, h('span', { class: 'name' }, a.name), h('span', { class: 'sub' }, a.version ? 'v' + a.version : ''), h('button', { class: 'btn small', onclick: () => setHidden(a, false) }, 'Unhide')))
+    : [h('div', { class: 'sub hnone' }, 'Nothing hidden.')]));
 
   $('#log').replaceChildren(...(d.log.length
     ? d.log.map((e) => h('div', { class: e.level }, h('time', {}, when(e.t)), h('span', {}, e.message)))
@@ -135,7 +141,7 @@ function render() {
 /* Apps are grouped by the App Store they came from; each group collapses and expands, and the state is saved on the server. */
 function renderGroups(d) {
   const groups = new Map();
-  for (const a of d.apps) {
+  for (const a of d.apps.filter((x) => !x.hidden)) {
     const st = a.store || { id: 'other', name: 'Other apps' };
     if (!groups.has(st.id)) groups.set(st.id, { id: st.id, name: st.name, apps: [] });
     groups.get(st.id).apps.push(a);
@@ -201,12 +207,41 @@ function renderApp(a) {
     right = btn;
   } else if (!a.update && !a.busy) right = icon('tick', ICON_TICK, 'Up to date');
 
-  return h('div', { class: 'card app' },
+  const tile = h('div', { class: 'card app' },
     h('div', { class: 'main' },
       h('div', { class: 'id' }, h('span', { class: 'name', title: a.name }, a.name), h('span', { class: 'sub' }, sub)),
       h('div', { class: 'ctl' }, chips, seg)),
     right ? h('div', { class: 'side' }, right) : null);
+  holdToHide(tile, a);
+  return tile;
 }
+
+/* Hold a tile (about half a second; right-click on a computer) to hide it. */
+function holdToHide(tile, a) {
+  let timer = null, x = 0, y = 0;
+  const stop = () => { clearTimeout(timer); timer = null; };
+  tile.addEventListener('pointerdown', (e) => {
+    if (e.button > 0 || e.target.closest('button')) return;
+    x = e.clientX; y = e.clientY;
+    timer = setTimeout(() => { timer = null; askHide(a); }, 550);
+  });
+  tile.addEventListener('pointermove', (e) => { if (timer && Math.hypot(e.clientX - x, e.clientY - y) > 8) stop(); });
+  for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) tile.addEventListener(ev, stop);
+  tile.addEventListener('contextmenu', (e) => { e.preventDefault(); if (!e.target.closest('button')) { stop(); askHide(a); } });
+}
+let hideTarget = null;
+function askHide(a) {
+  hideTarget = a;
+  $('#hideTitle').textContent = 'Hide ' + a.name + '?';
+  if (!$('#hideDlg').open) $('#hideDlg').showModal();
+}
+async function setHidden(a, hidden) {
+  try { await api('/api/hide', { appId: a.id, hidden }); toast(a.name + (hidden ? ' hidden' : ' is back in the list')); }
+  catch (err) { toast(err.message, true); }
+  view.lastJson = ''; refresh();
+}
+$('#hideCancel').addEventListener('click', () => $('#hideDlg').close());
+$('#hideGo').addEventListener('click', async () => { $('#hideDlg').close(); if (hideTarget) await setHidden(hideTarget, true); hideTarget = null; });
 
 async function setMode(a, mode) {
   try { await api('/api/mode', { appId: a.id, mode }); toast(a.name + ': ' + MODE_LABEL[mode]); }

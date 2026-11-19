@@ -84,6 +84,10 @@
       <p class="note">Nightly apps update once a night, in the hour after the nightly time. Instant apps update as soon as umbrelOS lists the new version, unless quiet hours are on.</p>
     </section>
 
+      <section class="card" id="hiddenCard">
+        <div class="row spread"><div><b>Hidden apps</b><div class="sub">Hidden from the list, and never updated automatically. Hold an app tile to hide it.</div></div><span id="hiddenCount" class="chip"></span></div>
+        <div id="hiddenList" class="hlist"></div>
+      </section>
     </div>
   </main>
 
@@ -98,6 +102,17 @@
       <div class="actions">
         <button type="button" class="btn" id="connCancel">Cancel</button>
         <button type="submit" class="btn primary" id="connGo">Connect</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="hideDlg">
+    <form method="dialog">
+      <h2 id="hideTitle">Hide app</h2>
+      <p class="muted">It moves to the hidden list in Settings, and its automatic updates stay off until you unhide it.</p>
+      <div class="actions">
+        <button type="button" class="btn" id="hideCancel">Cancel</button>
+        <button type="button" class="btn primary" id="hideGo">Hide</button>
       </div>
     </form>
   </dialog>
