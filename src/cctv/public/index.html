@@ -55,9 +55,26 @@ body.names-off .cap{display:none}
 .crow{display:flex;align-items:center;padding:4px 0}.crow input[type=text]{flex:1;margin:0 8px}
 .crow .tag{font-size:12px;color:#9aa3b2;margin-right:8px}
 #login{position:absolute;left:0;right:0;top:0;bottom:0;z-index:9;background:#0b0d12;overflow:auto}
-.lbox{width:420px;max-width:92%;margin:8vh auto 0;padding:26px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:22px}
-.lbox input{display:block;width:100%;box-sizing:border-box;margin:6px 0 12px;background:rgba(255,255,255,.08);color:#fff;border:1px solid rgba(255,255,255,.18);border-radius:12px;padding:12px 14px;font-size:17px}
-.lbox .btn{width:100%;text-align:center;padding:12px}
+.lbox{width:480px;max-width:94%;box-sizing:border-box;margin:6vh auto 0;padding:28px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:24px}
+.lbox h1{margin:0 0 6px;font-size:32px}
+#lmsg{margin-bottom:18px;font-size:17px;line-height:1.35}
+.lbox input{display:block;width:100%;box-sizing:border-box;margin:8px 0 14px;background:rgba(255,255,255,.08);color:#fff;border:2px solid rgba(255,255,255,.18);border-radius:14px;padding:15px 16px;min-height:54px;font-size:18px}
+.lbox label.lrem{display:flex;align-items:center;margin:2px 0 16px;color:#9aa3b2;font-size:17px}
+.lbox label.lrem input{width:24px;height:24px;min-height:0;margin:0 12px 0 0;padding:0}
+.lbox .btn{width:100%;box-sizing:border-box;text-align:center;padding:14px;min-height:54px;font-size:19px;border-radius:16px}
+#lportal{margin-top:16px;font-size:14px}
+/* phone: a bit less margin and padding, text stays at least 17px and fields at 18px so the page never zooms in on focus */
+@media (max-width:600px){.lbox{margin:3vh auto 0;padding:22px;border-radius:20px}.lbox h1{font-size:30px}}
+/* TV (1920 px wide, seen from the sofa): everything about twice the size */
+body.tv .lbox{width:1000px;max-width:94%;margin:7vh auto 0;padding:56px;border-radius:36px}
+body.tv .lbox h1{font-size:68px;margin-bottom:10px}
+body.tv #lmsg{font-size:34px;margin-bottom:32px}
+body.tv .lbox input{font-size:38px;padding:24px 28px;min-height:92px;margin:12px 0 26px;border-radius:22px;border-width:3px}
+body.tv .lbox label.lrem{font-size:34px;margin:4px 0 30px}
+body.tv .lbox label.lrem input{width:44px;height:44px;margin-right:20px}
+body.tv .lbox .btn{font-size:40px;min-height:100px;padding:24px;border-radius:26px}
+body.tv #lportal{font-size:26px;margin-top:28px}
+body.tv .lbox input:focus,body.tv .lbox .btn:focus{border-color:var(--accent-2);box-shadow:0 0 0 6px rgba(162,123,255,.45)}
 #modal{position:absolute;left:0;right:0;top:0;bottom:0;z-index:10;background:rgba(0,0,0,.6)}
 #mbox{width:560px;max-width:94%;max-height:86%;overflow:auto;margin:6vh auto 0;background:#171b26;border:1px solid rgba(255,255,255,.15);border-radius:20px;padding:18px}
 #mbox h3{margin:0 0 10px}
@@ -93,14 +110,14 @@ body.tv #bar{height:64px}body.tv #wall{top:64px;bottom:34px}body.tv .cap{font-si
 
 <div id="login">
   <div class="lbox">
-    <h1 style="margin:0 0 4px">JoolzCCTV</h1><div class="muted" id="lmsg" style="margin-bottom:14px">Sign in with your JoolzApp account.</div>
+    <h1>JoolzCCTV</h1><div class="muted" id="lmsg">Sign in with your JoolzApp account.</div>
     <div id="lform">
       <input id="lem" type="email" placeholder="Email" autocomplete="username"><input id="lpw" type="password" placeholder="Password" autocomplete="current-password">
-      <label style="display:flex;align-items:center;margin:0 0 12px;color:#9aa3b2"><input id="lrem" type="checkbox" checked style="width:auto;margin:0 8px 0 0">Keep me signed in</label>
+      <label class="lrem"><input id="lrem" type="checkbox" checked>Keep me signed in</label>
       <button class="btn primary" id="lgo">Sign in</button>
     </div>
-    <div id="lblocked" class="hide"><button class="btn" id="lcheck">Check again</button><div style="height:8px"></div><button class="btn" id="lout">Sign out</button></div>
-    <div class="muted" style="margin-top:14px;font-size:13px" id="lportal"></div>
+    <div id="lblocked" class="hide"><button class="btn" id="lcheck">Check again</button><div style="height:12px"></div><button class="btn" id="lout">Sign out</button></div>
+    <div class="muted" id="lportal"></div>
   </div>
 </div>
 
