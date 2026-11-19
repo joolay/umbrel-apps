@@ -96,6 +96,14 @@ body.pointer { cursor: pointer; }
 .opt .q { display: inline-block; min-width: 130px; font-weight: 800; color: #64d2ff; }
 .opt.focus { background: #f5f5f7; color: #111; }
 .opt.focus small { color: #555; } .opt.focus .q { color: #0a63c9; }
+.opt.src { display: -webkit-flex; display: flex; -webkit-align-items: center; align-items: center; }
+.opt.src .q { -webkit-flex: none; flex: none; }
+.opt.src .ol { -webkit-flex: 1 1 0; flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.opt.src .os { -webkit-flex: none; flex: none; margin-left: 24px; min-width: 110px; text-align: right; }
+.tagx { -webkit-flex: none; flex: none; margin-left: 14px; padding: 2px 12px; border-radius: 99px; font-size: 18px; font-weight: 800; letter-spacing: .3px; }
+.tagx.now { background: rgba(100,210,255,.22); color: #64d2ff; } .tagx.pref { background: rgba(255,214,10,.2); color: #ffd60a; }
+.opt.src.pref { box-shadow: inset 0 0 0 2px rgba(255,214,10,.55); } .opt.src.now { background: rgba(100,210,255,.16); }
+.opt.focus .tagx.now { background: rgba(10,99,201,.15); color: #0a63c9; } .opt.focus .tagx.pref { background: rgba(176,128,0,.2); color: #8a6400; }
 .mh { margin: 18px 0 10px 8px; font-size: 22px; font-weight: 800; letter-spacing: 1.5px; color: var(--dim); text-transform: uppercase; }
 .hint { color: var(--dim); font-size: 22px; margin-top: 18px; line-height: 1.4; }
 #toast { position: absolute; left: 50%; bottom: 70px; -webkit-transform: translateX(-50%); transform: translateX(-50%); z-index: 99; padding: 16px 34px; border-radius: 34px; font-size: 26px; display: none; max-width: 1500px; background: rgba(30,32,40,.92); border: 2px solid var(--line); box-shadow: 0 20px 50px rgba(0,0,0,.5); }
@@ -282,3 +290,40 @@ html.light .pk.focus { background: #1d1d1f; color: #fff; border-color: #1d1d1f; 
 html.phone, html.phone body, html.phone #app, html.phone .view, html.phone .splash { height: var(--ph); }
 html.phone .form, html.phone .form.pad { width: 640px; padding: 40px 44px; zoom: 2.76; }
 html.phone .form[style] { width: 640px !important; }
+
+/* player: icon buttons for speed / subtitles / sources; the speed shows its value beside the icon */
+.cbtn.ic .rt { display: inline-block; vertical-align: middle; margin: -4px 0 0 -4px; font-size: 22px; font-weight: 800; }
+.cbtn.ic[data-pact=speed] { width: auto; min-width: 88px; padding: 0 18px 0 22px; }
+/* search: bar and results centred; the speak button sits right beside the bar */
+/* every grid tab (Movies, Series, Library, Search, Collections): headings, filter chips, input bars and tiles are centred on the screen */
+.grid { padding-left: 0; padding-right: 0; text-align: center; }
+.grid .sbar, .grid .hint, .grid .skel, .grid .gl, .grid .gh, .grid .chips { text-align: center; }
+.grid .prow { text-align: center; white-space: normal; } .grid .card { margin-left: 12px; margin-right: 12px; }
+.grid .field { margin-left: auto; margin-right: auto; }
+.btn.mic.ic { padding: 0; width: 76px; height: 76px; line-height: 76px; border-radius: 38px; text-align: center; margin-left: 14px; } .btn.mic.ic svg { margin: -4px 0 0 0; }
+/* a title that has a source but no cover art: a glass tile carrying the title */
+.card .img.np { background: linear-gradient(150deg, rgba(120,130,255,.45), rgba(255,120,190,.35)); display: -webkit-flex; display: flex; -webkit-align-items: center; align-items: center; -webkit-justify-content: center; justify-content: center; text-align: center; }
+.card .img.np .npt { padding: 14px; font-size: 24px; font-weight: 800; line-height: 1.2; color: rgba(255,255,255,.92); overflow: hidden; max-height: 100%; word-wrap: break-word; }
+
+/* player bar: left = sources / subtitles / audio sync / speed, centre = the 3 playback buttons, right = aspect / fill (room for more) */
+.pctl { display: -webkit-flex; display: flex; -webkit-align-items: center; align-items: center; padding: 0 30px; text-align: left; }
+.pctl .pz { -webkit-flex: 1 1 0; flex: 1 1 0; min-width: 0; white-space: nowrap; }
+.pctl .pz.l { text-align: left; } .pctl .pz.r { text-align: right; } .pctl .pz.c { -webkit-flex: none; flex: none; text-align: center; }
+.cbtn.ic.on { background: rgba(100,210,255,.3); border-color: #64d2ff; }
+
+/* a taller invisible hit area, so the pointer finds the progress bar easily (hover shows the nearest thumbnail) */
+.seek:before { content: ""; position: absolute; left: 0; right: 0; top: -26px; bottom: -26px; }
+
+/* recent searches: each one is a chip with its own small remove button */
+#recent { margin: 8px 0 4px 0; } #recent .gl { margin: 6px 0 10px 0; } .rs { display: inline-block; margin: 0 14px 12px 0; white-space: nowrap; } .rs .chip { margin: 0 6px 0 0; } .rs .rx { min-width: 40px; padding-left: 14px; padding-right: 14px; font-weight: 800; }
+/* search bar: the field sits inline so the speak button is right beside it, both centred */
+.grid .sbar .field, .sbar .field { display: inline-block; margin: 0; vertical-align: middle; }
+/* a tile that cannot be played yet carries a small label */
+.card .bdg { position: absolute; left: 10px; right: 10px; bottom: 10px; padding: 5px 8px; border-radius: 14px; background: rgba(0,0,0,.72); color: #ffd60a; font-size: 18px; font-weight: 800; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card { position: relative; }
+/* kids: caption on a "what they watched" tile, and the warning that slides in during playback */
+.card .kcap { position: absolute; left: 0; right: 0; bottom: 14px; padding: 36px 12px 8px; background: -webkit-linear-gradient(top, rgba(0,0,0,0), rgba(0,0,0,.85)); font-size: 18px; color: #d8dbe3; line-height: 1.25; text-align: left; }
+.card .kcap b { display: block; color: #fff; font-size: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.player .kwarn { position: absolute; left: 50%; top: 90px; -webkit-transform: translateX(-50%); transform: translateX(-50%); padding: 18px 36px; border-radius: 22px; text-align: center; z-index: 30; }
+.player .kwarn .kw1 { font-size: 40px; font-weight: 800; color: #ffd60a; }
+.player .kwarn .kw2 { font-size: 24px; margin-top: 4px; }

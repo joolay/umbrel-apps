@@ -71,6 +71,17 @@ module.exports = function makeQuick({ now = Date.now } = {}) {
     await pb.asSuper("PATCH", `${SET}/${row.id}`, { value: Object.assign({}, v, { fails: 0, lastUsed: t }) });
     return { userId: row.user, kind: c.kind };
   }
+  /* checks the person's one code without a device (a parent approving something on a TV): 5 wrong tries lock it for 5 minutes, so it cannot be guessed */
+  const checks = new Map();
+  async function check(userId, code) {
+    if (!userId || typeof code !== "string" || code.length > 20) throw fail(400, "Enter your Quick Access code.");
+    const t = now(), c0 = checks.get(userId) || { fails: 0, until: 0 };
+    if (c0.until > t) throw fail(429, "Too many wrong tries. Try again in a few minutes.");
+    const acc = await codeRow(userId), c = acc && acc.value; if (!c) throw fail(404, "No Quick Access code is set up on this account.");
+    const good = KINDS[c.kind] && KINDS[c.kind].test(code) && eq(scrypt(code, Buffer.from(c.salt, "base64")), Buffer.from(c.codeHash, "base64"));
+    if (!good) { c0.fails++; if (c0.fails >= MAX_FAILS) { c0.fails = 0; c0.until = t + 300e3; } checks.set(userId, c0); if (checks.size > 5000) checks.clear(); throw fail(401, "Wrong code."); }
+    checks.delete(userId); return { ok: true };
+  }
   async function session(userId) {
     try { const j = await pb.asSuper("POST", `/api/collections/users/impersonate/${encodeURIComponent(userId)}`, { duration: SESSION_SECONDS }); return { token: j.token, record: j.record }; }
     catch (e) { if (e.status === 404 || e.status === 405) throw fail(501, "Quick Access needs PocketBase 0.23 or newer on this Umbrel."); throw e; }
@@ -95,5 +106,5 @@ module.exports = function makeQuick({ now = Date.now } = {}) {
       if (page >= (j.totalPages || 1)) break;
     } return out;
   }
-  return { setup, status, login, session, list, remove, signOut, overview, KINDS };
+  return { setup, status, check, login, session, list, remove, signOut, overview, KINDS };
 };

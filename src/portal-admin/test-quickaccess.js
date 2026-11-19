@@ -61,6 +61,13 @@ const nap = ms => new Promise(r => setTimeout(r, ms));
   ok((await Q.list("userAAAA1")).length === 1 && (await Q.list("userAAAA1"))[0].kind === "pattern" && !JSON.stringify(await Q.list("userAAAA1")).includes("Hash"), "a person lists only their own devices, without any hashes");
   e = await bad(Q.remove("userAAAA1", s6.deviceId)); ok(!e && (await Q.list("userBBBB2")).length === 1, "a person cannot remove someone else's device");
   for (let i = 0; i < 9; i++) await Q.setup("userCCCC3", { kind: "pin4", code: "1357" }); e = await bad(Q.setup("userCCCC3", { kind: "pin4", code: "1357" })); await Q.setup("userCCCC3", { kind: "pin4", code: "1357" }).catch(() => {}); ok(e === null, "up to 10 devices"); e = await bad(Q.setup("userCCCC3", { kind: "pin4", code: "1357" })); ok(e && e.status === 429, "the 11th is refused");
+  // checking the code without a device (a parent approving something on a TV)
+  ok((await Q.check("userAAAA1", "p:03678")).ok === true, "check: the right code is accepted");
+  e = await bad(Q.check("userAAAA1", "p:03687")); ok(e && e.status === 401, "check: a wrong code is refused");
+  for (let i = 0; i < 4; i++) e = await bad(Q.check("userAAAA1", "p:00000")); e = await bad(Q.check("userAAAA1", "p:00000")); ok(e && e.status === 429, "check: 5 wrong tries lock it for a while");
+  e = await bad(Q.check("userAAAA1", "p:03678")); ok(e && e.status === 429, "check: even the right code waits out the lock");
+  clock += 301e3; ok((await Q.check("userAAAA1", "p:03678")).ok === true, "check: works again after 5 minutes");
+  e = await bad(Q.check("userNEW0001", "1234")); ok(e && e.status === 404, "check: an account with no code says so");
   const s = await Q.session("userAAAA1"); ok(s.token === "pb-token-for-userAAAA1" && s.record.id === "userAAAA1", "the Portal gets a PocketBase session for the person");
   impersonate = false; e = await bad(Q.session("userAAAA1")); ok(e && e.status === 501 && /0\.23/.test(e.message), "an old PocketBase gives a clear message"); impersonate = true;
   // admin sign-out
