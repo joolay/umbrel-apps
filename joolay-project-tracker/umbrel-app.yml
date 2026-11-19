@@ -2,7 +2,7 @@ manifestVersion: 1
 id: joolay-project-tracker
 category: developer
 name: Project Tracker
-version: "1.0.0"
+version: "1.0.1"
 tagline: Every project, its status and its priority in one place
 description: >-
   Project Tracker keeps lists of projects with a status (Active, Maintenance, Hiatus or Closed), a priority order you set with arrows,
@@ -20,7 +20,7 @@ gallery: []
 path: ""
 defaultUsername: ""
 defaultPassword: ""
-releaseNotes: "First release."
+releaseNotes: "Changes: a tidier layout. Projects now sit in a grid (3 across on a tablet), cards are much shorter, priority arrows sit beside the title, and the status buttons fit on one row. Tap a description to expand it."
 submitter: joolay
 submission: https://github.com/joolay/umbrel-apps
 icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-project-tracker/icon.svg

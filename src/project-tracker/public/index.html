@@ -17,27 +17,32 @@
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--accent:#f59e0b;--accent-2:#fbbf24;--accent-t:#2a1500}}
 :root[data-theme="dark"]{--accent:#f59e0b;--accent-2:#fbbf24;--accent-t:#2a1500}
 *{box-sizing:border-box}
-.wrap{max-width:920px;margin:0 auto;padding:14px 14px 90px}
+.wrap{max-width:1240px;margin:0 auto;padding:14px 14px 90px}
 .bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:6px 0 12px}
 .bar h1{font-size:1.3rem;margin:0;flex:1;min-width:140px}
 .bar select{max-width:210px}
+@media(max-width:560px){.bar h1{flex:1 1 100%}.bar select{max-width:none;flex:1 1 100%}}
 .sync{font-size:.8rem;color:var(--muted);display:flex;align-items:center;gap:6px}
 .dot{width:8px;height:8px;border-radius:50%;background:var(--ok)}.dot.off{background:var(--warn)}.dot.bad{background:var(--danger)}
 .st{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;margin-bottom:6px}
 .st button{white-space:nowrap}
 .st .n{opacity:.7;margin-left:4px}
-.cat{margin:18px 2px 6px;font-size:.78rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);display:flex;justify-content:space-between;cursor:pointer;user-select:none}
-.p{display:grid;gap:6px;padding:12px 14px;margin-bottom:8px;border-left:5px solid var(--c,var(--line))}
-.p .top{display:flex;gap:10px;align-items:flex-start}
-.p .nm{font-weight:650;flex:1}
-.p .desc{color:var(--muted);font-size:.88rem}
-.p .meta{display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:.78rem;color:var(--muted)}
-.arrows{display:flex;flex-direction:column;gap:2px}
-.arrows button{padding:0 9px;line-height:1.2;font-size:.8rem;min-width:34px}
-.seg{display:flex;gap:4px;flex-wrap:wrap}
+.cat{margin:16px 2px 8px;font-size:.78rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);display:flex;justify-content:space-between;cursor:pointer;user-select:none}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:10px;align-items:stretch}
+.p{display:grid;align-content:start;gap:7px;padding:10px 12px;margin:0;border-left:4px solid var(--c,var(--line))}
+.p .top{display:flex;gap:8px;align-items:center}
+.p .nm{font-weight:650;flex:1;min-width:0;line-height:1.25}
+.p .desc{color:var(--muted);font-size:.84rem;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.p .desc.open{-webkit-line-clamp:unset}
+.p .meta{display:flex;gap:4px 6px;flex-wrap:wrap;align-items:center;font-size:.76rem;color:var(--muted)}
+.arrows{display:flex;gap:4px;flex:none}
+.arrows button{padding:0;width:34px;height:30px;line-height:1;font-size:.75rem}
+.seg{display:grid;grid-template-columns:1fr 1.7fr 1fr 1fr;gap:4px}
+.seg button{padding:6px 2px;font-size:.78rem;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .seg button.on{background:var(--c);color:#fff;border-color:var(--c)}
 .acts{display:flex;gap:6px;flex-wrap:wrap}
-.btn.tiny{padding:5px 10px;font-size:.8rem}
+.acts .sp{flex:1}
+.btn.tiny{padding:5px 10px;font-size:.8rem;min-height:30px}
 .chip.auto{background:var(--accent);color:var(--accent-t)}
 .banner{margin:0 0 10px;padding:10px 14px;border-radius:var(--r-sm);background:var(--glass-strong);border:1px solid var(--glass-line);font-size:.9rem}
 .empty{text-align:center;color:var(--muted);padding:34px 10px}
@@ -143,14 +148,14 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
     if (S.view === "archive" || S.view === "bin") {
       var rows = S.list.projects.filter(function (p) { return p.state === (S.view === "bin" ? "bin" : "archived"); }).sort(function (a, b) { return a.name.localeCompare(b.name); });
       if (S.view === "bin" && rows.length) out += '<p class="muted small">Deleted projects stay here for 30 days, then go for good. <button class="btn tiny danger" data-a="empty">Empty bin now</button></p>';
-      out += rows.map(function (p) { return card(p, S.view); }).join("") || '<p class="empty">' + (S.view === "bin" ? "The bin is empty." : "Nothing archived.") + "</p>";
+      out += rows.length ? '<div class="grid">' + rows.map(function (p) { return card(p, S.view); }).join("") + "</div>" : '<p class="empty">' + (S.view === "bin" ? "The bin is empty." : "Nothing archived.") + "</p>";
     } else {
       var cats = S.list.categories.slice(); live.forEach(function (p) { if (cats.indexOf(p.category) < 0) cats.push(p.category); });
       cats.forEach(function (cat) {
         var ps = live.filter(function (p) { return p.category === cat && (S.view === "all" || effective(p).status === S.view); }).sort(function (a, b) { return a.rank - b.rank || a.name.localeCompare(b.name); });
         if (!ps.length) return;
         out += '<div class="cat" data-cat="' + esc(cat) + '"><span>' + esc(cat) + "</span><span>" + ps.length + (S.collapsed[cat] ? " ▸" : " ▾") + "</span></div>";
-        if (!S.collapsed[cat]) out += ps.map(function (p) { return card(p, "live"); }).join("");
+        if (!S.collapsed[cat]) out += '<div class="grid">' + ps.map(function (p) { return card(p, "live"); }).join("") + "</div>";
       });
       if (!out) out = '<p class="empty">Nothing here yet.</p>';
     }
@@ -158,8 +163,10 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
   }
   function card(p, mode) {
     var e = effective(p), s = e.status, c = ST[s][1], ro = S.readOnly, h = '<div class="card p" style="--c:' + c + '" data-id="' + esc(p.id) + '"><div class="top">';
-    if (mode === "live" && !ro) h += '<div class="arrows"><button class="btn tiny" data-a="up" aria-label="Move up">▲</button><button class="btn tiny" data-a="down" aria-label="Move down">▼</button></div>';
-    h += '<div class="nm">' + esc(p.name) + '</div><span class="chip" style="background:' + c + ';color:#fff">' + ST[s][0] + "</span>" + (e.auto ? '<span class="chip auto" title="Worked on in the last 3 days">auto</span>' : "") + "</div>";
+    var inline = mode === "live" && !ro;
+    h += '<div class="nm">' + esc(p.name) + "</div>" + (inline ? "" : '<span class="chip" style="background:' + c + ';color:#fff">' + ST[s][0] + "</span>") + (e.auto ? '<span class="chip auto" title="Worked on in the last 3 days">auto</span>' : "");
+    if (inline) h += '<div class="arrows"><button class="btn tiny" data-a="up" aria-label="Move up">▲</button><button class="btn tiny" data-a="down" aria-label="Move down">▼</button></div>';
+    h += "</div>";
     if (p.desc) h += '<div class="desc">' + esc(p.desc) + "</div>";
     var m = []; if (p.note) m.push("Note: " + esc(p.note)); if (e.last) m.push("Last worked " + fmt(e.last)); if (p.status === "closed") m.push((p.closedAs === "completed" ? "Completed" : p.closedAs === "abandoned" ? "Abandoned" : "Closed") + " " + fmt(p.closedAt));
     if (mode === "bin") m.push("Gone for good in " + daysLeft(p) + " days"); if (p.pinned && p.status !== "closed" && mode === "live") m.push("Status set by hand");
@@ -173,7 +180,7 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
       if (p.pinned && p.status !== "closed") h += '<button class="btn tiny" data-a="auto" title="Let the 3-day rule decide again">Auto</button>';
       if (p.status !== "closed") h += '<button class="btn tiny" data-a="worked">Worked on it today</button>';
       if (dueReview(p)) h += '<button class="btn tiny" data-a="keep">Keep closed</button>';
-      h += '<button class="btn tiny" data-a="edit">Edit</button><button class="btn tiny danger" data-a="remove">Remove</button></div>';
+      h += '<span class="sp"></span><button class="btn tiny" data-a="edit">Edit</button><button class="btn tiny danger" data-a="remove">Remove</button></div>';
     } else h += '<div class="acts"><button class="btn tiny" data-a="restore">Restore</button><button class="btn tiny danger" data-a="' + (mode === "bin" ? "purge" : "remove") + '">' + (mode === "bin" ? "Delete forever" : "Delete") + "</button></div>";
     return h + "</div>";
   }
@@ -224,6 +231,7 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
     }).catch(function (e) { toast(e.message); });
   }
   $("#main").onclick = function (ev) {
+    var ds = ev.target.closest(".desc"); if (ds) { ds.classList.toggle("open"); return; }
     var cat = ev.target.closest(".cat"); if (cat) { S.collapsed[cat.dataset.cat] = !S.collapsed[cat.dataset.cat]; savePrefs(); return render(); }
     var b = ev.target.closest("[data-a]"); if (!b) return; var a = b.dataset.a, card = b.closest(".p"), p = card && byId(card.dataset.id);
     if (a === "empty") { var ids = S.list.projects.filter(function (x) { return x.state === "bin"; }).map(function (x) { return x.id; }); return dialog("<h2>Empty the bin?</h2><p class='small'>" + ids.length + " project(s) will be deleted for good.</p><div class='row'><button class='btn' data-close>Cancel</button><button class='btn danger' id='go'>Delete for good</button></div>", function (d) { d.querySelector("#go").onclick = function () { d.close(); send({ ops: { remove: ids } }); }; }); }

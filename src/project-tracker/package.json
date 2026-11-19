@@ -1,6 +1,6 @@
 {
   "name": "project-tracker",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "Project Tracker: lists of projects with status, priority, archive and a recycle bin, signed in with the JoolzApp account.",
   "main": "server.js",
