@@ -50,7 +50,7 @@ const DEFAULTS = {
   apps: {},                    // { appId: 'off' | 'nightly' | 'immediate' }
   nightlyTime: '03:00',        // 24-hour, in `timezone`
   timezone: '',                // seeded from the browser the first time the page opens
-  quiet: { enabled: false, start: '22:00', end: '06:00' }, // "Immediately" apps wait while this is active
+  quiet: { enabled: false, start: '22:00', end: '06:00' }, // "Instant" apps wait while this is active
   paused: false,
   pollSeconds: 60,
   ticker: { enabled: false },  // announce finished updates in the JoolzApp dashboard news ticker (everyone sees it)

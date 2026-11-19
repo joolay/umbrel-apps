@@ -62,17 +62,34 @@ dialog input[type=password],dialog input[type=text]{display:block;width:100%;mar
 dialog input[inputmode]{display:block;width:100%;margin-top:5px}
 dialog label.check{display:flex;gap:8px;align-items:center}
 .actions{display:flex;justify-content:flex-end;gap:10px;margin-top:18px}
-@media (max-width:560px){main{padding:14px}.app .ctl{width:100%;justify-content:space-between}}
+@media (max-width:560px){main{padding:14px}}
 
 .msec{margin:12px 4px 6px;font-size:12px;font-weight:650;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
 
-/* Slimmer app rows */
-.gbody{gap:6px}
-.card.app{padding:6px 10px;margin-bottom:0;gap:8px}
-.app .id{flex:1 1 150px}
-.app .name{font-size:14px;line-height:1.25}
-.app .id .sub{font-size:11.5px;line-height:1.2}
-.app .ctl{gap:6px}
-.app .chip{font-size:11px;padding:1px 7px}
-.app .seg button{padding:3px 9px;font-size:12px;min-height:0}
-.app .btn.small{padding:3px 9px;font-size:12px;min-height:0}
+/* Compact app tiles: a grid, two rows of content each */
+.iconbtn{background:transparent;border:1px solid var(--glass-line);color:var(--text);border-radius:var(--r-pill);width:38px;height:38px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
+.iconbtn:hover{border-color:var(--accent);color:var(--accent)}
+.listbar{margin:0 2px 10px}
+.shead{margin-bottom:12px}.shead h2{margin:0;font-size:18px}
+#settingsView .card{margin-bottom:14px}
+.gbody{display:grid;grid-template-columns:1fr;gap:4px}
+.gbody .msec{margin:8px 2px 0}
+.card.app{padding:5px 10px;margin-bottom:0;display:flex;flex-direction:row;align-items:center;gap:10px;flex-wrap:nowrap}
+.app .main{flex:1 1 auto;min-width:0;display:flex;align-items:center;gap:8px;flex-wrap:wrap;row-gap:3px}
+.app .id{flex:1 1 140px;min-width:0;display:flex;align-items:baseline;gap:8px}
+.app .name{font-size:13.5px;line-height:1.2;font-weight:600;white-space:normal;overflow-wrap:anywhere}
+.app .sub{font-size:11px;line-height:1.2;white-space:nowrap}
+.app .ctl{display:flex;align-items:center;gap:6px;flex:none}
+.app .chip{font-size:10.5px;padding:0 6px;white-space:nowrap;flex:none}
+.app .seg button{padding:1px 8px;font-size:11.5px;min-height:0;line-height:1.5}
+.app .side{flex:none;display:flex;align-items:center;align-self:center}
+.app .tick{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;background:var(--ok);color:#fff}
+.app .upbtn{display:inline-flex;align-items:center;gap:6px;padding:8px 12px;font-size:12.5px;line-height:1.2;white-space:nowrap;min-height:40px}
+.app .upbtn svg{flex:none}
+@media (max-width:560px){.app .id{flex:1 1 100%}.app .upbtn{padding:8px 10px;font-size:12px}}
+
+.ghead{flex-wrap:nowrap}
+.ghead .gtext{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:1px}
+.ghead .gname{flex:none}
+.ghead .gupd{margin-left:auto;flex:none}
+.ghead .gupd{align-self:center;display:inline-flex;align-items:center;min-height:36px;padding:0 14px;font-size:13px;font-weight:600;border-radius:var(--r-pill);background:color-mix(in srgb,var(--accent) 14%,transparent);border:1px solid color-mix(in srgb,var(--accent) 40%,transparent)}

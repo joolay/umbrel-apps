@@ -21,16 +21,34 @@
       <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 9a8 8 0 0 0-14.5-2.5M4 15a8 8 0 0 0 14.5 2.5"/><path d="M5 3v4h4M19 21v-4h-4"/></svg>
       <h1>App Updater</h1>
     </div>
-    <div class="conn">
-      <span id="connPill" class="chip">umbrelOS</span>
-      <button id="connBtn" class="btn small">Connect</button>
-    </div>
+    <button id="gearBtn" class="iconbtn" aria-label="Settings" title="Settings">
+      <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+    </button>
   </header>
 
   <main>
     <div id="banner" class="banner" hidden></div>
+    <div id="mainView">
     <section class="stats" id="stats"></section>
+    <div class="row spread listbar"><span class="sub" id="foot"></span><button id="checkBtn" class="btn small">Check now</button></div>
 
+    <section id="list" class="list" aria-live="polite"></section>
+
+    <section class="card">
+      <div class="row spread"><b>Activity</b><span class="row"><button id="diagBtn" class="btn small">Diagnostics</button><button id="clearBtn" class="btn small">Clear</button></span></div>
+      <pre id="diag" class="diag" hidden></pre>
+      <div id="log" class="log"></div>
+    </section>
+    </div>
+
+    <div id="settingsView" hidden>
+      <div class="row spread shead"><button id="backBtn" class="btn small">&larr; Back</button><h2>Settings</h2><span></span></div>
+      <section class="card" id="connCard">
+        <div class="row spread">
+          <div><b>umbrelOS connection</b><div class="sub" id="connSub"></div></div>
+          <div class="row"><span id="connPill" class="chip">umbrelOS</span><button id="connBtn" class="btn small">Connect</button></div>
+        </div>
+      </section>
     <section class="card" id="controls">
       <div class="row spread">
         <div>
@@ -38,7 +56,6 @@
           <div class="sub" id="pauseSub"></div>
         </div>
         <div class="row">
-          <button id="checkBtn" class="btn small">Check now</button>
           <label class="switch" title="Pause or resume all automatic updates"><input id="pauseSw" type="checkbox"><span></span></label>
         </div>
       </div>
@@ -49,7 +66,7 @@
       </div>
       <div class="row quiet">
         <label class="switch"><input id="quietSw" type="checkbox"><span></span></label>
-        <span>Quiet hours for "Immediately" apps</span>
+        <span>Quiet hours for "Instant" apps</span>
         <input id="qStart" type="time" step="60"> <span class="sub">to</span> <input id="qEnd" type="time" step="60">
       </div>
       <div class="row ticker">
@@ -64,17 +81,10 @@
         <span id="selfChip" class="chip"></span>
       </div>
       <p id="selfNote" class="note" hidden></p>
-      <p class="note">Nightly apps update once a night, in the hour after the nightly time. Immediately apps update as soon as umbrelOS lists the new version, unless quiet hours are on.</p>
+      <p class="note">Nightly apps update once a night, in the hour after the nightly time. Instant apps update as soon as umbrelOS lists the new version, unless quiet hours are on.</p>
     </section>
 
-    <section id="list" class="list" aria-live="polite"></section>
-
-    <section class="card">
-      <div class="row spread"><b>Activity</b><span class="row"><button id="diagBtn" class="btn small">Diagnostics</button><button id="clearBtn" class="btn small">Clear</button></span></div>
-      <pre id="diag" class="diag" hidden></pre>
-      <div id="log" class="log"></div>
-    </section>
-    <p class="foot" id="foot"></p>
+    </div>
   </main>
 
   <dialog id="connDlg">

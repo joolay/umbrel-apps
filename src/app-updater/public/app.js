@@ -71,7 +71,7 @@ function showBanner(text, bad) {
   b.hidden = false;
 }
 
-const MODE_LABEL = { off: 'Off', nightly: 'Nightly', immediate: 'Immediately' };
+const MODE_LABEL = { off: 'Off', nightly: 'Nightly', immediate: 'Instant' };
 
 function render() {
   const d = view.data;
@@ -80,7 +80,9 @@ function render() {
     pill.textContent = d.umbrel.signedIn ? 'umbrelOS connected' : 'umbrelOS reconnecting';
     pill.className = 'chip ' + (d.umbrel.signedIn ? 'ok' : 'warn');
     btn.textContent = 'Disconnect';
+    $('#connSub').textContent = d.umbrel.remember ? 'Stays connected so automatic updates keep working.' : 'Connected without "Stay connected"; automatic updates stop when the session expires.';
   } else {
+    $('#connSub').textContent = 'Needed so this app can see and update your Umbrel apps.';
     pill.textContent = 'umbrelOS not connected';
     pill.className = 'chip warn';
     btn.textContent = 'Connect';
@@ -98,7 +100,7 @@ function render() {
   $('#stats').replaceChildren(stat(d.apps.length, 'Installed apps'), stat(updates, 'Updates waiting'), stat(auto, 'On auto-update'), stat(d.check.at ? when(d.check.at).slice(11) : '--:--', 'Last check'));
 
   $('#pauseSw').checked = !d.settings.paused;
-  $('#pauseSub').textContent = d.settings.paused ? 'Paused: nothing updates by itself.' : 'On: apps set to Nightly or Immediately update by themselves.';
+  $('#pauseSub').textContent = d.settings.paused ? 'Paused: nothing updates by itself.' : 'On: apps set to Nightly or Instant update by themselves.';
   $('#nightly').value = d.settings.nightlyTime;
   $('#tz').value = d.settings.timezone || '';
   $('#poll').value = String(d.settings.pollSeconds);
@@ -151,15 +153,14 @@ function renderGroups(d) {
     return h('section', { class: 'group' + (open ? ' open' : '') },
       h('button', { class: 'ghead', 'aria-expanded': String(open), onclick: () => toggleGroup(g.id, !open) },
         h('span', { class: 'chev', 'aria-hidden': 'true' }, '▸'),
-        h('span', { class: 'gname' }, g.name),
-        h('span', { class: 'sub' }, meta),
-        updates ? h('span', { class: 'chip accent' }, updates + (updates === 1 ? ' update' : ' updates')) : null),
+        h('span', { class: 'gtext' }, h('span', { class: 'gname' }, g.name), h('span', { class: 'sub' }, meta)),
+        updates ? h('span', { class: 'chip accent gupd' }, updates + (updates === 1 ? ' update' : ' updates')) : null),
       open ? h('div', { class: 'gbody' }, renderModeSections(g.apps)) : null);
   });
 }
 
 /* Inside each store, apps are split by their auto-update mode: immediately, scheduled (nightly) or off. */
-const MODE_SECTIONS = [['immediate', 'Immediately'], ['nightly', 'Scheduled'], ['off', 'Off']];
+const MODE_SECTIONS = [['immediate', 'Instant'], ['nightly', 'Scheduled'], ['off', 'Off']];
 function renderModeSections(apps) {
   const out = [];
   for (const [m, label] of MODE_SECTIONS) {
@@ -176,23 +177,35 @@ async function toggleGroup(id, open) {
   view.lastJson = ''; refresh();
 }
 
+const ICON_TICK = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+const ICON_UPDATE = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 9a8 8 0 0 0-14.5-2.5M4 15a8 8 0 0 0 14.5 2.5"/><path d="M5 3v4h4M19 21v-4h-4"/></svg>';
+function icon(cls, svg, title) { const s = h('span', { class: cls, title }); s.innerHTML = svg; return s; }
+
 function renderApp(a) {
   const chips = [];
   if (a.busy) chips.push(h('span', { class: 'chip warn' }, 'Updating…'));
-  else if (a.update) chips.push(h('span', { class: 'chip accent' }, 'Update ' + (a.latest || 'available')));
-  else chips.push(h('span', { class: 'chip ok' }, 'Up to date'));
-  if (a.waiting) chips.push(h('span', { class: 'chip' }, a.mode === 'nightly' ? 'Waits for the nightly window' : 'Waits for quiet hours to end'));
-  if (a.result && !a.result.ok) chips.push(h('span', { class: 'chip bad', title: a.result.error }, 'Last update failed'));
+  if (a.waiting) chips.push(h('span', { class: 'chip', title: a.mode === 'nightly' ? 'Waits for the nightly window' : 'Waits for quiet hours to end' }, 'Waiting'));
+  if (a.result && !a.result.ok) chips.push(h('span', { class: 'chip bad', title: a.result.error }, 'Failed'));
 
-  const sub = [(a.version ? 'v' + a.version : 'version unknown'), a.detectedAt ? ' · found ' + when(a.detectedAt) : '', a.result && a.result.ok ? ' · updated ' + when(a.result.at) : ''].join('');
+  const sub = [(a.version ? 'v' + a.version : 'version unknown'), a.result && a.result.ok ? ' · updated ' + when(a.result.at).slice(0, 10) : ''].join('');
 
   const seg = h('div', { class: 'seg', role: 'group', 'aria-label': 'Auto-update mode' },
     ['off', 'nightly', 'immediate'].map((m) => h('button', { class: a.mode === m ? 'on' : '', onclick: () => setMode(a, m) }, MODE_LABEL[m])));
 
+  let right = null;
+  if (a.update && !a.busy) {
+    const btn = h('button', { class: 'btn primary upbtn', onclick: () => updateNow(a) });
+    btn.innerHTML = ICON_UPDATE;
+    btn.title = 'Update now';
+    btn.append(h('span', {}, a.latest || 'Update'));
+    right = btn;
+  } else if (!a.update && !a.busy) right = icon('tick', ICON_TICK, 'Up to date');
+
   return h('div', { class: 'card app' },
-    h('div', { class: 'id' }, h('div', { class: 'name' }, a.name), h('div', { class: 'sub' }, sub)),
-    h('div', { class: 'ctl' }, chips, seg,
-      h('button', { class: 'btn small primary', disabled: !a.update || a.busy, onclick: () => updateNow(a) }, 'Update now')));
+    h('div', { class: 'main' },
+      h('div', { class: 'id' }, h('span', { class: 'name', title: a.name }, a.name), h('span', { class: 'sub' }, sub)),
+      h('div', { class: 'ctl' }, chips, seg)),
+    right ? h('div', { class: 'side' }, right) : null);
 }
 
 async function setMode(a, mode) {
@@ -273,6 +286,17 @@ $('#connForm').addEventListener('submit', async (e) => {
     go.disabled = false; go.textContent = 'Connect';
   }
 });
+
+function route() {
+  const st = location.hash === '#settings';
+  $('#settingsView').hidden = !st;
+  $('#mainView').hidden = st;
+  window.scrollTo(0, 0);
+}
+$('#gearBtn').addEventListener('click', () => { location.hash = location.hash === '#settings' ? '' : '#settings'; });
+$('#backBtn').addEventListener('click', () => { location.hash = ''; });
+window.addEventListener('hashchange', route);
+route();
 
 refresh();
 setInterval(refresh, 5000);
