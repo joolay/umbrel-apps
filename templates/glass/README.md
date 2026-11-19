@@ -32,6 +32,7 @@ One look for every JoolzApp: soft gradient backdrop, frosted panels, rounded cor
 | Services Manager | #5b7cf5 / #8f6bff | #6c8cff / #a98fff |
 | App Updater | #c2347a / #ff6fae | #ff6fae / #ffa0cb |
 | Jolly Grocer | #1E7A4C / #4FC083 | #4FC083 / #7FD6A6 |
+| Project Tracker | #b45309 / #f59e0b | #f59e0b / #fbbf24 |
 | Listify | #0A6C8F / #3FB0D6 | #4DB6DD / #7FD0EE |
 | Diner Bell | #d9480f / #ff8a4c | #ff8a4c / #ffb27d |
 | ShutterWorth | #145f4f / #2f8571 | #3FBF9F / #7FD6BD |

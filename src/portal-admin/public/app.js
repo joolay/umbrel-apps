@@ -241,7 +241,7 @@ $('#reset-form').onsubmit = async (e) => {
 // People who sign in here are users of the JoolzApp apps, not admins, so the page is branded JoolzApp for them
 // and on the public address (the server tells us which one we are on through /config).
 function setBrand(name) { document.querySelectorAll('.brand span').forEach((n) => { n.textContent = name; }); document.title = name; }
-fetch('/config').then((r) => r.json()).then((c) => { state.public = !!c.public; if (state.public) setBrand('JoolzApp'); }).catch(() => {});
+const cfgReady = fetch('/config').then((r) => r.json()).then((c) => { state.public = !!c.public; if (state.public) setBrand('JoolzApp'); }).catch(() => {});
 async function showShell() {
   await resolvePid();
   setBrand(state.role === 'user' || state.public ? 'JoolzApp' : 'Portal Admin');
@@ -1542,13 +1542,18 @@ let HM = null, editing = false, saveChain = Promise.resolve();
 const isAdminRole = () => state.role !== 'user';
 
 let adminRow = null;   // where this person's Portal Admin lives (only an admin has the row; Portal Admin writes it when they use it)
+// On Portal Admin itself an admin sees the Admin tools directly on the main screen. The apps live on JoolzApp Portal, so they are not shown here.
+// That screen keeps its own layout row (pref.adminhome.layout) so it never overwrites the app layout the same person has on JoolzApp Portal.
+const adminMode = () => isAdminRole() && !state.public;
+const layoutKey = () => (adminMode() ? 'pref.adminhome.layout' : 'pref.home.layout');
 async function homeModel() {
-  const uid = selfId() || state.uid, isAdmin = isAdminRole();
+  await cfgReady;
+  const uid = selfId() || state.uid, isAdmin = isAdminRole(), onlyTools = adminMode();
   const [apps, reqs, acc, lrows, ssoRows, pend] = await Promise.all([
-    listAll('portal_apps', { sort: 'name' }),
+    onlyTools ? Promise.resolve([]) : listAll('portal_apps', { sort: 'name' }),
     isAdmin ? Promise.resolve([]) : listAll('portal_requests', { filter: `user = ${fq(uid)}`, sort: '-created' }).catch(() => null),
     isAdmin ? Promise.resolve([]) : listAll('portal_settings', { filter: 'key = "portal.access"' }),
-    listAll('portal_settings', { filter: `scope = "user" && user = ${fq(uid)} && app = "" && (key = "pref.home.layout" || key = "pref.adminUrl")` }).catch(() => []).then((rs) => { adminRow = rs.find((r) => r.key === 'pref.adminUrl') || null; return rs.filter((r) => r.key === 'pref.home.layout'); }),
+    listAll('portal_settings', { filter: `scope = "user" && user = ${fq(uid)} && app = "" && (key = "${layoutKey()}" || key = "pref.adminUrl")` }).catch(() => []).then((rs) => { adminRow = rs.find((r) => r.key === 'pref.adminUrl') || null; return rs.filter((r) => r.key === layoutKey()); }),
     listAll('portal_settings', { filter: 'scope = "app" && key = "app.sso"' }).catch(() => []),
     isAdmin ? count('portal_requests', 'status = "pending"').catch(() => 0) : Promise.resolve(0),
   ]);
@@ -1563,7 +1568,8 @@ async function homeModel() {
   // Names people gave their own apps (saved in their layout row, `names`). Only text, 30 characters at most; the admin can see and reset them.
   const names = {}; if (lrows[0] && lrows[0].value && typeof lrows[0].value.names === 'object' && lrows[0].value.names) for (const [k, v] of Object.entries(lrows[0].value.names)) { const c = cleanName(v); if (c && /^[a-z0-9][a-z0-9_-]{0,60}$/.test(k)) names[k] = c; }
   apps.forEach((a) => { const nm = names[a.slug] || a.name; items['app:' + a.slug] = { id: 'app:' + a.slug, kind: 'app', name: nm, orig: a.name, app: a, grad: GRADS[hashN(a.slug) % GRADS.length], letter: (nm || '?').trim().charAt(0).toUpperCase(), ok: allowed(a.slug) }; });
-  if (isAdmin) items['sys:admin'] = { id: 'sys:admin', kind: 'folder', name: 'Admin', grad: ['#64748b', '#334155'], badge: pend };
+  if (onlyTools) for (const [k, name, g] of ADMIN_TOOLS) items['tool:' + k] = { id: 'tool:' + k, kind: 'sys', name, glyph: k, grad: g, href: '#/' + k, badge: k === 'requests' ? pend : 0 };
+  else if (isAdmin) items['sys:admin'] = { id: 'sys:admin', kind: 'folder', name: 'Admin', grad: ['#64748b', '#334155'], badge: pend };
   if (!isAdmin || selfId()) {
     items['sys:family'] = { id: 'sys:family', kind: 'sys', name: 'Family', glyph: 'family', img: 'icons/family.svg', grad: ['#fb7185', '#f59e0b'], href: '#/family' };
     items['sys:me'] = { id: 'sys:me', kind: 'sys', name: 'Settings', glyph: 'me', img: 'icons/settings.svg', grad: ['#94a3b8', '#475569'], href: '#/me' };
@@ -1572,9 +1578,9 @@ async function homeModel() {
   if (!isAdmin && adminRow && /^https?:\/\//i.test(String(adminRow.value || '')) && String(adminRow.value) !== location.origin) items['sys:adminlink'] = { id: 'sys:adminlink', kind: 'sys', name: 'Admin', glyph: 'admin', img: 'icons/admin.svg', grad: ['#3b4a7a', '#1e2a52'], href: String(adminRow.value) };
   let pw = null; if (selfId()) { try { pw = await acctFetch('/paywall'); } catch { pw = null; } }
   let saved = lrows[0] && lrows[0].value && typeof lrows[0].value === 'object' ? lrows[0].value : null;
-  if (!saved) { try { saved = JSON.parse(store.lget('pa.layout.' + uid) || 'null'); } catch { saved = null; } }
+  if (!saved) { try { saved = JSON.parse(store.lget((onlyTools ? 'pa.adminlayout.' : 'pa.layout.') + uid) || 'null'); } catch { saved = null; } }
   const fresh = !saved;
-  saved = saved || { order: [], dock: isAdmin ? (selfId() ? ['sys:admin', 'sys:family', 'sys:me'] : ['sys:admin']) : ['sys:family', 'sys:me'], hidden: [] };
+  saved = saved || { order: [], dock: onlyTools ? (selfId() ? ['sys:family', 'sys:me'] : []) : isAdmin ? (selfId() ? ['sys:admin', 'sys:family', 'sys:me'] : ['sys:admin']) : ['sys:family', 'sys:me'], hidden: [] };
   const seen = new Set(), keep = (arr, f = () => true) => (Array.isArray(arr) ? arr : []).filter((id) => items[id] && f(id) && !seen.has(id) && seen.add(id));
   // Folders the person made: { id: { name, items: [ids] } }. Their apps are claimed first so they don't also show on the grid.
   const folders = {};
@@ -1593,11 +1599,11 @@ async function homeModel() {
 
 function saveLayout() {
   const l = HM.layout, uid = HM.uid;
-  store.lset('pa.layout.' + uid, JSON.stringify(l));
+  store.lset((adminMode() ? 'pa.adminlayout.' : 'pa.layout.') + uid, JSON.stringify(l));
   saveChain = saveChain.then(async () => {
     try {
       if (HM.lrow) HM.lrow = await api('PATCH', `/api/collections/portal_settings/records/${HM.lrow.id}`, { value: l });
-      else HM.lrow = await api('POST', '/api/collections/portal_settings/records', { scope: 'user', user: uid, app: '', key: 'pref.home.layout', value: l, secret: false });
+      else HM.lrow = await api('POST', '/api/collections/portal_settings/records', { scope: 'user', user: uid, app: '', key: layoutKey(), value: l, secret: false });
     } catch (e) { toast('Could not save your layout: ' + e.message, true); }
   });
 }

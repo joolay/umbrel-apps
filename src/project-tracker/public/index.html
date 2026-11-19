@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Project Tracker</title>
+<meta name="theme-color" content="#b45309">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Projects">
+<link rel="stylesheet" href="glass.css">
+<style>
+:root{--accent:#b45309;--accent-2:#f59e0b;--accent-t:#fff}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--accent:#f59e0b;--accent-2:#fbbf24;--accent-t:#2a1500}}
+:root[data-theme="dark"]{--accent:#f59e0b;--accent-2:#fbbf24;--accent-t:#2a1500}
+*{box-sizing:border-box}
+.wrap{max-width:920px;margin:0 auto;padding:14px 14px 90px}
+.bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:6px 0 12px}
+.bar h1{font-size:1.3rem;margin:0;flex:1;min-width:140px}
+.bar select{max-width:210px}
+.sync{font-size:.8rem;color:var(--muted);display:flex;align-items:center;gap:6px}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--ok)}.dot.off{background:var(--warn)}.dot.bad{background:var(--danger)}
+.st{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;margin-bottom:6px}
+.st button{white-space:nowrap}
+.st .n{opacity:.7;margin-left:4px}
+.cat{margin:18px 2px 6px;font-size:.78rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);display:flex;justify-content:space-between;cursor:pointer;user-select:none}
+.p{display:grid;gap:6px;padding:12px 14px;margin-bottom:8px;border-left:5px solid var(--c,var(--line))}
+.p .top{display:flex;gap:10px;align-items:flex-start}
+.p .nm{font-weight:650;flex:1}
+.p .desc{color:var(--muted);font-size:.88rem}
+.p .meta{display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:.78rem;color:var(--muted)}
+.arrows{display:flex;flex-direction:column;gap:2px}
+.arrows button{padding:0 9px;line-height:1.2;font-size:.8rem;min-width:34px}
+.seg{display:flex;gap:4px;flex-wrap:wrap}
+.seg button.on{background:var(--c);color:#fff;border-color:var(--c)}
+.acts{display:flex;gap:6px;flex-wrap:wrap}
+.btn.tiny{padding:5px 10px;font-size:.8rem}
+.chip.auto{background:var(--accent);color:var(--accent-t)}
+.banner{margin:0 0 10px;padding:10px 14px;border-radius:var(--r-sm);background:var(--glass-strong);border:1px solid var(--glass-line);font-size:.9rem}
+.empty{text-align:center;color:var(--muted);padding:34px 10px}
+dialog{border:1px solid var(--glass-line);border-radius:var(--r);background:var(--solid);color:var(--text);padding:18px;max-width:420px;width:calc(100% - 28px);box-shadow:var(--shadow)}
+dialog::backdrop{background:rgba(10,14,24,.45)}
+dialog h2{margin:0 0 10px;font-size:1.1rem}
+dialog label{display:grid;gap:4px;margin:8px 0;font-size:.85rem;color:var(--muted)}
+dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:14px}
+.fab{position:fixed;right:max(16px,var(--safe-r));bottom:max(16px,var(--safe-b));z-index:5}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="bar">
+    <h1 id="title">Projects</h1>
+    <select id="lists" aria-label="List"></select>
+    <button class="btn tiny" id="newlist">New list</button>
+    <button class="btn tiny" id="conn" hidden>Connection</button>
+    <span class="sync"><span class="dot" id="dot"></span><span id="sync">Connecting…</span></span>
+  </div>
+  <div id="banner"></div>
+  <div class="st" id="tabs"></div>
+  <div id="main"><p class="empty">Loading…</p></div>
+</div>
+<button class="btn primary fab" id="add">+ Project</button>
+<dialog id="dlg"></dialog>
+<div class="toast" id="toast" role="status" hidden></div>
+<script src="pwtoggle.js"></script>
+<script>
+(function () {
+  "use strict";
+  var TOKEN = "gd.token", ST = { active: ["Active", "#2563eb"], maintenance: ["Maintenance", "#d97706"], hiatus: ["Hiatus", "#7c3aed"], closed: ["Closed", "#6b7280"] };
+  var $ = function (s) { return document.querySelector(s); };
+  var S = { lists: [], key: "", sha: "", list: null, worked: {}, readOnly: false, view: "all", collapsed: {}, user: null, busy: 0, lastOk: 0, err: "" };
+  var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); };
+  function tok() { try { return sessionStorage.getItem(TOKEN) || localStorage.getItem(TOKEN) || ""; } catch (e) { return ""; } }
+  function api(path, method, body) {
+    var h = { "content-type": "application/json" }; if (tok()) h["x-gd-token"] = tok();
+    return fetch(path, { method: method || "GET", headers: h, body: body ? JSON.stringify(body) : undefined, cache: "no-store" }).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok) { var e = new Error(j.message || "Something went wrong (" + r.status + ")"); e.status = r.status; e.code = j.code; throw e; } return j; });
+    });
+  }
+  function toast(m) { var t = $("#toast"); t.textContent = m; t.hidden = false; clearTimeout(toast.h); toast.h = setTimeout(function () { t.hidden = true; }, 3500); }
+  // Dates follow the account's regional format (DD/MM/YYYY unless the account says otherwise).
+  function fmt(d) { if (!d) return ""; var p = String(d).slice(0, 10).split("-"); if (p.length < 3) return d; var us = S.user && /^M/i.test(String((S.user.prefs || {}).dateFormat || "")); return us ? p[1] + "/" + p[2] + "/" + p[0] : p[2] + "/" + p[1] + "/" + p[0]; }
+  var today = function () { return new Date().toISOString().slice(0, 10); };
+  var DAY = 864e5;
+  function effective(p) {
+    var w = S.worked[p.id] || "", last = [p.lastWorked, w].filter(Boolean).sort().pop() || "", now = Date.now();
+    var recent = !!last && now - Date.parse(last + "T23:59:59Z") <= 3 * DAY;
+    var auto = !p.pinned && recent && (p.status === "maintenance" || p.status === "hiatus");
+    return { status: auto ? "active" : p.status, auto: auto, last: last };
+  }
+  var dueReview = function (p) { return p.state === "live" && p.status === "closed" && p.closedAt && Date.now() - Date.parse(p.closedAt) > 30 * DAY; };
+  var daysLeft = function (p) { return Math.max(0, 30 - Math.floor((Date.now() - Date.parse(p.binnedAt || new Date().toISOString())) / DAY)); };
+
+  /* ---------- loading and live polling ---------- */
+  function savePrefs() { clearTimeout(savePrefs.h); savePrefs.h = setTimeout(function () { api("api/prefs", "PUT", { list: S.key, view: S.view, collapsed: Object.keys(S.collapsed).filter(function (k) { return S.collapsed[k]; }) }).catch(function () {}); }, 600); }
+  function loadLists(keep) {
+    return api("api/lists").then(function (j) {
+      S.lists = j.lists; var pr = (S.user.prefs || {})["project-tracker"] || {};
+      if (!S.key) { S.key = pr.list && j.lists.some(function (l) { return l.key === pr.list; }) ? pr.list : j.lists[0].key; if (pr.view) S.view = pr.view; (pr.collapsed || []).forEach(function (c) { S.collapsed[c] = true; }); }
+      if (!j.lists.some(function (l) { return l.key === S.key; })) S.key = j.lists[0].key;
+      $("#lists").innerHTML = j.lists.map(function (l) { return '<option value="' + esc(l.key) + '"' + (l.key === S.key ? " selected" : "") + ">" + esc(l.name) + " (" + l.count + ")</option>"; }).join("");
+      $("#conn").hidden = false;
+    });
+  }
+  function poll(force) {
+    if (!S.key || S.busy || (document.hidden && !force)) return Promise.resolve();
+    var key = S.key;
+    return api("api/list/" + key + (!force && S.sha ? "?sha=" + encodeURIComponent(S.sha) : "")).then(function (j) {
+      if (key !== S.key) return;
+      S.lastOk = Date.now(); S.err = "";
+      if (!j.unchanged) { S.sha = j.sha; S.list = j.list; S.worked = j.worked || {}; S.readOnly = !!j.readOnly; render(); }
+      status();
+    }).catch(function (e) { S.err = e.message; if (e.status === 401) location.reload(); status(); });
+  }
+  function status() {
+    var d = $("#dot"), t = $("#sync"), ago = S.lastOk ? Math.max(0, Math.round((Date.now() - S.lastOk) / 1000)) : null;
+    d.className = "dot" + (S.err ? " bad" : S.readOnly ? " off" : "");
+    t.textContent = S.err ? "Can't sync: " + S.err : (S.readOnly ? "Read-only · " : "Live · ") + (ago == null ? "…" : ago < 4 ? "just now" : ago + "s ago");
+    $("#banner").innerHTML = S.readOnly && S.key === "appdev" ? '<div class="banner">This list is read-only until a GitHub token is added. Open <b>Connection</b> to add one.</div>' : "";
+  }
+  function send(body) {
+    S.busy++;
+    return api("api/list/" + S.key + "/apply", "POST", body).then(function () { S.busy--; return poll(true); }).catch(function (e) { S.busy--; toast(e.message); return poll(true); });
+  }
+  var upsert = function (p, ch) { return send({ ops: { upsert: [Object.assign({}, p, ch)] } }); };
+
+  /* ---------- drawing ---------- */
+  function counts() {
+    var c = { all: 0, active: 0, maintenance: 0, hiatus: 0, closed: 0, archive: 0, bin: 0 };
+    S.list.projects.forEach(function (p) { if (p.state === "archived") c.archive++; else if (p.state === "bin") c.bin++; else { c.all++; c[effective(p).status]++; } });
+    return c;
+  }
+  function render() {
+    if (!S.list) return;
+    $("#title").textContent = S.list.name; $("#add").hidden = S.readOnly;
+    var c = counts(), tabs = [["all", "All"], ["active", "Active"], ["maintenance", "Maintenance"], ["hiatus", "Hiatus"], ["closed", "Closed"], ["archive", "Archive"], ["bin", "Bin"]];
+    var due = S.list.projects.filter(dueReview).length;
+    $("#tabs").innerHTML = tabs.map(function (t) { return '<button class="btn tiny' + (S.view === t[0] ? " primary" : "") + '" data-v="' + t[0] + '">' + t[1] + '<span class="n">' + c[t[0]] + (t[0] === "closed" && due ? " · " + due + " to review" : "") + "</span></button>"; }).join("");
+    var live = S.list.projects.filter(function (p) { return p.state === "live"; }), out = "";
+    if (S.view === "archive" || S.view === "bin") {
+      var rows = S.list.projects.filter(function (p) { return p.state === (S.view === "bin" ? "bin" : "archived"); }).sort(function (a, b) { return a.name.localeCompare(b.name); });
+      if (S.view === "bin" && rows.length) out += '<p class="muted small">Deleted projects stay here for 30 days, then go for good. <button class="btn tiny danger" data-a="empty">Empty bin now</button></p>';
+      out += rows.map(function (p) { return card(p, S.view); }).join("") || '<p class="empty">' + (S.view === "bin" ? "The bin is empty." : "Nothing archived.") + "</p>";
+    } else {
+      var cats = S.list.categories.slice(); live.forEach(function (p) { if (cats.indexOf(p.category) < 0) cats.push(p.category); });
+      cats.forEach(function (cat) {
+        var ps = live.filter(function (p) { return p.category === cat && (S.view === "all" || effective(p).status === S.view); }).sort(function (a, b) { return a.rank - b.rank || a.name.localeCompare(b.name); });
+        if (!ps.length) return;
+        out += '<div class="cat" data-cat="' + esc(cat) + '"><span>' + esc(cat) + "</span><span>" + ps.length + (S.collapsed[cat] ? " ▸" : " ▾") + "</span></div>";
+        if (!S.collapsed[cat]) out += ps.map(function (p) { return card(p, "live"); }).join("");
+      });
+      if (!out) out = '<p class="empty">Nothing here yet.</p>';
+    }
+    var keep = window.scrollY; $("#main").innerHTML = out; window.scrollTo(0, keep);
+  }
+  function card(p, mode) {
+    var e = effective(p), s = e.status, c = ST[s][1], ro = S.readOnly, h = '<div class="card p" style="--c:' + c + '" data-id="' + esc(p.id) + '"><div class="top">';
+    if (mode === "live" && !ro) h += '<div class="arrows"><button class="btn tiny" data-a="up" aria-label="Move up">▲</button><button class="btn tiny" data-a="down" aria-label="Move down">▼</button></div>';
+    h += '<div class="nm">' + esc(p.name) + '</div><span class="chip" style="background:' + c + ';color:#fff">' + ST[s][0] + "</span>" + (e.auto ? '<span class="chip auto" title="Worked on in the last 3 days">auto</span>' : "") + "</div>";
+    if (p.desc) h += '<div class="desc">' + esc(p.desc) + "</div>";
+    var m = []; if (p.note) m.push("Note: " + esc(p.note)); if (e.last) m.push("Last worked " + fmt(e.last)); if (p.status === "closed") m.push((p.closedAs === "completed" ? "Completed" : p.closedAs === "abandoned" ? "Abandoned" : "Closed") + " " + fmt(p.closedAt));
+    if (mode === "bin") m.push("Gone for good in " + daysLeft(p) + " days"); if (p.pinned && p.status !== "closed" && mode === "live") m.push("Status set by hand");
+    if (dueReview(p)) m.push('<span class="chip warn">due for review</span>');
+    if (m.length) h += '<div class="meta">' + m.join(" · ") + "</div>";
+    if (ro) return h + "</div>";
+    if (mode === "live") {
+      h += '<div class="seg">' + Object.keys(ST).map(function (k) { return '<button class="btn tiny' + (p.status === k ? " on" : "") + '" style="--c:' + ST[k][1] + '" data-a="status" data-s="' + k + '">' + ST[k][0] + "</button>"; }).join("") + "</div>";
+      h += '<div class="acts">';
+      if (p.status === "closed") h += '<button class="btn tiny" data-a="closedas">' + (p.closedAs === "abandoned" ? "Abandoned ▾" : "Completed ▾") + "</button>";
+      if (p.pinned && p.status !== "closed") h += '<button class="btn tiny" data-a="auto" title="Let the 3-day rule decide again">Auto</button>';
+      if (p.status !== "closed") h += '<button class="btn tiny" data-a="worked">Worked on it today</button>';
+      if (dueReview(p)) h += '<button class="btn tiny" data-a="keep">Keep closed</button>';
+      h += '<button class="btn tiny" data-a="edit">Edit</button><button class="btn tiny danger" data-a="remove">Remove</button></div>';
+    } else h += '<div class="acts"><button class="btn tiny" data-a="restore">Restore</button><button class="btn tiny danger" data-a="' + (mode === "bin" ? "purge" : "remove") + '">' + (mode === "bin" ? "Delete forever" : "Delete") + "</button></div>";
+    return h + "</div>";
+  }
+
+  /* ---------- actions ---------- */
+  function byId(id) { return S.list.projects.filter(function (p) { return p.id === id; })[0]; }
+  function setStatus(p, s) {
+    var ch = { status: s, pinned: true }; if (s === "closed") { ch.closedAs = p.closedAs || "completed"; ch.closedAt = new Date().toISOString(); } else { ch.closedAs = ""; ch.closedAt = ""; }
+    return upsert(p, ch);
+  }
+  function dialog(html, wire) { var d = $("#dlg"); d.innerHTML = html; d.showModal(); d.querySelectorAll("[data-close]").forEach(function (b) { b.onclick = function () { d.close(); }; }); if (wire) wire(d); }
+  function removeDlg(p) {
+    var comp = p.status === "closed" && p.closedAs === "completed", ab = p.status === "closed" && p.closedAs === "abandoned";
+    dialog("<h2>Remove “" + esc(p.name) + "”?</h2><p class='muted small'><b>Archive</b> keeps all its details out of the way, and you can restore it. <b>Delete</b> moves it to the bin for 30 days first.</p>" + (comp ? "<p class='small'>It's completed, so Archive suits it.</p>" : ab ? "<p class='small'>It's abandoned, so Delete may suit it.</p>" : "") +
+      "<div class='row'><button class='btn' data-close>Cancel</button><button class='btn" + (comp ? " primary" : "") + "' id='ar'>Archive</button><button class='btn danger" + (ab ? " primary" : "") + "' id='de'>Delete</button></div>", function (d) {
+      d.querySelector("#ar").onclick = function () { d.close(); upsert(p, { state: "archived" }); };
+      d.querySelector("#de").onclick = function () { d.close(); upsert(p, { state: "bin" }); };
+    });
+  }
+  function editDlg(p) {
+    var isNew = !p; p = p || { name: "", category: S.list.categories[0] || "General", desc: "", status: "active", note: "", paths: [] };
+    var paths = (p.paths || []).map(function (x) { return x.repo + ":" + x.path; }).join("\n");
+    dialog("<h2>" + (isNew ? "New project" : "Edit project") + "</h2><form id='f'><label>Name<input name='name' value='" + esc(p.name) + "' required maxlength='120'></label>" +
+      "<label>Category<input name='category' list='cats' value='" + esc(p.category) + "' maxlength='60'><datalist id='cats'>" + S.list.categories.map(function (c) { return "<option value='" + esc(c) + "'>"; }).join("") + "</datalist></label>" +
+      "<label>What it is<textarea name='desc' rows='2' maxlength='600'>" + esc(p.desc) + "</textarea></label><label>Note<input name='note' value='" + esc(p.note) + "' maxlength='600'></label>" +
+      (isNew ? "<label>Status<select name='status'>" + Object.keys(ST).map(function (k) { return "<option value='" + k + "'>" + ST[k][0] + "</option>"; }).join("") + "</select></label>" : "") +
+      "<label>Repo folders (optional, one per line as owner/repo:path). Commits there count as work for the 3-day rule.<textarea name='paths' rows='2'>" + esc(paths) + "</textarea></label>" +
+      "<div class='row'><button type='button' class='btn' data-close>Cancel</button><button class='btn primary'>Save</button></div></form>", function (d) {
+      d.querySelector("#f").onsubmit = function (ev) {
+        ev.preventDefault(); var f = ev.target.elements, pa = f.paths.value.split("\n").map(function (l) { var i = l.indexOf(":"); return i > 0 ? { repo: l.slice(0, i).trim(), path: l.slice(i + 1).trim() } : null; }).filter(Boolean);
+        var base = isNew ? { id: "p" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), rank: 9999, state: "live", pinned: false, lastWorked: "" } : p;
+        var ch = { name: f.name.value, category: f.category.value || "General", desc: f.desc.value, note: f.note.value, paths: pa }; if (isNew) { ch.status = f.status.value; ch.pinned = false; if (ch.status === "closed") { ch.closedAs = "completed"; ch.closedAt = new Date().toISOString(); } }
+        d.close(); upsert(base, ch);
+      };
+    });
+  }
+  function connDlg() {
+    api("api/config/github").then(function (c) {
+      dialog("<h2>GitHub connection</h2><p class='muted small'>The shared “App development” list is a file in a GitHub repo. Reading a public repo needs nothing. Saving changes needs a token limited to that repo (Contents: read and write). The token is stored on your account and never shown again.</p>" +
+        "<p class='small'>Status: <b>" + (c.status === "ok" ? "connected" : esc(c.message || c.status)) + "</b> · Token: <b>" + (c.hasToken ? "saved" : "none") + "</b></p>" +
+        "<form id='f'><label>Repo<input name='repo' value='" + esc(c.repo) + "'></label><label>File<input name='path' value='" + esc(c.path) + "'></label><label>Branch (blank for default)<input name='branch' value='" + esc(c.branch) + "'></label>" +
+        "<label>Token " + (c.hasToken ? "(leave blank to keep the saved one)" : "") + "<input name='token' type='password' autocomplete='off' placeholder='github_pat_…'></label>" +
+        "<div class='row'>" + (c.hasToken ? "<button type='button' class='btn danger' id='rm'>Remove token</button>" : "") + "<button type='button' class='btn' data-close>Cancel</button><button class='btn primary'>Save</button></div></form>", function (d) {
+        var done = function (body) { api("api/config/github", "PUT", body).then(function () { d.close(); toast("Saved"); loadLists().then(function () { S.sha = ""; return poll(true); }); }).catch(function (e) { toast(e.message); }); };
+        d.querySelector("#f").onsubmit = function (ev) { ev.preventDefault(); var f = ev.target.elements; done({ repo: f.repo.value, path: f.path.value, branch: f.branch.value, token: f.token.value }); };
+        var rm = d.querySelector("#rm"); if (rm) rm.onclick = function () { done({ clearToken: true }); };
+      });
+    }).catch(function (e) { toast(e.message); });
+  }
+  $("#main").onclick = function (ev) {
+    var cat = ev.target.closest(".cat"); if (cat) { S.collapsed[cat.dataset.cat] = !S.collapsed[cat.dataset.cat]; savePrefs(); return render(); }
+    var b = ev.target.closest("[data-a]"); if (!b) return; var a = b.dataset.a, card = b.closest(".p"), p = card && byId(card.dataset.id);
+    if (a === "empty") { var ids = S.list.projects.filter(function (x) { return x.state === "bin"; }).map(function (x) { return x.id; }); return dialog("<h2>Empty the bin?</h2><p class='small'>" + ids.length + " project(s) will be deleted for good.</p><div class='row'><button class='btn' data-close>Cancel</button><button class='btn danger' id='go'>Delete for good</button></div>", function (d) { d.querySelector("#go").onclick = function () { d.close(); send({ ops: { remove: ids } }); }; }); }
+    if (!p) return;
+    if (a === "up" || a === "down") return send({ move: { id: p.id, dir: a === "up" ? -1 : 1 } });
+    if (a === "status") return setStatus(p, b.dataset.s);
+    if (a === "closedas") return upsert(p, { closedAs: p.closedAs === "abandoned" ? "completed" : "abandoned" });
+    if (a === "auto") return upsert(p, { pinned: false });
+    if (a === "worked") return upsert(p, { lastWorked: today() });
+    if (a === "keep") return upsert(p, { closedAt: new Date().toISOString() });
+    if (a === "edit") return editDlg(p);
+    if (a === "remove") return p.state === "archived" ? upsert(p, { state: "bin" }) : removeDlg(p);
+    if (a === "restore") return upsert(p, { state: "live" });
+    if (a === "purge") return send({ ops: { remove: [p.id] } });
+  };
+  $("#tabs").onclick = function (ev) { var b = ev.target.closest("[data-v]"); if (b) { S.view = b.dataset.v; savePrefs(); render(); } };
+  $("#add").onclick = function () { editDlg(null); };
+  $("#conn").onclick = connDlg;
+  $("#lists").onchange = function () { S.key = this.value; S.sha = ""; S.list = null; $("#main").innerHTML = '<p class="empty">Loading…</p>'; savePrefs(); poll(true); };
+  $("#newlist").onclick = function () {
+    dialog("<h2>New list</h2><p class='muted small'>Kept privately on your account. The shared App development list stays in GitHub.</p><form id='f'><label>Name<input name='name' required maxlength='80'></label><div class='row'><button type='button' class='btn' data-close>Cancel</button><button class='btn primary'>Create</button></div></form>", function (d) {
+      d.querySelector("#f").onsubmit = function (ev) { ev.preventDefault(); api("api/lists", "POST", { name: ev.target.elements.name.value }).then(function (j) { d.close(); S.key = j.key; S.sha = ""; S.list = null; return loadLists().then(function () { return poll(true); }); }).catch(function (e) { toast(e.message); }); };
+    });
+  };
+  document.addEventListener("visibilitychange", function () { if (!document.hidden) poll(false); });
+  setInterval(function () { poll(false); }, 4000); setInterval(status, 1000);
+
+  api("api/account/me").then(function (j) { S.user = j.user; return loadLists(); }).then(function () { return poll(true); }).catch(function (e) { if (e.status === 401 || e.status === 403) location.reload(); else { $("#main").innerHTML = '<p class="empty">' + esc(e.message) + "</p>"; } });
+})();
+</script>
+</body>
+</html>
