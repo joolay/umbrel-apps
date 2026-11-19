@@ -578,7 +578,7 @@ var Views = (function () {
   }
   /* ---------- parents: what the kids are watching, screen time, more time, hidden titles ---------- */
   var KREG = [];
-  var DAILY = [30, 45, 60, 90, 120, 150, 180, 240], WINDS = ['18:00', '18:30', '19:00', '19:30', '20:00', '20:30', '21:00', '21:30', '22:00'], EXTRA = [15, 30, 60, 120];
+  var DAILY = [30, 45, 60, 90, 120, 150, 180, 240], WINDS = ['18:00', '18:30', '19:00', '19:30', '20:00', '20:30', '21:00', '21:30', '22:00'], EXTRA = [15];                 // one 15-minute step; when it ends the parent types the code again
   function p2(n) { return (n < 10 ? '0' : '') + n; }
   function hhmm(ts) { var d = new Date(ts); return p2(d.getHours()) + ':' + p2(d.getMinutes()); }
   function fmtMin(m) { return m >= 60 ? Math.floor(m / 60) + ' h' + (m % 60 ? ' ' + (m % 60) + ' min' : '') : m + ' min'; }
@@ -649,12 +649,9 @@ var Views = (function () {
     });
   }
   function giveMoreTime(id) {
-    var kid = Profiles.get(id);
-    menu('More time for ' + (id === 'all' ? 'all kids' : kid ? kid.name : ''), EXTRA.map(function (m) { return { label: fmtMin(m), m: m }; }), function (o) {
-      askCode('Quick Access', Backend.quickStatus().then(function (s) { return s.kind; }, function () { return null; }), kidsPage, function (code) {
-        Backend.kidsExtend({ profile: id, minutes: o.m, code: code }).then(function () { toast('Added ' + fmtMin(o.m), 3500); kidsPage(); }).catch(function (e) { ferr(e.message); });
-      });
-    }, 'Playing may continue past the winding-down time and the daily total until this time runs out.');
+    askCode('Quick Access \u2013 15 more minutes', Backend.quickStatus().then(function (r) { return r.kind; }, function () { return null; }), kidsPage, function (code) {
+      Backend.kidsExtend({ profile: id, minutes: 15, code: code }).then(function () { toast('Added 15 min', 3500); kidsPage(); }).catch(function (e) { ferr(e.message); });
+    });
   }
   function timesUp(st) {
     var why = st && st.reason === 'winddown' ? 'It is winding-down time.' : 'Today\u2019s screen time is used up.';
@@ -666,12 +663,10 @@ var Views = (function () {
     Backend.kidsParents().then(function (r) {
       if (!r.parents.length) return toast('No parent is linked to this profile', 4000);
       menu('Which parent?', r.parents.map(function (p) { return { label: p.name + (p.kind ? '' : ' (no Quick Access code yet)'), p: p }; }), function (o) {
-        menu('How much more time?', EXTRA.map(function (m) { return { label: fmtMin(m), m: m }; }), function (t) {
-          askCode(o.p.name + ', enter your code', Promise.resolve(o.p.kind), function () { timesUp(Policy.screen()); }, function (code) {
-            Backend.kidsAskTime({ parent: o.p.id, minutes: t.m, code: code }).then(function () { return Policy.init(); }).then(function () { toast('Added ' + fmtMin(t.m), 3500); page('home'); }).catch(function (e) { ferr(e.message); });
-          });
+        askCode(o.p.name + ', enter your code for 15 more minutes', Promise.resolve(o.p.kind), function () { timesUp(Policy.screen()); }, function (code) {
+          Backend.kidsAskTime({ parent: o.p.id, minutes: 15, code: code }).then(function () { return Policy.init(); }).then(function () { toast('Added 15 min', 3500); page('home'); }).catch(function (e) { ferr(e.message); });
         });
-      });
+      }, 'When the 15 minutes end, a parent can type their code again for another 15.');
     }).catch(function (e) { toast(e.message, 5000); });
   }
   function fillKidsSettings() {

@@ -10,7 +10,7 @@
 const WARN = [15, 10, 5];
 const DAILY_CHOICES = [30, 45, 60, 90, 120, 150, 180, 240];
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
-const EXTEND_CHOICES = [15, 30, 60, 120];
+const EXTEND_CHOICES = [15]                 // one 15-minute step; a parent types the code again when it runs out;
 
 /* local date and minutes since midnight in the household's time zone */
 function clock(ts, tz) {

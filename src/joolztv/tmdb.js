@@ -258,4 +258,4 @@ async function ageOf({ imdb, type, region }) {
   const d = await call("/" + t + "/" + f.tmdb, { append_to_response: t === "tv" ? "content_ratings" : "release_dates" }, 7 * 864e5);
   return pickCert(d, t, region);
 }
-module.exports = { adultOf, adultReason, collections, FRANCHISES, configure, setKey, enabled, refreshKey, keySource, sweep, _call: call, cacheSave, cacheStats: () => ({ entries: cache.size, bytes: cacheBytes, lastSweep }), find, title, season, list, genres, discover, person, search, collection, resolve, ageOf, certAge, pickCert, LISTS };
+module.exports = { find, adultOf, adultReason, collections, FRANCHISES, configure, setKey, enabled, refreshKey, keySource, sweep, _call: call, cacheSave, cacheStats: () => ({ entries: cache.size, bytes: cacheBytes, lastSweep }), find, title, season, list, genres, discover, person, search, collection, resolve, ageOf, certAge, pickCert, LISTS };

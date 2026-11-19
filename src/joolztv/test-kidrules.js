@@ -19,7 +19,7 @@ s = K.status(h, kid, at("19:45", "2026-11-19"), TZ); ok(!s.allowed && s.reason =
 s = K.status(h, kid, at("19:20", "2026-11-19"), TZ); ok(s.allowed && s.reason === "winddown" && Math.round(s.remaining) === 10, "10 minutes before winding down");
 ok(K.warning(16, []) === null && K.warning(15, []) === 15 && K.warning(9.5, [15]) === 10 && K.warning(4, [15, 10]) === 5 && K.warning(4, [15, 10, 5]) === null, "warnings at 15, 10 and 5 minutes, each once");
 ok(K.warning(3, []) === 5, "joining late shows only the nearest warning");
-ok(K.extend(kid, 7, at("19:45", "2026-11-19")) === false && K.extend(kid, 30, at("19:45", "2026-11-19")) && K.status(h, kid, at("19:50", "2026-11-19"), TZ).allowed && K.status(h, kid, at("19:50", "2026-11-19"), TZ).extended, "a parent's extension lifts the stop for the chosen time");
+ok(K.extend(kid, 7, at("19:45", "2026-11-19")) === false && K.extend(kid, 15, at("19:45", "2026-11-19")) && K.status(h, kid, at("19:50", "2026-11-19"), TZ).allowed && K.status(h, kid, at("19:50", "2026-11-19"), TZ).extended, "a parent's extension lifts the stop for the chosen time");
 ok(!K.status(h, kid, at("20:20", "2026-11-19"), TZ).allowed, "…and the stop returns when it ends");
 ok(K.noteWatch(h, "k1", { imdb: "tt0111161", name: "X", type: "movie", pct: 0.4 }, 1) && h.watch.k1.tt0111161.pct === 0.4 && !K.noteWatch(h, "k1", { imdb: "bad" }, 1), "what they watched: title, how far, when");
 ok(K.hide(h, { imdb: "tt0111161", name: "X" }, 5) && h.hidden.tt0111161 && K.unhide(h, "tt0111161") && !h.hidden.tt0111161, "hide and unhide for the household");

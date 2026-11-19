@@ -415,22 +415,26 @@ async function tmdbRoutes(req, res, p, u) {
     return send(res, 200, { enabled: tmdb.enabled() });
   }
   if (!tmdb.enabled()) return send(res, 503, { code: "tmdb_off", message: "TMDB is not set up." });
-  const h = hh(), limit = ageLimitOf(h, u);
+  const h = hh(), limit = ageLimitOf(h, u), me0 = profileOf(h, u.id), hid = me0 && isKid(me0) ? h.hidden || {} : null;
+  /* a title a parent hid is gone from every row, search and collection of a kids profile (matched by TMDB id, and by IMDb id when a card has one) */
+  const hidT = new Set(hid ? Object.keys(hid).map(k => String(hid[k].tmdb || "")).filter(Boolean) : []);
+  const gone = x => x && typeof x === "object" && (x.tmdb != null && hidT.has(String(x.tmdb)) || (x.imdb && hid && hid[x.imdb]));
+  const snd = (rs, body) => { if (hid && body && typeof body === "object") for (const k of Object.keys(body)) if (Array.isArray(body[k]) && body[k].some(x => x && (x.tmdb != null || x.imdb))) body[k] = body[k].filter(x => !gone(x)); return send(rs, 200, body); };
   try {
     if (p === "/api/tmdb/title") {
       const imdb = q.get("imdb") || "", t = q.get("tmdb") || "";
       if (!/^tt\d{5,12}$/.test(imdb) && !idOk(t)) return send(res, 400, { code: "bad_request", message: "Unknown title." });
-      return send(res, 200, await tmdb.title({ imdb: /^tt/.test(imdb) ? imdb : "", tmdb: idOk(t) ? t : "", type: q.get("type") || "movie", locale: l.locale, region: l.region }));
+      return snd(res, await tmdb.title({ imdb: /^tt/.test(imdb) ? imdb : "", tmdb: idOk(t) ? t : "", type: q.get("type") || "movie", locale: l.locale, region: l.region }));
     }
-    if (p === "/api/tmdb/season") { if (!idOk(q.get("tmdb")) || !idOk(q.get("season"))) return send(res, 400, { code: "bad_request", message: "Unknown season." }); return send(res, 200, await tmdb.season({ tmdb: q.get("tmdb"), season: q.get("season"), locale: l.locale })); }
-    if (p === "/api/tmdb/list") { const kind = q.get("kind") || "popular"; return send(res, 200, await withSources(h, await tmdb.list({ kind, type: q.get("type") || "movie", locale: l.locale, region: l.region, page: Math.min(+q.get("page") || 1, 20), released: kind !== "soon" && kind !== "now", noPoster: !!sourcesBase(h) }))); }
-    if (p === "/api/tmdb/genres") return send(res, 200, { genres: await tmdb.genres({ type: q.get("type") || "movie", locale: l.locale }) });
-    if (p === "/api/tmdb/discover") return send(res, 200, await tmdb.discover({ type: q.get("type") || "movie", genre: q.get("genre"), year: q.get("year"), sort: q.get("sort"), locale: l.locale, region: l.region, page: Math.min(+q.get("page") || 1, 50), maxAge: limit, released: true, noPoster: !!sourcesBase(h) }).then(r => withSources(h, r)));
-    if (p === "/api/tmdb/person") { if (!idOk(q.get("id"))) return send(res, 400, { code: "bad_request", message: "Unknown person." }); return send(res, 200, await tmdb.person({ id: q.get("id"), locale: l.locale })); }
-    if (p === "/api/tmdb/collections") return send(res, 200, { collections: await tmdb.collections({ q: q.get("q"), locale: l.locale }) });
-    if (p === "/api/tmdb/collection") { if (!idOk(q.get("id"))) return send(res, 400, { code: "bad_request", message: "Unknown collection." }); return send(res, 200, await tmdb.collection({ id: q.get("id"), locale: l.locale })); }
-    if (p === "/api/tmdb/search") { const s = String(q.get("q") || "").trim(); if (s.length < 2) return send(res, 200, { people: [], titles: [] }); return send(res, 200, await withSources(h, await tmdb.search({ q: s, locale: l.locale, noPoster: !!sourcesBase(h) }))); }
-    if (p === "/api/tmdb/resolve") { if (!idOk(q.get("tmdb"))) return send(res, 400, { code: "bad_request", message: "Unknown title." }); return send(res, 200, await tmdb.resolve({ tmdb: q.get("tmdb"), type: q.get("type") || "movie" })); }
+    if (p === "/api/tmdb/season") { if (!idOk(q.get("tmdb")) || !idOk(q.get("season"))) return send(res, 400, { code: "bad_request", message: "Unknown season." }); return snd(res, await tmdb.season({ tmdb: q.get("tmdb"), season: q.get("season"), locale: l.locale })); }
+    if (p === "/api/tmdb/list") { const kind = q.get("kind") || "popular"; return snd(res, await withSources(h, await tmdb.list({ kind, type: q.get("type") || "movie", locale: l.locale, region: l.region, page: Math.min(+q.get("page") || 1, 20), released: kind !== "soon" && kind !== "now", noPoster: !!sourcesBase(h) }))); }
+    if (p === "/api/tmdb/genres") return snd(res, { genres: await tmdb.genres({ type: q.get("type") || "movie", locale: l.locale }) });
+    if (p === "/api/tmdb/discover") return snd(res, await tmdb.discover({ type: q.get("type") || "movie", genre: q.get("genre"), year: q.get("year"), sort: q.get("sort"), locale: l.locale, region: l.region, page: Math.min(+q.get("page") || 1, 50), maxAge: limit, released: true, noPoster: !!sourcesBase(h) }).then(r => withSources(h, r)));
+    if (p === "/api/tmdb/person") { if (!idOk(q.get("id"))) return send(res, 400, { code: "bad_request", message: "Unknown person." }); return snd(res, await tmdb.person({ id: q.get("id"), locale: l.locale })); }
+    if (p === "/api/tmdb/collections") return snd(res, { collections: await tmdb.collections({ q: q.get("q"), locale: l.locale }) });
+    if (p === "/api/tmdb/collection") { if (!idOk(q.get("id"))) return send(res, 400, { code: "bad_request", message: "Unknown collection." }); return snd(res, await tmdb.collection({ id: q.get("id"), locale: l.locale })); }
+    if (p === "/api/tmdb/search") { const s = String(q.get("q") || "").trim(); if (s.length < 2) return snd(res, { people: [], titles: [] }); return snd(res, await withSources(h, await tmdb.search({ q: s, locale: l.locale, noPoster: !!sourcesBase(h) }))); }
+    if (p === "/api/tmdb/resolve") { if (!idOk(q.get("tmdb"))) return send(res, 400, { code: "bad_request", message: "Unknown title." }); return snd(res, await tmdb.resolve({ tmdb: q.get("tmdb"), type: q.get("type") || "movie" })); }
     return send(res, 404, { code: "not_found" });
   } catch (e) { return tmdbErr(res, e); }
 }
@@ -476,7 +480,9 @@ async function kidsRoutes(req, res, p, u) {
   if (p === "/api/kids/hidden" && req.method === "GET") return send(res, 200, { titles: Object.keys(h.hidden || {}).map(i => Object.assign({ imdb: i }, h.hidden[i])).sort((a, b) => b.ts - a.ts) });
   if (req.method !== "POST") return send(res, 404, { code: "not_found" });
   const b = await jsonBody(req);
-  if (p === "/api/kids/hide") { if (!kidrules.hide(h, titleOf(b), now)) return send(res, 400, { code: "bad_request", message: "Unknown title, or the hidden list is full." }); writeJson(HH_FILE, h); return send(res, 200, { ok: true }); }
+  if (p === "/api/kids/hide") { if (!kidrules.hide(h, titleOf(b), now)) return send(res, 400, { code: "bad_request", message: "Unknown title, or the hidden list is full." });
+    try { const f = await tmdb.find(String(b.imdb)); if (f && h.hidden[b.imdb]) h.hidden[b.imdb].tmdb = String(f.tmdb); } catch {}                 /* so TMDB rows (which carry no IMDb id) can drop it too */
+    writeJson(HH_FILE, h); return send(res, 200, { ok: true }); }
   if (p === "/api/kids/unhide") { kidrules.unhide(h, String(b.imdb || "")); writeJson(HH_FILE, h); return send(res, 200, { ok: true }); }
   if (p === "/api/kids/recommend") {
     const ids = b.profiles === "all" ? kids.map(k => k.id) : (Array.isArray(b.profiles) ? b.profiles : []).filter(i => kids.some(k => k.id === i));
