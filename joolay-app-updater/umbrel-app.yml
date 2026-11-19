@@ -2,7 +2,7 @@ manifestVersion: 1
 id: joolay-app-updater
 category: developer
 name: App Updater
-version: "1.4.0"
+version: "1.4.1"
 tagline: Update the Umbrel apps you choose automatically, nightly or the moment a new version appears
 description: >-
   Umbrel never updates apps by itself. App Updater does it for the apps you pick, including Portal Admin.
@@ -21,7 +21,7 @@ gallery: []
 path: ""
 defaultUsername: ""
 defaultPassword: ""
-releaseNotes: "New: each store group in the list has a quick link that opens that store in the App Store (the official Umbrel store or the community store)."
+releaseNotes: "Fixed the layout on iPad and other wide screens: tall app tiles and stretched store headers are back to normal."
 submitter: joolay
 submission: https://github.com/joolay/umbrel-apps
 icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-app-updater/icon.svg

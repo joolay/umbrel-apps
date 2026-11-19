@@ -222,7 +222,7 @@ function renderApp(a) {
     h('div', { class: 'main' },
       h('div', { class: 'id' }, h('span', { class: 'name', title: a.name }, a.name), h('span', { class: 'sub' }, sub)),
       h('div', { class: 'ctl' }, chips, seg)),
-    right ? h('div', { class: 'side' }, right) : null);
+    right ? h('div', { class: 'tside' }, right) : null);
   holdToHide(tile, a);
   return tile;
 }
