@@ -143,7 +143,7 @@ function renderGroups(d) {
   const groups = new Map();
   for (const a of d.apps.filter((x) => !x.hidden)) {
     const st = a.store || { id: 'other', name: 'Other apps' };
-    if (!groups.has(st.id)) groups.set(st.id, { id: st.id, name: st.name, apps: [] });
+    if (!groups.has(st.id)) groups.set(st.id, { id: st.id, name: st.name, raw: st.raw, apps: [] });
     groups.get(st.id).apps.push(a);
   }
   const list = [...groups.values()].sort((x, y) =>
@@ -157,12 +157,23 @@ function renderGroups(d) {
     const auto = g.apps.filter((a) => a.mode !== 'off').length;
     const meta = [g.apps.length + (g.apps.length === 1 ? ' app' : ' apps'), auto ? auto + ' on auto-update' : ''].filter(Boolean).join(' · ');
     return h('section', { class: 'group' + (open ? ' open' : '') },
-      h('button', { class: 'ghead', 'aria-expanded': String(open), onclick: () => toggleGroup(g.id, !open) },
-        h('span', { class: 'chev', 'aria-hidden': 'true' }, '▸'),
-        h('span', { class: 'gtext' }, h('span', { class: 'gname' }, g.name), h('span', { class: 'sub' }, meta)),
-        updates ? h('span', { class: 'chip accent gupd' }, updates + (updates === 1 ? ' update' : ' updates')) : null),
+      h('div', { class: 'ghrow' },
+        h('button', { class: 'ghead', 'aria-expanded': String(open), onclick: () => toggleGroup(g.id, !open) },
+          h('span', { class: 'chev', 'aria-hidden': 'true' }, '▸'),
+          h('span', { class: 'gtext' }, h('span', { class: 'gname' }, g.name), h('span', { class: 'sub' }, meta)),
+          updates ? h('span', { class: 'chip accent gupd' }, updates + (updates === 1 ? ' update' : ' updates')) : null),
+        storeLink(g)),
       open ? h('div', { class: 'gbody' }, renderModeSections(g.apps)) : null);
   });
+}
+
+/* Quick link to the store's own page in umbrelOS: the official store, or a community store by its registry id. */
+function storeLink(g) {
+  const path = g.id === 'umbrel' ? '/app-store' : (g.raw && g.id !== 'other' ? '/community-app-store/' + encodeURIComponent(g.raw) : null);
+  if (!path) return null;
+  const a = h('a', { class: 'storelink', href: location.protocol + '//' + location.hostname + path, target: '_top', title: 'Open ' + g.name + ' in the App Store', 'aria-label': 'Open ' + g.name + ' store' });
+  a.innerHTML = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>';
+  return a;
 }
 
 /* Inside each store, apps are split by their auto-update mode: immediately, scheduled (nightly) or off. */

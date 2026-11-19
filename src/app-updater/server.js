@@ -275,9 +275,9 @@ function storeOf(node) {
 function friendlyStore(id, name) {
   const key = (String(id) + ' ' + String(name || '')).toLowerCase().replace(/[^a-z0-9]+/g, '');
   if (/^(umbrelappstore|getumbrel|umbrel|official|umbrelofficial)/.test(key) || key.includes('umbrelappstore')) return { id: 'umbrel', name: 'Umbrel' };
-  if (key.includes('joolay') || key.includes('joolzapp')) return { id: 'joolzapp', name: 'JoolzApp' };
-  if (key.includes('bigbear')) return { id: 'big-bear', name: 'Big Bear' };
-  return { id: String(id), name: prettyStore(name || id) };
+  if (key.includes('joolay') || key.includes('joolzapp')) return { id: 'joolzapp', name: 'JoolzApp', raw: String(id) };
+  if (key.includes('bigbear')) return { id: 'big-bear', name: 'Big Bear', raw: String(id) };
+  return { id: String(id), name: prettyStore(name || id), raw: String(id) };
 }
 // Fallback when the registry does not say which store an app came from: community app ids start with their store id.
 function storeFromAppId(id) {
