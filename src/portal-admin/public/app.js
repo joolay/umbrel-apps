@@ -252,7 +252,7 @@ async function showShell() {
   loadEvents(); qaWatch();
   if (state.role !== 'user' && !state.public) rememberAdminUrl().catch(() => {});
 }
-// Portal Admin notes its own address on every admin's account (a private pref.* row each), so JoolzApp Portal can show them an Admin icon.
+// Portal Admin notes its own address on every admin's account (a private pref.* row each), so JoolzApp Store can show them an Admin icon.
 async function rememberAdminUrl() {
   const admins = new Set((await listAll(state.usersColl, { filter: 'isAdmin = true', max: 50 }).catch(() => [])).map((u) => u.id)); if (state.pid) admins.add(state.pid);
   if (!admins.size) return;
@@ -1585,8 +1585,8 @@ let HM = null, editing = false, saveChain = Promise.resolve();
 const isAdminRole = () => state.role !== 'user';
 
 let adminRow = null;   // where this person's Portal Admin lives (only an admin has the row; Portal Admin writes it when they use it)
-// On Portal Admin itself an admin sees the Admin tools directly on the main screen. The apps live on JoolzApp Portal, so they are not shown here.
-// That screen keeps its own layout row (pref.adminhome.layout) so it never overwrites the app layout the same person has on JoolzApp Portal.
+// On Portal Admin itself an admin sees the Admin tools directly on the main screen. The apps live on JoolzApp Store, so they are not shown here.
+// That screen keeps its own layout row (pref.adminhome.layout) so it never overwrites the app layout the same person has on JoolzApp Store.
 const adminMode = () => isAdminRole() && !state.public;
 const layoutKey = () => (adminMode() ? 'pref.adminhome.layout' : 'pref.home.layout');
 async function homeModel() {
@@ -1621,7 +1621,7 @@ async function homeModel() {
     items['sys:family'] = { id: 'sys:family', kind: 'sys', name: 'Family', glyph: 'family', img: 'icons/family.svg', grad: ['#fb7185', '#f59e0b'], href: '#/family' };
     items['sys:me'] = { id: 'sys:me', kind: 'sys', name: 'Settings', glyph: 'me', img: 'icons/settings.svg', grad: ['#94a3b8', '#475569'], href: '#/me' };
   }
-  // On JoolzApp Portal an admin gets a way into Portal Admin (a separate app, reachable on their home network or tailnet only).
+  // On JoolzApp Store an admin gets a way into Portal Admin (a separate app, reachable on their home network or tailnet only).
   if (!isAdmin && adminRow && /^https?:\/\//i.test(String(adminRow.value || '')) && String(adminRow.value) !== location.origin) items['sys:adminlink'] = { id: 'sys:adminlink', kind: 'sys', name: 'Admin', glyph: 'admin', img: 'icons/admin.svg', grad: ['#3b4a7a', '#1e2a52'], href: String(adminRow.value) };
   let pw = null; if (selfId()) { try { pw = await acctFetch('/paywall'); } catch { pw = null; } }
   let saved = lrows[0] && lrows[0].value && typeof lrows[0].value === 'object' ? lrows[0].value : null;

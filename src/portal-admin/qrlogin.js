@@ -1,6 +1,6 @@
 'use strict';
 // QR sign-in for JoolzApp accounts: a device with no good keyboard (a TV) shows a QR code; a phone that is already signed in to the
-// JoolzApp Portal scans it, sees who is asking, and taps Approve. The app that started it then learns WHICH PERSON approved, and signs
+// JoolzApp Store scans it, sees who is asking, and taps Approve. The app that started it then learns WHICH PERSON approved, and signs
 // that person in itself (apps mint their own sessions, so no PocketBase token or password ever travels to the TV).
 //   start(app, {label})  an app (with its Portal API key) opens a request            -> { id, secret, expiresIn }
 //   info(id, user)       the phone looks at it (signed in)                              -> { app, label, ageSeconds }

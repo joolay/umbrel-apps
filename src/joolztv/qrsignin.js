@@ -1,4 +1,4 @@
-// QR sign-in for the TV: shows a code, a signed-in phone approves it in the JoolzApp Portal, and the person is signed in here exactly as
+// QR sign-in for the TV: shows a code, a signed-in phone approves it in the JoolzApp Store, and the person is signed in here exactly as
 // if they had typed their email and password (same account checks afterwards). Portal Admin keeps the request and says WHO approved;
 // this module only remembers the secret that proves the poller is the screen that asked, and hands an approval out once.
 "use strict";

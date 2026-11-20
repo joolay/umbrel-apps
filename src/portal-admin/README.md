@@ -96,7 +96,7 @@ A faster, less secure way back in on a device the person already signed in on. O
 **Sign out everywhere:** Admin > Users > person > Sign-in (`/admin/quick`), or the person's own button, deletes all their Quick Access devices and stamps `portal.signedOutAt` (readable by their own apps, writable only by the superuser); it also rotates the PocketBase `tokenKey` (best effort). The Portal compares the stamp with its own sign-in time (server clock) every minute; JoolzTV rejects sessions that began before it. Quick Access is a routine reason to reset a lost TV: remove it from My settings.
 
 ## Admin home screen (0.31.0)
-Portal Admin no longer lists apps. For an admin its home screen shows the admin tools directly (no Admin folder); people open their apps from the JoolzApp Portal.
+Portal Admin no longer lists apps. For an admin its home screen shows the admin tools directly (no Admin folder); people open their apps from the JoolzApp Store.
 Its layout is saved on the account as `pref.adminhome.layout`, separate from the Portal's `pref.home.layout`.
 
 ## AI keys (0.32.0)

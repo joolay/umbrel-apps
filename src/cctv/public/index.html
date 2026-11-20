@@ -162,7 +162,7 @@ body.tv #bar{height:64px}body.tv #wall{top:64px;bottom:34px}body.tv .cap{font-si
   /* ---------- load ---------- */
   function start() {
     api("GET", "/api/app-config", null, function (st, c) {
-      S.accounts = !!c.accounts; $("lportal").innerHTML = c.portalUrl ? 'No account? Create one on the <a style="color:#a27bff" href="' + esc(c.portalUrl) + '">JoolzApp Portal</a>.' : "";
+      S.accounts = !!c.accounts; $("lportal").innerHTML = c.portalUrl ? 'No account? Create one on the <a style="color:#a27bff" href="' + esc(c.portalUrl) + '">JoolzApp Store</a>.' : "";
       api("GET", "/api/cctv/config", null, function (st2, j) {
         if (st2 === 401) return showLogin();
         if (st2 === 403) return showLogin(j.message, true);
