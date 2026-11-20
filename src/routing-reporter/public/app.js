@@ -12,7 +12,7 @@
       return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok) throw new Error(j.message || "Something went wrong (" + r.status + ")"); return j; });
     });
   }
-  var COLS = [["lan", "LAN"], ["tailscale", "Tailscale"], ["https", "https"]];   // https = the .ts.net address: Public (Funnel) or tailnet-only name
+  var COLS = [["lan", "LAN"], ["tailscale", "Tailscale"], ["name", "Name"], ["public", "Public"]];
   // Icons instead of words: green tick = answering, red cross = down, amber arrow hitting a wall = checking / in conflict, grey dash = ignored.
   var IC = {
     up: '<svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
@@ -22,7 +22,7 @@
   }, TXT = { up: "Answering", down: "Down", checking: "Checking or in conflict", ign: "Ignored" };
   function ico(st) { return '<span class="ic ' + st + '" role="img" aria-label="' + TXT[st] + '" title="' + TXT[st] + '">' + IC[st] + "</span>"; }
   function cell(a, k) {
-    var x = a.routes.filter(function (r) { return k === "https" ? (r.key === "public" || r.key === "name") : r.key === k; })[0];
+    var x = a.routes.filter(function (r) { return r.key === k; })[0];
     if (!x) return '<td class="na">–</td>';
     var st = x.ignored ? "ign" : x.state === "up" ? "up" : x.state === "down" ? "down" : "checking";
     return '<td title="' + esc(x.url) + '">' + ico(st) + "</td>";
@@ -37,7 +37,7 @@
     }).join("") + "</td></tr>";
   }
   function tableHtml(apps) {
-    var cols = COLS.filter(function (c) { return apps.some(function (a) { return a.routes.some(function (r) { return c[0] === "https" ? (r.key === "public" || r.key === "name") : r.key === c[0]; }); }); });
+    var cols = COLS.filter(function (c) { return apps.some(function (a) { return a.routes.some(function (r) { return r.key === c[0]; }); }); });
     return '<div class="card tw"><table><thead><tr><th>App</th>' + cols.map(function (c) { return "<th>" + c[1] + "</th>"; }).join("") + "</tr></thead><tbody>" +
       apps.map(function (a) {
         var open = !!S.open[a.id];
