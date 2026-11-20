@@ -1,5 +1,5 @@
 "use strict";
-// Project Tracker: the shape of a list and the rules for changing it. Pure functions, no network, so they are easy to test.
+// Project Pilot: the shape of a list and the rules for changing it. Pure functions, no network, so they are easy to test.
 // A list is { name, categories: [string], projects: [project] }. A project:
 //   id, name, category, desc, status (active|maintenance|hiatus|closed), closedAs (completed|abandoned|""), closedAt,
 //   statusAt (when someone last set the status by hand; the 3-day rule then waits for work done on a LATER day), auto ("" follow the global

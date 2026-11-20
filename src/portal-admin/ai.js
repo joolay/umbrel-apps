@@ -14,7 +14,7 @@ const VAULT = 'ai-vault', PROVIDERS = {
   custom: { label: 'Custom (OpenAI-compatible)', baseUrl: '', model: '' },
 };
 // Apps that use a person's AI key. Their slug is the store id without "joolay-".
-const AI_APPS = { 'diner-bell': 'Diner Bell', 'jolly-grocer': 'Jolly Grocer', listify: 'ListSnap', shutterworth: 'ShutterWorth', 'project-tracker': 'Project Tracker' };
+const AI_APPS = { 'diner-bell': 'Diner Bell', 'jolly-grocer': 'Jolly Grocer', listify: 'ListSnap', shutterworth: 'ShutterWorth', 'project-tracker': 'Project Pilot' };
 const FIELDS = ['provider', 'model', 'apiKey', 'baseUrl', 'keyId'];
 const MAX_KEYS = 12;
 

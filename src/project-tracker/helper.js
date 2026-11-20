@@ -17,7 +17,7 @@ const TOOLS = [
 ];
 
 const systemPrompt = (p, list) => [
-  "You are the project helper inside Project Tracker, a private tool the owner uses to keep track of the apps and projects he builds. You are talking about one project: \"" + p.name + "\" (list: " + list.name + ").",
+  "You are the project helper inside Project Pilot, a private tool the owner uses to keep track of the apps and projects he builds. You are talking about one project: \"" + p.name + "\" (list: " + list.name + ").",
   "Be brief and concrete. Use the tools to look things up instead of guessing; say plainly when you couldn't find something.",
   "You cannot change anything yourself. To add a note, mark a note as done, or change the status, call the matching propose_ tool. The owner sees a button and decides. Don't claim a change is made.",
   "Statuses: " + STATUS_HELP,

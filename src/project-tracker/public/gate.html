@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Project Tracker</title>
+<title>Project Pilot</title>
 <meta name="theme-color" content="#b45309">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -37,11 +37,12 @@ details.ai{margin:10px 0;font-size:14px}details.ai summary{cursor:pointer;color:
 <body>
 <main>
   <img class="logo" src="icon.svg" alt="">
-  <h1>Project Tracker</h1>
+  <h1>Project Pilot</h1>
   <p class="sub" id="sub">Sign in with your JoolzApp account</p>
   <div id="view"></div>
 </main>
 <script src="pwtoggle.js"></script>
+<script src="quick-ui.js"></script>
 <script>
 (function () {
   "use strict";
@@ -53,6 +54,11 @@ details.ai{margin:10px 0;font-size:14px}details.ai summary{cursor:pointer;color:
     return fetch(path, { method: opts.method || "GET", headers: h, body: opts.body, cache: "no-store" }).then(function (r) {
       return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok) { var e = new Error(j.message || "Something went wrong (" + r.status + ")"); e.status = r.status; throw e; } return j; });
     });
+  }
+  var QA = JZQuick({ app: "project-tracker", name: "Project Pilot", request: function (m, p, b) { return api(p, { method: m, body: b === undefined ? undefined : JSON.stringify(b) }); } });
+  // PIN or pattern first, on a device that has it; "Use my password instead" falls back to the form.
+  function quickFirst() {
+    QA.signIn().then(function (j) { if (j) { setTok(j.token, true); if (j.user.canOpen) location.reload(); else waiting(j.user); } else form(); });
   }
   function el(tag, cls, text) { var n = document.createElement(tag); if (cls) n.className = cls; if (text) n.textContent = text; return n; }
   function field(label, type, auto) { var l = el("label", "", label), i = el("input"); i.type = type; i.autocomplete = auto; l.appendChild(i); return { l: l, i: i }; }
@@ -85,6 +91,7 @@ details.ai{margin:10px 0;font-size:14px}details.ai summary{cursor:pointer;color:
         .catch(function (e) { err.textContent = e.message; go.disabled = false; });
     };
     view.appendChild(f);
+    if (QA.has()) { var qb = el("button", "alt", "Use my PIN or pattern"); qb.type = "button"; qb.onclick = quickFirst; view.appendChild(qb); }
     if (cfg.signups !== false) {
       // There is one JoolzApp sign-up page, in Portal Admin. It sends you back here when the account is made.
       var alt = el("button", "alt", "Create a JoolzApp account"); alt.type = "button";
@@ -93,7 +100,7 @@ details.ai{margin:10px 0;font-size:14px}details.ai summary{cursor:pointer;color:
   }
   function waiting(u) {
     view.textContent = ""; sub.textContent = "Almost there";
-    view.appendChild(el("p", "note", "You're signed in as " + (u.name || u.email) + ". " + ((u.gate && u.gate.message) || "The admin hasn't opened Project Tracker to you yet. Ask them to give you access, then check again.")));
+    view.appendChild(el("p", "note", "You're signed in as " + (u.name || u.email) + ". " + ((u.gate && u.gate.message) || "The admin hasn't opened Project Pilot to you yet. Ask them to give you access, then check again.")));
     var row = el("div", "row"), again = el("button", "", "Check again"), out = el("button", "", "Sign out");
     again.onclick = function () { start(); }; out.onclick = signOut; row.append(again, out); view.appendChild(row);
     if (u.gate && u.gate.reason === "guardian_pending") {
@@ -114,7 +121,7 @@ details.ai{margin:10px 0;font-size:14px}details.ai summary{cursor:pointer;color:
       .catch(function () {})
       .then(function () { return api("api/account/me"); })
       .then(function (j) { if (j.user.canOpen) location.reload(); else waiting(j.user); })
-      .catch(function (e) { if (e.status === 401 || e.status === 404) { setTok(""); form(); } else problem(e.message); });
+      .catch(function (e) { if (e.status === 401 || e.status === 404) { setTok(""); if (QA.has()) quickFirst(); else form(); } else problem(e.message); });
   }
   start();
 })();

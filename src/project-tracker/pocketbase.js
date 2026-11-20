@@ -37,7 +37,7 @@ const COLL = process.env.POCKETBASE_USERS_COLLECTION || "users";
 const APP = (process.env.POCKETBASE_APP_ID || "project-tracker").trim().toLowerCase();
 const ACCESS = process.env.POCKETBASE_ACCESS_COLLECTION || "app_access";
 
-const APP_NAME = (process.env.POCKETBASE_APP_NAME || (APP === "project-tracker" ? "Project Tracker" : APP)).trim();
+const APP_NAME = (process.env.POCKETBASE_APP_NAME || (APP === "project-tracker" ? "Project Pilot" : APP)).trim();
 
 const isEnabled = () => !!(URL_BASE && SU_EMAIL && SU_PASS);
 // While not connected, look for pocketbase.env again (at most every 2 s). Returns true once accounts are on.

@@ -1,8 +1,8 @@
 {
   "name": "project-tracker",
-  "version": "1.3.1",
+  "version": "1.4.0",
   "private": true,
-  "description": "Project Tracker: lists of projects with status, priority, archive and a recycle bin, signed in with the JoolzApp account.",
+  "description": "Project Pilot: lists of projects with status, priority, archive and a recycle bin, signed in with the JoolzApp account.",
   "main": "server.js",
   "scripts": { "start": "node server.js", "test": "node test-lists.js && node test-github.js && node test-server.js && node test-chat.js" },
   "license": "MIT"

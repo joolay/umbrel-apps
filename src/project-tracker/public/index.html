@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Project Tracker</title>
+<title>Project Pilot</title>
 <meta name="theme-color" content="#b45309">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
@@ -11,6 +11,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Projects">
+<script src="floatbar.js"></script>
 <link rel="stylesheet" href="glass.css">
 <style>
 :root{--accent:#b45309;--accent-2:#f59e0b;--accent-t:#fff}
@@ -18,11 +19,6 @@
 :root[data-theme="dark"]{--accent:#f59e0b;--accent-2:#fbbf24;--accent-t:#2a1500}
 *{box-sizing:border-box}
 .wrap{max-width:1240px;margin:0 auto;padding:0 14px 90px}
-.top-bar{position:sticky;top:0;z-index:6;display:flex;align-items:center;gap:10px;padding:calc(8px + var(--safe-t,0px)) max(14px,var(--safe-r)) 8px max(14px,var(--safe-l));background:var(--glass-strong);border-bottom:1px solid var(--glass-line);-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px)}
-.top-bar .app{flex:1;font-weight:700;font-size:1.05rem;letter-spacing:.01em}
-.ic{width:38px;height:38px;border-radius:12px;border:1px solid var(--glass-line);background:var(--glass);color:var(--text);display:grid;place-items:center;cursor:pointer;padding:0}
-.ic svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
-.ic[hidden]{display:none}
 .pick{margin:12px 0}.pick select{width:100%;max-width:340px;font-weight:600}
 .sync{display:flex;align-items:center}
 .dot{width:8px;height:8px;border-radius:50%;background:var(--ok)}.dot.off{background:var(--warn)}.dot.bad{background:var(--danger)}
@@ -74,14 +70,17 @@ dialog label{display:grid;gap:4px;margin:8px 0;font-size:.85rem;color:var(--mute
 dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:14px}
 .fab{position:fixed;right:max(16px,var(--safe-r));bottom:max(16px,var(--safe-b));z-index:5}
 </style>
+<link rel="stylesheet" href="floatbar.css">
 </head>
 <body>
-<header class="top-bar">
-  <button class="ic" id="home" aria-label="Home" title="Home" hidden><svg viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10.5V20h13v-9.5"/><path d="M10 20v-5.5h4V20"/></svg></button>
-  <div class="app">Project Tracker</div>
+<header class="topbar">
+  <button class="tb-btn" id="home" aria-label="Home" title="Home" hidden><svg viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10.5V20h13v-9.5"/><path d="M10 20v-5.5h4V20"/></svg></button>
+  <div class="brand"><img src="icon.svg" alt="" width="28" height="28"><span>Project Pilot</span></div>
+  <span class="tb-gap"></span>
   <span class="sync"><span class="dot" id="dot" role="img" aria-label="Sync status"></span></span>
-  <button class="ic" data-pwa-install hidden aria-label="Install app" title="Install app"><svg viewBox="0 0 24 24"><path d="M12 4v10"/><path d="m8 10.5 4 4 4-4"/><path d="M5 17v2.5h14V17"/></svg></button>
-  <button class="ic" id="settings" aria-label="Settings" title="Settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
+  <button class="tb-btn" data-pwa-install hidden aria-label="Install app" title="Install app"><svg viewBox="0 0 24 24"><path d="M12 4v10"/><path d="m8 10.5 4 4 4-4"/><path d="M5 17v2.5h14V17"/></svg></button>
+  <button class="tb-btn" id="settings" aria-label="Settings" title="Settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
+  <button class="tb-btn" data-theme-toggle aria-label="Switch theme"><svg class="i-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z"/></svg><svg class="i-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6 7 7M17 17l1.4 1.4M5.6 18.4 7 17M17 7l1.4-1.4"/></svg></button>
 </header>
 <div class="wrap">
   <div class="pick"><select id="lists" aria-label="List"></select></div>
@@ -93,6 +92,7 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
 <dialog id="dlg"></dialog>
 <div class="toast" id="toast" role="status" hidden></div>
 <script src="pwtoggle.js"></script>
+<script src="quick-ui.js"></script>
 <script src="install-help.js"></script>
 <script src="installbtn.js"></script>
 <script>
@@ -128,7 +128,7 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
   function savePrefs() { clearTimeout(savePrefs.h); savePrefs.h = setTimeout(function () { api("api/prefs", "PUT", { list: S.key, view: S.view, auto: S.auto, days: S.days, chat: S.chat, collapsed: Object.keys(S.collapsed).filter(function (k) { return S.collapsed[k]; }) }).catch(function () {}); }, 600); }
   function loadLists(keep) {
     return api("api/lists").then(function (j) {
-      S.lists = j.lists; S.owner = !!j.owner; var pr = (S.user.prefs || {})["project-tracker"] || {};
+      S.lists = j.lists; S.owner = !!j.owner; var pr = (S.user.prefs || {})["project-tracker"] || {}; if (window.JZTheme && !S.themeSet) { S.themeSet = 1; var th = pr.theme || (S.user.prefs || {}).theme; if (th === "light" || th === "dark") JZTheme.set(th, true); }
       if (!S.key) { S.key = pr.list && j.lists.some(function (l) { return l.key === pr.list; }) ? pr.list : j.lists[0].key; if (pr.view) S.view = pr.view; if (typeof pr.auto === "boolean") S.auto = pr.auto; if (pr.days >= 1 && pr.days <= 30) S.days = pr.days; if (pr.chat === "builtin") S.chat = "builtin"; (pr.collapsed || []).forEach(function (c) { S.collapsed[c] = true; }); }
       if (!j.lists.some(function (l) { return l.key === S.key; })) S.key = j.lists[0].key;
       $("#lists").innerHTML = j.lists.map(function (l) { return '<option value="' + esc(l.key) + '"' + (l.key === S.key ? " selected" : "") + ">" + esc(l.name) + " (" + l.count + ")" + (l.source === "shared" ? " · from " + esc(l.by || "someone") : "") + "</option>"; }).join("");
@@ -298,12 +298,13 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
       "<div class='sect'><b>Chat button on a project</b>" +
       "<label class='switch'><input type='radio' name='chat' value='claude'" + (S.chat !== "builtin" ? " checked" : "") + "><span><b>Claude app</b><br><span class='muted small'>Opens a new chat in Claude with the project and its notes filled in. Uses your Claude subscription.</span></span></label>" +
       "<label class='switch'><input type='radio' name='chat' value='builtin'" + (S.chat === "builtin" ? " checked" : "") + "><span><b>Built-in chat</b><br><span class='muted small'>Chats here with the AI key saved on your JoolzApp account. It can read the project's repo folders and suggest changes; nothing is saved until you press Apply.</span></span></label><p class='muted small' id='aik'>Checking your AI key…</p></div>" +
-      "<div class='sheet'><button class='btn' id='nl'>New private list</button>" + (S.role === "owner" && S.key !== "appdev" && S.list ? "<button class='btn' id='sh'>Share this list</button>" : "") + (S.source === "shared" ? "<button class='btn' id='lv'>Leave this shared list</button>" : "") + (S.owner ? "<button class='btn' id='cn'>GitHub connection</button>" : "") + "</div><p class='muted small'>Tip: tap a project for its notes. Press and hold it to edit or remove.</p><div class='row'><button class='btn primary' data-close>Done</button></div>", function (d) {
+      "<div class='sheet'><button class='btn' id='nl'>New private list</button><button class='btn' id='qa'>Quick Access (PIN or pattern)</button>" + (S.role === "owner" && S.key !== "appdev" && S.list ? "<button class='btn' id='sh'>Share this list</button>" : "") + (S.source === "shared" ? "<button class='btn' id='lv'>Leave this shared list</button>" : "") + (S.owner ? "<button class='btn' id='cn'>GitHub connection</button>" : "") + "</div><p class='muted small'>Tip: tap a project for its notes. Press and hold it to edit or remove.</p><div class='row'><button class='btn primary' data-close>Done</button></div>", function (d) {
       d.querySelector("#dy").onchange = function () { var v = Math.round(+this.value); if (!(v >= 1 && v <= 30)) { this.value = S.days; return; } S.days = v; this.value = v; savePrefs(); render(); };
       d.querySelector("#au").onchange = function () { S.auto = this.checked; savePrefs(); render(); };
       d.querySelectorAll("input[name=chat]").forEach(function (r) { r.onchange = function () { S.chat = r.value; savePrefs(); }; });
-      api("api/ai/status").then(function (j) { var al = S.home ? " <a href='" + esc(S.home) + "#/me' target='_blank' rel='noopener'>Manage AI keys</a>" : ""; d.querySelector("#aik").innerHTML = j.ready ? "Built-in chat uses <b>" + esc(j.key.provider) + " · " + esc(j.key.model) + "</b> (key ends …" + esc(j.key.last4) + "). " + al : "No AI key is set for Project Tracker yet. Add one in Portal Admin > My settings > AI." + al; }).catch(function () { d.querySelector("#aik").textContent = ""; });
+      api("api/ai/status").then(function (j) { var al = S.home ? " <a href='" + esc(S.home) + "#/me' target='_blank' rel='noopener'>Manage AI keys</a>" : ""; d.querySelector("#aik").innerHTML = j.ready ? "Built-in chat uses <b>" + esc(j.key.provider) + " · " + esc(j.key.model) + "</b> (key ends …" + esc(j.key.last4) + "). " + al : "No AI key is set for Project Pilot yet. Add one in Portal Admin > My settings > AI." + al; }).catch(function () { d.querySelector("#aik").textContent = ""; });
       d.querySelector("#nl").onclick = function () { d.close(); newListDlg(); };
+      d.querySelector("#qa").onclick = function () { d.close(); QA.manage(); };
       var cn = d.querySelector("#cn"); if (cn) cn.onclick = function () { d.close(); connDlg(); };
       var sh = d.querySelector("#sh"); if (sh) sh.onclick = function () { d.close(); shareDlg(); };
       var lv = d.querySelector("#lv"); if (lv) lv.onclick = function () { if (!confirm("Leave this list? You can be added again later.")) return; var k = S.key; api("api/list/" + k + "/leave", "POST", {}).then(function () { d.close(); S.key = ""; S.sha = ""; S.list = null; return loadLists().then(function () { return poll(true); }); }).catch(function (e) { toast(e.message); }); };
@@ -313,7 +314,7 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
   function shareDlg() {
     var shares = S.shares || [], k = S.key;
     function again() { var el = $("#dlg"); el.close(); return poll(true).then(function () { shareDlg(); }); }
-    dialog("<h2>Share “" + esc(S.list.name) + "”</h2><p class='muted small'>Type the email of their JoolzApp account. The list shows up the next time they open Project Tracker. Only you can delete it.</p>" +
+    dialog("<h2>Share “" + esc(S.list.name) + "”</h2><p class='muted small'>Type the email of their JoolzApp account. The list shows up the next time they open Project Pilot. Only you can delete it.</p>" +
       "<form id='f'><label>Email<input name='email' type='email' required autocomplete='off' maxlength='200'></label><label>They can<select name='role'><option value='view'>View only</option><option value='edit'>View and edit</option></select></label><div class='row'><button class='btn primary'>Share</button></div></form>" +
       "<div class='sect'><b>Shared with</b>" + (shares.length ? shares.map(function (x, i) { return "<div class='row'><span class='small' style='flex:1;overflow:hidden;text-overflow:ellipsis'>" + esc(x.email) + "</span><select data-i='" + i + "' aria-label='Access for " + esc(x.email) + "'><option value='view'" + (x.role === "view" ? " selected" : "") + ">View</option><option value='edit'" + (x.role === "edit" ? " selected" : "") + ">Edit</option></select><button class='btn' data-rm='" + i + "'>Remove</button></div>"; }).join("") : "<p class='muted small'>Nobody yet.</p>") + "</div>" +
       "<div class='row'><button class='btn' id='del'>Delete list</button><button class='btn primary' data-close>Done</button></div>", function (d) {
@@ -377,7 +378,9 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
   setInterval(function () { poll(false); }, 4000); setInterval(status, 1000);
 
   fetch("api/app-config").then(function (r) { return r.json(); }).then(function (c) { if (c && c.portalUrl) { S.home = c.portalUrl; $("#home").hidden = false; } }).catch(function () {});
-  api("api/account/me").then(function (j) { S.user = j.user; return loadLists(); }).then(function () { return poll(true); }).catch(function (e) { if (e.status === 401 || e.status === 403) location.reload(); else { $("#main").innerHTML = '<p class="empty">' + esc(e.message) + "</p>"; } });
+  window.addEventListener("jz-theme", function (e) { api("api/prefs", "PUT", { theme: e.detail }).catch(function () {}); });   // the theme follows the person's account
+  var QA = JZQuick({ app: "project-tracker", name: "Project Pilot", request: function (m, p, b) { return api(p, m, b); } });
+  api("api/account/me").then(function (j) { S.user = j.user; return loadLists(); }).then(function () { return poll(true); }).then(function () { QA.offer(); }).catch(function (e) { if (e.status === 401 || e.status === 403) location.reload(); else { $("#main").innerHTML = '<p class="empty">' + esc(e.message) + "</p>"; } });
 })();
 </script>
 </body>
