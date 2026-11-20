@@ -58,7 +58,9 @@ JoolzApp bolt). That covers each app's own icon, JoolzApp Store, Portal Admin, a
 On the home screen, artwork is shown as it is (no gloss or glow added on top, see "Crisp glass icons" in `src/portal-admin/public/style.css`). An app with no
 artwork gets a tinted glass tile with its first letter, so give every new app an icon from this script before it ships.
 
-## Floating top bar (the standard for every JoolzApp)
+## Floating top bar
+
+The bar is `position:fixed` (a sticky bar quietly stops working inside any overflow container) and `floatbar.js` adds a `.topbar-spacer` below it so the page is not covered. Always copy both files; never restyle the bar back to sticky. (the standard for every JoolzApp)
 Every app uses the same floating, frosted bar: the app's title on the left, the light/dark theme icon on the right (app buttons, if any, sit between).
 - Copy `floatbar.css` and `floatbar.js` into `src/<app>/public/`. Load `floatbar.js` in `<head>` (no flash) and `floatbar.css` after `glass.css` and the app's own CSS.
 - Markup: `<header class="topbar"><div class="brand"><img src="icon.svg" alt="" width="28" height="28"><span>App name</span></div><span class="tb-gap"></span>` + the theme button + `</header>`.
@@ -68,7 +70,7 @@ Every app uses the same floating, frosted bar: the app's title on the left, the 
 
 ## Install icon (top bar)
 Copy `install-help.js` (from `src/portal-admin/public/`) and `installbtn.js` next to the app's `index.html`, add `<button class="ic" data-pwa-install hidden aria-label="Install app">` to the bar
-and load both scripts at the end of `<body>` (`install-help.js` first). The icon shows only in a normal browser tab on https, never inside the installed app. Chromium browsers install in one tap;
+and load both scripts at the end of `<body>` (`install-help.js` first). The icon shows in any normal browser tab, never inside the installed app. On an http address (home network, Tailscale IP) it opens a note saying installing needs the https address. Chromium browsers install in one tap;
 iPhone, iPad, Safari and Firefox get a sheet with the steps for that device. Project Pilot is the first app to use it.
 
 ## Quick Access in an app (PIN or pattern)

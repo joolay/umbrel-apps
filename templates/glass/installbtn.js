@@ -8,15 +8,16 @@
   function standalone() { return (window.matchMedia && matchMedia("(display-mode: standalone)").matches) || (window.matchMedia && matchMedia("(display-mode: window-controls-overlay)").matches) || navigator.standalone === true; }
   function secure() { return window.isSecureContext !== false && location.protocol === "https:"; }   // browsers only install from https
   function buttons() { return document.querySelectorAll("[data-pwa-install]"); }
-  function paint() { var show = !installed && !standalone() && secure(); buttons().forEach(function (b) { b.hidden = !show; }); }
+  function paint() { var show = !installed && !standalone(); buttons().forEach(function (b) { b.hidden = !show; }); }
   function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
   function sheet() {
     var d = H.detect({ ua: navigator.userAgent, platform: navigator.platform, touch: navigator.maxTouchPoints, standalone: standalone() });
+    var plain = !secure();   // opened over http (home address or a Tailscale IP): browsers only install from an https address
     var steps = H.steps(d).filter(function (s) { return !/^(Tap|Click) Open below/.test(s) && !/Tap Install again/.test(s); });   // we are already on the app's own page
     var dlg = document.getElementById("pwa-install-dlg");
     if (!dlg) { dlg = document.createElement("dialog"); dlg.id = "pwa-install-dlg"; dlg.style.cssText = "max-width:min(92vw,420px);border:1px solid var(--glass-line,#ccc);border-radius:22px;background:var(--solid,var(--glass-strong,#fff));color:var(--text,#111);padding:20px"; document.body.appendChild(dlg); }
-    dlg.innerHTML = '<h2 style="margin:0 0 8px;font-size:1.15rem">Install ' + esc(document.title) + '</h2><ol style="margin:0 0 10px;padding-left:20px;line-height:1.5">' + steps.map(function (s) { return "<li>" + esc(s) + "</li>"; }).join("") + "</ol>" +
-      (H.signInNote(d) ? '<p style="margin:0 0 10px;font-size:.85rem;opacity:.75">' + esc(H.signInNote(d)) + "</p>" : "") + '<button class="btn primary" style="width:100%" id="pwa-close">Got it</button>';
+    dlg.innerHTML = '<h2 style="margin:0 0 8px;font-size:1.15rem">Install ' + esc(document.title) + '</h2>' + (plain ? '<p style="margin:0 0 10px;line-height:1.5">This page is open on an address without https (' + esc(location.host) + '), and browsers only install apps from a secure https address. Open the app from its https address (the .ts.net one) and this icon will install it in one tap.</p>' : '<ol style="margin:0 0 10px;padding-left:20px;line-height:1.5">' + steps.map(function (s) { return "<li>" + esc(s) + "</li>"; }).join("") + "</ol>") +
+      (!plain && H.signInNote(d) ? '<p style="margin:0 0 10px;font-size:.85rem;opacity:.75">' + esc(H.signInNote(d)) + "</p>" : "") + '<button class="btn primary" style="width:100%" id="pwa-close">Got it</button>';
     dlg.querySelector("#pwa-close").onclick = function () { dlg.close(); };
     dlg.showModal();
   }

@@ -59,6 +59,7 @@ existing apps move onto it one at a time. Every `index.html` head also carries: 
 ## Floating top bar (standard for every app)
 Title on the left, light/dark theme icon on the right, floating and frosted. Files and markup are in `templates/glass/README.md` ("Floating top bar"): copy `floatbar.css` + `floatbar.js`.
 The JoolzApp Store has it; other apps move over one at a time, like the Glass theme.
+The bar is persistent: fixed to the top of the screen while the page scrolls (done in `floatbar.css`/`floatbar.js`; copy both, never make it sticky or scroll away). This is the standard for every app.
 Every app's top bar also carries the **Install** icon (`data-pwa-install` button, `install-help.js` + `installbtn.js`; see `templates/glass/README.md`, "Install icon"): it shows only in a browser tab and opens the install steps for the person's device. Add it to every app as it is edited; Project Pilot and Port Master have it.
 
 ## Preview before pushing
