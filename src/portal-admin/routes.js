@@ -1,5 +1,5 @@
 'use strict';
-// Route health for the admin's "JoolzApp apps" page. The Routing Reporter app sends its latest report through the Portal API (`publishRoutes`); it is kept here
+// Route health for the admin's "JoolzApp apps" page. The Port Master app sends its latest report through the Portal API (`publishRoutes`); it is kept here
 // (data/routes.json) and shown on that page. An admin can flag a broken route: the flag goes into the status feed as `route-alerts`, which Claude reads.
 // The feed is one-way: nothing in it can change anything. Alerts clear themselves when the route answers again.
 const fs = require('fs'), path = require('path');
@@ -36,7 +36,7 @@ module.exports = function makeRoutes({ dataDir, feed, now = Date.now }) {
   };
 
   function publish(app, report) {
-    if (app !== REPORTER) throw fail(403, 'Only Routing Reporter can send routes.');
+    if (app !== REPORTER) throw fail(403, 'Only Port Master can send routes.');
     st.report = sanitize(report); st.receivedAt = now();
     let changed = false;
     for (const a of st.alerts) if (!a.resolvedAt) { const { route } = find(a.appId, a.route); if (!route || route.state === 'up' || route.ignored) { a.resolvedAt = new Date(now()).toISOString(); changed = true; } }

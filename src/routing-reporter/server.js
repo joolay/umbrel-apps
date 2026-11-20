@@ -1,5 +1,5 @@
 'use strict';
-// Routing Reporter: checks, for every installed app, that its LAN, Tailscale and Public (Funnel) routes answer, shows the result, and reports it to Portal Admin
+// Port Master: checks, for every installed app, that its LAN, Tailscale and Public (Funnel) routes answer, shows the result, and reports it to Portal Admin
 // (Portal API `publishRoutes`, which feeds Portal Admin's "JoolzApp apps" page) and to the status feed (so a problem can be diagnosed without opening anything).
 // Node built-ins only. Owner-only: Umbrel's login stays in front of it.
 const http = require('http'), fs = require('fs'), path = require('path');
@@ -83,6 +83,6 @@ module.exports = { clean, feedPayload };
 if (require.main === module) {
   fs.mkdirSync(DATA_DIR, { recursive: true });        // Portal Admin links an app once its data folder exists
   require('./status-feed')({ dataDir: DATA_DIR, getPayload: feedPayload, log: (m) => console.error(m) });
-  server.listen(PORT, '0.0.0.0', () => console.log('Routing Reporter listening on :' + PORT));
+  server.listen(PORT, '0.0.0.0', () => console.log('Port Master listening on :' + PORT));
   setTimeout(() => { checkNow().catch((e) => console.error('Check failed:', e.message)); schedule(); }, 5000);
 }

@@ -536,7 +536,7 @@ const handle = async (req, res) => {
         return send(res, 200, await appkeys.adminAction(JSON.parse(await readBody(req))));
       } catch (e) { return send(res, e.status || 500, { message: String(e.message || e) }); }
     }
-    if (pathname === '/admin/routes') {                                    // the JoolzApp apps page: route health from Routing Reporter, and flagging a broken route to Claude
+    if (pathname === '/admin/routes') {                                    // the JoolzApp apps page: route health from Port Master, and flagging a broken route to Claude
       if (isPublicRequest(req)) return send(res, 403, { message: 'Only available from your home network or tailnet.' });
       const tok = String(req.headers.authorization || '');
       if (!tok || !(await pbx.isSuperuser(tok))) return send(res, 401, { message: 'Admin only.' });

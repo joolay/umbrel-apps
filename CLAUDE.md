@@ -59,6 +59,7 @@ existing apps move onto it one at a time. Every `index.html` head also carries: 
 ## Floating top bar (standard for every app)
 Title on the left, light/dark theme icon on the right, floating and frosted. Files and markup are in `templates/glass/README.md` ("Floating top bar"): copy `floatbar.css` + `floatbar.js`.
 The JoolzApp Portal has it; other apps move over one at a time, like the Glass theme.
+Every app's top bar also carries the **Install** icon (`data-pwa-install` button, `install-help.js` + `installbtn.js`; see `templates/glass/README.md`, "Install icon"): it shows only in a browser tab and opens the install steps for the person's device. Add it to every app as it is edited; Project Pilot and Port Master have it.
 
 ## Preview before pushing
 Before asking the owner to confirm a push, publish or update an artifact that previews the changed app in the Glass theme (light and dark, phone width).
@@ -105,8 +106,8 @@ fetch `status/app-updater.json` / `status/services-manager.json` / `status/kiosk
 A new owner-only app that should be monitorable: copy `status-feed.js`, call it with a `getPayload` that returns useful, secret-free state, declare `POCKETBASE_APP_ID`, add it to the notes here.
 
 
-## Routing Reporter: monitoring access routes (LAN, Tailscale, Public)
+## Port Master (formerly Routing Reporter): monitoring access routes (LAN, Tailscale, Public)
 `src/routing-reporter` (store app `joolay-routing-reporter`, port 3906, owner-only, `JOOLZAPP_DASHBOARD=hidden`) reads every installed app's manifest and compose file, checks each app's LAN, Tailscale-IP
 and TSDProxy (Funnel = Public) route from inside the Umbrel, and sends the report to Portal Admin (`publishRoutes` in the Portal API, kept by `src/portal-admin/routes.js`).
 Portal Admin > **JoolzApp apps** shows it; an admin taps **Notify Claude** on a down route, which writes `status/route-alerts.json` in the feed (app, route, URL, error, since when; clears itself when the route answers).
-Routing Reporter's own summary is `status/routing-reporter.json`. Before diagnosing "can't reach app X" fetch `status/route-alerts.json` and `status/routing-reporter.json` fresh and check `at`. Read-only, like the rest of the feed.
+Port Master's own summary is `status/routing-reporter.json`. Before diagnosing "can't reach app X" fetch `status/route-alerts.json` and `status/routing-reporter.json` fresh and check `at`. Read-only, like the rest of the feed.

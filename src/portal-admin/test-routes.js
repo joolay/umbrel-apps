@@ -1,5 +1,5 @@
 'use strict';
-// Route health: only Routing Reporter can send a report, an admin can flag a route that is really down, the flag goes to the status feed, and clears itself on recovery.
+// Route health: only Port Master can send a report, an admin can flag a route that is really down, the flag goes to the status feed, and clears itself on recovery.
 const assert = require('assert'), fs = require('fs'), os = require('os'), path = require('path');
 const makeRoutes = require('./routes'), makeAppApi = require('./appapi');
 (async () => {
@@ -10,7 +10,7 @@ const makeRoutes = require('./routes'), makeAppApi = require('./appapi');
   const report = (tsState) => ({ at: t, intervalMin: 5, config: { lanHost: '192.168.1.5', tailscaleIp: '100.64.0.9', tailnet: 'tail1.ts.net' }, apps: [
     { id: 'joolay-project-tracker', name: 'Project Pilot', version: '1.4.0', port: 3915, joolzapp: true, published: 'public', routes: [rt('lan', 'up'), rt('tailscale', tsState), rt('public', 'up')] },
     { id: 'bitcoin', name: 'Bitcoin', version: '1', port: 8332, joolzapp: false, published: '', routes: [rt('lan', 'up')] }] });
-  assert.throws(() => R.publish('joolay-listify', report('up')), /Only Routing Reporter/);
+  assert.throws(() => R.publish('joolay-listify', report('up')), /Only Port Master/);
   assert.throws(() => R.publish('routing-reporter', { nope: 1 }), /not a routing report/);
   assert.deepStrictEqual(R.publish('routing-reporter', report('down')), { ok: true });
   let v = R.view(); assert.strictEqual(v.stale, false); assert.strictEqual(v.report.apps.length, 2); assert.strictEqual(v.alerts.length, 0);
@@ -28,7 +28,7 @@ const makeRoutes = require('./routes'), makeAppApi = require('./appapi');
   R.publish('routing-reporter', report('down')); await R.notify('a', { appId: 'joolay-project-tracker', route: 'tailscale' }); await R.clear({ appId: 'joolay-project-tracker', route: 'tailscale' }); assert.strictEqual(R.view().alerts.length, 0);
   feedOn = false; await assert.rejects(() => R.notify('a', { appId: 'joolay-project-tracker', route: 'tailscale' }), (e) => e.status === 409 && /status feed/.test(e.message)); feedOn = true;
   t += 20 * 60e3; assert.strictEqual(R.view().stale, true, 'no report for 20 minutes is shown as stale');
-  // a route the owner ignores in Routing Reporter cannot be flagged, and clears an open flag
+  // a route the owner ignores in Port Master cannot be flagged, and clears an open flag
   R.publish('routing-reporter', report('down')); await R.notify('a', { appId: 'joolay-project-tracker', route: 'tailscale' });
   const ig = report('down'); ig.apps[0].routes[1].ignored = true; R.publish('routing-reporter', ig); await new Promise((r) => setTimeout(r, 20));
   assert.strictEqual(R.view().alerts.length, 0); await assert.rejects(() => R.notify('a', { appId: 'joolay-project-tracker', route: 'tailscale' }), /answering now/);

@@ -1,4 +1,4 @@
-# Routing Reporter: checks every app's LAN, Tailscale and Public routes and reports to Portal Admin.
+# Port Master: checks every app's LAN, Tailscale and Public routes and reports to Portal Admin.
 # Source: src/routing-reporter in this repo (built by .github/workflows/build-images.yml).
 # Keep the image tag equal to `version` in umbrel-app.yml.
 services:
