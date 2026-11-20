@@ -40,6 +40,8 @@ const assert = require('assert'), makeFeed = require('./statusfeed');
   t += 5e3; assert.strictEqual((await feed.publish('app-updater', { apps: [] })).skipped, 'too_soon');
   t += 40e3; assert.strictEqual((await feed.publish('app-updater', { apps: [{ name: 'A', password: 'p' }] })).ok, true);      // different from the last one? same body: unchanged
   const n = calls.length; t += 40e3; assert.strictEqual((await feed.publish('app-updater', { apps: [{ name: 'A', password: 'p' }] })).skipped, 'unchanged'); assert.strictEqual(calls.length, n, 'no GitHub call when nothing changed');
+  { t += 40e3; assert.strictEqual((await feed.publish('app-updater', { apps: [{ name: 'A', password: 'p' }], check: { at: t } })).ok, true); const m2 = calls.length;
+    t += 40e3; assert.strictEqual((await feed.publish('app-updater', { apps: [{ name: 'A', password: 'p' }], check: { at: t } })).skipped, 'unchanged'); assert.strictEqual(calls.length, m2, 'a moving timestamp alone is not a change'); }
   t += 31 * 60e3; assert.strictEqual((await feed.publish('app-updater', { apps: [{ name: 'A', password: 'p' }] })).ok, true, 'refreshed after the heartbeat gap');
   await assert.rejects(() => feed.publish('../etc', {}), /Unknown app/); await assert.rejects(() => feed.publish('x', { big: 'y'.repeat(100) }.big && { a: Array(300).fill('z'.repeat(590)) }), /too large/);
   assert.match((await feed.test()).message, /status\/_portal-admin\.json/);

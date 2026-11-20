@@ -94,7 +94,9 @@ module.exports = function makeFeed({ asSuper, fetchImpl = fetch, now = () => Dat
     if (!/^[a-z0-9][a-z0-9-]{0,40}$/.test(app)) throw new FeedError(400, 'Unknown app.');
     const c = await load();
     if (!ready(c)) return { ok: false, skipped: 'not_configured' };
-    const data = clean(payload), body = JSON.stringify(data), h = crypto.createHash('sha256').update(body).digest('hex'), p = last.get(app), t = now();
+    const data = clean(payload), body = JSON.stringify(data), p = last.get(app), t = now();
+    // "Has anything changed?" ignores timestamp fields (an app's own "last checked" time moves every minute), otherwise every poll would be a GitHub commit.
+    const h = crypto.createHash('sha256').update(JSON.stringify(data, (k, v) => (k === 'at' || k === 't' || k === 'checkedAt') && typeof v === 'number' ? undefined : v)).digest('hex');
     if (body.length > MAX_BYTES) throw new FeedError(413, 'Status is too large to publish.');
     if (p && p.ok && t - p.at < MIN_GAP) return { ok: true, skipped: 'too_soon' };
     if (p && p.ok && p.hash === h && t - p.at < HEARTBEAT) return { ok: true, skipped: 'unchanged' };

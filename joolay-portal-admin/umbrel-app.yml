@@ -21,7 +21,7 @@ gallery: []
 path: ""
 defaultUsername: ""
 defaultPassword: ""
-releaseNotes: "Fixes the Audit log on phones: rows are one line each and the table scrolls sideways instead of squashing its columns."
+releaseNotes: "Fixes the Audit log on phones (one line per row, scrolls sideways). The status feed now only saves to GitHub when something really changed, instead of a commit every minute."
 submitter: joolay
 submission: https://github.com/joolay/umbrel-apps
 icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-portal-admin/icon.svg
