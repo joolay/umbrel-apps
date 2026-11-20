@@ -2032,7 +2032,7 @@ async function viewChanges() {
 async function viewAudit() {
   if (await needSetup()) return;
   const r = await api('GET', '/api/collections/portal_audit/records?perPage=200&sort=-created');
-  main().innerHTML = `<h1>Audit log</h1><p class="sub">Every change made through this panel.</p><div class="card"><table><thead><tr><th>When</th><th>Who</th><th>Action</th><th>Target</th><th>Detail</th></tr></thead><tbody>${r.items.map((a) => `<tr><td class="small muted" style="white-space:nowrap">${esc(fmtDate(a.created))}</td><td>${esc(a.actor)}</td><td><code>${esc(a.action)}</code></td><td>${esc(a.target)}</td><td class="small"><code>${esc(JSON.stringify(a.detail))}</code></td></tr>`).join('') || '<tr><td colspan="5" class="muted">No activity yet.</td></tr>'}</tbody></table></div>`;
+  main().innerHTML = `<h1>Audit log</h1><p class="sub">Every change made through this panel.</p><div class="card"><table class="audit-tbl"><thead><tr><th>When</th><th>Who</th><th>Action</th><th>Target</th><th>Detail</th></tr></thead><tbody>${r.items.map((a) => `<tr><td class="small muted" style="white-space:nowrap">${esc(fmtDate(a.created))}</td><td>${esc(a.actor)}</td><td><code>${esc(a.action)}</code></td><td>${esc(a.target)}</td><td class="small"><code class="clip" title="${esc(JSON.stringify(a.detail))}">${esc(JSON.stringify(a.detail))}</code></td></tr>`).join('') || '<tr><td colspan="5" class="muted">No activity yet.</td></tr>'}</tbody></table></div>`;
 }
 
 async function viewSetup() {
