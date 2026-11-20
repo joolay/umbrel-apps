@@ -11,6 +11,7 @@ the store is what publishes it**. No per-app Tailscale steps.
 | `https://diner-bell.<tailnet>.ts.net` | Diner Bell | 3894 |
 | `https://listify.<tailnet>.ts.net` | Listify | 3887 |
 | `https://joolztv.<tailnet>.ts.net` | JoolzTV | 3901 |
+| `https://project-tracker.<tailnet>.ts.net` | Project Tracker | 3916 |
 
 ## One-time setup (Umbrel, over SSH)
 Needs (already done): HTTPS certificates on, `tag:public` with the `funnel` attribute in your policy, and a reusable auth key tagged `tag:public`.

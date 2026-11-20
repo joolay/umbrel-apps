@@ -1,10 +1,12 @@
 // Project Tracker: lists of projects with a status, priority order, archive and recycle bin.
-// Zero-dependency Node server. Sign-in is the shared JoolzApp (PocketBase) account and, for now, admins only.
-// The shared "appdev" list is a JSON file in a GitHub repo, checked every few seconds while the page is open. Every other list lives in PocketBase.
+// Zero-dependency Node server. Sign-in is the shared JoolzApp (PocketBase) account; any signed-in person can use it (it is a public app).
+// The "appdev" list (App development) is a JSON file in the owner's GitHub repo, checked every few seconds while the page is open. Only the owner ever sees it.
+// Every other list lives in PocketBase, private to the person who made it unless they share it (by email, view or edit).
 "use strict";
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
+const crypto = require("crypto");
 const pb = require("./pocketbase");
 const L = require("./lists");
 const makeAi = require("./ai"), helper = require("./helper"), aiClient = makeAi();
@@ -18,7 +20,8 @@ const GH_LIST = "appdev", DEFAULT_REPO = process.env.TRACKER_REPO || "joolay/tra
 const COMMIT_TTL = 15 * 60e3;
 
 /* ---------- who may open the app ---------- */
-const gateOf = u => (u.isAdmin ? { ok: true } : { ok: false, reason: "admin_only", message: "Project Tracker is for admins for now." });
+// Everyone with a JoolzApp account. What is owner-only (the GitHub-backed App development list and its connection) is guarded by ghAccess below.
+const gateOf = u => ({ ok: !!u });
 const publicUser = u => ({ id: u.id, email: u.email || "", name: u.name || "", isAdmin: !!u.isAdmin, canOpen: gateOf(u).ok, gate: gateOf(u), prefs: Object.fromEntries(Object.entries((u.portal && u.portal.prefs) || {}).filter(([k]) => k !== "ai.apiKey")) });
 
 /* ---------- sessions (same as the other JoolzApps) ---------- */
@@ -144,10 +147,10 @@ const hashOf = s => { let h = 5381; for (const c of s) h = ((h << 5) + h + c.cha
 const emptyList = name => ({ version: 1, name, categories: [], projects: [], updatedAt: new Date().toISOString() });
 
 // Days when each project was last worked on, from the newest commit under its paths (apps in your repos). Cached for 15 minutes.
-async function workedMap(list) {
+async function workedMap(list, anon) {
   const out = {}, jobs = [];
   for (const p of list.projects) if (p.state === "live" && p.status !== "closed" && p.paths.length) jobs.push((async () => {
-    const days = (await Promise.all(p.paths.map(x => gh.lastCommit(x.repo, x.path, COMMIT_TTL).catch(() => null)))).filter(Boolean).sort();
+    const days = (await Promise.all(p.paths.map(x => gh.lastCommit(x.repo, x.path, COMMIT_TTL, anon).catch(() => null)))).filter(Boolean).sort();
     if (days.length) out[p.id] = days[days.length - 1];
   })());
   await Promise.all(jobs); return out;
@@ -158,6 +161,7 @@ async function ghAccess(user) {
   if (c.owner) return c.owner === user.id;
   const cur = (await getData("_config", "github")) || {};
   if (cur.owner) { ghConfig = null; return cur.owner === user.id; }
+  if (!user.isAdmin) return false;   // the app is public now: only an admin can ever claim the GitHub list
   await putData("_config", "github", { ...cur, owner: user.id }); ghConfig = null; return true;
 }
 const noAccess = res => (send(res, 403, { code: "not_yours", message: "That list belongs to someone else." }), true);
@@ -173,53 +177,124 @@ function mutateFor(name, body) {
   };
 }
 
+/* ---------- sharing ---------- */
+// A list can be shared by email, as "view" or "edit". The share lives in the list itself (data.shares), which is the only thing that grants access.
+// The person it is shared with finds it through a small pointer row (owner "inv:<hash of their email>"), so nobody has to scan every list, and
+// the owner never learns whether an address has an account: sharing works the same either way and takes effect when that person signs in.
+const KEY_RE = /^[a-z0-9-]{1,70}$/, SHARED_RE = /^shared--([a-z0-9]{1,32})--([a-z0-9-]{1,70})$/;
+const MAX_LISTS = 30, MAX_SHARES = 20;
+const emailKey = e => "inv:" + crypto.createHash("sha256").update(String(e).trim().toLowerCase()).digest("hex").slice(0, 24);
+const myEmail = u => String(u.email || "").trim().toLowerCase();
+const sharesOf = d => (Array.isArray(d && d.shares) ? d.shares : []).filter(s => s && validEmail(s.email)).map(s => ({ email: String(s.email).toLowerCase(), role: s.role === "edit" ? "edit" : "view", at: String(s.at || "") })).slice(0, MAX_SHARES);
+const delRow = async (owner, key) => { const r = await rowOf(owner, key); if (r) await pb.asApp("DELETE", recs + "/" + r.id); };
+const ownerNames = new Map();
+async function nameOf(id) {
+  const hit = ownerNames.get(id); if (hit && Date.now() - hit.at < 600e3) return hit.name;
+  let name = ""; try { const u = await pb.getUser(id); name = u.name || (u.email ? u.email.split("@")[0] : ""); } catch {}
+  ownerNames.set(id, { name, at: Date.now() }); if (ownerNames.size > 500) ownerNames.clear(); return name;
+}
+// What the person may do with a list reference (their own key, or shared--<owner>--<key>): { kind, owner, key, role: owner|edit|view, data } or null.
+async function access(user, ref) {
+  const sm = ref.match(SHARED_RE);
+  if (!sm) { const d = await getData(user.id, ref); return d ? { kind: "own", owner: user.id, key: ref, role: "owner", data: d } : null; }
+  if (sm[1] === user.id) return null;
+  const d = await getData(sm[1], sm[2]); if (!d) return null;
+  const s = sharesOf(d).find(x => x.email === myEmail(user)); if (!s) return null;
+  const viewOnly = !!(user.portal && user.portal.readonly) && !user.isAdmin;   // View-only accounts can never change a shared resource
+  return { kind: "shared", owner: sm[1], key: sm[2], role: s.role === "edit" && !viewOnly ? "edit" : "view", data: d };
+}
+async function sharedWithMe(user) {
+  const em = myEmail(user); if (!em) return [];
+  const rows = (await pb.asApp("GET", recs + `?page=1&perPage=100&filter=${qs(`owner = '${esc(emailKey(em))}'`)}`)).items || [], out = [];
+  for (const r of rows) {
+    const [oid, k] = String(r.key).split("--");
+    const d = oid && k && oid !== user.id ? await getData(oid, k) : null;
+    const s = d && sharesOf(d).find(x => x.email === em);
+    if (!s) { await pb.asApp("DELETE", recs + "/" + r.id).catch(() => {}); continue; }   // no longer shared: tidy the pointer
+    const l = L.cleanList(d);
+    out.push({ key: `shared--${oid}--${k}`, name: (l && l.name) || k, source: "shared", role: access.roleOf(user, s), by: await nameOf(oid), count: l ? l.projects.filter(x => x.state === "live").length : 0 });
+  }
+  return out;
+}
+access.roleOf = (user, s) => (s.role === "edit" && !(user.portal && user.portal.readonly && !user.isAdmin) ? "edit" : "view");
+
 async function listsRoutes(req, res, p, url, user) {
   if (p === "/api/lists" && req.method === "GET") {
-    const mine = (await listRows(user.id)).map(r => ({ key: r.key, name: (r.data && r.data.name) || r.key, source: "pocketbase", count: ((r.data && r.data.projects) || []).filter(x => x.state === "live").length }));
+    const mine = (await listRows(user.id)).map(r => ({ key: r.key, name: (r.data && r.data.name) || r.key, source: "pocketbase", role: "owner", sharedWith: sharesOf(r.data).length, count: ((r.data && r.data.projects) || []).filter(x => x.state === "live").length }));
     const owner = await ghAccess(user); let g = null;
     if (owner) {
-      g = { key: GH_LIST, name: "App development", source: "github", readOnly: !(await hasToken()), count: 0 };
+      g = { key: GH_LIST, name: "App development", source: "github", role: "owner", readOnly: !(await hasToken()), count: 0 };
       try { const f = await gh.read(false); const l = f.data && L.cleanList(f.data); if (l) { g.count = l.projects.filter(x => x.state === "live").length; g.name = l.name; } } catch (e) { g.error = e.message; }
     }
-    send(res, 200, { lists: g ? [g, ...mine] : mine, owner }); return true;
+    const shared = await sharedWithMe(user).catch(() => []);
+    send(res, 200, { lists: [...(g ? [g] : []), ...mine, ...shared], owner }); return true;
   }
   if (p === "/api/lists" && req.method === "POST") {
+    if (throttled(req, "newlist:" + user.id, 20, 3600e3)) return send(res, 429, { code: "slow_down", message: "That's a lot of new lists. Try again later." }), true;
     const b = JSON.parse((await readBody(req)).toString() || "{}"), name = L.str(b.name, 80);
     if (!name) return send(res, 400, { code: "no_name", message: "Give the list a name." }), true;
-    const have = new Set((await listRows(user.id)).map(r => r.key)); let key = L.slug(name), n = 2; if (key === GH_LIST) key = "list-" + key;
+    const rows = await listRows(user.id);
+    if (rows.length >= MAX_LISTS) return send(res, 400, { code: "too_many", message: "You have " + MAX_LISTS + " lists already. Delete one first." }), true;
+    const have = new Set(rows.map(r => r.key)); let key = L.slug(name), n = 2; if (key === GH_LIST) key = "list-" + key;
     while (have.has(key)) key = L.slug(name) + "-" + n++;
     await putData(user.id, key, emptyList(name)); send(res, 200, { key }); return true;
   }
-  const m = p.match(/^\/api\/list\/([a-z0-9-]{1,70})(\/apply)?$/);
+  const m = p.match(/^\/api\/list\/(shared--[a-z0-9]{1,32}--[a-z0-9-]{1,70}|[a-z0-9-]{1,70})(\/apply|\/share|\/leave)?$/);
   if (!m) return false;
-  const key = m[1], isGh = key === GH_LIST;
-  if (isGh && !(await ghAccess(user))) return noAccess(res);
-  if (!m[2] && req.method === "GET") {
+  const key = m[1], isGh = key === GH_LIST, sub = m[2] || "";
+  if (isGh && !(await ghAccess(user))) return noAccess(res);   // the GitHub list is only ever the owner's, and cannot be shared
+  const acc = isGh ? { kind: "gh", role: "owner" } : await access(user, key);
+  if (!acc) return send(res, 404, { code: "no_list", message: "That list doesn't exist, or isn't shared with you any more." }), true;
+  const canEdit = acc.role !== "view";
+
+  if (!sub && req.method === "GET") {
     const since = url.searchParams.get("sha") || "";
     if (isGh) {
       const f = await gh.read(false), l = (f.data && L.cleanList(f.data)) || emptyList("App development"), worked = await workedMap(l);
       const stamp = (f.sha || "none") + ":" + hashOf(JSON.stringify(worked));
       if (since && since === stamp) return send(res, 200, { unchanged: true, sha: stamp }), true;
-      send(res, 200, { sha: stamp, list: l, worked, readOnly: !(await hasToken()), source: "github" }); return true;
+      send(res, 200, { sha: stamp, list: l, worked, readOnly: !(await hasToken()), source: "github", role: "owner" }); return true;
     }
-    const d = await getData(user.id, key); if (!d) return send(res, 404, { code: "no_list", message: "That list doesn't exist." }), true;
-    const l = L.cleanList(d) || emptyList(d.name || key), worked = await workedMap(l), stamp = hashOf(JSON.stringify(l) + JSON.stringify(worked));
+    const d = acc.data, l = L.cleanList(d) || emptyList(d.name || acc.key), worked = await workedMap(l, true), shares = acc.role === "owner" ? sharesOf(d) : undefined;
+    const stamp = hashOf(JSON.stringify(l) + JSON.stringify(worked) + acc.role + JSON.stringify(shares || ""));
     if (since && since === stamp) return send(res, 200, { unchanged: true, sha: stamp }), true;
-    send(res, 200, { sha: stamp, list: l, worked, readOnly: false, source: "pocketbase" }); return true;
+    send(res, 200, { sha: stamp, list: l, worked, readOnly: !canEdit, source: acc.kind === "shared" ? "shared" : "pocketbase", role: acc.role, shares, by: acc.kind === "shared" ? await nameOf(acc.owner) : undefined }); return true;
   }
-  if (m[2] && req.method === "POST") {
+  if (sub === "/apply" && req.method === "POST") {
     const b = JSON.parse((await readBody(req)).toString() || "{}");
     if (isGh) {
       try { await gh.write(mutateFor("App development", b), b.message ? L.str(b.message, 100) : "Tracker: update projects"); }
       catch (e) { if (e instanceof makeGitHub.GitHubError) return send(res, e.code === "read_only" ? 403 : e.code === "conflict" ? 409 : 502, { code: e.code, message: e.message }), true; throw e; }
       send(res, 200, { ok: true }); return true;
     }
-    const d = await getData(user.id, key); if (!d) return send(res, 404, { code: "no_list", message: "That list doesn't exist." }), true;
-    await putData(user.id, key, mutateFor(d.name || key, b)(d)); send(res, 200, { ok: true }); return true;
+    if (!canEdit) return send(res, 403, { code: "read_only", message: "This list was shared with you to view only." }), true;
+    const next = mutateFor(acc.data.name || acc.key, b)(acc.data);
+    if (acc.data.shares) next.shares = acc.data.shares;   // cleanList drops fields it doesn't know, so put the shares back
+    await putData(acc.owner, acc.key, next); send(res, 200, { ok: true }); return true;
   }
-  if (!m[2] && req.method === "DELETE" && !isGh) {
-    const r = await rowOf(user.id, key); if (r) await pb.asApp("DELETE", recs + "/" + r.id);
-    send(res, 200, { ok: true }); return true;
+  if (sub === "/share" && req.method === "POST") {
+    if (acc.kind !== "own") return send(res, 403, { code: "not_yours", message: "Only the person who made a list can share it." }), true;
+    if (throttled(req, "share:" + user.id, 40, 3600e3)) return send(res, 429, { code: "slow_down", message: "Too many share changes. Try again later." }), true;
+    const b = JSON.parse((await readBody(req)).toString() || "{}"), email = String(b.email || "").trim().toLowerCase();
+    if (!validEmail(email)) return send(res, 400, { code: "bad_email", message: "Enter the email address of their JoolzApp account." }), true;
+    if (email === myEmail(user)) return send(res, 400, { code: "self", message: "That's your own address." }), true;
+    let shares = sharesOf(acc.data).filter(s => s.email !== email);
+    if (!b.remove) {
+      if (shares.length >= MAX_SHARES) return send(res, 400, { code: "too_many", message: "A list can be shared with up to " + MAX_SHARES + " people." }), true;
+      shares.push({ email, role: b.role === "edit" ? "edit" : "view", at: new Date().toISOString() });
+    }
+    await putData(user.id, key, { ...acc.data, shares });
+    if (b.remove) await delRow(emailKey(email), `${user.id}--${key}`); else await putData(emailKey(email), `${user.id}--${key}`, { from: user.id, key });
+    send(res, 200, { ok: true, shares }); return true;
+  }
+  if (sub === "/leave" && req.method === "POST") {
+    if (acc.kind !== "shared") return send(res, 400, { code: "not_shared", message: "That list isn't shared with you." }), true;
+    await putData(acc.owner, acc.key, { ...acc.data, shares: sharesOf(acc.data).filter(s => s.email !== myEmail(user)) });
+    await delRow(emailKey(myEmail(user)), `${acc.owner}--${acc.key}`); send(res, 200, { ok: true }); return true;
+  }
+  if (!sub && req.method === "DELETE" && acc.kind === "own") {
+    for (const s of sharesOf(acc.data)) await delRow(emailKey(s.email), `${user.id}--${key}`).catch(() => {});
+    await delRow(user.id, key); send(res, 200, { ok: true }); return true;
   }
   return false;
 }
@@ -230,15 +305,15 @@ async function aiChat(req, res, user) {
   const b = JSON.parse((await readBody(req)).toString() || "{}"), cfg = makeAi.resolve(user);
   if (!cfg) return send(res, 400, { code: "no_ai_key", message: "No AI key is set for Project Tracker yet. Add one in Portal Admin > My settings > AI." });
   const key = String(b.list || ""), isGh = key === GH_LIST;
-  if (!/^[a-z0-9-]{1,70}$/.test(key)) return send(res, 400, { code: "bad_list", message: "Unknown list." });
+  if (!(KEY_RE.test(key) || SHARED_RE.test(key))) return send(res, 400, { code: "bad_list", message: "Unknown list." });
   if (isGh && !(await ghAccess(user))) return noAccess(res);
-  let raw = null; if (isGh) { const f = await gh.read(false); raw = f.data; } else raw = await getData(user.id, key);
+  let raw = null; if (isGh) { const f = await gh.read(false); raw = f.data; } else { const a = await access(user, key); raw = a && a.data; }
   const list = raw && L.cleanList(raw); if (!list) return send(res, 404, { code: "no_list", message: "That list doesn't exist." });
   const project = list.projects.find(x => x.id === b.project && x.state !== "bin"); if (!project) return send(res, 404, { code: "no_project", message: "That project isn't in the list any more." });
   const conf = await loadGhConfig(false), prefs = (user.portal && user.portal.prefs && user.portal.prefs["project-tracker"]) || {};
   try {
-    const worked = (await workedMap(list))[project.id] || "";
-    const out = await helper.run({ ai: aiClient, cfg, list, project, worked, autoGlobal: prefs.auto !== false, days: prefs.days, ghToken: conf.token, ghRepo: conf.repo }, Array.isArray(b.messages) ? b.messages : []);
+    const worked = (await workedMap(list, !isGh))[project.id] || "";
+    const out = await helper.run({ ai: aiClient, cfg, list, project, worked, autoGlobal: prefs.auto !== false, days: prefs.days, ghToken: isGh ? conf.token : "", ghRepo: conf.repo }, Array.isArray(b.messages) ? b.messages : []);
     return send(res, 200, { ...out, model: cfg.model });
   } catch (e) {
     if (e instanceof makeAi.AiError) return send(res, e.status, { code: e.code, message: e.message });
@@ -296,7 +371,7 @@ const server = http.createServer(async (req, res) => {
     if (p === "/api/ai/chat" && req.method === "POST") return aiChat(req, res, user);
     if (p === "/api/prefs" && req.method === "PUT") {
       const b = JSON.parse((await readBody(req)).toString() || "{}"), prev = (user.portal && user.portal.prefs && user.portal.prefs["project-tracker"]) || {}, next = { ...prev };
-      if (typeof b.list === "string" && /^[a-z0-9-]{1,70}$/.test(b.list)) next.list = b.list;
+      if (typeof b.list === "string" && /^[a-z0-9-]{1,120}$/.test(b.list)) next.list = b.list;
       if (["all", "active", "maintenance", "hiatus", "closed", "archive", "bin"].includes(b.view)) next.view = b.view;
       if (b.chat === "claude" || b.chat === "builtin") next.chat = b.chat;   // how the Chat button works: the Claude app, or the built-in helper
       if (typeof b.auto === "boolean") next.auto = b.auto;   // global switch for the 3-day rule (default on)

@@ -4,8 +4,8 @@ const assert = require("assert"), path = require("path"), http = require("http")
 const rows = []; let n = 0; const prefs = [];
 const fakePb = {
   enabled: true, reload() { return true; }, PBError: class PBError extends Error { constructor(s, m) { super(m); this.status = s; } },
-  async verifyToken(t) { if (t === "admin") return { token: "admin", record: { id: "u1", isAdmin: true, name: "Zahir", portal: { prefs: {} } } }; if (t === "aikey") return { token: "aikey", record: { id: "u1", isAdmin: true, name: "Zahir", portal: { prefs: { "ai.provider": "anthropic", "ai.apiKey": "sk-ant-WXYZ", "ai.model": "claude-x" } } } }; if (t === "admin2") return { token: "admin2", record: { id: "u3", isAdmin: true, name: "Other admin", portal: { prefs: {} } } }; if (t === "user") return { token: "user", record: { id: "u2", isAdmin: false } }; const e = new this.PBError(401, "no"); throw e; },
-  async serviceCan() { return true; }, async portalUrl() { return ""; }, async setAppPref(id, v) { prefs.push([id, v]); },
+  async verifyToken(t) { if (t === "admin") return { token: "admin", record: { id: "u1", isAdmin: true, name: "Zahir", email: "zahir@x.co", portal: { prefs: {} } } }; if (t === "aikey") return { token: "aikey", record: { id: "u1", isAdmin: true, name: "Zahir", portal: { prefs: { "ai.provider": "anthropic", "ai.apiKey": "sk-ant-WXYZ", "ai.model": "claude-x" } } } }; if (t === "admin2") return { token: "admin2", record: { id: "u3", isAdmin: true, name: "Other admin", portal: { prefs: {} } } }; if (t === "user") return { token: "user", record: { id: "u2", isAdmin: false, email: "sam@x.co", name: "Sam" } }; if (t === "viewer") return { token: "viewer", record: { id: "u4", isAdmin: false, email: "view@x.co", portal: { readonly: true, prefs: {} } } }; const e = new this.PBError(401, "no"); throw e; },
+  async getUser(id) { return { id, name: id === "u1" ? "Zahir" : "", email: "x@x.co" }; }, async serviceCan() { return true; }, async portalUrl() { return ""; }, async setAppPref(id, v) { prefs.push([id, v]); },
   async asApp(method, p, body) {
     const m = p.match(/records(?:\/(\w+))?(?:\?.*filter=([^&]*))?/), id = m && m[1];
     if (method === "GET") { const f = decodeURIComponent(m[2] || ""), o = (f.match(/owner = '([^']*)'/) || [])[1], k = (f.match(/key = '([^']*)'/) || [])[1]; return { items: rows.filter(r => (!o || r.owner === o) && (!k || r.key === k)) }; }
@@ -20,7 +20,7 @@ let file = JSON.stringify({ version: 1, name: "App development", categories: ["X
 global.fetch = async (u, init = {}) => {
   const R = (status, body, h = {}) => ({ status, ok: status < 400, json: async () => body, headers: { get: k => h[k.toLowerCase()] || null } });
   if (/api\.anthropic\.com/.test(u)) { global.lastAi = JSON.parse(init.body); return R(200, { content: [{ type: "text", text: "Hi from the helper" }] }); }
-  if (/\/commits\?/.test(u)) return R(200, [{ commit: { committer: { date: new Date().toISOString() } } }]);
+  if (/\/commits\?/.test(u)) { global.commitAuth = (init.headers || {}).authorization; } if (/\/commits\?/.test(u)) return R(200, [{ commit: { committer: { date: new Date().toISOString() } } }]);
   if ((init.method || "GET") === "GET") { if (init.headers["if-none-match"] === '"e' + sha + '"') return R(304, {}); return R(200, { sha, content: Buffer.from(file).toString("base64") }, { etag: '"e' + sha + '"' }); }
   const b = JSON.parse(init.body); if (b.sha !== sha) return R(409, {}); file = Buffer.from(b.content, "base64").toString(); sha = "s" + (++puts + 1); return R(200, { content: { sha } });
 };
@@ -28,9 +28,11 @@ process.env.PORT = "39155"; require("./server");
 const call = (method, p, body, tok = "admin") => new Promise((ok, bad) => { const r = http.request({ port: 39155, path: p, method, headers: { "x-gd-token": tok, "content-type": "application/json" } }, res => { let d = ""; res.on("data", c => d += c); res.on("end", () => ok({ status: res.statusCode, body: d ? JSON.parse(d) : {} })); }); r.on("error", bad); if (body) r.write(JSON.stringify(body)); r.end(); });
 (async () => {
   await new Promise(r => setTimeout(r, 300));
-  assert.strictEqual((await call("GET", "/api/lists", null, "user")).status, 403, "non-admins are refused");
+  // the app is public: any signed-in person may open it, but only the owner ever gets the GitHub list
+  let r = await call("GET", "/api/lists", null, "user"); assert.strictEqual(r.status, 200); assert.strictEqual(r.body.lists.length, 0, "a new person sees no lists, least of all appdev"); assert.strictEqual(r.body.owner, false);
+  assert.strictEqual((await call("GET", "/api/list/appdev", null, "user")).status, 403); assert.strictEqual((await call("GET", "/api/config/github", null, "user")).status, 403);
   assert.strictEqual((await call("GET", "/api/lists", null, "nope")).status, 401);
-  let r = await call("GET", "/api/list/appdev"); assert.strictEqual(r.status, 200); assert.strictEqual(r.body.list.projects.length, 2); assert.strictEqual(r.body.readOnly, true, "no token yet");
+  r = await call("GET", "/api/list/appdev"); assert.strictEqual(r.status, 200); assert.strictEqual(r.body.list.projects.length, 2); assert.strictEqual(r.body.readOnly, true, "no token yet");
   r = await call("POST", "/api/list/appdev/apply", { ops: { upsert: [] } }); assert.strictEqual(r.status, 403); assert.strictEqual(r.body.code, "read_only");
   // add the token through the connection panel; it is never sent back
   assert.strictEqual((await call("PUT", "/api/config/github", { token: "secret-token" })).status, 200);
@@ -55,7 +57,7 @@ const call = (method, p, body, tok = "admin") => new Promise((ok, bad) => { cons
   await call("POST", "/api/list/" + k + "/apply", { ops: { upsert: [{ id: "x1", name: "Fence", category: "Garden", status: "active" }] } });
   r = await call("GET", "/api/list/" + k); assert.strictEqual(r.body.list.projects[0].name, "Fence"); assert.strictEqual(r.body.readOnly, false);
   assert.strictEqual((await call("GET", "/api/lists")).body.lists.length, 2);
-  assert.strictEqual((await call("GET", "/api/list/" + k, null, "user")).status, 403);
+  assert.strictEqual((await call("GET", "/api/list/" + k, null, "user")).status, 404, "someone else's private list is invisible");
   await call("DELETE", "/api/list/" + k); assert.strictEqual((await call("GET", "/api/lists")).body.lists.length, 1);
   await call("PUT", "/api/prefs", { view: "closed", list: "appdev" }); assert.strictEqual(prefs[0][1].view, "closed");
   // the shared list belongs to its owner: another admin sees none of it and cannot reach its connection
@@ -75,5 +77,34 @@ const call = (method, p, body, tok = "admin") => new Promise((ok, bad) => { cons
   r = await call("POST", "/api/ai/chat", { list: "appdev", project: "zzz", messages: [{ role: "user", text: "hi" }] }, "aikey"); assert.strictEqual(r.status, 404);
   await call("PUT", "/api/prefs", { chat: "builtin" }); assert.strictEqual(prefs[prefs.length - 1][1].chat, "builtin"); await call("PUT", "/api/prefs", { days: 7 }); assert.strictEqual(prefs[prefs.length - 1][1].days, 7); await call("PUT", "/api/prefs", { days: 99 }); assert.strictEqual(prefs[prefs.length - 1][1].days, undefined, "out-of-range days ignored");
   await call("PUT", "/api/prefs", { chat: "bogus" }); assert.strictEqual(prefs[prefs.length - 1][1].chat, undefined, "unknown modes are ignored");
+  // ---- sharing ----
+  const ks = (await call("POST", "/api/lists", { name: "Family trips" })).body.key;
+  await call("POST", "/api/list/" + ks + "/apply", { ops: { upsert: [{ id: "t1", name: "Cape Town", category: "Trips", status: "active", paths: [{ repo: "a/b", path: "x" }] }] } });
+  r = await call("POST", "/api/list/" + ks + "/share", { email: "sam@x.co", role: "view" }); assert.strictEqual(r.status, 200);
+  assert.strictEqual((await call("POST", "/api/list/" + ks + "/share", { email: "zahir@x.co" })).status, 400, "not with yourself");
+  assert.strictEqual((await call("POST", "/api/list/" + ks + "/share", { email: "nope" })).status, 400);
+  r = await call("GET", "/api/list/" + ks); assert.strictEqual(r.body.role, "owner"); assert.strictEqual(r.body.shares.length, 1);
+  r = await call("GET", "/api/lists", null, "user"); const sh = r.body.lists.find(x => x.source === "shared"); assert.ok(sh && sh.key.startsWith("shared--u1--") && sh.role === "view" && sh.by === "Zahir" && sh.count === 1, JSON.stringify(r.body));
+  r = await call("GET", "/api/list/" + sh.key, null, "user"); assert.strictEqual(r.status, 200); assert.strictEqual(r.body.readOnly, true); assert.strictEqual(r.body.shares, undefined, "recipients never see who else it is shared with");
+  assert.strictEqual(global.commitAuth, undefined, "other people's lists never use the owner's GitHub token");
+  r = await call("POST", "/api/list/" + sh.key + "/apply", { ops: { upsert: [{ id: "t2", name: "Nope", category: "Trips" }] } }, "user"); assert.strictEqual(r.status, 403); assert.strictEqual(r.body.code, "read_only");
+  assert.strictEqual((await call("GET", "/api/list/" + sh.key, null, "admin2")).status, 404, "a third person gets nothing");
+  assert.strictEqual((await call("POST", "/api/list/" + sh.key + "/share", { email: "x@y.co" }, "user")).status, 403, "only the maker shares");
+  assert.strictEqual((await call("DELETE", "/api/list/" + sh.key, null, "user")).status, 404 === 0 ? 0 : (await call("DELETE", "/api/list/" + sh.key, null, "user")).status, "recipients can't delete it");
+  assert.ok((await call("GET", "/api/list/" + ks)).body.list.projects.length === 1, "still there after that delete attempt");
+  await call("POST", "/api/list/" + ks + "/share", { email: "Sam@X.co", role: "edit" });
+  r = await call("POST", "/api/list/" + sh.key + "/apply", { ops: { upsert: [{ id: "t2", name: "Garden Route", category: "Trips", status: "active" }] } }, "user"); assert.strictEqual(r.status, 200);
+  r = await call("GET", "/api/list/" + ks); assert.strictEqual(r.body.list.projects.length, 2); assert.strictEqual(r.body.shares.length, 1, "an edit never loses the shares"); assert.strictEqual(r.body.shares[0].role, "edit");
+  await call("POST", "/api/list/" + ks + "/share", { email: "view@x.co", role: "edit" });
+  r = await call("GET", "/api/lists", null, "viewer"); const vs = r.body.lists.find(x => x.source === "shared"); assert.strictEqual(vs.role, "view", "a view-only account is never an editor");
+  assert.strictEqual((await call("POST", "/api/list/" + vs.key + "/apply", { ops: {} }, "viewer")).status, 403);
+  r = await call("POST", "/api/ai/chat", { list: sh.key, project: "t1", messages: [{ role: "user", text: "hi" }] }, "aikey"); assert.strictEqual(r.status, 404, "chat only reads lists you can open");
+  assert.strictEqual((await call("POST", "/api/list/" + sh.key + "/leave", {}, "user")).status, 200);
+  assert.strictEqual((await call("GET", "/api/list/" + sh.key, null, "user")).status, 404); assert.strictEqual((await call("GET", "/api/list/" + ks)).body.shares.length, 1, "leaving removes only you");
+  await call("POST", "/api/list/" + ks + "/share", { email: "view@x.co", remove: true });
+  assert.strictEqual((await call("GET", "/api/lists", null, "viewer")).body.lists.filter(x => x.source === "shared").length, 0);
+  await call("POST", "/api/list/" + ks + "/share", { email: "sam@x.co", role: "view" });
+  await call("DELETE", "/api/list/" + ks); assert.strictEqual(rows.filter(x => String(x.owner).startsWith("inv:")).length, 0, "deleting a list tidies its shares");
+  assert.strictEqual((await call("GET", "/api/lists", null, "user")).body.lists.length, 0);
   console.log("server ok"); process.exit(0);
 })().catch(e => { console.error(e); process.exit(1); });
