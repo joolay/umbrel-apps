@@ -73,17 +73,28 @@ module.exports = function makeFeed({ asSuper, fetchImpl = fetch, now = () => Dat
 
   const hdr = (c) => ({ authorization: 'Bearer ' + c.token, accept: 'application/vnd.github+json', 'user-agent': 'portal-admin-status-feed', 'content-type': 'application/json' });
   const url = (c, name) => `https://api.github.com/repos/${c.repo}/contents/${(c.dir ? c.dir + '/' : '') + name}.json`;
+  // Turns a failed GitHub answer into a message that says what really happened (GitHub's own words included), instead of always blaming the token.
+  async function why(res) {
+    let msg = ''; try { msg = String((await res.json()).message || ''); } catch { /* no body */ }
+    const hd = (n) => { try { return res.headers.get(n); } catch { return null; } };
+    msg = redact(msg).slice(0, 160);
+    if (res.status === 429 || hd('retry-after') || hd('x-ratelimit-remaining') === '0' || /rate limit|abuse/i.test(msg)) return new FeedError(502, 'GitHub is limiting how fast it will accept saves (' + res.status + '). It will be tried again. ' + msg);
+    if (res.status === 401) return new FeedError(400, 'GitHub does not accept this token (401). ' + msg);
+    if (res.status === 404) return new FeedError(400, 'GitHub could not find that repo or folder with this token (404). ' + msg);
+    if (res.status === 403 || res.status === 422) return new FeedError(400, 'GitHub refused the save (' + res.status + '): ' + (msg || 'the token may need write access to this repo.'));
+    return new FeedError(502, 'GitHub answered ' + res.status + '. ' + msg);
+  }
   async function put(c, name, obj, message) {
     const u = url(c, name), ref = c.branch ? '?ref=' + q(c.branch) : '';
     for (let i = 0; i < 3; i++) {
       const g = await fetchImpl(u + ref, { headers: hdr(c), signal: AbortSignal.timeout(15000) });
-      if (g.status !== 200 && g.status !== 404) throw new FeedError(g.status === 401 || g.status === 403 ? 400 : 502, g.status === 401 || g.status === 403 ? 'GitHub refused the token (it needs write access to this repo).' : 'GitHub answered ' + g.status + '.');
+      if (g.status !== 200 && g.status !== 404) throw await why(g);
       const sha = g.status === 200 ? (await g.json()).sha : undefined;
       const body = { message, content: Buffer.from(JSON.stringify(obj, null, 2) + '\n').toString('base64'), ...(sha ? { sha } : {}), ...(c.branch ? { branch: c.branch } : {}) };
       const r = await fetchImpl(u, { method: 'PUT', headers: hdr(c), body: JSON.stringify(body), signal: AbortSignal.timeout(15000) });
       if (r.ok) return;
       if (r.status === 409 || r.status === 422) continue;     // changed under us: read the new version and try again
-      throw new FeedError(r.status === 401 || r.status === 403 || r.status === 404 ? 400 : 502, r.status === 404 ? 'GitHub could not find that repo or folder with this token.' : r.status === 401 || r.status === 403 ? 'GitHub refused the token (it needs write access to this repo).' : 'GitHub answered ' + r.status + '.');
+      throw await why(r);
     }
     throw new FeedError(502, 'GitHub kept changing the file. Try again in a moment.');
   }

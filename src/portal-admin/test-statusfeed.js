@@ -39,6 +39,10 @@ const assert = require('assert'), makeFeed = require('./statusfeed');
   const f = files['status/app-updater.json']; assert.ok(f, 'file written under the app slug'); const j = JSON.parse(f.text); assert.strictEqual(j.app, 'app-updater'); assert.strictEqual(j.data.apps[0].password, '[hidden]'); assert.ok(calls.some((c) => c[2] === 'Bearer ghp_' + 'z'.repeat(30)));
   t += 5e3; assert.strictEqual((await feed.publish('app-updater', { apps: [] })).skipped, 'too_soon');
   t += 40e3; assert.strictEqual((await feed.publish('app-updater', { apps: [{ name: 'A', password: 'p' }] })).ok, true);      // different from the last one? same body: unchanged
+  // GitHub's own reason is reported: a rate limit is not blamed on the token, a refusal carries GitHub's words
+  { let mode = 'rate'; const f2 = makeFeed({ asSuper, now: () => (t += 60e3), fetchImpl: async (u, i = {}) => i.method ? { ok: false, status: 403, headers: { get: () => null }, json: async () => ({ message: mode === 'rate' ? 'You have exceeded a secondary rate limit.' : 'Push cannot contain secrets' }) } : { status: 404, json: async () => ({}) } });
+    await assert.rejects(() => f2.publish('zz-app', { x: 1 }), (e) => e.status === 502 && /limiting/.test(e.message) && !/token/.test(e.message));
+    mode = 'secret'; await assert.rejects(() => f2.publish('zz-app', { x: 2 }), (e) => e.status === 400 && /refused the save \(403\): Push cannot contain secrets/.test(e.message)); }
   const n = calls.length; t += 40e3; assert.strictEqual((await feed.publish('app-updater', { apps: [{ name: 'A', password: 'p' }] })).skipped, 'unchanged'); assert.strictEqual(calls.length, n, 'no GitHub call when nothing changed');
   { t += 40e3; assert.strictEqual((await feed.publish('app-updater', { apps: [{ name: 'A', password: 'p' }], check: { at: t } })).ok, true); const m2 = calls.length;
     t += 40e3; assert.strictEqual((await feed.publish('app-updater', { apps: [{ name: 'A', password: 'p' }], check: { at: t } })).skipped, 'unchanged'); assert.strictEqual(calls.length, m2, 'a moving timestamp alone is not a change'); }
