@@ -4,7 +4,7 @@ const assert = require("assert"), path = require("path"), http = require("http")
 const rows = []; let n = 0; const prefs = [];
 const fakePb = {
   enabled: true, reload() { return true; }, PBError: class PBError extends Error { constructor(s, m) { super(m); this.status = s; } },
-  async verifyToken(t) { if (t === "admin") return { token: "admin", record: { id: "u1", isAdmin: true, name: "Zahir", portal: { prefs: {} } } }; if (t === "admin2") return { token: "admin2", record: { id: "u3", isAdmin: true, name: "Other admin", portal: { prefs: {} } } }; if (t === "user") return { token: "user", record: { id: "u2", isAdmin: false } }; const e = new this.PBError(401, "no"); throw e; },
+  async verifyToken(t) { if (t === "admin") return { token: "admin", record: { id: "u1", isAdmin: true, name: "Zahir", portal: { prefs: {} } } }; if (t === "aikey") return { token: "aikey", record: { id: "u1", isAdmin: true, name: "Zahir", portal: { prefs: { "ai.provider": "anthropic", "ai.apiKey": "sk-ant-WXYZ", "ai.model": "claude-x" } } } }; if (t === "admin2") return { token: "admin2", record: { id: "u3", isAdmin: true, name: "Other admin", portal: { prefs: {} } } }; if (t === "user") return { token: "user", record: { id: "u2", isAdmin: false } }; const e = new this.PBError(401, "no"); throw e; },
   async serviceCan() { return true; }, async portalUrl() { return ""; }, async setAppPref(id, v) { prefs.push([id, v]); },
   async asApp(method, p, body) {
     const m = p.match(/records(?:\/(\w+))?(?:\?.*filter=([^&]*))?/), id = m && m[1];
@@ -19,6 +19,7 @@ require.cache[require.resolve("./pocketbase")] = { id: "pb", filename: require.r
 let file = JSON.stringify({ version: 1, name: "App development", categories: ["X"], projects: [{ id: "a", name: "A", category: "X", status: "maintenance", rank: 10 }, { id: "b", name: "B", category: "X", status: "active", rank: 20 }] }), sha = "s1", puts = 0;
 global.fetch = async (u, init = {}) => {
   const R = (status, body, h = {}) => ({ status, ok: status < 400, json: async () => body, headers: { get: k => h[k.toLowerCase()] || null } });
+  if (/api\.anthropic\.com/.test(u)) { global.lastAi = JSON.parse(init.body); return R(200, { content: [{ type: "text", text: "Hi from the helper" }] }); }
   if (/\/commits\?/.test(u)) return R(200, [{ commit: { committer: { date: new Date().toISOString() } } }]);
   if ((init.method || "GET") === "GET") { if (init.headers["if-none-match"] === '"e' + sha + '"') return R(304, {}); return R(200, { sha, content: Buffer.from(file).toString("base64") }, { etag: '"e' + sha + '"' }); }
   const b = JSON.parse(init.body); if (b.sha !== sha) return R(409, {}); file = Buffer.from(b.content, "base64").toString(); sha = "s" + (++puts + 1); return R(200, { content: { sha } });
@@ -65,5 +66,13 @@ const call = (method, p, body, tok = "admin") => new Promise((ok, bad) => { cons
   assert.strictEqual((await call("PUT", "/api/config/github", { token: "x" }, "admin2")).status, 403);
   assert.strictEqual((await call("GET", "/api/lists")).body.owner, true);
   await call("PUT", "/api/prefs", { auto: false }); assert.strictEqual(prefs[prefs.length - 1][1].auto, false);
+  // built-in chat: needs a key, only the owner can reach the shared list, and answers from the person's own provider
+  r = await call("GET", "/api/ai/status"); assert.deepStrictEqual(r.body, { ready: false, key: null });
+  r = await call("POST", "/api/ai/chat", { list: "appdev", project: "b", messages: [{ role: "user", text: "hi" }] }); assert.strictEqual(r.status, 400); assert.strictEqual(r.body.code, "no_ai_key");
+  r = await call("GET", "/api/ai/status", null, "aikey"); assert.deepStrictEqual(r.body, { ready: true, key: { provider: "anthropic", model: "claude-x", last4: "WXYZ" } });
+  r = await call("POST", "/api/ai/chat", { list: "appdev", project: "b", messages: [{ role: "user", text: "hi" }] }, "aikey"); assert.strictEqual(r.status, 200, JSON.stringify(r.body)); assert.strictEqual(r.body.text, "Hi from the helper");
+  assert.ok(global.lastAi.system.includes('"B"') || global.lastAi.system.includes("B"), "the project is named in the prompt"); assert.strictEqual(global.lastAi.model, "claude-x");
+  r = await call("POST", "/api/ai/chat", { list: "appdev", project: "zzz", messages: [{ role: "user", text: "hi" }] }, "aikey"); assert.strictEqual(r.status, 404);
+  await call("PUT", "/api/prefs", { chat: "builtin" }); assert.strictEqual(prefs[prefs.length - 1][1].chat, "builtin"); await call("PUT", "/api/prefs", { chat: "bogus" }); assert.strictEqual(prefs[prefs.length - 1][1].chat, undefined, "unknown modes are ignored");
   console.log("server ok"); process.exit(0);
 })().catch(e => { console.error(e); process.exit(1); });

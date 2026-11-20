@@ -224,3 +224,7 @@ body{overscroll-behavior-y:none}
 .qa-msg{min-height:20px;margin:6px 0 0;color:#e5484d}
 .qa-btns{display:flex;flex-direction:column;gap:10px;margin-top:14px}.qa-btns .btn{display:flex;flex-direction:column;align-items:center;gap:2px}.qa-btns small{font-weight:400;opacity:.65}
 .qa-login{width:100%;margin:6px 0 2px}
+
+/* AI keys (My settings > AI) */
+.aikeys{display:grid;gap:8px;margin:10px 0}
+.aikey{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;border:1px solid var(--line,rgba(127,127,127,.3));border-radius:12px;padding:10px 12px}

@@ -19,6 +19,7 @@ const makeChanges = require('./changes');
 const makeAppApi = require('./appapi');
 const qrlogin = require('./qrlogin')();
 const quick = require('./quickaccess')();
+const aiKeys = require('./ai')({ asSuper: (m, p, b) => pbx.asSuper(m, p, b) });
 const CHILD_REQ = '__child_account__', SPOUSE_REQ = '__spouse_account__';
 
 const PORT = Number(process.env.PORT || 3000);
@@ -344,6 +345,16 @@ async function accountRoutes(req, res, pathname) {
   const out = (r) => (r.status ? send(res, r.status, { message: r.message }) : send(res, 200, r));
   try {
     let b = {}; if (req.method === 'POST') { try { b = JSON.parse(await readBody(req)); } catch { return send(res, 400, { message: 'Invalid request.' }); } }
+    if (pathname === '/account/ai') {   // a person's saved AI keys (list, add, remove, choose, test). Keys never leave here except their last 4 characters.
+      if (req.method !== 'POST') return send(res, 405, { message: 'Method not allowed' });
+      try {
+        if (b.action === 'add') return send(res, 200, { key: await aiKeys.add(user.id, b), ...(await aiKeys.state(user.id)) });
+        if (b.action === 'remove') { await aiKeys.remove(user.id, b.id); return send(res, 200, await aiKeys.state(user.id)); }
+        if (b.action === 'select') { await aiKeys.select(user.id, b.app || '', b.id || ''); return send(res, 200, await aiKeys.state(user.id)); }
+        if (b.action === 'test') return send(res, 200, await aiKeys.test(user.id, b.id));
+        return send(res, 200, await aiKeys.state(user.id));
+      } catch (e) { return send(res, e.status || 500, { message: String(e.message || e) }); }
+    }
     if (pathname === '/paywall' && req.method === 'GET') return send(res, 200, await paywall.forPerson(user));
     if (pathname === '/pay' && req.method === 'POST') { try { return send(res, 200, await paywall.startPayment(user, b.slug, b.scope)); } catch (e) { return send(res, e.status || 500, { message: String(e.message || e) }); } }
     if (pathname === '/pay/status' && req.method === 'GET') return send(res, 200, await paywall.status(user, new URL(req.url, 'http://x').searchParams.get('slug')));
@@ -482,7 +493,7 @@ const handle = async (req, res) => {
     if (pathname === '/guardians') return guardiansRoute(req, res);
     if (pathname === '/qr') return qrRoute(req, res);
     if (pathname === '/quick') return quickRoute(req, res);
-    if (pathname === '/family' || pathname === '/events' || pathname === '/paywall' || pathname === '/pay' || pathname === '/pay/status' || pathname === '/family/users' || pathname === '/account/dob' || pathname === '/account/username' || pathname === '/account/guardian') return accountRoutes(req, res, pathname);
+    if (pathname === '/family' || pathname === '/events' || pathname === '/paywall' || pathname === '/pay' || pathname === '/pay/status' || pathname === '/family/users' || pathname === '/account/ai' || pathname === '/account/dob' || pathname === '/account/username' || pathname === '/account/guardian') return accountRoutes(req, res, pathname);
     if (pathname === '/yoco/webhook') {
       if (req.method !== 'POST') return send(res, 405, { message: 'Method not allowed' });
       const raw = await readBody(req); const r = await paywall.handleWebhook(req.headers, raw);
@@ -613,7 +624,7 @@ const handle = async (req, res) => {
 
 // JoolzApp Portal (the separate, internet-facing home screen app) passes these on for people: /user/<route> on the apps-only port,
 // with its own Portal API key. They are ALWAYS handled as public, user-only requests, and only the routes listed here exist.
-const PORTAL_ROUTES = new Set(['/signup-config', '/signup', '/forgot', '/guardians', '/family', '/family/users', '/events', '/paywall', '/pay', '/pay/status', '/account/dob', '/account/username', '/account/guardian', '/qr', '/quick', '/api/active', '/yoco/webhook']);
+const PORTAL_ROUTES = new Set(['/signup-config', '/signup', '/forgot', '/guardians', '/family', '/family/users', '/events', '/paywall', '/pay', '/pay/status', '/account/ai', '/account/dob', '/account/username', '/account/guardian', '/qr', '/quick', '/api/active', '/yoco/webhook']);
 const portalBad = new Map();
 function fromPortal(req, res) {
   const ip = String(req.socket.remoteAddress || ''), now = Date.now(), fails = (portalBad.get(ip) || []).filter((t) => now - t < 600e3);

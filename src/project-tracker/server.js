@@ -7,6 +7,7 @@ const fs = require("fs");
 const path = require("path");
 const pb = require("./pocketbase");
 const L = require("./lists");
+const makeAi = require("./ai"), helper = require("./helper"), aiClient = makeAi();
 const makeGitHub = require("./github");
 
 const PORT = +process.env.PORT || 3915;
@@ -223,6 +224,29 @@ async function listsRoutes(req, res, p, url, user) {
   return false;
 }
 
+// The built-in chat helper: the person's own AI key, one project at a time. It can only propose changes (see helper.js).
+async function aiChat(req, res, user) {
+  if (throttled(req, "aichat:" + user.id, 20, 60e3)) return send(res, 429, { code: "slow_down", message: "That's a lot of messages. Wait a moment." });
+  const b = JSON.parse((await readBody(req)).toString() || "{}"), cfg = makeAi.resolve(user);
+  if (!cfg) return send(res, 400, { code: "no_ai_key", message: "No AI key is set for Project Tracker yet. Add one in Portal Admin > My settings > AI." });
+  const key = String(b.list || ""), isGh = key === GH_LIST;
+  if (!/^[a-z0-9-]{1,70}$/.test(key)) return send(res, 400, { code: "bad_list", message: "Unknown list." });
+  if (isGh && !(await ghAccess(user))) return noAccess(res);
+  let raw = null; if (isGh) { const f = await gh.read(false); raw = f.data; } else raw = await getData(user.id, key);
+  const list = raw && L.cleanList(raw); if (!list) return send(res, 404, { code: "no_list", message: "That list doesn't exist." });
+  const project = list.projects.find(x => x.id === b.project && x.state !== "bin"); if (!project) return send(res, 404, { code: "no_project", message: "That project isn't in the list any more." });
+  const conf = await loadGhConfig(false), prefs = (user.portal && user.portal.prefs && user.portal.prefs["project-tracker"]) || {};
+  try {
+    const worked = (await workedMap(list))[project.id] || "";
+    const out = await helper.run({ ai: aiClient, cfg, list, project, worked, autoGlobal: prefs.auto !== false, ghToken: conf.token, ghRepo: conf.repo }, Array.isArray(b.messages) ? b.messages : []);
+    return send(res, 200, { ...out, model: cfg.model });
+  } catch (e) {
+    if (e instanceof makeAi.AiError) return send(res, e.status, { code: e.code, message: e.message });
+    if (e.code === "empty") return send(res, 400, { code: "empty", message: e.message });
+    throw e;
+  }
+}
+
 async function configRoutes(req, res, p, user) {
   if (p !== "/api/config/github") return false;
   if (!(await ghAccess(user))) return noAccess(res);
@@ -268,10 +292,13 @@ const server = http.createServer(async (req, res) => {
     }
     if (p === "/api/app-config") return send(res, 200, { accounts: pb.enabled, ...(pb.enabled ? { portalUrl: await pb.portalUrl().catch(() => "") } : {}) });
     if (await accountRoutes(req, res, p)) return;
+    if (p === "/api/ai/status" && req.method === "GET") { const c = makeAi.resolve(user); return send(res, 200, { ready: !!c, key: makeAi.pub(c) }); }
+    if (p === "/api/ai/chat" && req.method === "POST") return aiChat(req, res, user);
     if (p === "/api/prefs" && req.method === "PUT") {
       const b = JSON.parse((await readBody(req)).toString() || "{}"), prev = (user.portal && user.portal.prefs && user.portal.prefs["project-tracker"]) || {}, next = { ...prev };
       if (typeof b.list === "string" && /^[a-z0-9-]{1,70}$/.test(b.list)) next.list = b.list;
       if (["all", "active", "maintenance", "hiatus", "closed", "archive", "bin"].includes(b.view)) next.view = b.view;
+      if (b.chat === "claude" || b.chat === "builtin") next.chat = b.chat;   // how the Chat button works: the Claude app, or the built-in helper
       if (typeof b.auto === "boolean") next.auto = b.auto;   // global switch for the 3-day rule (default on)
       if (Array.isArray(b.collapsed)) next.collapsed = b.collapsed.map(x => L.str(x, 60)).slice(0, 60);
       await pb.setAppPref(user.id, next); tokenCache.clear(); return send(res, 200, { ok: true });

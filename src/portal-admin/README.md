@@ -98,3 +98,10 @@ A faster, less secure way back in on a device the person already signed in on. O
 ## Admin home screen (0.31.0)
 Portal Admin no longer lists apps. For an admin its home screen shows the admin tools directly (no Admin folder); people open their apps from the JoolzApp Portal.
 Its layout is saved on the account as `pref.adminhome.layout`, separate from the Portal's `pref.home.layout`.
+
+## AI keys (0.32.0)
+My settings > AI keeps a small vault of API keys per JoolzApp account (Anthropic, OpenAI, Google Gemini, OpenRouter, custom endpoint; up to 12).
+Rows live in `portal_settings` with app `ai-vault` and key `ai.key.<id>`, so no other app can see them. Choosing a key writes the existing `pref.ai.*`
+rows (`provider`, `model`, `apiKey`, `baseUrl`, `keyId`): at app "" for the default, or at an app slug to override one app (`resolvePortal` already lets the app row win).
+AI apps therefore need no change. The browser only gets the last 4 characters; add/remove/select/test go through `POST /account/ai` (`src/portal-admin/ai.js`, in `PORTAL_ROUTES` and `VIA_ADMIN`).
+The first key added becomes the default, and an older single key is moved into the vault on first open. A new AI app must be added to `AI_APPS` in `ai.js`.

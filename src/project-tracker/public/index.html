@@ -56,6 +56,13 @@
 .nrow .m{font-size:.76rem;color:var(--muted)}
 .sheet{display:grid;gap:8px;margin-top:10px}
 .sheet .btn{width:100%;justify-content:center}
+.chat{display:grid;gap:8px;max-height:46vh;overflow:auto;margin:8px 0;padding:2px}
+.bub{padding:8px 11px;border-radius:14px;max-width:92%;white-space:pre-wrap;word-break:break-word;font-size:.9rem;line-height:1.4}
+.bub.me{justify-self:end;background:var(--accent);color:var(--accent-t)}
+.bub.ai{justify-self:start;border:1px solid var(--glass-line);background:var(--glass)}
+.bub.sys{justify-self:center;font-size:.78rem;color:var(--muted);background:none}
+.prop{border:1px dashed var(--accent);border-radius:12px;padding:8px 10px;margin:6px 0;display:grid;gap:6px;font-size:.86rem}
+.sect{border-top:1px solid var(--glass-line);margin-top:12px;padding-top:6px}
 .switch{display:flex;gap:10px;align-items:flex-start;margin:10px 0}
 .switch input{margin-top:3px}
 .banner{margin:0 0 10px;padding:10px 14px;border-radius:var(--r-sm);background:var(--glass-strong);border:1px solid var(--glass-line);font-size:.9rem}
@@ -90,7 +97,7 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
   "use strict";
   var TOKEN = "gd.token", ST = { active: ["Active", "#2563eb"], maintenance: ["Queued", "#d97706"], hiatus: ["Hiatus", "#7c3aed"], closed: ["Closed", "#6b7280"] };
   var $ = function (s) { return document.querySelector(s); };
-  var S = { lists: [], key: "", sha: "", list: null, worked: {}, readOnly: false, view: "all", collapsed: {}, user: null, busy: 0, lastOk: 0, err: "", auto: true, owner: false, home: "" };
+  var S = { lists: [], key: "", sha: "", list: null, worked: {}, readOnly: false, view: "all", collapsed: {}, user: null, busy: 0, lastOk: 0, err: "", auto: true, owner: false, home: "", chat: "claude" };
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); };
   function tok() { try { return sessionStorage.getItem(TOKEN) || localStorage.getItem(TOKEN) || ""; } catch (e) { return ""; } }
   function api(path, method, body) {
@@ -115,11 +122,11 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
   var daysLeft = function (p) { return Math.max(0, 30 - Math.floor((Date.now() - Date.parse(p.binnedAt || new Date().toISOString())) / DAY)); };
 
   /* ---------- loading and live polling ---------- */
-  function savePrefs() { clearTimeout(savePrefs.h); savePrefs.h = setTimeout(function () { api("api/prefs", "PUT", { list: S.key, view: S.view, auto: S.auto, collapsed: Object.keys(S.collapsed).filter(function (k) { return S.collapsed[k]; }) }).catch(function () {}); }, 600); }
+  function savePrefs() { clearTimeout(savePrefs.h); savePrefs.h = setTimeout(function () { api("api/prefs", "PUT", { list: S.key, view: S.view, auto: S.auto, chat: S.chat, collapsed: Object.keys(S.collapsed).filter(function (k) { return S.collapsed[k]; }) }).catch(function () {}); }, 600); }
   function loadLists(keep) {
     return api("api/lists").then(function (j) {
       S.lists = j.lists; S.owner = !!j.owner; var pr = (S.user.prefs || {})["project-tracker"] || {};
-      if (!S.key) { S.key = pr.list && j.lists.some(function (l) { return l.key === pr.list; }) ? pr.list : j.lists[0].key; if (pr.view) S.view = pr.view; if (typeof pr.auto === "boolean") S.auto = pr.auto; (pr.collapsed || []).forEach(function (c) { S.collapsed[c] = true; }); }
+      if (!S.key) { S.key = pr.list && j.lists.some(function (l) { return l.key === pr.list; }) ? pr.list : j.lists[0].key; if (pr.view) S.view = pr.view; if (typeof pr.auto === "boolean") S.auto = pr.auto; if (pr.chat === "builtin") S.chat = "builtin"; (pr.collapsed || []).forEach(function (c) { S.collapsed[c] = true; }); }
       if (!j.lists.some(function (l) { return l.key === S.key; })) S.key = j.lists[0].key;
       $("#lists").innerHTML = j.lists.map(function (l) { return '<option value="' + esc(l.key) + '"' + (l.key === S.key ? " selected" : "") + ">" + esc(l.name) + " (" + l.count + ")</option>"; }).join("");
     });
@@ -230,15 +237,48 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
     });
   }
   function nid() { return "n" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5); }
+  function claudePrompt(p) {
+    var open = (p.notes || []).map(function (n) { return "- " + n.text + (n.state === "review" ? " (waiting for my OK)" : ""); }).join("\n");
+    var where = S.key === "appdev" ? "My project list is appdev.json in my joolay/tracking-data GitHub repo. Read it fresh first." : "";
+    return ("I want to work on my project “" + p.name + "” (" + p.category + ", status " + (ST[p.status] || [p.status])[0] + "). " + where + (p.desc ? "\nWhat it is: " + p.desc : "") +
+      (open ? "\nMy notes on it:\n" + open : "\nNo notes yet.") + ((p.paths || []).length ? "\nIts code: " + p.paths.map(function (x) { return x.repo + ":" + x.path; }).join(", ") : "") +
+      "\nStart by checking the project's current state, then tell me what you suggest and ask before changing anything. When a note is done, mark it for review and ask me to confirm.").slice(0, 1800);
+  }
+  function chatWith(p) {
+    if (S.chat === "builtin") return chatDlg(p);
+    window.open("https://claude.ai/new?q=" + encodeURIComponent(claudePrompt(p)), "_blank", "noopener");
+  }
+  function chatDlg(p) {
+    var msgs = [], props = [], busy = false;
+    dialog("<h2>Ask AI · " + esc(p.name) + "</h2><div class='chat' id='cl'><div class='bub sys'>Ask about this project. I can look at its notes and repo folders, and suggest changes for you to apply.</div></div><div id='cp'></div>" +
+      "<form id='f'><textarea name='t' rows='2' maxlength='1500' placeholder='What should I do next on this project?'></textarea><div class='row'><button type='button' class='btn' data-close>Close</button><button class='btn primary' id='go'>Send</button></div></form>", function (d) {
+      var cl = d.querySelector("#cl"), cp = d.querySelector("#cp"), f = d.querySelector("#f");
+      var bub = function (cls, t) { var b = document.createElement("div"); b.className = "bub " + cls; b.textContent = t; cl.appendChild(b); cl.scrollTop = cl.scrollHeight; return b; };
+      function drawProps() {
+        cp.innerHTML = props.map(function (x, i) { return "<div class='prop'><div>" + esc(x.kind === "add_note" ? "Add note: " + x.text : x.kind === "note_review" ? "Mark note as done, for you to confirm: " + x.text : "Change status to " + (ST[x.status] || [x.status])[0] + (x.status === "closed" ? " (" + x.closedAs + ")" : "")) + "</div>" + (S.readOnly ? "" : "<div class='acts'><button type='button' class='btn tiny primary' data-ap='" + i + "'>Apply</button><button type='button' class='btn tiny' data-sk='" + i + "'>Skip</button></div>") + "</div>"; }).join("");
+        cp.querySelectorAll("[data-ap]").forEach(function (b) { b.onclick = function () { var x = props[+b.dataset.ap], q = byId(p.id); if (!q) return toast("That project is gone."); props.splice(+b.dataset.ap, 1); drawProps();
+          var ch = x.kind === "add_note" ? { notes: (q.notes || []).concat([{ id: nid(), text: x.text, at: new Date().toISOString(), state: "open" }]) } : x.kind === "note_review" ? { notes: (q.notes || []).map(function (n) { return n.id === x.noteId ? Object.assign({}, n, { state: "review" }) : n; }) } : Object.assign({ status: x.status, statusAt: new Date().toISOString() }, x.status === "closed" ? { closedAs: x.closedAs, closedAt: new Date().toISOString() } : {});
+          upsert(q, ch).then(function () { bub("sys", "Applied."); }); }; });
+        cp.querySelectorAll("[data-sk]").forEach(function (b) { b.onclick = function () { props.splice(+b.dataset.sk, 1); drawProps(); }; });
+      }
+      f.onsubmit = function (ev) {
+        ev.preventDefault(); var t = f.elements.t.value.trim(); if (!t || busy) return; busy = true; f.elements.t.value = ""; f.querySelector("#go").disabled = true;
+        msgs.push({ role: "user", text: t }); bub("me", t); var wait = bub("sys", "Thinking…");
+        api("api/ai/chat", "POST", { list: S.key, project: p.id, messages: msgs }).then(function (j) { wait.remove(); msgs.push({ role: "assistant", text: j.text }); bub("ai", j.text); props = props.concat(j.proposals || []); drawProps(); })
+          .catch(function (e) { wait.remove(); msgs.pop(); bub("sys", e.message); }).then(function () { busy = false; f.querySelector("#go").disabled = false; });
+      };
+    });
+  }
   function notesDlg(p) {
     var ro = S.readOnly, ns = p.notes || [];
     var rows = ns.map(function (n) {
       return "<div class='nrow" + (n.state === "review" ? " review" : "") + "'><div class='t'>" + esc(n.text) + "</div><div class='m'>" + fmt(n.at) + (n.state === "review" ? " · Claude says this is done. Confirm?" : "") + "</div>" +
         (ro ? "" : "<div class='acts'>" + (n.state === "review" ? "<button class='btn tiny primary' data-n='clear' data-id='" + esc(n.id) + "'>Yes, clear it</button><button class='btn tiny' data-n='reopen' data-id='" + esc(n.id) + "'>Not yet</button>" : "<button class='btn tiny' data-n='clear' data-id='" + esc(n.id) + "'>Remove</button>") + "</div>") + "</div>";
     }).join("");
-    dialog("<h2>" + esc(p.name) + "</h2><p class='muted small'>Notes for this project. Claude reads them before working on it, then asks you to confirm each one is done before it is cleared.</p><div class='nlist'>" + (rows || "<p class='muted small'>No notes yet.</p>") + "</div>" +
+    dialog("<h2>" + esc(p.name) + "</h2><p class='muted small'>Notes for this project. Claude reads them before working on it, then asks you to confirm each one is done before it is cleared.</p><div class='row' style='justify-content:flex-start'><button type='button' class='btn' id='chat'>" + (S.chat === "builtin" ? "Ask AI" : "Chat with Claude ↗") + "</button></div><div class='nlist'>" + (rows || "<p class='muted small'>No notes yet.</p>") + "</div>" +
       (ro ? "" : "<form id='f'><label>New note<textarea name='t' rows='2' maxlength='600' placeholder='What needs doing?'></textarea></label><div class='row'><button type='button' class='btn' data-close>Close</button><button class='btn primary'>Add note</button></div></form>") + (ro ? "<div class='row'><button class='btn' data-close>Close</button></div>" : ""), function (d) {
       var save = function (next) { d.close(); upsert(p, { notes: next }).then(function () { var q = byId(p.id); if (q) notesDlg(q); }); };
+      d.querySelector("#chat").onclick = function () { d.close(); chatWith(p); };
       var f = d.querySelector("#f"); if (f) f.onsubmit = function (ev) { ev.preventDefault(); var t = f.elements.t.value.trim(); if (!t) return; save(ns.concat([{ id: nid(), text: t, at: new Date().toISOString(), state: "open" }])); };
       d.querySelectorAll("[data-n]").forEach(function (b) { b.onclick = function () { var id = b.dataset.id; save(b.dataset.n === "clear" ? ns.filter(function (n) { return n.id !== id; }) : ns.map(function (n) { return n.id === id ? Object.assign({}, n, { state: "open" }) : n; })); }; });
     });
@@ -252,8 +292,13 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
   }
   function settingsDlg() {
     dialog("<h2>Settings</h2><label class='switch'><input type='checkbox' id='au'" + (S.auto !== false ? " checked" : "") + "><span><b>3-day rule for all projects</b><br><span class='muted small'>A Queued or Hiatus project worked on in the last 3 days shows as Active. You can turn it off for a single project in its Edit dialog. A status you set by hand stays until you work on the project on a later day.</span></span></label>" +
+      "<div class='sect'><b>Chat button on a project</b>" +
+      "<label class='switch'><input type='radio' name='chat' value='claude'" + (S.chat !== "builtin" ? " checked" : "") + "><span><b>Claude app</b><br><span class='muted small'>Opens a new chat in Claude with the project and its notes filled in. Uses your Claude subscription.</span></span></label>" +
+      "<label class='switch'><input type='radio' name='chat' value='builtin'" + (S.chat === "builtin" ? " checked" : "") + "><span><b>Built-in chat</b><br><span class='muted small'>Chats here with the AI key saved on your JoolzApp account. It can read the project's repo folders and suggest changes; nothing is saved until you press Apply.</span></span></label><p class='muted small' id='aik'>Checking your AI key…</p></div>" +
       "<div class='sheet'><button class='btn' id='nl'>New private list</button>" + (S.owner ? "<button class='btn' id='cn'>GitHub connection</button>" : "") + "</div><p class='muted small'>Tip: tap a project for its notes. Press and hold it to edit or remove.</p><div class='row'><button class='btn primary' data-close>Done</button></div>", function (d) {
       d.querySelector("#au").onchange = function () { S.auto = this.checked; savePrefs(); render(); };
+      d.querySelectorAll("input[name=chat]").forEach(function (r) { r.onchange = function () { S.chat = r.value; savePrefs(); }; });
+      api("api/ai/status").then(function (j) { var al = S.home ? " <a href='" + esc(S.home) + "#/me' target='_blank' rel='noopener'>Manage AI keys</a>" : ""; d.querySelector("#aik").innerHTML = j.ready ? "Built-in chat uses <b>" + esc(j.key.provider) + " · " + esc(j.key.model) + "</b> (key ends …" + esc(j.key.last4) + "). " + al : "No AI key is set for Project Tracker yet. Add one in Portal Admin > My settings > AI." + al; }).catch(function () { d.querySelector("#aik").textContent = ""; });
       d.querySelector("#nl").onclick = function () { d.close(); newListDlg(); };
       var cn = d.querySelector("#cn"); if (cn) cn.onclick = function () { d.close(); connDlg(); };
     });

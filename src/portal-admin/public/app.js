@@ -1278,13 +1278,7 @@ async function viewMe() {
     <div data-pane="profile" hidden><div class="card" id="pane-profile"><p class="muted">Loading…</p></div></div>
     <div data-pane="prefs"><form id="prefs" class="card"><h2>Preferences</h2><div class="kv">${PREFS.map(field).join('')}</div>
       ${detected ? `<p class="muted small">Your device time zone: ${esc(detected)}. Defaults follow your region.</p>` : ''}<div class="row" style="gap:8px"><button class="btn primary">Save preferences</button><button type="button" class="btn" id="regional">Use my region</button></div></form></div>
-    <div data-pane="ai" hidden><form id="ai" class="card"><h2>AI (for apps that use it)</h2><p class="muted small">Pick your own AI provider, model and API key. Apps that read menus, photos or text with AI will use these instead of the shared key. Only you and the admin can see them.</p>
-      <div class="kv"><label>Provider<select name="provider">${AI_PROVIDERS.map(([v, l]) => opt(v, l, (cur['ai.provider'] ? cur['ai.provider'].value : 'gemini') === v)).join('')}</select></label>
-      <label>Model<input name="model" list="ai-models" value="${esc(cur['ai.model'] ? cur['ai.model'].value : '')}" placeholder="" autocomplete="off"><datalist id="ai-models"></datalist></label>
-      <label>API key<input name="apiKey" type="password" autocomplete="off" placeholder="${cur['ai.apiKey'] && cur['ai.apiKey'].value ? 'Saved (ends …' + esc(String(cur['ai.apiKey'].value).slice(-4)) + '). Leave blank to keep it.' : 'Paste your API key'}"></label>
-      <label id="ai-base-row">Base URL<input name="baseUrl" value="${esc(cur['ai.baseUrl'] ? cur['ai.baseUrl'].value : '')}" placeholder="https://your-host/v1" autocomplete="off"></label></div>
-      <p class="muted small" id="ai-hint"></p>
-      <div class="row" style="gap:8px"><button class="btn primary">Save AI settings</button>${cur['ai.apiKey'] ? ' <button type="button" class="btn danger" id="ai-clear">Remove my key</button>' : ''}</div></form></div>
+    <div data-pane="ai" hidden><div class="card" id="pane-ai"><p class="muted">Loading…</p></div></div>
     <div data-pane="quick" hidden><div class="card" id="pane-quick"><p class="muted">Loading…</p></div></div>
     <div data-pane="account" hidden><div class="card"><h2>Delete my account</h2>${delPend
       ? `<p><span class="chip warn">deletion requested</span></p><p class="muted small">Sent ${esc(fmtDate(delPend.created))}. The admin will review it and confirm. Your account stays active until then.</p><button id="delcancel" class="btn">Cancel request</button>`
@@ -1293,7 +1287,7 @@ async function viewMe() {
       <label>Reason (optional)<input name="reason" maxlength="300"></label>
       <button class="btn danger">Request account deletion</button></form>`}${delDenied && !delPend ? '<p class="muted small">Your last deletion request was declined.</p>' : ''}</div></div>`;
   const showTab = (t) => { main().querySelectorAll('.tabs button').forEach((x) => x.classList.toggle('active', x.dataset.t === t)); main().querySelectorAll('[data-pane]').forEach((x) => { x.hidden = x.dataset.pane !== t; }); };
-  main().onclick = (e) => { const b = e.target.closest('.tabs button'); if (b) { showTab(b.dataset.t); if (b.dataset.t === 'quick') qaPane($('#pane-quick')); } };
+  main().onclick = (e) => { const b = e.target.closest('.tabs button'); if (b) { showTab(b.dataset.t); if (b.dataset.t === 'quick') qaPane($('#pane-quick')); if (b.dataset.t === 'ai') aiPane($('#pane-ai')); } };
 
   // AI settings are stored as the person's own "pref.ai.*" rows, so every app can read them through the shared account.
   const setPref = async (key, val) => {
@@ -1302,35 +1296,6 @@ async function viewMe() {
     else if (val !== '' && ex) { if (ex.value !== val) { await api('PATCH', `/api/collections/portal_settings/records/${ex.id}`, { value: val }); ex.value = val; } }
     else if (val !== '') cur[key] = await api('POST', '/api/collections/portal_settings/records', { scope: 'user', user: uid, app: '', key: 'pref.' + key, value: val, secret: false });
   };
-  const aiForm = $('#ai'), aiShow = () => {
-    const p = AI_PROVIDERS.find(([v]) => v === aiForm.provider.value) || AI_PROVIDERS[0];
-    $('#ai-base-row').style.display = aiForm.provider.value === 'custom' ? '' : 'none';
-    aiForm.model.placeholder = p[2]; $('#ai-hint').textContent = p[3];
-    if (aiForm.provider.value === 'openrouter') loadOpenRouterModels();
-  };
-  let orModels = null;
-  const loadOpenRouterModels = async () => {
-    if (!orModels) { try { const r = await fetch('https://openrouter.ai/api/v1/models'); orModels = ((await r.json()).data || []).map((m) => m.id).filter(Boolean).sort(); } catch { orModels = []; } }
-    $('#ai-models').innerHTML = orModels.map((m) => `<option value="${esc(m)}">`).join('');
-  };
-  aiForm.provider.onchange = aiShow; aiShow();
-  aiForm.onsubmit = guard(async (e) => {
-    e.preventDefault();
-    const f = e.target.elements, key = f.apiKey.value.trim(), base = f.baseUrl.value.trim();
-    if (f.provider.value === 'custom' && !/^https?:\/\//i.test(base)) return toast('Enter the base URL for your custom provider', true);
-    const model = f.model.value.trim() || (AI_PROVIDERS.find(([v]) => v === f.provider.value) || [])[4] || '';
-    if (!model) return toast('Enter the model you want to use', true);
-    if (!key && !cur['ai.apiKey']) return toast('Paste your API key', true);
-    await setPref('ai.provider', f.provider.value); await setPref('ai.model', model);
-    if (key) await setPref('ai.apiKey', key);
-    await setPref('ai.baseUrl', f.provider.value === 'custom' ? base : '');
-    toast('AI settings saved'); route();
-  });
-  if ($('#ai-clear')) $('#ai-clear').onclick = guard(async () => {
-    if (!confirm('Remove your AI key and model? Apps will go back to the shared key, if there is one.')) return;
-    for (const k of ['ai.apiKey', 'ai.model', 'ai.provider', 'ai.baseUrl']) await setPref(k, '');
-    toast('AI settings removed'); route();
-  });
   profilePane(uid);
   $('#prefs').onsubmit = guard(async (e) => {
     e.preventDefault();
@@ -1371,6 +1336,32 @@ const acctFetch = async (path, body) => {
 };
 const fmtDob = (d) => { const x = new Date(d + 'T00:00:00'); return isNaN(x) ? d : x.toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' }); };
 const ageFrom = (d) => { const b = new Date(d + 'T00:00:00'), n = new Date(); let a = n.getFullYear() - b.getFullYear(); if (n.getMonth() < b.getMonth() || (n.getMonth() === b.getMonth() && n.getDate() < b.getDate())) a--; return a; };
+
+// ---- AI keys: several saved keys, a default, and a different choice for any one app. Keys stay on the server; only the last 4 characters come back. ----
+async function aiPane(box) {
+  if (!box) return;
+  let st; try { st = await acctFetch('/account/ai', { action: 'list' }); } catch (e) { box.innerHTML = '<p class="muted">' + esc(e.message) + '</p>'; return; }
+  const optsFor = (sel, none) => `<option value=""${sel ? '' : ' selected'}>${esc(none)}</option>` + st.keys.map((k) => `<option value="${esc(k.id)}"${sel === k.id ? ' selected' : ''}>${esc(k.label)} · ${esc((st.providers[k.provider] || {}).label || k.provider)}</option>`).join('');
+  const provs = Object.entries(st.providers).map(([v, p]) => `<option value="${v}">${esc(p.label)}</option>`).join('');
+  box.innerHTML = `<h2>AI keys</h2><p class="muted small">Save keys from different providers and choose which one your apps use. Keys are kept on your server and never shown again after you save them. You pay your provider for what you use.</p>
+    ${st.keys.length ? `<div class="aikeys">${st.keys.map((k) => `<div class="aikey"><div><b>${esc(k.label)}</b>${k.id === st.defaultId ? ' <span class="chip ok">default</span>' : ''}<div class="muted small">${esc((st.providers[k.provider] || {}).label || k.provider)} · ${esc(k.model)} · key ends …${esc(k.last4)}</div></div><div class="row" style="gap:6px"><button class="btn" data-ai="test" data-id="${esc(k.id)}">Test</button><button class="btn danger" data-ai="del" data-id="${esc(k.id)}">Remove</button></div></div>`).join('')}</div>
+    <div class="kv"><label>Default for every app<select id="ai-def">${optsFor(st.defaultId, 'No default (apps use their shared key)')}</select></label></div>
+    <h3>Use a different key for one app</h3><div class="kv">${Object.entries(st.appNames).map(([slug, name]) => `<label>${esc(name)}<select data-ai-app="${esc(slug)}">${optsFor(st.apps[slug], 'Use my default')}</select></label>`).join('')}</div>` : '<p class="muted">No keys saved yet.</p>'}
+    <form id="ai-add"><h3>Add a key</h3><div class="kv"><label>Label<input name="label" maxlength="40" placeholder="Work Claude"></label>
+      <label>Provider<select name="provider">${provs}</select></label>
+      <label>Model<input name="model" autocomplete="off"></label>
+      <label>API key<input name="apiKey" type="password" autocomplete="off" placeholder="Paste your API key"></label>
+      <label id="ai-base">Base address<input name="baseUrl" autocomplete="off" placeholder="https://your-host/v1"></label></div>
+      <p class="muted small" id="ai-hint"></p><button class="btn primary">Save key</button></form>`;
+  const f = $('#ai-add'), show = () => { const p = AI_PROVIDERS.find(([v]) => v === f.provider.value) || AI_PROVIDERS[0]; $('#ai-base').style.display = f.provider.value === 'custom' ? '' : 'none'; f.model.placeholder = (st.providers[f.provider.value] || {}).model || p[2]; $('#ai-hint').textContent = p[3]; };
+  f.provider.onchange = show; show();
+  const redo = () => aiPane(box);
+  f.onsubmit = guard(async (e) => { e.preventDefault(); await acctFetch('/account/ai', { action: 'add', provider: f.provider.value, label: f.label.value, model: f.model.value, apiKey: f.apiKey.value, baseUrl: f.baseUrl.value }); toast('Key saved'); redo(); });
+  if ($('#ai-def')) $('#ai-def').onchange = guard(async () => { await acctFetch('/account/ai', { action: 'select', app: '', id: $('#ai-def').value }); toast('Default saved'); redo(); });
+  box.querySelectorAll('[data-ai-app]').forEach((sel) => { sel.onchange = guard(async () => { await acctFetch('/account/ai', { action: 'select', app: sel.dataset.aiApp, id: sel.value }); toast('Saved'); redo(); }); });
+  box.querySelectorAll('[data-ai=del]').forEach((b) => { b.onclick = guard(async () => { if (!confirm('Remove this key? Apps that used it go back to your default, or their shared key.')) return; await acctFetch('/account/ai', { action: 'remove', id: b.dataset.id }); toast('Key removed'); redo(); }); });
+  box.querySelectorAll('[data-ai=test]').forEach((b) => { b.onclick = guard(async () => { b.disabled = true; b.textContent = 'Testing…'; const r = await acctFetch('/account/ai', { action: 'test', id: b.dataset.id }); toast(r.ok ? 'This key works' : r.message, !r.ok); b.disabled = false; b.textContent = 'Test'; }); });
+}
 
 async function profilePane(uid) {
   const box = $('#pane-profile'); if (!box) return;
