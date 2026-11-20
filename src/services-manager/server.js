@@ -290,6 +290,40 @@ async function snapshot() {
   };
 }
 
+/* ------------------------------ status feed ------------------------------- */
+// What the owner (and Claude, through GitHub) sees of this server: every service and container with its health, restarts and exit code, and the last log lines of
+// the ones that are failing. Sent through Portal Admin's status feed, which hides passwords and tokens; nothing here can change anything. See status-feed.js.
+function dockerLogs(id, tail) {
+  return new Promise((resolve) => {
+    const req = http.request({ socketPath: DOCKER_SOCKET, path: '/containers/' + id + '/logs?stdout=1&stderr=1&tail=' + tail, method: 'GET' }, (res) => {
+      const chunks = []; res.on('data', (c) => chunks.push(c));
+      res.on('end', () => {
+        const b = Buffer.concat(chunks); let out = '', i = 0;
+        const framed = b.length >= 8 && b[0] <= 2 && b[1] === 0 && b[2] === 0 && b[3] === 0;
+        if (!framed) out = b.toString('utf8');
+        else while (i + 8 <= b.length) { const n = b.readUInt32BE(i + 4); out += b.subarray(i + 8, i + 8 + n).toString('utf8'); i += 8 + n; }
+        resolve(out.split(/\r?\n/).filter(Boolean).slice(-tail).map((l) => l.slice(0, 300)));
+      });
+    });
+    req.on('error', () => resolve([])); req.setTimeout(8000, () => { req.destroy(); resolve([]); }); req.end();
+  });
+}
+async function feedPayload() {
+  const snap = await snapshot(), list = await docker('GET', '/containers/json?all=1');
+  const containers = await inChunks(list, 16, async (c) => {
+    const o = { id: c.Id.slice(0, 12), name: (c.Names && c.Names[0] || c.Id.slice(0, 12)).replace(/^\//, ''), image: c.Image, state: c.State, status: c.Status };
+    try {
+      const i = await docker('GET', '/containers/' + c.Id + '/json');
+      Object.assign(o, { restartPolicy: i.HostConfig && i.HostConfig.RestartPolicy && i.HostConfig.RestartPolicy.Name, restarts: i.RestartCount, exitCode: i.State && i.State.ExitCode, oomKilled: !!(i.State && i.State.OOMKilled),
+        health: i.State && i.State.Health && i.State.Health.Status, startedAt: i.State && i.State.StartedAt, finishedAt: i.State && i.State.FinishedAt, error: i.State && i.State.Error });
+    } catch { /* container vanished between calls */ }
+    o.problem = o.state === 'restarting' || o.health === 'unhealthy' || (o.state === 'exited' && o.exitCode > 0) || o.oomKilled || (o.restarts || 0) >= 3;
+    return o;
+  });
+  for (const c of containers.filter((x) => x.problem).slice(0, 8)) c.logTail = await dockerLogs(c.id, 25);
+  return { umbrel: snap.umbrel, summary: { containers: containers.length, running: containers.filter((c) => c.state === 'running').length, problems: containers.filter((c) => c.problem).map((c) => c.name) }, services: snap.services, containers };
+}
+
 /* -------------------------------- actions --------------------------------- */
 
 const POLICIES = new Set(['no', 'on-failure', 'unless-stopped', 'always']);
@@ -434,6 +468,8 @@ const server = http.createServer(async (req, res) => {
 });
 
 if (require.main === module) {
+  try { fs.mkdirSync(DATA_DIR, { recursive: true }); } catch { /* the app's data folder must exist so Portal Admin can link this app */ }
+  require('./status-feed')({ dataDir: DATA_DIR, getPayload: feedPayload, log: (m) => console.error(m) });
   server.listen(PORT, '0.0.0.0', () => console.log('Services Manager listening on :' + PORT));
   setInterval(reconcile, 30000).unref();
   setTimeout(reconcile, 3000).unref();

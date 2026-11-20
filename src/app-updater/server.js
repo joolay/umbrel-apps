@@ -708,8 +708,17 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
+// Status feed (read by the owner and Claude through GitHub): what App Updater is doing, no passwords or tokens. See status-feed.js.
+let lastDiag = { at: 0, results: null };
+async function feedPayload() {
+  const s = snapshot(); delete s.time;
+  if (Date.now() - lastDiag.at > 10 * 60e3) { lastDiag = { at: Date.now(), results: await diagnose().catch((e) => [{ ok: false, error: e.message }]) }; }
+  return { version: SELF_VERSION, ...s, diagnose: lastDiag.results };
+}
+
 if (require.main === module) {
   resumeAfterSelfUpdate();
+  require('./status-feed')({ dataDir: DATA_DIR, getPayload: feedPayload, log: (m) => addLog('warn', m) });
   server.listen(PORT, '0.0.0.0', () => console.log('App Updater listening on :' + PORT));
   setTimeout(() => tick().then(schedule), 3000).unref();
 }

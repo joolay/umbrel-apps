@@ -105,3 +105,11 @@ Rows live in `portal_settings` with app `ai-vault` and key `ai.key.<id>`, so no 
 rows (`provider`, `model`, `apiKey`, `baseUrl`, `keyId`): at app "" for the default, or at an app slug to override one app (`resolvePortal` already lets the app row win).
 AI apps therefore need no change. The browser only gets the last 4 characters; add/remove/select/test go through `POST /account/ai` (`src/portal-admin/ai.js`, in `PORTAL_ROUTES` and `VIA_ADMIN`).
 The first key added becomes the default, and an older single key is moved into the vault on first open. A new AI app must be added to `AI_APPS` in `ai.js`.
+
+## Status feed (0.33.0)
+Apps can publish a status file for the owner (and Claude) to read, with nothing exposed to the internet. An app calls Portal API `publishStatus(payload)`
+(`src/app-updater/status-feed.js` does it every minute, identical copy in Services Manager; copy it into any new app that should report). Portal Admin (`statusfeed.js`)
+removes passwords, tokens, keys and long secret-looking strings, caps sizes, and writes `<folder>/<app>.json` to the GitHub repo set in Admin > App keys > Status feed
+(default `joolay/tracking-data`, folder `status`) with a GitHub token kept only in a secret `portal_settings` row (app `status-feed`). It skips unchanged payloads and rewrites at least every 30 minutes,
+so the file's `at` time shows whether the app is alive. `POST /admin/status-feed` (admin, home network only) saves, tests and clears the settings.
+

@@ -2,7 +2,7 @@ manifestVersion: 1
 id: joolay-portal-admin
 category: developer
 name: Portal Admin
-version: "0.32.0"
+version: "0.33.0"
 tagline: One admin panel for all your custom PocketBase apps
 description: >-
   A central admin panel for your custom apps that use PocketBase. Register each app, then manage
@@ -21,7 +21,7 @@ gallery: []
 path: ""
 defaultUsername: ""
 defaultPassword: ""
-releaseNotes: "Changes: New AI tab in My settings. Save API keys from several providers (Anthropic Claude, OpenAI, Google Gemini, OpenRouter or your own local endpoint) on your JoolzApp account, test each one, pick a default key and choose a different key for any AI app (Diner Bell, Jolly Grocer, Listify, ShutterWorth, Project Tracker). Keys stay on the server; the browser only ever sees the last 4 characters. An existing single key is moved into the list automatically."
+releaseNotes: "Changes: New Status feed card under App keys. Apps such as App Updater and Services Manager can send a cleaned status file (passwords, tokens and keys are removed) to a GitHub repo you choose, so you and Claude can see how they are doing without opening anything to the internet. Needs a GitHub token that can write to that repo."
 submitter: joolay
 submission: https://github.com/joolay/umbrel-apps
 icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-portal-admin/icon.svg

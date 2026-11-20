@@ -481,7 +481,8 @@ async function signup(req, res) {
   } catch (e) { return send(res, e instanceof pbx.PBError && e.status === 503 ? 503 : 500, { message: String(e.message || e) }); }
 }
 
-const appapi = makeAppApi({ qrlogin, quick, pbx, DATA_DIR: pbx.dataDir, readBody, send });
+const feed = require('./statusfeed')({ asSuper: (m, p, b) => pbx.asSuper(m, p, b) });
+const appapi = makeAppApi({ qrlogin, quick, feed, pbx, DATA_DIR: pbx.dataDir, readBody, send });
 const notices = require('./notices')({ pbx, forgetTouch: appapi.forgetTouch });
 const changes = makeChanges({ pbx, installedApps, APPS_DIR, DATA_DIR: pbx.dataDir, appKeys: appapi.keys });
 const handle = async (req, res) => {
@@ -525,6 +526,19 @@ const handle = async (req, res) => {
         if (req.method === 'GET') return send(res, 200, await appkeys.adminView());
         if (req.method !== 'POST') return send(res, 405, { message: 'Method not allowed' });
         return send(res, 200, await appkeys.adminAction(JSON.parse(await readBody(req))));
+      } catch (e) { return send(res, e.status || 500, { message: String(e.message || e) }); }
+    }
+    if (pathname === '/admin/status-feed') {                               // where apps' status files go (a GitHub repo + token): admin only, the token is never sent back
+      if (isPublicRequest(req)) return send(res, 403, { message: 'Only available from your home network or tailnet.' });
+      const tok = String(req.headers.authorization || '');
+      if (!tok || !(await pbx.isSuperuser(tok))) return send(res, 401, { message: 'Admin only.' });
+      try {
+        if (req.method === 'GET') return send(res, 200, await feed.adminView());
+        if (req.method !== 'POST') return send(res, 405, { message: 'Method not allowed' });
+        const b = JSON.parse(await readBody(req));
+        if (b.action === 'test') return send(res, 200, await feed.test());
+        if (b.action === 'clear') return send(res, 200, await feed.adminClear());
+        return send(res, 200, await feed.adminSave(b));
       } catch (e) { return send(res, e.status || 500, { message: String(e.message || e) }); }
     }
     if (pathname === '/admin/app-names') {                                 // the names people gave their apps on their own home screen: admin sees them and can reset

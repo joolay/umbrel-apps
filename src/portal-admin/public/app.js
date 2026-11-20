@@ -1111,13 +1111,28 @@ async function viewPaid(slug) {
 const toCents = (v) => { const n = parseFloat(String(v).replace(',', '.')); return isFinite(n) && n > 0 ? Math.round(n * 100) : null; };
 /* ---------- App keys: API keys an app needs (JoolzTV's TMDB key), saved once here and never shown again ---------- */
 async function viewKeys() {
-  const j = await acctFetch('/admin/app-keys');
+  const j = await acctFetch('/admin/app-keys'), sf = await acctFetch('/admin/status-feed').catch(() => null);
   const chip = (ok, t) => `<span class="chip ${ok ? 'ok' : 'warn'}">${esc(t)}</span>`;
   main().innerHTML = `<h1>App keys</h1><p class="sub">Some apps need a key of your own, for example JoolzTV's TMDB key. Paste it here once. It is stored in PocketBase where only the admin can read it, the app asks for it when it needs it, and it is never shown again or kept in the app's files. Everyone who installs the app enters their own.</p>
+    ${sf ? `<div class="card" id="sfcard"><div class="row spread"><h2>Status feed</h2>${chip(sf.configured, sf.configured ? 'On' : 'Off')}</div>
+      <p class="muted small">Lets apps such as App Updater and Services Manager publish a cleaned status file (no passwords or tokens) to a GitHub repo, so you and Claude can see how they are doing without opening anything to the internet. Use a fine-grained GitHub token that can only write to that one repo.</p>
+      <form class="kv" id="sfform"><label>Repo<input name="repo" value="${esc(sf.repo)}" autocomplete="off" autocapitalize="none" placeholder="owner/name"></label>
+      <label>Folder<input name="dir" value="${esc(sf.dir)}" autocomplete="off" autocapitalize="none"></label>
+      <label>Branch (blank for the default)<input name="branch" value="${esc(sf.branch)}" autocomplete="off" autocapitalize="none"></label>
+      <label>GitHub token<input name="token" type="password" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="${sf.hasToken ? 'Saved. Paste a new one to replace it.' : 'github_pat_…'}"></label>
+      <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn primary">Save</button><button type="button" class="btn" id="sftest">Test</button>${sf.hasToken ? '<button type="button" class="btn" id="sfoff">Turn off</button>' : ''}</div></form>
+      ${sf.feeds.length ? `<p class="muted small">${sf.feeds.map((f) => esc(f.app) + ': ' + (f.ok ? 'sent ' + new Date(f.at).toLocaleTimeString() : 'failed (' + esc(f.error) + ')')).join(' · ')}</p>` : ''}</div>` : ''}
     ${j.apps.length ? j.apps.map((a) => a.keys.map((k) => `<div class="card" data-app="${esc(a.slug)}" data-name="${esc(k.name)}"><div class="row spread"><h2>${esc(a.name)}: ${esc(k.label)}</h2>${chip(k.has, k.has ? 'Saved' : 'Not set')}</div>
       <p class="muted small">${esc(k.help)} ${k.link ? `<a href="${esc(k.link)}" target="_blank" rel="noopener">Get a key</a>` : ''}</p>
       <form class="kv keyform"><label>${esc(k.label)}<input name="value" type="password" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="${k.has ? 'Saved. Paste a new one to replace it.' : 'Paste the key here'}"></label>
       <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn primary">Save</button>${k.has ? '<button type="button" class="btn keyclear">Remove</button>' : ''}</div></form></div>`).join('')).join('') : '<div class="card"><p class="muted">None of your installed apps needs a key of its own yet.</p></div>'}`;
+  const sfg = guard(async (body, msg) => { const r = await acctFetch('/admin/status-feed', body); toast(r.message || msg); viewKeys(); });
+  const sff = main().querySelector('#sfform');
+  if (sff) {
+    sff.onsubmit = (e) => { e.preventDefault(); const f = sff.elements; sfg({ repo: f.repo.value, dir: f.dir.value, branch: f.branch.value, token: f.token.value }, 'Saved'); };
+    main().querySelector('#sftest').onclick = () => sfg({ action: 'test' }, 'Test sent');
+    const off = main().querySelector('#sfoff'); if (off) off.onclick = () => { if (confirm('Turn the status feed off and forget the token?')) sfg({ action: 'clear' }, 'Turned off'); };
+  }
   const send = guard(async (card, value, msg) => { await acctFetch('/admin/app-keys', { app: card.dataset.app, name: card.dataset.name, value }); toast(msg); viewKeys(); });
   main().querySelectorAll('.keyform').forEach((form) => {
     const card = form.closest('[data-app]');
