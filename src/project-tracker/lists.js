@@ -76,14 +76,15 @@ function move(list, id, dir, now = new Date().toISOString()) {
   [sib[i], sib[j]] = [sib[j], sib[i]];
   return sib.map((x, n) => ({ ...x, rank: (n + 1) * 10 })).filter(x => l.projects.find(o => o.id === x.id).rank !== x.rank);
 }
-// The status shown: a Queued or Hiatus project worked on in the last 3 days counts as Active. Auto is on for every project unless the global
+// The status shown: a Queued or Hiatus project worked on in the last N days (default 3, adjustable 1 to 30 in Settings) counts as Active. Auto is on for every project unless the global
 // switch is off (autoGlobal=false) or the project says otherwise (auto "on"/"off"). If someone set the status by hand it stays until work happens
 // on a LATER day than that change (so earlier work does not undo it); pressing "worked today" clears the hand-set mark.
-function effective(p, worked, now = Date.now(), autoGlobal = true) {
+function effective(p, worked, now = Date.now(), autoGlobal = true, days = ACTIVE_DAYS) {
+  days = Number.isInteger(days) && days >= 1 && days <= 30 ? days : ACTIVE_DAYS;
   const last = [p.lastWorked, worked].filter(isDay).sort().pop();
-  const recent = !!last && now - Date.parse(last + "T23:59:59Z") <= ACTIVE_DAYS * DAY && now >= Date.parse(last + "T00:00:00Z") - DAY;
+  const recent = !!last && now - Date.parse(last + "T23:59:59Z") <= days * DAY && now >= Date.parse(last + "T00:00:00Z") - DAY;
   const on = p.auto === "on" || (p.auto !== "off" && autoGlobal !== false);
-  const later = !p.statusAt || (!!last && last > String(p.statusAt).slice(0, 10));
+  const later = !!p.statusAt && !!last && last > String(p.statusAt).slice(0, 10);   // no "status set on" date = set by hand long ago: work alone does not move it
   const auto = on && recent && later && (p.status === "maintenance" || p.status === "hiatus");
   return { status: auto ? "active" : p.status, auto, last: last || "" };
 }

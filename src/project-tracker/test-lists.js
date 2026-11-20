@@ -14,16 +14,20 @@ assert.deepStrictEqual(L.move(l, "a", -1, NOW), []); assert.deepStrictEqual(L.mo
 l = L.applyOps(l, { upsert: m }, NOW); assert.deepStrictEqual(l.projects.filter(p => p.category === "X").sort((a, b) => a.rank - b.rank).map(p => p.id), ["a", "c", "b"]);
 // three-day rule
 const day = d => new Date(T - d * 86400e3).toISOString().slice(0, 10);
-assert.strictEqual(L.effective({ status: "maintenance", pinned: false, lastWorked: day(2) }, "", T).status, "active");
-assert.strictEqual(L.effective({ status: "maintenance", pinned: false, lastWorked: day(2) }, "", T).auto, true);
+assert.strictEqual(L.effective({ status: "maintenance", statusAt: day(10), lastWorked: day(2) }, "", T).status, "active");
+assert.strictEqual(L.effective({ status: "maintenance", statusAt: day(10), lastWorked: day(2) }, "", T).auto, true);
 assert.strictEqual(L.effective({ status: "maintenance", pinned: false, lastWorked: day(5) }, "", T).status, "maintenance");
-assert.strictEqual(L.effective({ status: "hiatus", pinned: false, lastWorked: day(9) }, day(1), T).status, "active");   // a recent commit counts too
+assert.strictEqual(L.effective({ status: "hiatus", statusAt: day(10), lastWorked: day(9) }, day(1), T).status, "active");   // a recent commit counts too
+assert.strictEqual(L.effective({ status: "maintenance", lastWorked: day(0) }, day(0), T).status, "maintenance");   // never stamped: recent commits alone do not move it
+assert.strictEqual(L.effective({ status: "maintenance", statusAt: day(20), lastWorked: day(6) }, "", T, true, 7).status, "active");   // window set to 7 days
+assert.strictEqual(L.effective({ status: "maintenance", statusAt: day(20), lastWorked: day(6) }, "", T, true, 3).status, "maintenance");
+assert.strictEqual(L.effective({ status: "maintenance", statusAt: day(20), lastWorked: day(6) }, "", T, true, 999).status, "maintenance");   // out-of-range falls back to 3
 const hand = new Date(T - 2 * 864e5).toISOString();   // status set by hand two days ago
 assert.strictEqual(L.effective({ status: "hiatus", statusAt: hand, lastWorked: day(3) }, "", T).status, "hiatus");   // earlier work does not undo it
 assert.strictEqual(L.effective({ status: "hiatus", statusAt: hand, lastWorked: day(0) }, "", T).status, "active");   // new work on a later day does
 assert.strictEqual(L.effective({ status: "hiatus", auto: "off", lastWorked: day(0) }, "", T).status, "hiatus");      // off for this project
 assert.strictEqual(L.effective({ status: "hiatus", lastWorked: day(0) }, "", T, false).status, "hiatus");            // off globally
-assert.strictEqual(L.effective({ status: "hiatus", auto: "on", lastWorked: day(0) }, "", T, false).status, "active"); // on for this project despite global off
+assert.strictEqual(L.effective({ status: "hiatus", auto: "on", statusAt: day(10), lastWorked: day(0) }, "", T, false).status, "active"); // on for this project despite global off
 const mig = L.cleanProject({ id: "x", name: "X", note: "old note", pinned: true, updatedAt: hand }, NOW);
 assert.deepStrictEqual(mig.notes.map(n => n.text), ["old note"]); assert.strictEqual(mig.statusAt, hand); assert.ok(!("note" in mig) && !("pinned" in mig));
 assert.deepStrictEqual(L.cleanProject({ id: "y", name: "Y", notes: [{ id: "a", text: "t", state: "review" }, { text: "" }, { id: "a", text: "u", state: "zzz" }] }, NOW).notes.map(n => n.id + n.state), ["areview", "axopen"]);

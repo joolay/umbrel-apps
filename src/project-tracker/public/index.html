@@ -63,8 +63,8 @@
 .bub.sys{justify-self:center;font-size:.78rem;color:var(--muted);background:none}
 .prop{border:1px dashed var(--accent);border-radius:12px;padding:8px 10px;margin:6px 0;display:grid;gap:6px;font-size:.86rem}
 .sect{border-top:1px solid var(--glass-line);margin-top:12px;padding-top:6px}
-.switch{display:flex;gap:10px;align-items:flex-start;margin:10px 0}
-.switch input{margin-top:3px}
+dialog label.switch{display:flex;flex-direction:row;gap:10px;align-items:flex-start;margin:10px 0;color:inherit}
+dialog label.switch input{margin-top:2px;flex:0 0 auto}
 .banner{margin:0 0 10px;padding:10px 14px;border-radius:var(--r-sm);background:var(--glass-strong);border:1px solid var(--glass-line);font-size:.9rem}
 .empty{text-align:center;color:var(--muted);padding:34px 10px}
 dialog{border:1px solid var(--glass-line);border-radius:var(--r);background:var(--solid);color:var(--text);padding:18px;max-width:420px;width:calc(100% - 28px);box-shadow:var(--shadow)}
@@ -97,7 +97,7 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
   "use strict";
   var TOKEN = "gd.token", ST = { active: ["Active", "#2563eb"], maintenance: ["Queued", "#d97706"], hiatus: ["Hiatus", "#7c3aed"], closed: ["Closed", "#6b7280"] };
   var $ = function (s) { return document.querySelector(s); };
-  var S = { lists: [], key: "", sha: "", list: null, worked: {}, readOnly: false, view: "all", collapsed: {}, user: null, busy: 0, lastOk: 0, err: "", auto: true, owner: false, home: "", chat: "claude" };
+  var S = { lists: [], key: "", sha: "", list: null, worked: {}, readOnly: false, view: "all", collapsed: {}, user: null, busy: 0, lastOk: 0, err: "", auto: true, days: 3, owner: false, home: "", chat: "claude" };
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); };
   function tok() { try { return sessionStorage.getItem(TOKEN) || localStorage.getItem(TOKEN) || ""; } catch (e) { return ""; } }
   function api(path, method, body) {
@@ -113,8 +113,8 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
   var DAY = 864e5;
   function effective(p) {
     var w = S.worked[p.id] || "", last = [p.lastWorked, w].filter(Boolean).sort().pop() || "", now = Date.now();
-    var recent = !!last && now - Date.parse(last + "T23:59:59Z") <= 3 * DAY, on = p.auto === "on" || (p.auto !== "off" && S.auto !== false);
-    var later = !p.statusAt || (!!last && last > String(p.statusAt).slice(0, 10));
+    var recent = !!last && now - Date.parse(last + "T23:59:59Z") <= S.days * DAY, on = p.auto === "on" || (p.auto !== "off" && S.auto !== false);
+    var later = !!p.statusAt && !!last && last > String(p.statusAt).slice(0, 10);
     var auto = on && recent && later && (p.status === "maintenance" || p.status === "hiatus");
     return { status: auto ? "active" : p.status, auto: auto, last: last };
   }
@@ -122,11 +122,11 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
   var daysLeft = function (p) { return Math.max(0, 30 - Math.floor((Date.now() - Date.parse(p.binnedAt || new Date().toISOString())) / DAY)); };
 
   /* ---------- loading and live polling ---------- */
-  function savePrefs() { clearTimeout(savePrefs.h); savePrefs.h = setTimeout(function () { api("api/prefs", "PUT", { list: S.key, view: S.view, auto: S.auto, chat: S.chat, collapsed: Object.keys(S.collapsed).filter(function (k) { return S.collapsed[k]; }) }).catch(function () {}); }, 600); }
+  function savePrefs() { clearTimeout(savePrefs.h); savePrefs.h = setTimeout(function () { api("api/prefs", "PUT", { list: S.key, view: S.view, auto: S.auto, days: S.days, chat: S.chat, collapsed: Object.keys(S.collapsed).filter(function (k) { return S.collapsed[k]; }) }).catch(function () {}); }, 600); }
   function loadLists(keep) {
     return api("api/lists").then(function (j) {
       S.lists = j.lists; S.owner = !!j.owner; var pr = (S.user.prefs || {})["project-tracker"] || {};
-      if (!S.key) { S.key = pr.list && j.lists.some(function (l) { return l.key === pr.list; }) ? pr.list : j.lists[0].key; if (pr.view) S.view = pr.view; if (typeof pr.auto === "boolean") S.auto = pr.auto; if (pr.chat === "builtin") S.chat = "builtin"; (pr.collapsed || []).forEach(function (c) { S.collapsed[c] = true; }); }
+      if (!S.key) { S.key = pr.list && j.lists.some(function (l) { return l.key === pr.list; }) ? pr.list : j.lists[0].key; if (pr.view) S.view = pr.view; if (typeof pr.auto === "boolean") S.auto = pr.auto; if (pr.days >= 1 && pr.days <= 30) S.days = pr.days; if (pr.chat === "builtin") S.chat = "builtin"; (pr.collapsed || []).forEach(function (c) { S.collapsed[c] = true; }); }
       if (!j.lists.some(function (l) { return l.key === S.key; })) S.key = j.lists[0].key;
       $("#lists").innerHTML = j.lists.map(function (l) { return '<option value="' + esc(l.key) + '"' + (l.key === S.key ? " selected" : "") + ">" + esc(l.name) + " (" + l.count + ")</option>"; }).join("");
     });
@@ -223,10 +223,10 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
     dialog("<h2>" + (isNew ? "New project" : "Edit project") + "</h2><form id='f'><label>Name<input name='name' value='" + esc(p.name) + "' required maxlength='120'></label>" +
       "<label>Category<input name='category' list='cats' value='" + esc(p.category) + "' maxlength='60'><datalist id='cats'>" + S.list.categories.map(function (c) { return "<option value='" + esc(c) + "'>"; }).join("") + "</datalist></label>" +
       "<label>What it is<textarea name='desc' rows='2' maxlength='600'>" + esc(p.desc) + "</textarea></label>" +
-      "<label>3-day rule for this project<select name='auto'><option value=''" + (!p.auto ? " selected" : "") + ">Follow the global setting</option><option value='on'" + (p.auto === "on" ? " selected" : "") + ">Always on</option><option value='off'" + (p.auto === "off" ? " selected" : "") + ">Off for this project</option></select></label>" +
+      "<label>Auto-Active rule for this project<select name='auto'><option value=''" + (!p.auto ? " selected" : "") + ">Follow the global setting</option><option value='on'" + (p.auto === "on" ? " selected" : "") + ">Always on</option><option value='off'" + (p.auto === "off" ? " selected" : "") + ">Off for this project</option></select></label>" +
       (p.status === "closed" ? "<label>Closed as<select name='closedas'><option value='completed'" + (p.closedAs !== "abandoned" ? " selected" : "") + ">Completed (archive it)</option><option value='abandoned'" + (p.closedAs === "abandoned" ? " selected" : "") + ">Abandoned (delete it)</option></select></label>" : "") +
       (isNew ? "<label>Status<select name='status'>" + Object.keys(ST).map(function (k) { return "<option value='" + k + "'>" + ST[k][0] + "</option>"; }).join("") + "</select></label>" : "") +
-      "<label>Repo folders (optional, one per line as owner/repo:path). Commits there count as work for the 3-day rule.<textarea name='paths' rows='2'>" + esc(paths) + "</textarea></label>" +
+      "<label>Repo folders (optional, one per line as owner/repo:path). Commits there count as work for the auto-Active rule.<textarea name='paths' rows='2'>" + esc(paths) + "</textarea></label>" +
       "<div class='row'><button type='button' class='btn' data-close>Cancel</button><button class='btn primary'>Save</button></div></form>", function (d) {
       d.querySelector("#f").onsubmit = function (ev) {
         ev.preventDefault(); var f = ev.target.elements, pa = f.paths.value.split("\n").map(function (l) { var i = l.indexOf(":"); return i > 0 ? { repo: l.slice(0, i).trim(), path: l.slice(i + 1).trim() } : null; }).filter(Boolean);
@@ -291,11 +291,12 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
     });
   }
   function settingsDlg() {
-    dialog("<h2>Settings</h2><label class='switch'><input type='checkbox' id='au'" + (S.auto !== false ? " checked" : "") + "><span><b>3-day rule for all projects</b><br><span class='muted small'>A Queued or Hiatus project worked on in the last 3 days shows as Active. You can turn it off for a single project in its Edit dialog. A status you set by hand stays until you work on the project on a later day.</span></span></label>" +
+    dialog("<h2>Settings</h2><label class='switch'><input type='checkbox' id='au'" + (S.auto !== false ? " checked" : "") + "><span><b>Auto-Active rule for all projects</b><br><span class='muted small'>A Queued or Hiatus project worked on within the window below shows as Active. You can turn it off for a single project in its Edit dialog. A status you set by hand stays until you work on the project on a later day.</span></span></label><label>Days of work that count<input type='number' id='dy' min='1' max='30' step='1' value='" + S.days + "'></label>" +
       "<div class='sect'><b>Chat button on a project</b>" +
       "<label class='switch'><input type='radio' name='chat' value='claude'" + (S.chat !== "builtin" ? " checked" : "") + "><span><b>Claude app</b><br><span class='muted small'>Opens a new chat in Claude with the project and its notes filled in. Uses your Claude subscription.</span></span></label>" +
       "<label class='switch'><input type='radio' name='chat' value='builtin'" + (S.chat === "builtin" ? " checked" : "") + "><span><b>Built-in chat</b><br><span class='muted small'>Chats here with the AI key saved on your JoolzApp account. It can read the project's repo folders and suggest changes; nothing is saved until you press Apply.</span></span></label><p class='muted small' id='aik'>Checking your AI key…</p></div>" +
       "<div class='sheet'><button class='btn' id='nl'>New private list</button>" + (S.owner ? "<button class='btn' id='cn'>GitHub connection</button>" : "") + "</div><p class='muted small'>Tip: tap a project for its notes. Press and hold it to edit or remove.</p><div class='row'><button class='btn primary' data-close>Done</button></div>", function (d) {
+      d.querySelector("#dy").onchange = function () { var v = Math.round(+this.value); if (!(v >= 1 && v <= 30)) { this.value = S.days; return; } S.days = v; this.value = v; savePrefs(); render(); };
       d.querySelector("#au").onchange = function () { S.auto = this.checked; savePrefs(); render(); };
       d.querySelectorAll("input[name=chat]").forEach(function (r) { r.onchange = function () { S.chat = r.value; savePrefs(); }; });
       api("api/ai/status").then(function (j) { var al = S.home ? " <a href='" + esc(S.home) + "#/me' target='_blank' rel='noopener'>Manage AI keys</a>" : ""; d.querySelector("#aik").innerHTML = j.ready ? "Built-in chat uses <b>" + esc(j.key.provider) + " · " + esc(j.key.model) + "</b> (key ends …" + esc(j.key.last4) + "). " + al : "No AI key is set for Project Tracker yet. Add one in Portal Admin > My settings > AI." + al; }).catch(function () { d.querySelector("#aik").textContent = ""; });

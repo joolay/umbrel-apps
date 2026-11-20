@@ -238,7 +238,7 @@ async function aiChat(req, res, user) {
   const conf = await loadGhConfig(false), prefs = (user.portal && user.portal.prefs && user.portal.prefs["project-tracker"]) || {};
   try {
     const worked = (await workedMap(list))[project.id] || "";
-    const out = await helper.run({ ai: aiClient, cfg, list, project, worked, autoGlobal: prefs.auto !== false, ghToken: conf.token, ghRepo: conf.repo }, Array.isArray(b.messages) ? b.messages : []);
+    const out = await helper.run({ ai: aiClient, cfg, list, project, worked, autoGlobal: prefs.auto !== false, days: prefs.days, ghToken: conf.token, ghRepo: conf.repo }, Array.isArray(b.messages) ? b.messages : []);
     return send(res, 200, { ...out, model: cfg.model });
   } catch (e) {
     if (e instanceof makeAi.AiError) return send(res, e.status, { code: e.code, message: e.message });
@@ -300,6 +300,7 @@ const server = http.createServer(async (req, res) => {
       if (["all", "active", "maintenance", "hiatus", "closed", "archive", "bin"].includes(b.view)) next.view = b.view;
       if (b.chat === "claude" || b.chat === "builtin") next.chat = b.chat;   // how the Chat button works: the Claude app, or the built-in helper
       if (typeof b.auto === "boolean") next.auto = b.auto;   // global switch for the 3-day rule (default on)
+      if (Number.isInteger(b.days) && b.days >= 1 && b.days <= 30) next.days = b.days;   // length of the 3-day rule
       if (Array.isArray(b.collapsed)) next.collapsed = b.collapsed.map(x => L.str(x, 60)).slice(0, 60);
       await pb.setAppPref(user.id, next); tokenCache.clear(); return send(res, 200, { ok: true });
     }

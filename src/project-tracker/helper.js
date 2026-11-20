@@ -4,7 +4,7 @@
 const L = require("./lists");
 
 const MAX_TURNS = 6, MAX_FILE = 24000, MAX_DIR = 80, MAX_HISTORY = 24;
-const STATUS_HELP = "Active = worked on regularly (within about 3 days). Queued (stored as maintenance) = needs slight changes soon: glitches, faulty features, theme upgrades, open questions. Hiatus = stopped for now or good enough, more planned later. Closed = no more work planned (completed → archive, abandoned → delete).";
+const STATUS_HELP = "Active = worked on regularly (within the last few days). Queued (stored as maintenance) = needs slight changes soon: glitches, faulty features, theme upgrades, open questions. Hiatus = stopped for now or good enough, more planned later. Closed = no more work planned (completed → archive, abandoned → delete).";
 
 const TOOLS = [
   { name: "get_project", description: "The project you are talking about: details, status, notes (with ids and states), repo folders, last worked date.", schema: { type: "object", properties: {} } },
@@ -34,7 +34,7 @@ const okPath = s => typeof s === "string" && s.length <= 300 && !s.split("/").in
 async function run(ctx, history) {
   const { ai, cfg, list, project } = ctx, fetchImpl = ctx.fetchImpl || fetch, proposals = [];
   const allowed = new Set((project.paths || []).map(x => x.repo.toLowerCase()));
-  const eff = L.effective(project, ctx.worked || "", Date.now(), ctx.autoGlobal);
+  const eff = L.effective(project, ctx.worked || "", Date.now(), ctx.autoGlobal, ctx.days);
   async function gh(repo, p) {
     const headers = { accept: "application/vnd.github+json", "user-agent": "joolay-project-tracker" };
     if (ctx.ghToken && ctx.ghRepo && repo.toLowerCase() === ctx.ghRepo.toLowerCase()) headers.authorization = "Bearer " + ctx.ghToken;

@@ -2,7 +2,7 @@ manifestVersion: 1
 id: joolay-project-tracker
 category: developer
 name: Project Tracker
-version: "1.2.0"
+version: "1.2.1"
 tagline: Every project, its status and its priority in one place
 description: >-
   Project Tracker keeps lists of projects with a status (Active, Queued, Hiatus or Closed), a priority order you set with arrows,
@@ -20,7 +20,7 @@ gallery: []
 path: ""
 defaultUsername: ""
 defaultPassword: ""
-releaseNotes: "Changes: Each project now has a Chat button. In Settings choose Chat with Claude (opens a new chat in the Claude app with the project and its notes filled in) or Built-in chat (uses the AI key saved on your JoolzApp account: it can read the project's repo folders and suggest note and status changes that only happen when you press Apply). Needs Portal Admin 0.32.0."
+releaseNotes: "Changes: The auto-Active rule now has an adjustable window in Settings (1 to 30 days, default 3). Fix: Queued and Hiatus projects no longer jump to Active just because their code folders had a recent commit; a project only moves to Active automatically after you have set its status once and then work on it on a later day."
 submitter: joolay
 submission: https://github.com/joolay/umbrel-apps
 icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-project-tracker/icon.svg

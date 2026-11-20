@@ -73,6 +73,7 @@ const call = (method, p, body, tok = "admin") => new Promise((ok, bad) => { cons
   r = await call("POST", "/api/ai/chat", { list: "appdev", project: "b", messages: [{ role: "user", text: "hi" }] }, "aikey"); assert.strictEqual(r.status, 200, JSON.stringify(r.body)); assert.strictEqual(r.body.text, "Hi from the helper");
   assert.ok(global.lastAi.system.includes('"B"') || global.lastAi.system.includes("B"), "the project is named in the prompt"); assert.strictEqual(global.lastAi.model, "claude-x");
   r = await call("POST", "/api/ai/chat", { list: "appdev", project: "zzz", messages: [{ role: "user", text: "hi" }] }, "aikey"); assert.strictEqual(r.status, 404);
-  await call("PUT", "/api/prefs", { chat: "builtin" }); assert.strictEqual(prefs[prefs.length - 1][1].chat, "builtin"); await call("PUT", "/api/prefs", { chat: "bogus" }); assert.strictEqual(prefs[prefs.length - 1][1].chat, undefined, "unknown modes are ignored");
+  await call("PUT", "/api/prefs", { chat: "builtin" }); assert.strictEqual(prefs[prefs.length - 1][1].chat, "builtin"); await call("PUT", "/api/prefs", { days: 7 }); assert.strictEqual(prefs[prefs.length - 1][1].days, 7); await call("PUT", "/api/prefs", { days: 99 }); assert.strictEqual(prefs[prefs.length - 1][1].days, undefined, "out-of-range days ignored");
+  await call("PUT", "/api/prefs", { chat: "bogus" }); assert.strictEqual(prefs[prefs.length - 1][1].chat, undefined, "unknown modes are ignored");
   console.log("server ok"); process.exit(0);
 })().catch(e => { console.error(e); process.exit(1); });
