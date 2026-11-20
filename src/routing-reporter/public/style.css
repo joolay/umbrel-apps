@@ -34,3 +34,17 @@ dialog .actions{display:flex;gap:10px;justify-content:flex-end;margin-top:14px}
 .ic svg{width:15px;height:15px;fill:none;stroke:#fff;stroke-width:2.8;stroke-linecap:round;stroke-linejoin:round}
 .ic.up{background:#16a34a}.ic.down{background:#dc2626}.ic.checking{background:#d97706}.ic.ign{background:#6b7280}
 .dr b{font-size:.78rem}
+
+.clash{display:grid;gap:6px}.clash.bad{border-color:#dc2626}.clash.ok b{color:#16a34a}.clash.bad>b{color:#dc2626}
+.cl{padding:8px 0 2px;border-top:1px solid var(--glass-line);font-size:.8rem;display:grid;gap:3px}.cl .pt{font-weight:700;color:var(--accent)}.cl .chg{color:var(--text)}
+
+/* iPad and other wide screens: use the width, two cards side by side, larger text and touch targets */
+@media (min-width:700px){
+  main{max-width:1240px;padding:16px 22px 70px}
+  .pair{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start}.pair .card{margin:0}
+  table{font-size:.92rem}thead th{font-size:.68rem;letter-spacing:.03em}tbody th b{font-size:.95rem}
+  th,td{padding:10px 6px}.ic{width:28px;height:28px}.ic svg{width:18px;height:18px}
+  .dr{font-size:.88rem}.dr .u,.dr .small,.det .small{font-size:.8rem}.lnk{font-size:.85rem}
+  .sum b{font-size:1.25rem}.clash{padding:16px 20px}.cl{font-size:.92rem}
+}
+@media (min-width:700px) and (max-width:1000px){thead th:first-child,tbody th{width:34%}}
