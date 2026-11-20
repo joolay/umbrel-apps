@@ -70,7 +70,7 @@ main{margin:0 auto;padding-bottom:calc(120px + var(--safe-b))}
 .ic.drag-clone .ic-w{animation:none}
 .ic.drag-clone .ic-tile{transform:scale(1.14)}
 
-.dock{position:fixed;z-index:15;left:50%;bottom:calc(10px + var(--safe-b));transform:translateX(-50%);width:min(calc(100vw - 20px),420px);min-height:84px;
+.dock{position:fixed;z-index:15;left:0;right:0;margin:0 auto;bottom:calc(10px + var(--safe-b));width:min(calc(100% - 20px),420px);min-height:84px;
   display:flex;justify-content:center;align-items:center;gap:14px;padding:11px 14px;border-radius:30px;
   background:var(--glass);-webkit-backdrop-filter:blur(26px) saturate(180%);backdrop-filter:blur(26px) saturate(180%);
   border:1px solid var(--glass-line);box-shadow:var(--shadow)}
