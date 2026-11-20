@@ -65,3 +65,8 @@ Every app uses the same floating, frosted bar: the app's title on the left, the 
 - Theme button: `<button class="tb-btn" data-theme-toggle><svg class="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z"/></svg><svg class="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6 7 7M17 17l1.4 1.4M5.6 18.4 7 17M17 7l1.4-1.4"/></svg></button>`
 - The choice is kept on the device. Apps that keep preferences on the person's JoolzApp account listen for the `jz-theme` event and save it as `pref.theme`, and call `JZTheme.set(value, true)` on load with the saved value.
 - Adopted so far: the JoolzApp Portal. Other apps move over one at a time, like the Glass theme itself.
+
+## Install icon (top bar)
+Copy `install-help.js` (from `src/portal-admin/public/`) and `installbtn.js` next to the app's `index.html`, add `<button class="ic" data-pwa-install hidden aria-label="Install app">` to the bar
+and load both scripts at the end of `<body>` (`install-help.js` first). The icon shows only in a normal browser tab on https, never inside the installed app. Chromium browsers install in one tap;
+iPhone, iPad, Safari and Firefox get a sheet with the steps for that device. Project Tracker is the first app to use it.
