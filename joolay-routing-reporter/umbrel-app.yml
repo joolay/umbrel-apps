@@ -2,7 +2,7 @@ manifestVersion: 1
 id: joolay-routing-reporter
 category: developer
 name: Routing Reporter
-version: "1.0.0"
+version: "1.1.0"
 tagline: Checks every app's LAN, Tailscale and Public routes and tells Portal Admin
 description: >-
   Finds every app installed on this Umbrel and checks, every few minutes, that it answers on the home network (LAN), on your Tailscale address and,
@@ -20,7 +20,7 @@ gallery: []
 path: ""
 defaultUsername: ""
 defaultPassword: ""
-releaseNotes: "First release. Checks the LAN, Tailscale and Public routes of every installed app and reports to Portal Admin (needs Portal Admin 0.35.0 for the JoolzApp apps page)."
+releaseNotes: "Routes now sit in columns to save space, the top bar stays in place when scrolling, a summary names the apps that need attention, and an Ignore button hides a route that is not meant to work (for example an app not on Tailscale)."
 submitter: joolay
 submission: https://github.com/joolay/umbrel-apps
 icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-routing-reporter/icon.svg

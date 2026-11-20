@@ -9,14 +9,17 @@ main{max-width:980px;margin:0 auto;padding:12px 14px 60px}
 .card{padding:14px 16px;margin:12px 0}
 .sum{display:flex;flex-wrap:wrap;gap:6px 18px;align-items:center}.sum b{font-size:1.1rem}
 .warn{border-color:#f59e0b}.group h2{font-size:.8rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:22px 4px 6px}
-.app{display:grid;gap:8px}.app .t{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap}.app .t b{font-size:1.02rem}
-.rts{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:8px}
-.rt{border:1px solid var(--glass-line);border-radius:14px;padding:8px 11px;background:var(--glass)}
-.rt .h{display:flex;justify-content:space-between;gap:8px;font-weight:600;font-size:.88rem}.rt .u{font-size:.75rem;color:var(--muted);word-break:break-all;margin-top:2px}
-.rt .e{font-size:.8rem;margin-top:3px}
+html,body{overflow-x:clip}
+.attn{flex-basis:100%;font-size:.9rem;color:#dc2626}
+.tw{padding:4px 6px;overflow-x:auto}
+table{width:100%;border-collapse:collapse;display:table;font-size:.85rem}
+th,td{padding:7px 8px;text-align:left;vertical-align:top;border-bottom:1px solid var(--glass-line)}tr:last-child>*{border-bottom:0}
+thead th{font-size:.72rem;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);white-space:nowrap}
+tbody th{font-weight:400;min-width:130px}tbody th b{display:block;font-size:.95rem}
+td{min-width:92px}td.na{color:var(--muted)}td .e{font-size:.72rem;color:#dc2626;margin-top:3px;max-width:190px}
 .chip{border-radius:999px;padding:1px 9px;font-size:.75rem;font-weight:700;color:#fff;background:#6b7280;white-space:nowrap}
-.chip.up{background:#16a34a}.chip.down{background:#dc2626}.chip.checking{background:#d97706}
-.rt.down{border-color:#dc2626}.rt.down .e{color:#dc2626}
+.chip.up{background:#16a34a}.chip.down{background:#dc2626}.chip.checking{background:#d97706}.chip.ign{background:#6b7280}
+.lnk{display:block;margin-top:4px;padding:0;background:none;border:0;color:var(--accent);font:inherit;font-size:.75rem;text-decoration:underline;cursor:pointer}
 .muted{color:var(--muted)}.small{font-size:.85rem}.foot{margin:24px 4px}
 dialog label{display:grid;gap:4px;margin:10px 0;font-size:.85rem;color:var(--muted)}dialog input{width:100%}
 dialog .actions{display:flex;gap:10px;justify-content:flex-end;margin-top:14px}

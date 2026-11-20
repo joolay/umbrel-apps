@@ -2,7 +2,7 @@ manifestVersion: 1
 id: joolay-portal
 category: social
 name: JoolzApp Portal
-version: "0.35.0"
+version: "0.35.1"
 tagline: The JoolzApp home screen for everyone in the family
 description: >-
   The home screen people use for every JoolzApp app: sign in or create an account, open your apps, arrange icons and folders,
@@ -20,7 +20,7 @@ gallery: []
 path: ""
 defaultUsername: ""
 defaultPassword: ""
-releaseNotes: "New JoolzApp apps page for admins: shows each app's LAN, Tailscale and Public route from the Routing Reporter app, with a Notify Claude button that flags a broken route (which app, which route) in the status feed. Fixes the Audit log on phones (one line per row, scrolls sideways). The status feed now only saves to GitHub when something really changed, instead of a commit every minute."
+releaseNotes: "JoolzApp apps page skips routes you ignored in Routing Reporter."
 submitter: joolay
 submission: https://github.com/joolay/umbrel-apps
 icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-portal/icon.svg

@@ -28,6 +28,10 @@ const makeRoutes = require('./routes'), makeAppApi = require('./appapi');
   R.publish('routing-reporter', report('down')); await R.notify('a', { appId: 'joolay-project-tracker', route: 'tailscale' }); await R.clear({ appId: 'joolay-project-tracker', route: 'tailscale' }); assert.strictEqual(R.view().alerts.length, 0);
   feedOn = false; await assert.rejects(() => R.notify('a', { appId: 'joolay-project-tracker', route: 'tailscale' }), (e) => e.status === 409 && /status feed/.test(e.message)); feedOn = true;
   t += 20 * 60e3; assert.strictEqual(R.view().stale, true, 'no report for 20 minutes is shown as stale');
+  // a route the owner ignores in Routing Reporter cannot be flagged, and clears an open flag
+  R.publish('routing-reporter', report('down')); await R.notify('a', { appId: 'joolay-project-tracker', route: 'tailscale' });
+  const ig = report('down'); ig.apps[0].routes[1].ignored = true; R.publish('routing-reporter', ig); await new Promise((r) => setTimeout(r, 20));
+  assert.strictEqual(R.view().alerts.length, 0); await assert.rejects(() => R.notify('a', { appId: 'joolay-project-tracker', route: 'tailscale' }), /answering now/);
   // it survives a restart
   assert.strictEqual(makeRoutes({ dataDir: dir, feed, now: () => t }).view().report.apps.length, 2);
   // hostile text is flattened and sizes are capped

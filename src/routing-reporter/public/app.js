@@ -12,25 +12,33 @@
       return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok) throw new Error(j.message || "Something went wrong (" + r.status + ")"); return j; });
     });
   }
-  function rtHtml(x) {
-    var st = x.state === "up" ? "up" : x.state === "down" ? "down" : "checking";
-    var label = st === "up" ? "OK " + (x.ms || 0) + " ms" : st === "down" ? "DOWN" : "Checking";
-    return '<div class="rt ' + st + '"><div class="h"><span>' + esc(x.label) + '</span><span class="chip ' + st + '">' + label + '</span></div><div class="u">' + esc(x.url) + "</div>" +
-      (st === "down" ? '<div class="e">' + esc(x.error) + " · since " + esc(when(x.since)) + "</div>" : st === "checking" ? '<div class="e muted">' + esc(x.error) + "</div>" : "") + "</div>";
+  var COLS = [["lan", "LAN"], ["tailscale", "Tailscale"], ["name", "Tailnet name"], ["public", "Public"]];
+  function cell(a, k) {
+    var x = a.routes.filter(function (r) { return r.key === k; })[0];
+    if (!x) return '<td class="na">–</td>';
+    var st = x.ignored ? "ign" : x.state === "up" ? "up" : x.state === "down" ? "down" : "checking";
+    var txt = x.ignored ? "Ignored" : st === "up" ? (x.ms || 0) + " ms" : st === "down" ? "Down" : "Checking";
+    var more = st === "down" ? '<div class="e">' + esc(x.error) + " · since " + esc(when(x.since)) + "</div>" : "";
+    var btn = x.ignored ? '<button class="lnk" data-i="0" data-a="' + esc(a.id) + '" data-r="' + k + '">Unignore</button>' : st === "down" ? '<button class="lnk" data-i="1" data-a="' + esc(a.id) + '" data-r="' + k + '">Ignore</button>' : "";
+    return '<td title="' + esc(x.url) + '"><span class="chip ' + st + '">' + txt + "</span>" + more + btn + "</td>";
   }
-  function appHtml(a) {
-    return '<div class="card app"><div class="t"><b>' + esc(a.name || a.id) + '</b><span class="muted small">' + esc(a.version ? "v" + a.version + " · " : "") + "port " + a.port + (a.published === "public" ? " · public" : a.published === "tailnet" ? " · tailnet only" : "") + '</span></div><div class="rts">' + a.routes.map(rtHtml).join("") + "</div></div>";
+  function tableHtml(apps) {
+    var cols = COLS.filter(function (c) { return apps.some(function (a) { return a.routes.some(function (r) { return r.key === c[0]; }); }); });
+    return '<div class="card tw"><table><thead><tr><th>App</th>' + cols.map(function (c) { return "<th>" + c[1] + "</th>"; }).join("") + "</tr></thead><tbody>" +
+      apps.map(function (a) { return '<tr><th scope="row"><b>' + esc(a.name || a.id) + '</b><span class="muted small">' + esc(a.version ? "v" + a.version + " · " : "") + "port " + a.port + (a.published === "public" ? " · public" : a.published === "tailnet" ? " · tailnet only" : "") + "</span></th>" + cols.map(function (c) { return cell(a, c[0]); }).join("") + "</tr>"; }).join("") + "</tbody></table></div>";
   }
+  function problems(r) { var out = []; r.apps.forEach(function (a) { var l = a.routes.filter(function (x) { return x.state === "down" && !x.ignored; }).map(function (x) { return x.label; }); if (l.length) out.push({ name: a.name || a.id, routes: l }); }); return out; }
   function render() {
-    var r = S.report, c = S.config, down = 0, total = 0;
-    if (r) r.apps.forEach(function (a) { a.routes.forEach(function (x) { total++; if (x.state === "down") down++; }); });
+    var r = S.report, c = S.config, down = 0, total = 0, ign = 0, pr = r ? problems(r) : [];
+    if (r) r.apps.forEach(function (a) { a.routes.forEach(function (x) { total++; if (x.ignored) ign++; else if (x.state === "down") down++; }); });
     var pt = S.portal || {}, pl = !pt.linked ? "Not linked to Portal Admin yet" : pt.ok === false ? "Report to Portal Admin failed: " + pt.error : pt.ok ? "Reported to Portal Admin " + ago(pt.at) : "Waiting for the first report";
-    $("#sum").innerHTML = r ? "<b>" + (down ? down + " route" + (down === 1 ? "" : "s") + " down" : "All routes up") + '</b><span class="muted small">' + total + " routes on " + r.apps.length + " apps</span><span class=\"muted small\">Checked " + esc(when(r.at)) + " (every " + r.intervalMin + " min)</span><span class=\"small\">" + esc(pl) + "</span>" : "<b>Checking…</b>";
+    $("#sum").innerHTML = r ? "<b>" + (down ? down + " route" + (down === 1 ? "" : "s") + " down" : "All routes up") + '</b><span class="muted small">' + total + " routes on " + r.apps.length + " apps" + (ign ? ", " + ign + " ignored" : "") + "</span><span class=\"muted small\">Checked " + esc(when(r.at)) + " (every " + r.intervalMin + " min)</span><span class=\"small\">" + esc(pl) + "</span>" + (pr.length ? '<div class="attn">Needs attention: ' + pr.map(function (p) { return "<b>" + esc(p.name) + "</b> (" + esc(p.routes.join(", ")) + ")"; }).join(" · ") + "</div>" : "") : "<b>Checking…</b>";
     var miss = []; if (!c.tailscaleIp) miss.push("your Tailscale address (100.x.y.z)"); if (!c.tailnet) miss.push("your tailnet name (…ts.net) for the Public and Tailscale name routes");
     $("#warn").hidden = !miss.length; $("#warn").innerHTML = miss.length ? "Add " + miss.join(" and ") + " in Settings to test those routes." : "";
     if (!r) { $("#list").innerHTML = ""; return; }
     var j = r.apps.filter(function (a) { return a.joolzapp; }), o = r.apps.filter(function (a) { return !a.joolzapp; });
-    $("#list").innerHTML = (j.length ? '<div class="group"><h2>JoolzApp apps</h2>' + j.map(appHtml).join("") + "</div>" : "") + (o.length ? '<div class="group"><h2>Other apps</h2>' + o.map(appHtml).join("") + "</div>" : "");
+    $("#list").innerHTML = (j.length ? '<div class="group"><h2>JoolzApp apps</h2>' + tableHtml(j) + "</div>" : "") + (o.length ? '<div class="group"><h2>Other apps</h2>' + tableHtml(o) + "</div>" : "");
+    $("#list").querySelectorAll(".lnk").forEach(function (b) { b.onclick = function () { call("POST", "api/ignore", { appId: b.dataset.a, route: b.dataset.r, ignore: b.dataset.i === "1" }).then(function (j) { S.report = j.report; S.portal = j.portal; render(); toast(b.dataset.i === "1" ? "Ignored" : "Back on"); }).catch(function (e) { toast(e.message); }); }; });
   }
   function load() { return call("GET", "api/state").then(function (j) { S.report = j.report; S.config = j.config; S.portal = j.portal; render(); }); }
   function runCheck() { var b = $("#check"); b.classList.add("spin"); return call("POST", "api/check").then(function (j) { S.report = j.report; S.portal = j.portal; render(); }).catch(function (e) { toast(e.message); }).then(function () { b.classList.remove("spin"); }); }

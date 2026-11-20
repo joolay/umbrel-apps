@@ -22,7 +22,7 @@ module.exports = function makeRoutes({ dataDir, feed, now = Date.now }) {
       config: { lanHost: str(r.config && r.config.lanHost, 100), tailscaleIp: str(r.config && r.config.tailscaleIp, 40), tailnet: str(r.config && r.config.tailnet, 100) },
       apps: r.apps.slice(0, 120).map((a) => ({
         id: str(a.id, 80), name: str(a.name, 80), version: str(a.version, 30), port: int(a.port), joolzapp: !!a.joolzapp, published: ['public', 'tailnet'].includes(a.published) ? a.published : '',
-        routes: (Array.isArray(a.routes) ? a.routes : []).filter((x) => x && KEYS.has(x.key)).slice(0, 6).map((x) => ({ key: x.key, label: str(x.label, 30), url: str(x.url, 200), state: STATES.has(x.state) ? x.state : 'checking', status: int(x.status), ms: int(x.ms), error: str(x.error, 160), since: int(x.since), checkedAt: int(x.checkedAt) })),
+        routes: (Array.isArray(a.routes) ? a.routes : []).filter((x) => x && KEYS.has(x.key)).slice(0, 6).map((x) => ({ key: x.key, label: str(x.label, 30), url: str(x.url, 200), state: STATES.has(x.state) ? x.state : 'checking', ignored: !!x.ignored, status: int(x.status), ms: int(x.ms), error: str(x.error, 160), since: int(x.since), checkedAt: int(x.checkedAt) })),
       })).filter((a) => a.id),
     };
   }
@@ -39,7 +39,7 @@ module.exports = function makeRoutes({ dataDir, feed, now = Date.now }) {
     if (app !== REPORTER) throw fail(403, 'Only Routing Reporter can send routes.');
     st.report = sanitize(report); st.receivedAt = now();
     let changed = false;
-    for (const a of st.alerts) if (!a.resolvedAt) { const { route } = find(a.appId, a.route); if (!route || route.state === 'up') { a.resolvedAt = new Date(now()).toISOString(); changed = true; } }
+    for (const a of st.alerts) if (!a.resolvedAt) { const { route } = find(a.appId, a.route); if (!route || route.state === 'up' || route.ignored) { a.resolvedAt = new Date(now()).toISOString(); changed = true; } }
     st.alerts = st.alerts.slice(-60); save();
     if (changed) push().catch((e) => console.error('routes: ' + e.message));        // tell Claude it has cleared
     return { ok: true };
@@ -51,7 +51,7 @@ module.exports = function makeRoutes({ dataDir, feed, now = Date.now }) {
   async function notify(by, b) {
     const { app, route } = find(str(b.appId, 80), str(b.route, 20));
     if (!app || !route) throw fail(404, 'That route is not in the latest report.');
-    if (route.state !== 'down') throw fail(400, 'That route is answering now, so there is nothing to flag.');
+    if (route.state !== 'down' || route.ignored) throw fail(400, 'That route is answering now, so there is nothing to flag.');
     const note = str(b.note, 200), at = new Date(now()).toISOString();
     const entry = { appId: app.id, name: app.name, route: route.key, label: route.label, url: route.url, error: route.error, status: route.status, downSince: new Date(route.since).toISOString(), note, reportedBy: str(by, 80), reportedAt: at };
     const i = st.alerts.findIndex((a) => a.appId === entry.appId && a.route === entry.route && !a.resolvedAt);

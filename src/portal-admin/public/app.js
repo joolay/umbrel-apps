@@ -1113,10 +1113,10 @@ const toCents = (v) => { const n = parseFloat(String(v).replace(',', '.')); retu
 async function viewJoolzApps() {
   const j = await acctFetch('/admin/routes'), r = j.report;
   const when = (ms) => ms ? new Date(ms).toLocaleString('en-ZA', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }) : '';
-  const flagged = new Set(j.alerts.map((a) => a.appId + '|' + a.route));
-  const rchip = (x) => `<span class="chip ${x.state === 'up' ? 'ok' : x.state === 'down' ? 'bad' : 'warn'}" title="${esc(x.url)}">${esc(x.label)}: ${x.state === 'up' ? 'up' : x.state === 'down' ? 'down' : 'checking'}</span>`;
+  const live = (x) => x.state === 'down' && !x.ignored, flagged = new Set(j.alerts.map((a) => a.appId + '|' + a.route));
+  const rchip = (x) => x.ignored ? `<span class="chip" title="${esc(x.url)}">${esc(x.label)}: ignored</span>` : `<span class="chip ${x.state === 'up' ? 'ok' : x.state === 'down' ? 'bad' : 'warn'}" title="${esc(x.url)}">${esc(x.label)}: ${x.state === 'up' ? 'up' : x.state === 'down' ? 'down' : 'checking'}</span>`;
   const card = (a) => {
-    const down = a.routes.filter((x) => x.state === 'down');
+    const down = a.routes.filter(live);
     return `<div class="card"><div class="row spread"><h2>${esc(a.name)}</h2><span class="muted small">${esc(a.version)}${a.port ? ' · port ' + a.port : ''}</span></div>
       <div class="row" style="gap:6px;flex-wrap:wrap">${a.routes.length ? a.routes.map(rchip).join('') : '<span class="muted small">No routes to check yet (add the Tailscale address in Routing Reporter).</span>'}</div>
       ${down.map((x) => `<div class="routedown"><p class="small"><b>${esc(x.label)}</b> is down${x.since ? ' since ' + when(x.since) : ''}: ${esc(x.error)}.<br><span class="muted">${esc(x.url)}</span></p>
@@ -1124,7 +1124,7 @@ async function viewJoolzApps() {
           : `<form class="row rnotify" style="gap:8px;flex-wrap:wrap" data-app="${esc(a.id)}" data-route="${esc(x.key)}"><input name="note" placeholder="Note for Claude (optional)" maxlength="200" style="flex:1;min-width:160px"><button class="btn primary">Notify Claude</button></form>`}</div>`).join('')}</div>`;
   };
   const mine = r ? r.apps.filter((a) => a.joolzapp) : [], other = r ? r.apps.filter((a) => !a.joolzapp) : [];
-  const bad = r ? r.apps.reduce((n, a) => n + a.routes.filter((x) => x.state === 'down').length, 0) : 0;
+  const bad = r ? r.apps.reduce((n, a) => n + a.routes.filter(live).length, 0) : 0;
   main().innerHTML = `<h1>JoolzApp apps</h1><p class="sub">Whether each app answers on your home network (LAN), your Tailscale address and its public address. Checked every few minutes by the Routing Reporter app. If a route is down, tap Notify Claude: it goes into the status feed with the app and which route, and clears by itself when the route answers again.</p>
     ${!r ? '<div class="card"><p class="muted">Nothing reported yet. Install Routing Reporter from the app store and sign in to Portal Admin here once so it can send its results.</p></div>' : `
     <div class="card"><div class="row spread"><h2>${bad ? bad + ' route' + (bad > 1 ? 's' : '') + ' down' : 'All routes answering'}</h2><span class="chip ${j.stale ? 'bad' : bad ? 'warn' : 'ok'}">${j.stale ? 'Routing Reporter is not reporting' : bad ? 'Needs attention' : 'Healthy'}</span></div>
