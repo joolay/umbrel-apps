@@ -1,4 +1,4 @@
-# Project Tracker runs here as a real Umbrel app. Source: src/project-tracker in this repo, built by .github/workflows/build-images.yml.
+# Project Pilot runs here as a real Umbrel app. Source: src/project-tracker in this repo, built by .github/workflows/build-images.yml.
 # Keep the image tag equal to `version` in umbrel-app.yml.
 # Nothing private is stored in this public repo. Private lists live in PocketBase (projecttracker_data, only this app's limited login can
 # use it). The GitHub token for the shared list is saved there too, from the app's Connection panel, and is never sent back to a browser.
@@ -28,4 +28,4 @@ services:
       - ${APP_DATA_DIR}/data:/data
     environment:
       - POCKETBASE_APP_ID=project-tracker
-      - POCKETBASE_APP_NAME=Project Tracker
+      - POCKETBASE_APP_NAME=Project Pilot

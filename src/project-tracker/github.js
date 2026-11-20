@@ -1,5 +1,5 @@
 "use strict";
-// Project Tracker <-> a JSON file in a GitHub repo (the shared "appdev" list). No dependencies: GitHub's REST API over fetch.
+// Project Pilot <-> a JSON file in a GitHub repo (the shared "appdev" list). No dependencies: GitHub's REST API over fetch.
 // Reading uses ETag checks, so asking again while nothing changed costs nothing against the rate limit. Every write first reads the
 // newest copy, applies the change to it and sends it back with the file's sha; if someone else got in first GitHub refuses, and we read again and retry.
 // Reading a public repo needs no token. Writing always does: a fine-grained token limited to the data repo (Contents: read and write).

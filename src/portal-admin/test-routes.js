@@ -8,7 +8,7 @@ const makeRoutes = require('./routes'), makeAppApi = require('./appapi');
   const R = makeRoutes({ dataDir: dir, feed, now: () => t });
   const rt = (key, state, extra = {}) => ({ key, label: key, url: 'http://x/' + key, state, status: state === 'up' ? 200 : 0, ms: 12, error: state === 'down' ? 'connection refused (nothing listening)' : '', since: t - 60e3, checkedAt: t, ...extra });
   const report = (tsState) => ({ at: t, intervalMin: 5, config: { lanHost: '192.168.1.5', tailscaleIp: '100.64.0.9', tailnet: 'tail1.ts.net' }, apps: [
-    { id: 'joolay-project-tracker', name: 'Project Tracker', version: '1.4.0', port: 3915, joolzapp: true, published: 'public', routes: [rt('lan', 'up'), rt('tailscale', tsState), rt('public', 'up')] },
+    { id: 'joolay-project-tracker', name: 'Project Pilot', version: '1.4.0', port: 3915, joolzapp: true, published: 'public', routes: [rt('lan', 'up'), rt('tailscale', tsState), rt('public', 'up')] },
     { id: 'bitcoin', name: 'Bitcoin', version: '1', port: 8332, joolzapp: false, published: '', routes: [rt('lan', 'up')] }] });
   assert.throws(() => R.publish('joolay-listify', report('up')), /Only Routing Reporter/);
   assert.throws(() => R.publish('routing-reporter', { nope: 1 }), /not a routing report/);

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Project Tracker</title>
+<title>Project Pilot</title>
 <meta name="theme-color" content="#b45309">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
@@ -75,7 +75,7 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
 <body>
 <header class="topbar">
   <button class="tb-btn" id="home" aria-label="Home" title="Home" hidden><svg viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10.5V20h13v-9.5"/><path d="M10 20v-5.5h4V20"/></svg></button>
-  <div class="brand"><img src="icon.svg" alt="" width="28" height="28"><span>Project Tracker</span></div>
+  <div class="brand"><img src="icon.svg" alt="" width="28" height="28"><span>Project Pilot</span></div>
   <span class="tb-gap"></span>
   <span class="sync"><span class="dot" id="dot" role="img" aria-label="Sync status"></span></span>
   <button class="tb-btn" data-pwa-install hidden aria-label="Install app" title="Install app"><svg viewBox="0 0 24 24"><path d="M12 4v10"/><path d="m8 10.5 4 4 4-4"/><path d="M5 17v2.5h14V17"/></svg></button>
@@ -302,7 +302,7 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
       d.querySelector("#dy").onchange = function () { var v = Math.round(+this.value); if (!(v >= 1 && v <= 30)) { this.value = S.days; return; } S.days = v; this.value = v; savePrefs(); render(); };
       d.querySelector("#au").onchange = function () { S.auto = this.checked; savePrefs(); render(); };
       d.querySelectorAll("input[name=chat]").forEach(function (r) { r.onchange = function () { S.chat = r.value; savePrefs(); }; });
-      api("api/ai/status").then(function (j) { var al = S.home ? " <a href='" + esc(S.home) + "#/me' target='_blank' rel='noopener'>Manage AI keys</a>" : ""; d.querySelector("#aik").innerHTML = j.ready ? "Built-in chat uses <b>" + esc(j.key.provider) + " · " + esc(j.key.model) + "</b> (key ends …" + esc(j.key.last4) + "). " + al : "No AI key is set for Project Tracker yet. Add one in Portal Admin > My settings > AI." + al; }).catch(function () { d.querySelector("#aik").textContent = ""; });
+      api("api/ai/status").then(function (j) { var al = S.home ? " <a href='" + esc(S.home) + "#/me' target='_blank' rel='noopener'>Manage AI keys</a>" : ""; d.querySelector("#aik").innerHTML = j.ready ? "Built-in chat uses <b>" + esc(j.key.provider) + " · " + esc(j.key.model) + "</b> (key ends …" + esc(j.key.last4) + "). " + al : "No AI key is set for Project Pilot yet. Add one in Portal Admin > My settings > AI." + al; }).catch(function () { d.querySelector("#aik").textContent = ""; });
       d.querySelector("#nl").onclick = function () { d.close(); newListDlg(); };
       d.querySelector("#qa").onclick = function () { d.close(); QA.manage(); };
       var cn = d.querySelector("#cn"); if (cn) cn.onclick = function () { d.close(); connDlg(); };
@@ -314,7 +314,7 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
   function shareDlg() {
     var shares = S.shares || [], k = S.key;
     function again() { var el = $("#dlg"); el.close(); return poll(true).then(function () { shareDlg(); }); }
-    dialog("<h2>Share “" + esc(S.list.name) + "”</h2><p class='muted small'>Type the email of their JoolzApp account. The list shows up the next time they open Project Tracker. Only you can delete it.</p>" +
+    dialog("<h2>Share “" + esc(S.list.name) + "”</h2><p class='muted small'>Type the email of their JoolzApp account. The list shows up the next time they open Project Pilot. Only you can delete it.</p>" +
       "<form id='f'><label>Email<input name='email' type='email' required autocomplete='off' maxlength='200'></label><label>They can<select name='role'><option value='view'>View only</option><option value='edit'>View and edit</option></select></label><div class='row'><button class='btn primary'>Share</button></div></form>" +
       "<div class='sect'><b>Shared with</b>" + (shares.length ? shares.map(function (x, i) { return "<div class='row'><span class='small' style='flex:1;overflow:hidden;text-overflow:ellipsis'>" + esc(x.email) + "</span><select data-i='" + i + "' aria-label='Access for " + esc(x.email) + "'><option value='view'" + (x.role === "view" ? " selected" : "") + ">View</option><option value='edit'" + (x.role === "edit" ? " selected" : "") + ">Edit</option></select><button class='btn' data-rm='" + i + "'>Remove</button></div>"; }).join("") : "<p class='muted small'>Nobody yet.</p>") + "</div>" +
       "<div class='row'><button class='btn' id='del'>Delete list</button><button class='btn primary' data-close>Done</button></div>", function (d) {
@@ -379,7 +379,7 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
 
   fetch("api/app-config").then(function (r) { return r.json(); }).then(function (c) { if (c && c.portalUrl) { S.home = c.portalUrl; $("#home").hidden = false; } }).catch(function () {});
   window.addEventListener("jz-theme", function (e) { api("api/prefs", "PUT", { theme: e.detail }).catch(function () {}); });   // the theme follows the person's account
-  var QA = JZQuick({ app: "project-tracker", name: "Project Tracker", request: function (m, p, b) { return api(p, m, b); } });
+  var QA = JZQuick({ app: "project-tracker", name: "Project Pilot", request: function (m, p, b) { return api(p, m, b); } });
   api("api/account/me").then(function (j) { S.user = j.user; return loadLists(); }).then(function () { return poll(true); }).then(function () { QA.offer(); }).catch(function (e) { if (e.status === 401 || e.status === 403) location.reload(); else { $("#main").innerHTML = '<p class="empty">' + esc(e.message) + "</p>"; } });
 })();
 </script>

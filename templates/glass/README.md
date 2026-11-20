@@ -32,7 +32,7 @@ One look for every JoolzApp: soft gradient backdrop, frosted panels, rounded cor
 | Services Manager | #5b7cf5 / #8f6bff | #6c8cff / #a98fff |
 | App Updater | #c2347a / #ff6fae | #ff6fae / #ffa0cb |
 | Jolly Grocer | #1E7A4C / #4FC083 | #4FC083 / #7FD6A6 |
-| Project Tracker | #b45309 / #f59e0b | #f59e0b / #fbbf24 |
+| Project Pilot | #b45309 / #f59e0b | #f59e0b / #fbbf24 |
 | Listify | #0A6C8F / #3FB0D6 | #4DB6DD / #7FD0EE |
 | Diner Bell | #d9480f / #ff8a4c | #ff8a4c / #ffb27d |
 | ShutterWorth | #145f4f / #2f8571 | #3FBF9F / #7FD6BD |
@@ -64,16 +64,16 @@ Every app uses the same floating, frosted bar: the app's title on the left, the 
 - Markup: `<header class="topbar"><div class="brand"><img src="icon.svg" alt="" width="28" height="28"><span>App name</span></div><span class="tb-gap"></span>` + the theme button + `</header>`.
 - Theme button: `<button class="tb-btn" data-theme-toggle><svg class="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z"/></svg><svg class="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6 7 7M17 17l1.4 1.4M5.6 18.4 7 17M17 7l1.4-1.4"/></svg></button>`
 - The choice is kept on the device. Apps that keep preferences on the person's JoolzApp account listen for the `jz-theme` event and save it as `pref.theme`, and call `JZTheme.set(value, true)` on load with the saved value.
-- Adopted so far: the JoolzApp Portal and Project Tracker. Other apps move over one at a time, like the Glass theme itself.
+- Adopted so far: the JoolzApp Portal and Project Pilot. Other apps move over one at a time, like the Glass theme itself.
 
 ## Install icon (top bar)
 Copy `install-help.js` (from `src/portal-admin/public/`) and `installbtn.js` next to the app's `index.html`, add `<button class="ic" data-pwa-install hidden aria-label="Install app">` to the bar
 and load both scripts at the end of `<body>` (`install-help.js` first). The icon shows only in a normal browser tab on https, never inside the installed app. Chromium browsers install in one tap;
-iPhone, iPad, Safari and Firefox get a sheet with the steps for that device. Project Tracker is the first app to use it.
+iPhone, iPad, Safari and Firefox get a sheet with the steps for that device. Project Pilot is the first app to use it.
 
 ## Quick Access in an app (PIN or pattern)
 One shared piece, copied into every app that signs people in: `quick-server.js` (next to `pocketbase.js`, add it to the Dockerfile COPY line) and `quick-ui.js` (in `public/`, loaded by the sign-in page and the main page).
 Server: `require("./quick-server")({ pb, dataDir })`; a `quick` body on the login route signs in with `quick.login()` and `quick.mint()`; the session check accepts `quick.parse()` tokens (and refuses them
 when `quick.stale()`); `quick.handle()` serves `/api/account/quick*`. Pages: `JZQuick({ app, name, request })` gives `has()`, `signIn()`, `offer()` (once per device, after a password sign-in) and
 `manage()` (put a "Quick Access (PIN or pattern)" button in the app's Settings). The code is the person's ONE code for every JoolzApp (checked by Portal Admin); Quick Access never replaces the password.
-Project Tracker is the first app to use it (1.4.0); see its `test-server.js`.
+Project Pilot is the first app to use it (1.4.0); see its `test-server.js`.

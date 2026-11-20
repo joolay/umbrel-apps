@@ -1,6 +1,6 @@
 // JoolzApp Quick Access for an app's pages: sign in with a PIN or pattern on a device you already signed in on.
 // Needs glass.css (for .btn). Each page creates it with its own request function:
-//   var QA = JZQuick({ app: "project-tracker", name: "Project Tracker", request: function (method, path, body) { return Promise<json> } });   // reject with Error(message) that has .status
+//   var QA = JZQuick({ app: "project-tracker", name: "Project Pilot", request: function (method, path, body) { return Promise<json> } });   // reject with Error(message) that has .status
 //   QA.has()        a PIN or pattern is set up on this device
 //   QA.signIn()     shows the pad; resolves { token, user } on success, or null (cancelled / "Use password instead")
 //   QA.offer()      the first-run question after a password sign-in (once per device; "Not now" is remembered)

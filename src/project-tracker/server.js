@@ -1,4 +1,4 @@
-// Project Tracker: lists of projects with a status, priority order, archive and recycle bin.
+// Project Pilot: lists of projects with a status, priority order, archive and recycle bin.
 // Zero-dependency Node server. Sign-in is the shared JoolzApp (PocketBase) account; any signed-in person can use it (it is a public app).
 // The "appdev" list (App development) is a JSON file in the owner's GitHub repo, checked every few seconds while the page is open. Only the owner ever sees it.
 // Every other list lives in PocketBase, private to the person who made it unless they share it (by email, view or edit).
@@ -140,7 +140,7 @@ async function accountRoutes(req, res, p) {
 const recs = "/api/collections/" + DATA + "/records", qs = encodeURIComponent, esc = s => String(s).replace(/\\/g, "\\\\").replace(/'/g, "\\'");
 async function ensureStorage() {
   if (await pb.serviceCan(["/api/collections/" + DATA])) return;
-  throw new pb.PBError(503, "Project Tracker's storage isn't set up yet. In Portal Admin > Changes, apply \"Project Tracker storage\".");
+  throw new pb.PBError(503, "Project Pilot's storage isn't set up yet. In Portal Admin > Changes, apply \"Project Pilot storage\".");
 }
 const rowOf = async (owner, key) => ((await pb.asApp("GET", recs + `?page=1&perPage=1&filter=${qs(`owner = '${esc(owner)}' && key = '${esc(key)}'`)}`)).items || [])[0] || null;
 const getData = async (owner, key) => { await ensureStorage(); const r = await rowOf(owner, key); return r && r.data && typeof r.data === "object" ? r.data : null; };
@@ -319,7 +319,7 @@ async function listsRoutes(req, res, p, url, user) {
 async function aiChat(req, res, user) {
   if (throttled(req, "aichat:" + user.id, 20, 60e3)) return send(res, 429, { code: "slow_down", message: "That's a lot of messages. Wait a moment." });
   const b = JSON.parse((await readBody(req)).toString() || "{}"), cfg = makeAi.resolve(user);
-  if (!cfg) return send(res, 400, { code: "no_ai_key", message: "No AI key is set for Project Tracker yet. Add one in Portal Admin > My settings > AI." });
+  if (!cfg) return send(res, 400, { code: "no_ai_key", message: "No AI key is set for Project Pilot yet. Add one in Portal Admin > My settings > AI." });
   const key = String(b.list || ""), isGh = key === GH_LIST;
   if (!(KEY_RE.test(key) || SHARED_RE.test(key))) return send(res, 400, { code: "bad_list", message: "Unknown list." });
   if (isGh && !(await ghAccess(user))) return noAccess(res);
@@ -356,7 +356,7 @@ async function configRoutes(req, res, p, user) {
 }
 
 const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css", ".svg": "image/svg+xml", ".png": "image/png", ".json": "application/json", ".webmanifest": "application/manifest+json" };
-const SETUP = "<!doctype html><meta name=viewport content='width=device-width'><meta http-equiv=refresh content=5><body style='font:16px system-ui;padding:2rem;max-width:34rem;margin:auto'><h1>Waiting for PocketBase</h1><p>Project Tracker isn't connected to PocketBase yet. Open Portal Admin and sign in once; this page will carry on by itself.</p>";
+const SETUP = "<!doctype html><meta name=viewport content='width=device-width'><meta http-equiv=refresh content=5><body style='font:16px system-ui;padding:2rem;max-width:34rem;margin:auto'><h1>Waiting for PocketBase</h1><p>Project Pilot isn't connected to PocketBase yet. Open Portal Admin and sign in once; this page will carry on by itself.</p>";
 
 const server = http.createServer(async (req, res) => {
   { const wh = res.writeHead;
@@ -411,4 +411,4 @@ const server = http.createServer(async (req, res) => {
     if (!res.headersSent) send(res, 500, { code: "server_error", message: e.message }); else res.end();
   }
 });
-server.listen(PORT, () => console.log(`Project Tracker running on http://0.0.0.0:${PORT}`));
+server.listen(PORT, () => console.log(`Project Pilot running on http://0.0.0.0:${PORT}`));

@@ -1,11 +1,11 @@
 manifestVersion: 1
 id: joolay-project-tracker
 category: developer
-name: Project Tracker
+name: Project Pilot
 version: "1.4.0"
 tagline: Every project, its status and its priority in one place
 description: >-
-  Project Tracker keeps lists of projects with a status (Active, Queued, Hiatus or Closed), a priority order you set with arrows,
+  Project Pilot keeps lists of projects with a status (Active, Queued, Hiatus or Closed), a priority order you set with arrows,
   and a tidy way to remove them: Archive keeps the details, Delete goes to a recycle bin for 30 days. A project that is Queued or
   Hiatus that you worked on in the last 3 days shows as Active by itself, unless you set its status by hand. The shared App
   development list lives in a GitHub repo and updates on every open screen within seconds. Your own lists are kept privately on your
@@ -20,7 +20,7 @@ gallery: []
 path: ""
 defaultUsername: ""
 defaultPassword: ""
-releaseNotes: "A new floating top bar (title on the left, light/dark icon on the right, saved to your account) that no longer stretches tall. Sign in with a PIN or pattern instead of your password on a device you have already signed in on. Project Tracker offers it once after you sign in, and you can change or turn it off any time in Settings > Quick Access. Your code is the same one you set in the JoolzApp Portal."
+releaseNotes: "Project Tracker is now called Project Pilot (same app, same address). A new floating top bar (title on the left, light/dark icon on the right, saved to your account) that no longer stretches tall. Sign in with a PIN or pattern instead of your password on a device you have already signed in on. Project Pilot offers it once after you sign in, and you can change or turn it off any time in Settings > Quick Access. Your code is the same one you set in the JoolzApp Portal."
 submitter: joolay
 submission: https://github.com/joolay/umbrel-apps
 icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-project-tracker/icon.svg
