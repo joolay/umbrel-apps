@@ -30,3 +30,7 @@ dialog .actions{display:flex;gap:10px;justify-content:flex-end;margin-top:14px}
 .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--solid,#222);color:var(--text);border:1px solid var(--glass-line);padding:10px 16px;border-radius:14px;z-index:30}
 
 .dr .small,.det .small{font-size:.72rem}
+.ic{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;vertical-align:middle;flex:none}
+.ic svg{width:15px;height:15px;fill:none;stroke:#fff;stroke-width:2.8;stroke-linecap:round;stroke-linejoin:round}
+.ic.up{background:#16a34a}.ic.down{background:#dc2626}.ic.checking{background:#d97706}.ic.ign{background:#6b7280}
+.dr b{font-size:.78rem}
