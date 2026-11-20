@@ -229,13 +229,6 @@ body{overscroll-behavior-y:none}
 .aikeys{display:grid;gap:8px;margin:10px 0}
 .aikey{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;border:1px solid var(--line,rgba(127,127,127,.3));border-radius:12px;padding:10px 12px}
 
-/* App Store */
-.store-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px}
-.store-card{display:grid;gap:10px;padding:12px;border:1px solid var(--glass-line);border-radius:var(--r);background:var(--glass);-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px)}
-.store-card[hidden]{display:none}
-.store-top{display:flex;gap:12px;align-items:flex-start;text-align:left;background:none;border:0;padding:0;color:inherit;font:inherit;cursor:pointer;min-width:0}
-.store-top .ic-tile{flex:none;width:54px;height:54px}
-.store-txt{display:grid;gap:3px;min-width:0}
-.store-desc{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-.store-act{display:flex;gap:8px;flex-wrap:wrap}
+/* App Store: install sheet and folder descriptions */
 .inst-steps{margin:10px 0;padding-left:20px;display:grid;gap:6px}
+.folder-desc{margin:0 0 4px 12px}.folder-desc-in{display:block;width:100%;box-sizing:border-box;margin:0 0 8px;padding:8px 12px;border:1px solid var(--glass-line);border-radius:12px;background:transparent;color:var(--text);font:inherit;font-size:14px;resize:vertical}

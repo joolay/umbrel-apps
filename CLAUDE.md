@@ -43,11 +43,22 @@ startup), opens a sign-in prompt, verifies the PocketBase superuser login, and w
 by Portal Admin and an existing file is never overwritten. Apps must fail closed without the file, but must NOT need a restart: while
 accounts are off, call `pb.reload()` on each request (it re-reads the file, at most every 2 s) and make the waiting page refresh itself.
 
+## JoolzApp Portal is the App Store
+The Portal home screen IS the app store: every app is a tile, tapping one opens a sheet with **View on web** (signs the person in) and **Install** (steps for their device; installing is
+done by the browser from the app's own address, so a page cannot do it for another address). Apps are grouped in folders. ONE shared layout (order, dock, hidden apps, folders with names and
+descriptions, app names and descriptions) is stored as the global `store.layout` row in `portal_settings`; everyone reads it (`GET /store/layout`) and only an admin saves it (`POST /store/layout`,
+checked server-side against `user.isAdmin`, cleaned by `src/portal-admin/storelayout.js`). Admins edit it in place (long-press, drag, rename, folder and app descriptions); nobody else gets edit mode.
+Keep `/store/layout` in both route lists (see the Portal section above).
+
 ## Glass theme (uniform style for every JoolzApp)
 All apps, old and new, use the shared Glass theme in `templates/glass/` (`glass.css` plus a README with the rules and each app's brand tokens).
 Copy `glass.css` into `src/<app>/public/`, link it before the app's own CSS, and set only `--accent` and `--accent-2` in the app. New apps start from it;
 existing apps move onto it one at a time. Every `index.html` head also carries: `viewport` with `viewport-fit=cover`, `theme-color`, `manifest.webmanifest`,
 `apple-touch-icon` (180px PNG), `apple-mobile-web-app-capable`, `apple-mobile-web-app-status-bar-style=black-translucent` and a short `apple-mobile-web-app-title`.
+
+## Floating top bar (standard for every app)
+Title on the left, light/dark theme icon on the right, floating and frosted. Files and markup are in `templates/glass/README.md` ("Floating top bar"): copy `floatbar.css` + `floatbar.js`.
+The JoolzApp Portal has it; other apps move over one at a time, like the Glass theme.
 
 ## Preview before pushing
 Before asking the owner to confirm a push, publish or update an artifact that previews the changed app in the Glass theme (light and dark, phone width).
