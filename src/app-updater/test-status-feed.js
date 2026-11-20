@@ -9,6 +9,6 @@ const assert = require('assert'), fs = require('fs'), os = require('os'), path =
   fs.writeFileSync(path.join(dir, 'pocketbase.env'), `POCKETBASE_PORTAL_URL="${url}/"\nPOCKETBASE_PORTAL_KEY=app-updater.abc\n`);
   await feed.tick(); assert.strictEqual(got.length, 1); assert.strictEqual(got[0][0], '/app-api/call'); assert.strictEqual(got[0][1], 'Bearer app-updater.abc');
   assert.deepStrictEqual(got[0][2], { fn: 'publishStatus', args: [{ hello: 'world' }] });
-  srv.close(); await feed.tick(); assert.strictEqual(logs.length, 1, 'a failure is logged once, never throws'); await feed.tick(); assert.strictEqual(logs.length, 1);
+  assert.strictEqual(await feed.tick(), true, "tick reports a successful send"); srv.close(); assert.strictEqual(await feed.tick(), false, "and a failed one"); assert.strictEqual(logs.length, 1, 'a failure is logged once, never throws'); await feed.tick(); assert.strictEqual(logs.length, 1);
   feed.stop(); console.log('status-feed ok');
 })().catch((e) => { console.error(e); process.exit(1); });

@@ -2,7 +2,7 @@ manifestVersion: 1
 id: joolay-app-updater
 category: developer
 name: App Updater
-version: "1.5.0"
+version: "1.5.1"
 tagline: Update the Umbrel apps you choose automatically, nightly or the moment a new version appears
 description: >-
   Umbrel never updates apps by itself. App Updater does it for the apps you pick, including Portal Admin.
@@ -21,7 +21,7 @@ gallery: []
 path: ""
 defaultUsername: ""
 defaultPassword: ""
-releaseNotes: "Changes: Sends its status (apps, update results, log and checks, no passwords) to the Portal Admin status feed once it is switched on, so you and Claude can see whether updates loaded. Needs Portal Admin 0.33.0."
+releaseNotes: "Changes: Faster updates showing in the status feed: it is sent right after each update finishes (retried while Portal Admin restarts), and checks run every 15 seconds for 3 minutes after a change. Before: Sends its status (apps, update results, log and checks, no passwords) to the Portal Admin status feed once it is switched on, so you and Claude can see whether updates loaded. Needs Portal Admin 0.33.0."
 submitter: joolay
 submission: https://github.com/joolay/umbrel-apps
 icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-app-updater/icon.svg
