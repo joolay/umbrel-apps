@@ -11,8 +11,10 @@ const assert = require('assert'), makeFeed = require('./statusfeed');
   const rows = []; let t = 1e6;
   const asSuper = async (m, p, b) => {
     if (m === 'GET') return { items: rows.slice(0, 1) };
-    if (m === 'POST') { rows.push({ id: 'r1', ...b }); return rows[0]; }
-    if (m === 'PATCH') { Object.assign(rows[0], b); return rows[0]; }
+    // like PocketBase's json field: a string holding JSON comes back as the parsed value
+    const asJson = (x) => { if (x && typeof x.value === 'string') { try { return { ...x, value: JSON.parse(x.value) }; } catch { /* plain string */ } } return x; };
+    if (m === 'POST') { rows.push({ id: 'r1', ...asJson(b) }); return rows[0]; }
+    if (m === 'PATCH') { Object.assign(rows[0], asJson(b)); return rows[0]; }
     if (m === 'DELETE') { rows.length = 0; return {}; }
   };
   const files = {}, calls = []; let conflict = 0;

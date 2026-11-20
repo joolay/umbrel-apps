@@ -44,7 +44,8 @@ module.exports = function makeFeed({ asSuper, fetchImpl = fetch, now = () => Dat
   async function load() {
     if (cfgCache && now() - cfgCache.at < 60e3) return cfgCache.v;
     const r = await row(); let v = null;
-    if (r && r.value) { try { v = JSON.parse(r.value); } catch { v = null; } }
+    // portal_settings.value is a JSON field: PocketBase hands back the object (older text form is still understood)
+    if (r && r.value) { if (typeof r.value === 'object') v = r.value; else { try { v = JSON.parse(r.value); } catch { v = null; } } }
     cfgCache = { at: now(), v }; return v;
   }
   const ready = (c) => !!(c && c.repo && c.token);
@@ -63,7 +64,7 @@ module.exports = function makeFeed({ asSuper, fetchImpl = fetch, now = () => Dat
     const token = String(b.token || '').trim() || old.token || '';
     if (b.token && !/^[\w-]{20,255}$/.test(String(b.token).trim())) throw new FeedError(400, 'That does not look like a GitHub token.');
     if (!token) throw new FeedError(400, 'Paste a GitHub token with write access to that repo.');
-    const value = JSON.stringify({ repo, branch, dir, token }), ex = await row();
+    const value = { repo, branch, dir, token }, ex = await row();
     if (ex) await asSuper('PATCH', `${SET}/${ex.id}`, { value, secret: true });
     else await asSuper('POST', SET, { scope: 'app', app: APP, user: '', key: KEY, value, secret: true, note: 'Status feed GitHub settings' });
     cfgCache = null; return adminView();
