@@ -3,7 +3,7 @@
 // (Portal API `publishRoutes`, which feeds Portal Admin's "JoolzApp apps" page) and to the status feed (so a problem can be diagnosed without opening anything).
 // Node built-ins only. Owner-only: Umbrel's login stays in front of it.
 const http = require('http'), fs = require('fs'), path = require('path');
-const { makeMonitor } = require('./checker');
+const { makeMonitor } = require('./checker'), { makeRegistry } = require('./official'), { findPortClashes } = require('./clashes');
 
 const PORT = Number(process.env.PORT) || 3000, DATA_DIR = process.env.DATA_DIR || '/data', PUBLIC_DIR = path.join(__dirname, 'public');
 const APP_DIR = process.env.UMBREL_APP_DATA || '/umbrel-app-data', CONFIG_FILE = path.join(DATA_DIR, 'config.json');
@@ -31,6 +31,11 @@ const clean = (b, old) => {
 
 /* ---------- checking and reporting ---------- */
 const monitor = makeMonitor({ dir: APP_DIR, getConfig: () => config });
+// The hidden list of official Umbrel store ports (see official.js): fetched about once a week, kept in the data folder, used only to find clashes.
+const registry = makeRegistry({ file: path.join(DATA_DIR, 'official-ports.json'), url: process.env.OFFICIAL_STORE_URL || undefined });
+const officialInfo = () => ({ count: registry.count, at: registry.at, error: registry.error });
+const clashes = () => { const r = monitor.last; return r ? findPortClashes(r.apps, registry.apps) : []; };
+const refreshOfficial = () => { if (registry.stale) registry.refresh().catch(() => {}); };
 let reportState = { ok: null, at: 0, error: '' }, timer = null;
 function portalLink() {     // data/pocketbase.env is written by Portal Admin once you have signed in there (the same file every JoolzApp app uses)
   try {
@@ -58,7 +63,9 @@ const feedPayload = async () => {
     [[a.port, 'app'], ...(a.hostPorts || []).filter((p) => p !== a.port).map((p) => [p, 'published'])].forEach(([p, kind]) => { ports.push({ port: p, app: a.id, name: a.name, kind, state: st }); (by[p] = by[p] || new Set()).add(a.id); }); });
   ports.sort((x, y) => x.port - y.port);
   const conflicts = Object.keys(by).filter((p) => by[p].size > 1).map((p) => ({ port: Number(p), apps: [...by[p]] }));
-  return { intervalMin: r.intervalMin, config: r.config, reportedToPortalAdmin: reportState.ok, reportError: reportState.error, routesDown: down, portConflicts: conflicts, ports,
+  return { intervalMin: r.intervalMin, config: r.config, reportedToPortalAdmin: reportState.ok, reportError: reportState.error, routesDown: down, portConflicts: conflicts,
+    // Clashes with official Umbrel apps (installed or not): the official app keeps the port, the app listed under change should move (suggestedPort is free). The official list itself is not included, only its size.
+    portClashes: clashes().map((c) => ({ port: c.port, keep: c.keep.map((p) => ({ id: p.id, source: p.source, installed: p.installed })), change: c.change.map((p) => ({ id: p.id, source: p.source, kind: p.kind, suggestedPort: p.suggestedPort || null })) })), officialPorts: officialInfo(), ports,
     apps: r.apps.map((a) => ({ id: a.id, name: a.name, version: a.version, joolzapp: a.joolzapp, port: a.port, hostPorts: a.hostPorts || [], published: a.published, routes: a.routes.map((x) => ({ key: x.key, url: x.url, state: x.state, ignored: x.ignored, status: x.status, error: x.error, since: x.since })) })) };
 };
 
@@ -68,8 +75,8 @@ const body = (req) => new Promise((ok, bad) => { let s = ''; req.on('data', (c) 
 const server = http.createServer(async (req, res) => {
   try {
     const p = decodeURIComponent(new URL(req.url, 'http://x').pathname);
-    if (p === '/api/state' && req.method === 'GET') return send(res, 200, { report: mark(monitor.last), config, portal: { linked: !!portalLink(), ...reportState }, checking: false });
-    if (p === '/api/check' && req.method === 'POST') { const rep = await checkNow(); return send(res, 200, { report: rep, portal: { linked: !!portalLink(), ...reportState } }); }
+    if (p === '/api/state' && req.method === 'GET') return send(res, 200, { report: mark(monitor.last), clashes: clashes(), official: officialInfo(), config, portal: { linked: !!portalLink(), ...reportState }, checking: false });
+    if (p === '/api/check' && req.method === 'POST') { const rep = await checkNow(); refreshOfficial(); return send(res, 200, { report: rep, clashes: clashes(), official: officialInfo(), portal: { linked: !!portalLink(), ...reportState } }); }
     if (p === '/api/ignore' && req.method === 'POST') {
       let b; try { b = JSON.parse((await body(req)) || '{}'); } catch { return send(res, 400, { message: 'Bad request.' }); }
       const k = String(b.appId || '') + '|' + String(b.route || '');
@@ -86,10 +93,11 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(200, { 'content-type': TYPES[path.extname(file)] || 'application/octet-stream', 'cache-control': 'no-cache' }); fs.createReadStream(file).pipe(res);
   } catch (e) { console.error(e); send(res, 500, { message: 'Something went wrong.' }); }
 });
-module.exports = { clean, feedPayload, _monitor: monitor };
+module.exports = { clean, feedPayload, _monitor: monitor, _registry: registry };
 if (require.main === module) {
   fs.mkdirSync(DATA_DIR, { recursive: true });        // Portal Admin links an app once its data folder exists
   require('./status-feed')({ dataDir: DATA_DIR, getPayload: feedPayload, log: (m) => console.error(m) });
   server.listen(PORT, '0.0.0.0', () => console.log('Port Master listening on :' + PORT));
   setTimeout(() => { checkNow().catch((e) => console.error('Check failed:', e.message)); schedule(); }, 5000);
+  setTimeout(refreshOfficial, 15000); const weekly = setInterval(refreshOfficial, 6 * 3600e3); if (weekly.unref) weekly.unref();
 }
