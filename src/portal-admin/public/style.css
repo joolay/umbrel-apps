@@ -228,3 +228,7 @@ body{overscroll-behavior-y:none}
 /* AI keys (My settings > AI) */
 .aikeys{display:grid;gap:8px;margin:10px 0}
 .aikey{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;border:1px solid var(--line,rgba(127,127,127,.3));border-radius:12px;padding:10px 12px}
+
+/* App Store: install sheet and folder descriptions */
+.inst-steps{margin:10px 0;padding-left:20px;display:grid;gap:6px}
+.folder-desc{margin:0 0 4px 12px}.folder-desc-in{display:block;width:100%;box-sizing:border-box;margin:0 0 8px;padding:8px 12px;border:1px solid var(--glass-line);border-radius:12px;background:transparent;color:var(--text);font:inherit;font-size:14px;resize:vertical}

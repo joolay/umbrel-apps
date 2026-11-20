@@ -241,10 +241,10 @@ $('#reset-form').onsubmit = async (e) => {
 // People who sign in here are users of the JoolzApp apps, not admins, so the page is branded JoolzApp for them
 // and on the public address (the server tells us which one we are on through /config).
 function setBrand(name) { document.querySelectorAll('.brand span').forEach((n) => { n.textContent = name; }); document.title = name; }
-const cfgReady = fetch('/config').then((r) => r.json()).then((c) => { state.public = !!c.public; if (state.public) setBrand('JoolzApp'); }).catch(() => {});
+const cfgReady = fetch('/config').then((r) => r.json()).then((c) => { state.public = !!c.public; if (state.public) setBrand('JoolzApp Store'); }).catch(() => {});
 async function showShell() {
   await resolvePid();
-  setBrand(state.role === 'user' || state.public ? 'JoolzApp' : 'Portal Admin');
+  setBrand(state.role === 'user' || state.public ? 'JoolzApp Store' : 'Portal Admin');
   $('#login').classList.add('hidden'); $('#shell').classList.remove('hidden');
   $('#who').textContent = state.actor; route(); startDetecting();
   homeModel().then((m) => { if (!HM) HM = m; renderDock(); }).catch(() => {});   // so the dock is there on every page
@@ -1259,6 +1259,15 @@ const PREFS = [
   ['backgroundMotion', 'Background motion', [['animated', 'Slowly moving (default)'], ['still', 'Still']]],
 ];
 // The backdrop follows the person's account (pref.background / pref.backgroundMotion), so it is the same on every device.
+// The theme icon in the top bar (floatbar.js) keeps the choice on the device; here it is also saved on the account, so it follows the person.
+window.addEventListener('jz-theme', async (e) => {
+  try {
+    if (!selfId()) return; const uid = selfId(), v = e.detail;
+    const ex = (await listAll('portal_settings', { filter: `scope = "user" && user = ${fq(uid)} && app = "" && key = "pref.theme"` }))[0];
+    if (ex) await api('PATCH', `/api/collections/portal_settings/records/${ex.id}`, { value: v || 'auto' });
+    else await api('POST', '/api/collections/portal_settings/records', { scope: 'user', user: uid, app: '', key: 'pref.theme', value: v || 'auto', secret: false });
+  } catch { /* the device keeps it anyway */ }
+});
 function applyBg(style, motion) {
   const r = document.documentElement;
   r.dataset.bg = ['aurora', 'sunset', 'ocean', 'forest', 'violet', 'plain'].includes(style) ? style : 'aurora';
@@ -1267,8 +1276,9 @@ function applyBg(style, motion) {
 async function loadAppearance() {
   if (!selfId()) return;
   try {
-    const rows = await listAll('portal_settings', { filter: `scope = "user" && user = ${fq(selfId())} && app = "" && (key = "pref.background" || key = "pref.backgroundMotion")` });
+    const rows = await listAll('portal_settings', { filter: `scope = "user" && user = ${fq(selfId())} && app = "" && (key = "pref.background" || key = "pref.backgroundMotion" || key = "pref.theme")` });
     const v = (k) => (rows.find((r) => r.key === k) || {}).value;
+    if (window.JZTheme && ['light', 'dark'].includes(v('pref.theme'))) JZTheme.set(v('pref.theme'), true);   // the theme follows the account, like the backdrop
     applyBg(v('pref.background'), v('pref.backgroundMotion'));
   } catch { /* keep the default backdrop */ }
 }
@@ -1564,16 +1574,20 @@ async function homeModel() {
     isAdmin ? count('portal_requests', 'status = "pending"').catch(() => 0) : Promise.resolve(0),
   ]);
   ssoSlugs = new Set(ssoRows.filter((r) => r.value === true).map((r) => r.app));
+  // On the Portal the layout is ONE shared App Store layout that an admin edits and everyone sees (GET /store/layout; saving is admin-only on the server).
+  const sl = !onlyTools && selfId() ? await acctFetch('/store/layout').catch(() => null) : null, canEdit = onlyTools ? true : !!(sl && sl.admin), viaStore = !onlyTools;
   const rank = (r) => r.scope === 'global' ? 0 : r.scope === 'app' ? 1 : (r.app ? 3 : 2);
   const allowed = (slug) => {
-    if (isAdmin) return true;
+    if (isAdmin || (sl && sl.admin)) return true;
     const rs = acc.filter((r) => r.scope === 'global' || (r.scope === 'app' && r.app === slug) || (r.scope === 'user' && (r.app === '' || r.app === slug))).sort((a, b) => rank(a) - rank(b));
     const last = rs[rs.length - 1]; return !(last && last.value === false);
   };
   const items = {};
   // Names people gave their own apps (saved in their layout row, `names`). Only text, 30 characters at most; the admin can see and reset them.
-  const names = {}; if (lrows[0] && lrows[0].value && typeof lrows[0].value.names === 'object' && lrows[0].value.names) for (const [k, v] of Object.entries(lrows[0].value.names)) { const c = cleanName(v); if (c && /^[a-z0-9][a-z0-9_-]{0,60}$/.test(k)) names[k] = c; }
-  apps.forEach((a) => { const nm = names[a.slug] || a.name; items['app:' + a.slug] = { id: 'app:' + a.slug, kind: 'app', name: nm, orig: a.name, app: a, grad: GRADS[hashN(a.slug) % GRADS.length], letter: (nm || '?').trim().charAt(0).toUpperCase(), ok: allowed(a.slug) }; });
+  const nameSrc = sl && sl.layout ? sl.layout : lrows[0] && lrows[0].value;
+  const names = {}; if (nameSrc && typeof nameSrc.names === 'object' && nameSrc.names) for (const [k, v] of Object.entries(nameSrc.names)) { const c = cleanName(v); if (c && /^[a-z0-9][a-z0-9_-]{0,60}$/.test(k)) names[k] = c; }
+  const dsrc = sl && sl.layout && sl.layout.descs ? sl.layout.descs : {};
+  apps.forEach((a) => { if (dsrc[a.slug]) a.description = String(dsrc[a.slug]); const nm = names[a.slug] || a.name; items['app:' + a.slug] = { id: 'app:' + a.slug, kind: 'app', name: nm, orig: a.name, app: a, grad: GRADS[hashN(a.slug) % GRADS.length], letter: (nm || '?').trim().charAt(0).toUpperCase(), ok: allowed(a.slug) }; });
   if (onlyTools) for (const [k, name, g] of ADMIN_TOOLS) items['tool:' + k] = { id: 'tool:' + k, kind: 'sys', name, glyph: k, grad: g, href: '#/' + k, badge: k === 'requests' ? pend : 0 };
   else if (isAdmin) items['sys:admin'] = { id: 'sys:admin', kind: 'folder', name: 'Admin', grad: ['#64748b', '#334155'], badge: pend };
   if (!isAdmin || selfId()) {
@@ -1585,6 +1599,7 @@ async function homeModel() {
   let pw = null; if (selfId()) { try { pw = await acctFetch('/paywall'); } catch { pw = null; } }
   let saved = lrows[0] && lrows[0].value && typeof lrows[0].value === 'object' ? lrows[0].value : null;
   if (!saved) { try { saved = JSON.parse(store.lget((onlyTools ? 'pa.adminlayout.' : 'pa.layout.') + uid) || 'null'); } catch { saved = null; } }
+  if (sl && sl.layout) saved = sl.layout;
   const fresh = !saved;
   saved = saved || { order: [], dock: onlyTools ? (selfId() ? ['sys:family', 'sys:me'] : []) : isAdmin ? (selfId() ? ['sys:admin', 'sys:family', 'sys:me'] : ['sys:admin']) : ['sys:family', 'sys:me'], hidden: [] };
   const seen = new Set(), keep = (arr, f = () => true) => (Array.isArray(arr) ? arr : []).filter((id) => items[id] && f(id) && !seen.has(id) && seen.add(id));
@@ -1592,7 +1607,7 @@ async function homeModel() {
   const folders = {};
   for (const [fid, f] of Object.entries(saved.folders && typeof saved.folders === 'object' ? saved.folders : {})) {
     if (!/^[a-z0-9]{3,12}$/.test(fid) || !f || typeof f !== 'object') continue;
-    folders[fid] = { name: String(f.name || 'Folder').slice(0, 30), items: [] };
+    folders[fid] = { name: String(f.name || 'Folder').slice(0, 30), desc: String(f.desc || '').slice(0, 200), items: [] };
     items['folder:' + fid] = { id: 'folder:' + fid, kind: 'ufolder', fid, name: folders[fid].name, grad: ['#64748b', '#334155'] };
   }
   for (const fid of Object.keys(folders)) folders[fid].items = keep((saved.folders[fid] || {}).items, (id) => canFolder(id));
@@ -1600,11 +1615,16 @@ async function homeModel() {
   const hidden = keep(saved.hidden, (id) => !PROTECTED.has(id));
   const order = keep(saved.order);
   Object.keys(items).forEach((id) => { if (!seen.has(id)) { order.push(id); seen.add(id); } });   // new apps appear at the end
-  return { apps, reqs, items, ssoSlugs, isAdmin, uid, layout: { order, dock, hidden, folders, names, view: saved.view === 'icons' || saved.view === 'tiles' ? saved.view : '' }, lrow: lrows[0] || null, fresh, pend, pw };
+  return { apps, reqs, items, ssoSlugs, isAdmin, uid, layout: { order, dock, hidden, folders, names, descs: saved.descs && typeof saved.descs === 'object' ? saved.descs : {}, view: saved.view === 'icons' || saved.view === 'tiles' ? saved.view : '' }, canEdit, viaStore, lrow: lrows[0] || null, fresh, pend, pw };
 }
 
 function saveLayout() {
   const l = HM.layout, uid = HM.uid;
+  if (HM.viaStore) {   // the shared App Store layout: only an admin gets here (the buttons are hidden for everyone else, and the server refuses anyone else)
+    if (!HM.canEdit) return;
+    saveChain = saveChain.then(async () => { try { await acctFetch('/store/layout', { layout: l }); } catch (e) { toast('Could not save the App Store: ' + e.message, true); } });
+    return;
+  }
   store.lset((adminMode() ? 'pa.adminlayout.' : 'pa.layout.') + uid, JSON.stringify(l));
   saveChain = saveChain.then(async () => {
     try {
@@ -1642,7 +1662,7 @@ function tileText(it) {
     d = a.description || '';
     const pcfg = HM && HM.pw && HM.pw.apps[a.slug];
     st = !a.enabled ? 'Off' : a.maintenance ? 'Maintenance' : !it.ok ? (pcfg ? priceText(pcfg) : 'Request access') : 'Open';
-  } else if (it.kind === 'ufolder') { const n = ((HM && HM.layout.folders[it.fid]) || { items: [] }).items.length; d = n ? n + (n === 1 ? ' app' : ' apps') : 'Empty folder'; st = 'Open'; }
+  } else if (it.kind === 'ufolder') { const n = ((HM && HM.layout.folders[it.fid]) || { items: [] }).items.length; d = ((HM && HM.layout.folders[it.fid]) || {}).desc || (n ? n + (n === 1 ? ' app' : ' apps') : 'Empty folder'); st = 'Open'; }
   else if (it.kind === 'folder') { d = 'Users, apps, requests and settings'; st = it.badge ? it.badge + ' waiting' : 'Open'; }
   else d = it.id === 'sys:family' ? 'Your household and relatives' : it.id === 'sys:adminlink' ? 'Portal Admin (home network or tailnet)' : 'Your preferences and account';
   return `<span class="ic-desc">${esc(d)}</span><span class="ic-state">${esc(st || 'Open')}</span>`;
@@ -1659,7 +1679,6 @@ function iconHTML(it, o = {}) {
   if (it.kind === 'folder') tile = `<button class="ic-tile folder" data-folder="1" aria-label="Admin tools">${folderMini()}</button>`;
   else if (it.kind === 'ufolder') tile = `<button class="ic-tile folder" data-ufolder="${esc(it.fid)}" aria-label="Folder ${esc(it.name)}">${ufMini(it)}</button>`;
   else if (it.kind === 'sys') tile = `<a class="ic-tile" href="${esc(it.href)}" draggable="false" aria-label="${esc(it.name)}">${tileInner(it)}</a>`;
-  else if (a.enabled && it.ok && !a.maintenance && /^https?:\/\//i.test(a.url || '')) tile = `<a class="ic-tile" href="${esc(a.url)}" data-open="${esc(a.slug)}" target="_blank" rel="noopener" draggable="false" aria-label="Open ${esc(a.name)}">${tileInner(it)}</a>`;
   else tile = `<button class="ic-tile" data-info="${esc(a.slug)}" aria-label="${esc(a.name)}">${tileInner(it)}</button>`;
   if (it.kind === 'app') {
     if (!a.enabled) st = '';
@@ -1668,8 +1687,8 @@ function iconHTML(it, o = {}) {
   }
   const badge = it.badge ? `<span class="ic-badge">${it.badge > 9 ? '9+' : it.badge}</span>` : '';
   const x = !o.tray && it.kind === 'ufolder' ? `<button class="ic-x" data-delfolder="${esc(it.fid)}" aria-label="Remove folder ${esc(it.name)}">${ICON_X}</button>` : !o.tray && !PROTECTED.has(it.id) ? `<button class="ic-x" data-hide="${esc(it.id)}" aria-label="Hide ${esc(it.name)}">${ICON_X}</button>` : '';
-  const ed = !o.tray && isAdminRole() && it.kind === 'app' ? `<button class="ic-ed" data-edit-app="${esc(a.slug)}" aria-label="Edit ${esc(a.name)}">${ICON_PEN}</button>` : '';
-  const rn = !o.tray && it.kind === 'app' ? `<button class="ic-rn" data-rename="${esc(a.slug)}" aria-label="Rename ${esc(it.name)}">${ICON_PEN}</button>` : '';
+  const ed = !o.tray && HM && HM.canEdit && it.kind === 'app' ? `<button class="ic-ed" data-edit-app="${esc(a.slug)}" aria-label="Edit ${esc(a.name)}">${ICON_PEN}</button>` : '';
+  const rn = !o.tray && HM && HM.canEdit && it.kind === 'app' ? `<button class="ic-rn" data-rename="${esc(a.slug)}" aria-label="Rename ${esc(it.name)}">${ICON_PEN}</button>` : '';
   const add = o.tray ? `<button class="ic-add" data-show="${esc(it.id)}" aria-label="Add ${esc(it.name)} back">${ICON_ADD}</button>` : '';
   return `<div class="ic${a && !a.enabled ? ' off' : ''}" data-id="${esc(it.id)}" style="${c}"><div class="ic-w">${tile}${st}${badge}${x}${ed}${rn}${add}<span class="ic-label">${esc(it.name)}</span>${tileText(it)}</div></div>`;
 }
@@ -1689,9 +1708,9 @@ function renderDock() {
   d.classList.toggle('few', !!l && l.dock.length < 4);
 }
 function setEditing(on) {
-  editing = !!on && !!$('#sb');
+  editing = !!on && !!$('#sb') && !!(HM && HM.canEdit);
   document.body.classList.toggle('editing', editing);
-  renderTicker(); $('#tb-edit').hidden = editing || !$('#sb'); $('#tb-done').hidden = !editing; if ($('#tb-view')) $('#tb-view').hidden = editing || !$('#sb');
+  renderTicker(); $('#tb-edit').hidden = editing || !$('#sb') || !(HM && HM.canEdit); $('#tb-done').hidden = !editing; if ($('#tb-view')) $('#tb-view').hidden = editing || !$('#sb');
   if (HM) renderTray();
 }
 
@@ -1755,7 +1774,7 @@ document.addEventListener('pointerdown', (e) => {
   if (!ic) { if (editing && !e.target.closest('.topbar,dialog,.hid,.ic')) setEditing(false); return; }
   if (e.target.closest('.ic-x,.ic-ed,.ic-add') || e.target.closest('.hid')) return;
   suppress = false; press = { ic, x: e.clientX, y: e.clientY, id: e.pointerId, long: false };
-  if (!editing) press.t = setTimeout(() => { if (press && !drag) { press.long = true; try { navigator.vibrate && navigator.vibrate(12); } catch {} setEditing(true); } }, 520);
+  if (!editing && HM && HM.canEdit) press.t = setTimeout(() => { if (press && !drag) { press.long = true; try { navigator.vibrate && navigator.vibrate(12); } catch {} setEditing(true); } }, 520);
 });
 document.addEventListener('pointermove', (e) => {
   if (!press || e.pointerId !== press.id) return;
@@ -1783,7 +1802,9 @@ function openSheet(html) {
   return d;
 }
 document.addEventListener('change', (e) => {
-  const n = e.target.closest && e.target.closest('[data-fname]'); if (!n || !HM) return;
+  const fd = e.target.closest && e.target.closest('[data-fdesc]');
+  if (fd && HM && HM.canEdit) { const f = HM.layout.folders[fd.dataset.fdesc]; if (f) { f.desc = fd.value.trim().slice(0, 200); renderSb(); saveLayout(); } return; }
+  const n = e.target.closest && e.target.closest('[data-fname]'); if (!n || !HM || !HM.canEdit) return;
   const f = HM.layout.folders[n.dataset.fname]; if (!f) return;
   f.name = n.value.trim().slice(0, 30) || 'Folder'; n.value = f.name; HM.items['folder:' + n.dataset.fname].name = f.name; renderSb(); renderDock(); saveLayout();
 });
@@ -1817,7 +1838,8 @@ function removeFolder(fid) {   // its apps go back to the grid
 function ufolderSheet(fid) {
   const f = HM.layout.folders[fid]; if (!f) return;
   const kids = f.items.map((id) => HM.items[id]).filter(Boolean).map((it) => iconHTML(it, { tray: true, plain: true }).replace(/<button class="ic-add"[^>]*>.*?<\/button>/, '').replace(/<\/div><\/div>$/, `<button class="ic-out" data-out="${esc(it.id)}">Move out</button></div></div>`));
-  const d = openSheet(`<input class="folder-name" data-fname="${esc(fid)}" value="${esc(f.name)}" maxlength="30" aria-label="Folder name"><div class="folder-grid">${kids.join('') || '<p class="muted">Empty. Drag an icon onto this folder while rearranging.</p>'}</div><p style="margin-top:14px"><button class="btn small danger" data-delfolder="${esc(fid)}">Remove folder</button></p>`);
+  const ce = !!HM.canEdit;
+  const d = openSheet(`<input class="folder-name" data-fname="${esc(fid)}" value="${esc(f.name)}" maxlength="30" aria-label="Folder name"${ce ? '' : ' readonly'}>${ce ? `<textarea class="folder-desc-in" data-fdesc="${esc(fid)}" rows="2" maxlength="200" placeholder="What is in this folder?" aria-label="Folder description">${esc(f.desc || '')}</textarea>` : (f.desc ? `<p class="muted folder-desc">${esc(f.desc)}</p>` : '')}<div class="folder-grid">${kids.join('') || (ce ? '<p class="muted">Empty. Drag an icon onto this folder while rearranging.</p>' : '<p class="muted">Empty.</p>')}</div>${ce ? `<p style="margin-top:14px"><button class="btn small danger" data-delfolder="${esc(fid)}">Remove folder</button></p>` : ''}`);
   d.dataset.fid = fid;
   d.querySelectorAll('a.ic-tile').forEach((a) => a.addEventListener('click', () => d.close()));
 }
@@ -1833,14 +1855,34 @@ function payBody(slug, renew) {
   return `<div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn primary" data-pay="${esc(slug)}" data-scope="person">${renew ? 'Renew' : 'Pay'} ${esc(priceText(c))}</button>${c.householdPrice && HM.pw.household ? `<button class="btn" data-pay="${esc(slug)}" data-scope="household">Whole household: ${esc(rand(c.householdPrice))}${c.mode === 'once' ? '' : ' / ' + c.days + ' days'}</button>` : ''}</div>`
     + (c.householdPrice && !HM.pw.household ? '<p class="muted small">Create a household under Family to pay once for everyone who lives with you.</p>' : '') + '<p class="muted small">Secure card payment by Yoco.</p>';
 }
+/* ---------- App Store: every app, to view on the web or install as a web app (PWA) ---------- */
+const deviceEnv = () => ({ ua: navigator.userAgent, platform: navigator.platform, touch: navigator.maxTouchPoints || 0, standalone: !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches)) });
+function installSheet(slug) {
+  const it = HM && HM.items['app:' + slug]; if (!it) return;
+  const a = it.app, H = window.InstallHelp, dev = H.detect(deviceEnv()), why = H.blocker(a, it.ok);
+  const note = H.signInNote(dev);
+  const body = why ? `<p>${esc(why)}</p><div class="row" style="gap:8px"><button class="btn" data-close>Close</button></div>`
+    : `<p class="muted small">Installing puts ${esc(a.name)} on your ${dev.ios || /^android/.test(dev.kind) ? 'home screen' : 'computer'} like any other app, in its own window.</p>`
+      + `<ol class="inst-steps">${H.steps(dev).map((x) => `<li>${esc(x)}</li>`).join('')}</ol>`
+      + (dev.standalone ? '<p class="muted small">You are using the installed Portal. If Add to Home Screen is missing here, open Safari or Chrome and go to the address below.</p>' : '')
+      + (note ? `<p class="muted small">${esc(note)}</p>` : '')
+      + `<p class="small"><span class="muted">Address:</span> <code>${esc(a.url)}</code></p>`
+      + `<div class="row" style="gap:8px;flex-wrap:wrap"><a class="btn primary" href="${esc(a.url)}" data-open="${esc(a.slug)}" target="_blank" rel="noopener">Open ${esc(a.name)}</a><button class="btn" data-copyurl="${esc(a.slug)}">Copy address</button></div>`;
+  openSheet(`<div class="sheet-head"><span class="ic-tile" style="--c1:${it.grad[0]};--c2:${it.grad[1]}">${tileInner(it)}</span><h2>Install ${esc(a.name)}</h2></div>${body}`);
+}
+document.addEventListener('click', (e) => {
+  const ib = e.target.closest('[data-install]'); if (ib) { e.preventDefault(); installSheet(ib.dataset.install); return; }
+  const cb = e.target.closest('[data-copyurl]');
+  if (cb && HM) { const it = HM.items['app:' + cb.dataset.copyurl]; if (it) { try { navigator.clipboard.writeText(it.app.url).then(() => toast('Address copied'), () => toast('Press and hold the address to copy it', true)); } catch { toast('Press and hold the address to copy it', true); } } }
+});
 function infoSheet(slug, startEdit) {
   const it = HM.items['app:' + slug]; if (!it) return;
-  const a = it.app, isAdmin = HM.isAdmin, reqs = HM.reqs;
+  const a = it.app, isAdmin = HM.canEdit, reqs = HM.reqs;
   const pend = reqs && reqs.find((r) => r.app === a.slug && r.status === 'pending'), denied = reqs && reqs.find((r) => r.app === a.slug && r.status === 'denied');
   let body;
   if (!a.enabled) body = '<span class="chip bad">unavailable</span>';
   else if (a.maintenance) body = `<span class="chip warn">maintenance</span><p class="muted small">${esc(a.message || 'Back soon.')}</p>`;
-  else if (it.ok) body = /^https?:\/\//i.test(a.url || '') ? `<a class="btn primary" href="${esc(a.url)}" data-open="${esc(a.slug)}" target="_blank" rel="noopener">Open ${esc(a.name)}</a>` : '<span class="muted small">No address set yet</span>';
+  else if (it.ok) body = /^https?:\/\//i.test(a.url || '') ? `<div class="row" style="gap:8px;flex-wrap:wrap"><a class="btn primary" href="${esc(a.url)}" data-open="${esc(a.slug)}" target="_blank" rel="noopener">View ${esc(a.name)} on web</a><button class="btn" data-install="${esc(a.slug)}">Install</button></div>` : '<span class="muted small">No address set yet</span>';
   else body = HM.reqs === null ? '<span class="muted small">Ask the admin for access</span>' : pend ? '<span class="chip warn">request pending</span>'
     : `<div class="req-row"><input data-msg="${esc(a.slug)}" placeholder="Why do you need it? (optional)" maxlength="300"><button class="btn small primary" data-req="${esc(a.slug)}">Request access</button></div>${denied ? '<div class="muted small" style="margin-top:6px">Your last request was denied.</div>' : ''}`;
   const pcfg = HM.pw && HM.pw.ready && HM.pw.apps[a.slug];
@@ -1869,7 +1911,7 @@ document.addEventListener('click', guard(async (e) => {
   const rnb = e.target.closest('[data-rename]');
   if (rnb && HM) {
     const slug = rnb.dataset.rename, it = HM.items['app:' + slug]; if (!it) return;
-    const v = prompt(`Rename "${it.orig}" on your home screen.\nLeave it empty to go back to "${it.orig}".`, it.name === it.orig ? '' : it.name); if (v === null) return;
+    const v = prompt(`Rename "${it.orig}" for everyone.\nLeave it empty to go back to "${it.orig}".`, it.name === it.orig ? '' : it.name); if (v === null) return;
     const c = cleanName(v); HM.layout.names = HM.layout.names || {};
     if (!c || c.toLowerCase() === String(it.orig).toLowerCase() && c === it.orig) delete HM.layout.names[slug]; else HM.layout.names[slug] = c;
     it.name = HM.layout.names[slug] || it.orig; it.letter = (it.name || '?').trim().charAt(0).toUpperCase();
@@ -1884,8 +1926,9 @@ document.addEventListener('click', guard(async (e) => {
   if (pay) { pay.disabled = true; try { const j = await acctFetch('/pay', { slug: pay.dataset.pay, scope: pay.dataset.scope }); location.href = j.redirectUrl; } catch (err) { pay.disabled = false; throw err; } return; }
   const ds = e.target.closest('[data-dsave]');
   if (ds) {
-    const app = HM.apps.find((x) => x.slug === ds.dataset.dsave); if (!app) return;
+    const app = HM.apps.find((x) => x.slug === ds.dataset.dsave); if (!app || !HM.canEdit) return;
     const val = ds.closest('[data-desc]').querySelector('textarea').value.trim().slice(0, 300);
+    if (HM.viaStore) { HM.layout.descs = HM.layout.descs || {}; if (val) HM.layout.descs[app.slug] = val; else delete HM.layout.descs[app.slug]; app.description = val; saveLayout(); toast('Description saved'); return; }
     await api('PATCH', `/api/collections/portal_apps/records/${app.id}`, { description: val });
     await audit('app.update', app.slug, { description: val }); app.description = val; toast('Description saved'); return;
   }
@@ -1926,7 +1969,7 @@ function setBar(view) {
   $('#tb-back').hidden = home; $('#tb-brand').hidden = !home; $('#tb-title').hidden = home;
   $('#tb-title').textContent = VIEW_TITLES[view] || '';
   $('#tb-me').textContent = (state.actor || '?').trim().charAt(0).toUpperCase();
-  if (!home) { setEditing(false); $('#tb-edit').hidden = true; $('#tb-done').hidden = true; $('#tb-view').hidden = true; } else { $('#tb-edit').hidden = editing; }
+  if (!home) { setEditing(false); $('#tb-edit').hidden = true; $('#tb-done').hidden = true; $('#tb-view').hidden = true; } else { $('#tb-edit').hidden = editing || !(HM && HM.canEdit); }
   $('#tb-view').hidden = !home || editing; renderTicker();
 }
 
@@ -1935,6 +1978,7 @@ function setBar(view) {
 async function viewHome() {
   const uid = selfId() || state.uid, isAdmin = isAdminRole(), hasSelf = !!selfId();
   HM = await homeModel();
+  $('#tb-edit').hidden = editing || !HM.canEdit;
   const g = !hasSelf ? null : await fetch('/guardians', { headers: { authorization: state.token }, cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
   const fam = !hasSelf ? null : await acctFetch('/family').catch(() => null);
   if (fam && fam.invites && fam.invites.length && HM.items['sys:family']) HM.items['sys:family'].badge = fam.invites.length;

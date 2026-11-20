@@ -355,6 +355,12 @@ async function accountRoutes(req, res, pathname) {
         return send(res, 200, await aiKeys.state(user.id));
       } catch (e) { return send(res, e.status || 500, { message: String(e.message || e) }); }
     }
+    if (pathname === '/store/layout') {   // the shared App Store layout: anyone signed in reads it, only an admin changes it (checked here, never from the browser)
+      if (req.method === 'GET') return send(res, 200, { layout: await storeLayout.get(), admin: !!user.isAdmin });
+      if (req.method !== 'POST') return send(res, 405, { message: 'Method not allowed' });
+      if (!user.isAdmin) return send(res, 403, { message: 'Only an admin can change the App Store.' });
+      try { return send(res, 200, { layout: await storeLayout.set(b.layout), admin: true }); } catch (e) { return send(res, e.status || 500, { message: String(e.message || e) }); }
+    }
     if (pathname === '/paywall' && req.method === 'GET') return send(res, 200, await paywall.forPerson(user));
     if (pathname === '/pay' && req.method === 'POST') { try { return send(res, 200, await paywall.startPayment(user, b.slug, b.scope)); } catch (e) { return send(res, e.status || 500, { message: String(e.message || e) }); } }
     if (pathname === '/pay/status' && req.method === 'GET') return send(res, 200, await paywall.status(user, new URL(req.url, 'http://x').searchParams.get('slug')));
@@ -484,6 +490,7 @@ async function signup(req, res) {
 const feed = require('./statusfeed')({ asSuper: (m, p, b) => pbx.asSuper(m, p, b) });
 const appapi = makeAppApi({ qrlogin, quick, feed, pbx, DATA_DIR: pbx.dataDir, readBody, send });
 const notices = require('./notices')({ pbx, forgetTouch: appapi.forgetTouch });
+const storeLayout = require('./storelayout')(pbx);
 const changes = makeChanges({ pbx, installedApps, APPS_DIR, DATA_DIR: pbx.dataDir, appKeys: appapi.keys });
 const handle = async (req, res) => {
   try {
@@ -494,7 +501,7 @@ const handle = async (req, res) => {
     if (pathname === '/guardians') return guardiansRoute(req, res);
     if (pathname === '/qr') return qrRoute(req, res);
     if (pathname === '/quick') return quickRoute(req, res);
-    if (pathname === '/family' || pathname === '/events' || pathname === '/paywall' || pathname === '/pay' || pathname === '/pay/status' || pathname === '/family/users' || pathname === '/account/ai' || pathname === '/account/dob' || pathname === '/account/username' || pathname === '/account/guardian') return accountRoutes(req, res, pathname);
+    if (pathname === '/family' || pathname === '/events' || pathname === '/paywall' || pathname === '/pay' || pathname === '/pay/status' || pathname === '/family/users' || pathname === '/account/ai' || pathname === '/account/dob' || pathname === '/account/username' || pathname === '/account/guardian' || pathname === '/store/layout') return accountRoutes(req, res, pathname);
     if (pathname === '/yoco/webhook') {
       if (req.method !== 'POST') return send(res, 405, { message: 'Method not allowed' });
       const raw = await readBody(req); const r = await paywall.handleWebhook(req.headers, raw);
@@ -638,7 +645,7 @@ const handle = async (req, res) => {
 
 // JoolzApp Portal (the separate, internet-facing home screen app) passes these on for people: /user/<route> on the apps-only port,
 // with its own Portal API key. They are ALWAYS handled as public, user-only requests, and only the routes listed here exist.
-const PORTAL_ROUTES = new Set(['/signup-config', '/signup', '/forgot', '/guardians', '/family', '/family/users', '/events', '/paywall', '/pay', '/pay/status', '/account/ai', '/account/dob', '/account/username', '/account/guardian', '/qr', '/quick', '/api/active', '/yoco/webhook']);
+const PORTAL_ROUTES = new Set(['/signup-config', '/signup', '/forgot', '/guardians', '/family', '/family/users', '/events', '/paywall', '/pay', '/pay/status', '/account/ai', '/account/dob', '/account/username', '/account/guardian', '/store/layout', '/qr', '/quick', '/api/active', '/yoco/webhook']);
 const portalBad = new Map();
 function fromPortal(req, res) {
   const ip = String(req.socket.remoteAddress || ''), now = Date.now(), fails = (portalBad.get(ip) || []).filter((t) => now - t < 600e3);

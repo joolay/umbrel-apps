@@ -1,0 +1,12 @@
+/* JoolzApp floating top bar (the standard for every app): app title on the left, light/dark theme icon on the right.
+   Markup:  <header class="topbar"><div class="brand"><img src="icon.svg" alt="" width="28" height="28"><span>App name</span></div>
+            <span class="tb-gap"></span> ...optional app buttons... <button class="tb-btn" data-theme-toggle aria-label="Switch theme">(see README)</button></header>
+   Load after glass.css and the app's own CSS; load floatbar.js in <head>. */
+.topbar{position:sticky;top:calc(var(--safe-t,0px) + 8px);z-index:20;display:flex;align-items:center;gap:10px;margin:8px 12px 0;padding:8px 12px;min-height:56px;
+  border-radius:28px;border:1px solid var(--glass-line);background:var(--glass-strong);-webkit-backdrop-filter:blur(22px) saturate(170%);backdrop-filter:blur(22px) saturate(170%);box-shadow:var(--shadow)}
+.topbar .brand{display:flex;align-items:center;gap:10px;min-width:0;font-weight:700}
+.topbar .brand span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.topbar .tb-gap{flex:1}
+[data-theme-toggle] .i-sun,[data-theme-toggle] .i-moon{display:none}
+[data-theme-toggle][data-mode="light"] .i-moon{display:block}   /* light now: the moon offers dark */
+[data-theme-toggle][data-mode="dark"] .i-sun{display:block}     /* dark now: the sun offers light */
