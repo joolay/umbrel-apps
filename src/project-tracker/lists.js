@@ -2,16 +2,31 @@
 // Project Tracker: the shape of a list and the rules for changing it. Pure functions, no network, so they are easy to test.
 // A list is { name, categories: [string], projects: [project] }. A project:
 //   id, name, category, desc, status (active|maintenance|hiatus|closed), closedAs (completed|abandoned|""), closedAt,
-//   pinned (true once someone set the status by hand: the 3-day rule then leaves it alone), lastWorked (YYYY-MM-DD),
-//   paths ([{repo, path}] used to read the last commit), note, rank (lower is higher priority), state (live|archived|bin), binnedAt, updatedAt.
+//   statusAt (when someone last set the status by hand; the 3-day rule then waits for work done on a LATER day), auto ("" follow the global
+//   switch | "on" | "off"), lastWorked (YYYY-MM-DD), paths ([{repo, path}] used to read the last commit),
+//   notes ([{id, text, at, state: open|review}]: Claude reads them before working on the project, marks them "review" when done and asks before clearing),
+//   rank (lower is higher priority), state (live|archived|bin), binnedAt, updatedAt.
 const STATUSES = ["active", "maintenance", "hiatus", "closed"];
 const STATES = ["live", "archived", "bin"];
 const BIN_DAYS = 30, ACTIVE_DAYS = 3, REVIEW_DAYS = 30, DAY = 86400e3;
 const str = (v, n) => String(v == null ? "" : v).replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "").trim().slice(0, n);
 const isDay = v => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v);
 const iso = v => { const t = Date.parse(v); return isFinite(t) ? new Date(t).toISOString() : ""; };
+const NOTE_STATES = ["open", "review"];
 const slug = s => str(s, 60).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "project";
 
+function cleanNotes(p, now) {
+  let src = Array.isArray(p.notes) ? p.notes : [];
+  if (!src.length && str(p.note, 600)) src = [{ text: p.note }];   // the old single note becomes the first note
+  const seen = new Set(), out = [];
+  src.slice(0, 30).forEach((n, i) => {
+    if (!n || typeof n !== "object") return;
+    const text = str(n.text, 600); if (!text) return;
+    let id = str(n.id, 40).replace(/[^A-Za-z0-9_-]/g, "") || "n" + (i + 1); while (seen.has(id)) id += "x"; seen.add(id);
+    out.push({ id, text, at: iso(n.at) || now, state: NOTE_STATES.includes(n.state) ? n.state : "open" });
+  });
+  return out;
+}
 function cleanProject(p, now) {
   if (!p || typeof p !== "object") return null;
   const id = str(p.id, 60).replace(/[^A-Za-z0-9_-]/g, ""), name = str(p.name, 120);
@@ -22,7 +37,8 @@ function cleanProject(p, now) {
     id, name, category: str(p.category, 60) || "General", desc: str(p.desc, 600), status,
     closedAs: status === "closed" && ["completed", "abandoned"].includes(p.closedAs) ? p.closedAs : "",
     closedAt: status === "closed" && iso(p.closedAt) ? iso(p.closedAt) : status === "closed" ? now : "",
-    pinned: !!p.pinned, lastWorked: isDay(p.lastWorked) ? p.lastWorked : "", paths, note: str(p.note, 600),
+    statusAt: iso(p.statusAt) || (p.pinned ? iso(p.updatedAt) || now : ""), auto: ["on", "off"].includes(p.auto) ? p.auto : "",
+    lastWorked: isDay(p.lastWorked) ? p.lastWorked : "", paths, notes: cleanNotes(p, now),
     rank: Number.isFinite(+p.rank) ? +p.rank : 0, state: STATES.includes(p.state) ? p.state : "live",
     binnedAt: p.state === "bin" ? (iso(p.binnedAt) || now) : "", updatedAt: iso(p.updatedAt) || now,
   };
@@ -60,11 +76,15 @@ function move(list, id, dir, now = new Date().toISOString()) {
   [sib[i], sib[j]] = [sib[j], sib[i]];
   return sib.map((x, n) => ({ ...x, rank: (n + 1) * 10 })).filter(x => l.projects.find(o => o.id === x.id).rank !== x.rank);
 }
-// The status shown: a Maintenance or Hiatus project worked on in the last 3 days counts as Active, unless someone set its status by hand.
-function effective(p, worked, now = Date.now()) {
+// The status shown: a Queued or Hiatus project worked on in the last 3 days counts as Active. Auto is on for every project unless the global
+// switch is off (autoGlobal=false) or the project says otherwise (auto "on"/"off"). If someone set the status by hand it stays until work happens
+// on a LATER day than that change (so earlier work does not undo it); pressing "worked today" clears the hand-set mark.
+function effective(p, worked, now = Date.now(), autoGlobal = true) {
   const last = [p.lastWorked, worked].filter(isDay).sort().pop();
   const recent = !!last && now - Date.parse(last + "T23:59:59Z") <= ACTIVE_DAYS * DAY && now >= Date.parse(last + "T00:00:00Z") - DAY;
-  const auto = !p.pinned && recent && (p.status === "maintenance" || p.status === "hiatus");
+  const on = p.auto === "on" || (p.auto !== "off" && autoGlobal !== false);
+  const later = !p.statusAt || (!!last && last > String(p.statusAt).slice(0, 10));
+  const auto = on && recent && later && (p.status === "maintenance" || p.status === "hiatus");
   return { status: auto ? "active" : p.status, auto, last: last || "" };
 }
 const dueForReview = (p, now = Date.now()) => p.state === "live" && p.status === "closed" && !!p.closedAt && now - Date.parse(p.closedAt) > REVIEW_DAYS * DAY;

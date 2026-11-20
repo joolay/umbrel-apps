@@ -81,3 +81,8 @@ Before building a feature from scratch (skip intro/credits, subtitles, metadata,
 ## TV-specific views and Quick Access
 - A specialised TV browsing view (remote/D-pad navigation, 1920x1080 layout, Chromium 53 build) belongs only in JoolzApp apps that are meant for the TV, such as JoolzTV. Do not bake TV-specific architecture into other apps unless asked.
 - Quick Access (PIN or pattern, `src/portal-admin/quickaccess.js`) is a convenience on top of the main password, never a replacement for it. Admins reset a person's main password as usual; there is no separate admin tool for Quick Access beyond "Sign out everywhere" (Admin > Users > Sign-in), which also removes the person's Quick Access devices.
+
+## Project Tracker notes (read before working on an app)
+Each project in the shared list (`appdev.json` in `joolay/tracking-data`) can carry `notes` the owner wrote in the Project Tracker app. Before starting work on one of his apps,
+fetch that file (poll it fresh), read the project's `notes`, and treat the open ones as part of the request. When a note has been dealt with, set its `state` to `review`
+(never delete it yourself), tell him what changed and ask him to confirm. He clears it in the app (or tells you to). Write back with a fresh read first, changing only that project.

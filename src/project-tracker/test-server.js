@@ -4,7 +4,7 @@ const assert = require("assert"), path = require("path"), http = require("http")
 const rows = []; let n = 0; const prefs = [];
 const fakePb = {
   enabled: true, reload() { return true; }, PBError: class PBError extends Error { constructor(s, m) { super(m); this.status = s; } },
-  async verifyToken(t) { if (t === "admin") return { token: "admin", record: { id: "u1", isAdmin: true, name: "Zahir", portal: { prefs: {} } } }; if (t === "user") return { token: "user", record: { id: "u2", isAdmin: false } }; const e = new this.PBError(401, "no"); throw e; },
+  async verifyToken(t) { if (t === "admin") return { token: "admin", record: { id: "u1", isAdmin: true, name: "Zahir", portal: { prefs: {} } } }; if (t === "admin2") return { token: "admin2", record: { id: "u3", isAdmin: true, name: "Other admin", portal: { prefs: {} } } }; if (t === "user") return { token: "user", record: { id: "u2", isAdmin: false } }; const e = new this.PBError(401, "no"); throw e; },
   async serviceCan() { return true; }, async portalUrl() { return ""; }, async setAppPref(id, v) { prefs.push([id, v]); },
   async asApp(method, p, body) {
     const m = p.match(/records(?:\/(\w+))?(?:\?.*filter=([^&]*))?/), id = m && m[1];
@@ -57,5 +57,13 @@ const call = (method, p, body, tok = "admin") => new Promise((ok, bad) => { cons
   assert.strictEqual((await call("GET", "/api/list/" + k, null, "user")).status, 403);
   await call("DELETE", "/api/list/" + k); assert.strictEqual((await call("GET", "/api/lists")).body.lists.length, 1);
   await call("PUT", "/api/prefs", { view: "closed", list: "appdev" }); assert.strictEqual(prefs[0][1].view, "closed");
+  // the shared list belongs to its owner: another admin sees none of it and cannot reach its connection
+  r = await call("GET", "/api/lists", null, "admin2"); assert.strictEqual(r.status, 200); assert.strictEqual(r.body.lists.length, 0); assert.strictEqual(r.body.owner, false);
+  assert.strictEqual((await call("GET", "/api/list/appdev", null, "admin2")).status, 403);
+  assert.strictEqual((await call("POST", "/api/list/appdev/apply", { ops: {} }, "admin2")).status, 403);
+  assert.strictEqual((await call("GET", "/api/config/github", null, "admin2")).status, 403);
+  assert.strictEqual((await call("PUT", "/api/config/github", { token: "x" }, "admin2")).status, 403);
+  assert.strictEqual((await call("GET", "/api/lists")).body.owner, true);
+  await call("PUT", "/api/prefs", { auto: false }); assert.strictEqual(prefs[prefs.length - 1][1].auto, false);
   console.log("server ok"); process.exit(0);
 })().catch(e => { console.error(e); process.exit(1); });

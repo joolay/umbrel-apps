@@ -135,7 +135,7 @@ let ghConfig = null, ghConfigAt = 0;
 async function loadGhConfig(force) {
   if (!force && ghConfig && Date.now() - ghConfigAt < 20000) return ghConfig;
   const d = (await getData("_config", "github")) || {};
-  ghConfig = { repo: /^[\w.-]+\/[\w.-]+$/.test(d.repo || "") ? d.repo : DEFAULT_REPO, path: d.path && !String(d.path).includes("..") ? String(d.path).replace(/^\/+/, "") : DEFAULT_FILE, branch: /^[\w./-]*$/.test(d.branch || "") ? d.branch || "" : "", token: typeof d.token === "string" ? d.token : "" };
+  ghConfig = { repo: /^[\w.-]+\/[\w.-]+$/.test(d.repo || "") ? d.repo : DEFAULT_REPO, path: d.path && !String(d.path).includes("..") ? String(d.path).replace(/^\/+/, "") : DEFAULT_FILE, branch: /^[\w./-]*$/.test(d.branch || "") ? d.branch || "" : "", token: typeof d.token === "string" ? d.token : "", owner: typeof d.owner === "string" ? d.owner : "" };
   ghConfigAt = Date.now(); return ghConfig;
 }
 const gh = makeGitHub({ getConfig: () => loadGhConfig(false) });
@@ -151,6 +151,15 @@ async function workedMap(list) {
   })());
   await Promise.all(jobs); return out;
 }
+// The shared list belongs to the first person who opens the app (the owner). Nobody else is shown it, can read it or can change its connection.
+async function ghAccess(user) {
+  const c = await loadGhConfig(false);
+  if (c.owner) return c.owner === user.id;
+  const cur = (await getData("_config", "github")) || {};
+  if (cur.owner) { ghConfig = null; return cur.owner === user.id; }
+  await putData("_config", "github", { ...cur, owner: user.id }); ghConfig = null; return true;
+}
+const noAccess = res => (send(res, 403, { code: "not_yours", message: "That list belongs to someone else." }), true);
 const hasToken = async () => !!(await loadGhConfig(false)).token;
 
 function mutateFor(name, body) {
@@ -166,9 +175,12 @@ function mutateFor(name, body) {
 async function listsRoutes(req, res, p, url, user) {
   if (p === "/api/lists" && req.method === "GET") {
     const mine = (await listRows(user.id)).map(r => ({ key: r.key, name: (r.data && r.data.name) || r.key, source: "pocketbase", count: ((r.data && r.data.projects) || []).filter(x => x.state === "live").length }));
-    let g = { key: GH_LIST, name: "App development", source: "github", readOnly: !(await hasToken()), count: 0 };
-    try { const f = await gh.read(false); const l = f.data && L.cleanList(f.data); if (l) { g.count = l.projects.filter(x => x.state === "live").length; g.name = l.name; } } catch (e) { g.error = e.message; }
-    send(res, 200, { lists: [g, ...mine] }); return true;
+    const owner = await ghAccess(user); let g = null;
+    if (owner) {
+      g = { key: GH_LIST, name: "App development", source: "github", readOnly: !(await hasToken()), count: 0 };
+      try { const f = await gh.read(false); const l = f.data && L.cleanList(f.data); if (l) { g.count = l.projects.filter(x => x.state === "live").length; g.name = l.name; } } catch (e) { g.error = e.message; }
+    }
+    send(res, 200, { lists: g ? [g, ...mine] : mine, owner }); return true;
   }
   if (p === "/api/lists" && req.method === "POST") {
     const b = JSON.parse((await readBody(req)).toString() || "{}"), name = L.str(b.name, 80);
@@ -180,6 +192,7 @@ async function listsRoutes(req, res, p, url, user) {
   const m = p.match(/^\/api\/list\/([a-z0-9-]{1,70})(\/apply)?$/);
   if (!m) return false;
   const key = m[1], isGh = key === GH_LIST;
+  if (isGh && !(await ghAccess(user))) return noAccess(res);
   if (!m[2] && req.method === "GET") {
     const since = url.searchParams.get("sha") || "";
     if (isGh) {
@@ -212,6 +225,7 @@ async function listsRoutes(req, res, p, url, user) {
 
 async function configRoutes(req, res, p, user) {
   if (p !== "/api/config/github") return false;
+  if (!(await ghAccess(user))) return noAccess(res);
   if (req.method === "GET") {
     const c = await loadGhConfig(true); let status = "ok", message = "";
     try { await gh.read(true); } catch (e) { status = e.code || "error"; message = e.message; }
@@ -219,7 +233,7 @@ async function configRoutes(req, res, p, user) {
   }
   if (req.method === "PUT") {
     const b = JSON.parse((await readBody(req)).toString() || "{}"), cur = (await getData("_config", "github")) || {};
-    const next = { repo: String(b.repo || cur.repo || DEFAULT_REPO).trim(), path: String(b.path || cur.path || DEFAULT_FILE).trim(), branch: String(b.branch == null ? cur.branch || "" : b.branch).trim(), token: b.clearToken ? "" : (typeof b.token === "string" && b.token.trim() ? b.token.trim() : cur.token || "") };
+    const next = { repo: String(b.repo || cur.repo || DEFAULT_REPO).trim(), path: String(b.path || cur.path || DEFAULT_FILE).trim(), branch: String(b.branch == null ? cur.branch || "" : b.branch).trim(), token: b.clearToken ? "" : (typeof b.token === "string" && b.token.trim() ? b.token.trim() : cur.token || ""), owner: cur.owner || user.id };
     if (!/^[\w.-]+\/[\w.-]+$/.test(next.repo) || !next.path || next.path.includes("..") || !/^[\w./-]*$/.test(next.branch)) return send(res, 400, { code: "bad_config", message: "Check the repo (owner/name), file name and branch." }), true;
     await putData("_config", "github", next); ghConfig = null; send(res, 200, { ok: true }); return true;
   }
@@ -258,6 +272,7 @@ const server = http.createServer(async (req, res) => {
       const b = JSON.parse((await readBody(req)).toString() || "{}"), prev = (user.portal && user.portal.prefs && user.portal.prefs["project-tracker"]) || {}, next = { ...prev };
       if (typeof b.list === "string" && /^[a-z0-9-]{1,70}$/.test(b.list)) next.list = b.list;
       if (["all", "active", "maintenance", "hiatus", "closed", "archive", "bin"].includes(b.view)) next.view = b.view;
+      if (typeof b.auto === "boolean") next.auto = b.auto;   // global switch for the 3-day rule (default on)
       if (Array.isArray(b.collapsed)) next.collapsed = b.collapsed.map(x => L.str(x, 60)).slice(0, 60);
       await pb.setAppPref(user.id, next); tokenCache.clear(); return send(res, 200, { ok: true });
     }

@@ -17,33 +17,47 @@
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--accent:#f59e0b;--accent-2:#fbbf24;--accent-t:#2a1500}}
 :root[data-theme="dark"]{--accent:#f59e0b;--accent-2:#fbbf24;--accent-t:#2a1500}
 *{box-sizing:border-box}
-.wrap{max-width:1240px;margin:0 auto;padding:14px 14px 90px}
-.bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:6px 0 12px}
-.bar h1{font-size:1.3rem;margin:0;flex:1;min-width:140px}
-.bar select{max-width:210px}
-@media(max-width:560px){.bar h1{flex:1 1 100%}.bar select{max-width:none;flex:1 1 100%}}
-.sync{font-size:.8rem;color:var(--muted);display:flex;align-items:center;gap:6px}
+.wrap{max-width:1240px;margin:0 auto;padding:0 14px 90px}
+.top-bar{position:sticky;top:0;z-index:6;display:flex;align-items:center;gap:10px;padding:calc(8px + var(--safe-t,0px)) max(14px,var(--safe-r)) 8px max(14px,var(--safe-l));background:var(--glass-strong);border-bottom:1px solid var(--glass-line);-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px)}
+.top-bar .app{flex:1;font-weight:700;font-size:1.05rem;letter-spacing:.01em}
+.ic{width:38px;height:38px;border-radius:12px;border:1px solid var(--glass-line);background:var(--glass);color:var(--text);display:grid;place-items:center;cursor:pointer;padding:0}
+.ic svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.ic[hidden]{display:none}
+.pick{margin:12px 0}.pick select{width:100%;max-width:340px;font-weight:600}
+.sync{display:flex;align-items:center}
 .dot{width:8px;height:8px;border-radius:50%;background:var(--ok)}.dot.off{background:var(--warn)}.dot.bad{background:var(--danger)}
 .st{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;margin-bottom:6px}
 .st button{white-space:nowrap}
 .st .n{opacity:.7;margin-left:4px}
 .cat{margin:16px 2px 8px;font-size:.78rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);display:flex;justify-content:space-between;cursor:pointer;user-select:none}
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:10px;align-items:stretch}
-.p{display:grid;align-content:start;gap:7px;padding:10px 12px;margin:0;border-left:4px solid var(--c,var(--line))}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:10px;align-items:stretch}
+.p{display:grid;grid-template-columns:auto 1fr;align-content:start;gap:0 10px;padding:10px 12px 10px 8px;margin:0;border-left:4px solid var(--c,var(--line));-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;cursor:pointer}
+.p.nolead{grid-template-columns:1fr;padding-left:12px}
+.pb{display:grid;gap:7px;min-width:0}
 .p .top{display:flex;gap:8px;align-items:center}
 .p .nm{font-weight:650;flex:1;min-width:0;line-height:1.25}
 .p .desc{color:var(--muted);font-size:.84rem;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .p .desc.open{-webkit-line-clamp:unset}
 .p .meta{display:flex;gap:4px 6px;flex-wrap:wrap;align-items:center;font-size:.76rem;color:var(--muted)}
-.arrows{display:flex;gap:4px;flex:none}
-.arrows button{padding:0;width:34px;height:30px;line-height:1;font-size:.75rem}
-.seg{display:grid;grid-template-columns:1fr 1.7fr 1fr 1fr;gap:4px}
-.seg button{padding:6px 2px;font-size:.78rem;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.arrows{display:flex;flex-direction:column;justify-content:center;gap:6px}
+.arrows button{padding:0;width:34px;height:38px;line-height:1;font-size:.8rem}
+.seg{display:flex;gap:4px}
+.seg button{flex:1 1 auto;padding:6px 4px;font-size:.78rem;min-width:0;white-space:nowrap}
 .seg button.on{background:var(--c);color:#fff;border-color:var(--c)}
 .acts{display:flex;gap:6px;flex-wrap:wrap}
 .acts .sp{flex:1}
 .btn.tiny{padding:5px 10px;font-size:.8rem;min-height:30px}
 .chip.auto{background:var(--accent);color:var(--accent-t)}
+.chip.note{background:var(--glass);border:1px solid var(--glass-line);color:var(--text)}
+.nlist{display:grid;gap:8px;margin:8px 0}
+.nrow{border:1px solid var(--glass-line);border-radius:var(--r-sm);padding:8px 10px;display:grid;gap:6px}
+.nrow.review{border-color:var(--warn)}
+.nrow .t{white-space:pre-wrap;word-break:break-word}
+.nrow .m{font-size:.76rem;color:var(--muted)}
+.sheet{display:grid;gap:8px;margin-top:10px}
+.sheet .btn{width:100%;justify-content:center}
+.switch{display:flex;gap:10px;align-items:flex-start;margin:10px 0}
+.switch input{margin-top:3px}
 .banner{margin:0 0 10px;padding:10px 14px;border-radius:var(--r-sm);background:var(--glass-strong);border:1px solid var(--glass-line);font-size:.9rem}
 .empty{text-align:center;color:var(--muted);padding:34px 10px}
 dialog{border:1px solid var(--glass-line);border-radius:var(--r);background:var(--solid);color:var(--text);padding:18px;max-width:420px;width:calc(100% - 28px);box-shadow:var(--shadow)}
@@ -55,14 +69,14 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
 </style>
 </head>
 <body>
+<header class="top-bar">
+  <button class="ic" id="home" aria-label="Home" title="Home" hidden><svg viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10.5V20h13v-9.5"/><path d="M10 20v-5.5h4V20"/></svg></button>
+  <div class="app">Project Tracker</div>
+  <span class="sync"><span class="dot" id="dot" role="img" aria-label="Sync status"></span></span>
+  <button class="ic" id="settings" aria-label="Settings" title="Settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
+</header>
 <div class="wrap">
-  <div class="bar">
-    <h1 id="title">Projects</h1>
-    <select id="lists" aria-label="List"></select>
-    <button class="btn tiny" id="newlist">New list</button>
-    <button class="btn tiny" id="conn" hidden>Connection</button>
-    <span class="sync"><span class="dot" id="dot"></span><span id="sync">Connecting…</span></span>
-  </div>
+  <div class="pick"><select id="lists" aria-label="List"></select></div>
   <div id="banner"></div>
   <div class="st" id="tabs"></div>
   <div id="main"><p class="empty">Loading…</p></div>
@@ -74,9 +88,9 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
 <script>
 (function () {
   "use strict";
-  var TOKEN = "gd.token", ST = { active: ["Active", "#2563eb"], maintenance: ["Maintenance", "#d97706"], hiatus: ["Hiatus", "#7c3aed"], closed: ["Closed", "#6b7280"] };
+  var TOKEN = "gd.token", ST = { active: ["Active", "#2563eb"], maintenance: ["Queued", "#d97706"], hiatus: ["Hiatus", "#7c3aed"], closed: ["Closed", "#6b7280"] };
   var $ = function (s) { return document.querySelector(s); };
-  var S = { lists: [], key: "", sha: "", list: null, worked: {}, readOnly: false, view: "all", collapsed: {}, user: null, busy: 0, lastOk: 0, err: "" };
+  var S = { lists: [], key: "", sha: "", list: null, worked: {}, readOnly: false, view: "all", collapsed: {}, user: null, busy: 0, lastOk: 0, err: "", auto: true, owner: false, home: "" };
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); };
   function tok() { try { return sessionStorage.getItem(TOKEN) || localStorage.getItem(TOKEN) || ""; } catch (e) { return ""; } }
   function api(path, method, body) {
@@ -92,22 +106,22 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
   var DAY = 864e5;
   function effective(p) {
     var w = S.worked[p.id] || "", last = [p.lastWorked, w].filter(Boolean).sort().pop() || "", now = Date.now();
-    var recent = !!last && now - Date.parse(last + "T23:59:59Z") <= 3 * DAY;
-    var auto = !p.pinned && recent && (p.status === "maintenance" || p.status === "hiatus");
+    var recent = !!last && now - Date.parse(last + "T23:59:59Z") <= 3 * DAY, on = p.auto === "on" || (p.auto !== "off" && S.auto !== false);
+    var later = !p.statusAt || (!!last && last > String(p.statusAt).slice(0, 10));
+    var auto = on && recent && later && (p.status === "maintenance" || p.status === "hiatus");
     return { status: auto ? "active" : p.status, auto: auto, last: last };
   }
   var dueReview = function (p) { return p.state === "live" && p.status === "closed" && p.closedAt && Date.now() - Date.parse(p.closedAt) > 30 * DAY; };
   var daysLeft = function (p) { return Math.max(0, 30 - Math.floor((Date.now() - Date.parse(p.binnedAt || new Date().toISOString())) / DAY)); };
 
   /* ---------- loading and live polling ---------- */
-  function savePrefs() { clearTimeout(savePrefs.h); savePrefs.h = setTimeout(function () { api("api/prefs", "PUT", { list: S.key, view: S.view, collapsed: Object.keys(S.collapsed).filter(function (k) { return S.collapsed[k]; }) }).catch(function () {}); }, 600); }
+  function savePrefs() { clearTimeout(savePrefs.h); savePrefs.h = setTimeout(function () { api("api/prefs", "PUT", { list: S.key, view: S.view, auto: S.auto, collapsed: Object.keys(S.collapsed).filter(function (k) { return S.collapsed[k]; }) }).catch(function () {}); }, 600); }
   function loadLists(keep) {
     return api("api/lists").then(function (j) {
-      S.lists = j.lists; var pr = (S.user.prefs || {})["project-tracker"] || {};
-      if (!S.key) { S.key = pr.list && j.lists.some(function (l) { return l.key === pr.list; }) ? pr.list : j.lists[0].key; if (pr.view) S.view = pr.view; (pr.collapsed || []).forEach(function (c) { S.collapsed[c] = true; }); }
+      S.lists = j.lists; S.owner = !!j.owner; var pr = (S.user.prefs || {})["project-tracker"] || {};
+      if (!S.key) { S.key = pr.list && j.lists.some(function (l) { return l.key === pr.list; }) ? pr.list : j.lists[0].key; if (pr.view) S.view = pr.view; if (typeof pr.auto === "boolean") S.auto = pr.auto; (pr.collapsed || []).forEach(function (c) { S.collapsed[c] = true; }); }
       if (!j.lists.some(function (l) { return l.key === S.key; })) S.key = j.lists[0].key;
       $("#lists").innerHTML = j.lists.map(function (l) { return '<option value="' + esc(l.key) + '"' + (l.key === S.key ? " selected" : "") + ">" + esc(l.name) + " (" + l.count + ")</option>"; }).join("");
-      $("#conn").hidden = false;
     });
   }
   function poll(force) {
@@ -121,10 +135,10 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
     }).catch(function (e) { S.err = e.message; if (e.status === 401) location.reload(); status(); });
   }
   function status() {
-    var d = $("#dot"), t = $("#sync"), ago = S.lastOk ? Math.max(0, Math.round((Date.now() - S.lastOk) / 1000)) : null;
+    var d = $("#dot"), ago = S.lastOk ? Math.max(0, Math.round((Date.now() - S.lastOk) / 1000)) : null;
     d.className = "dot" + (S.err ? " bad" : S.readOnly ? " off" : "");
-    t.textContent = S.err ? "Can't sync: " + S.err : (S.readOnly ? "Read-only · " : "Live · ") + (ago == null ? "…" : ago < 4 ? "just now" : ago + "s ago");
-    $("#banner").innerHTML = S.readOnly && S.key === "appdev" ? '<div class="banner">This list is read-only until a GitHub token is added. Open <b>Connection</b> to add one.</div>' : "";
+    d.title = S.err ? "Can't sync: " + S.err : (S.readOnly ? "Read-only · " : "Live · ") + (ago == null ? "connecting" : ago < 4 ? "just now" : ago + "s ago");
+    $("#banner").innerHTML = S.readOnly && S.key === "appdev" ? '<div class="banner">This list is read-only until a GitHub token is added. Open <b>Settings</b> to add one.</div>' : "";
   }
   function send(body) {
     S.busy++;
@@ -140,8 +154,8 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
   }
   function render() {
     if (!S.list) return;
-    $("#title").textContent = S.list.name; $("#add").hidden = S.readOnly;
-    var c = counts(), tabs = [["all", "All"], ["active", "Active"], ["maintenance", "Maintenance"], ["hiatus", "Hiatus"], ["closed", "Closed"], ["archive", "Archive"], ["bin", "Bin"]];
+    $("#add").hidden = S.readOnly;
+    var c = counts(), tabs = [["all", "All"], ["active", "Active"], ["maintenance", "Queued"], ["hiatus", "Hiatus"], ["closed", "Closed"], ["archive", "Archive"], ["bin", "Bin"]];
     var due = S.list.projects.filter(dueReview).length;
     $("#tabs").innerHTML = tabs.map(function (t) { return '<button class="btn tiny' + (S.view === t[0] ? " primary" : "") + '" data-v="' + t[0] + '">' + t[1] + '<span class="n">' + c[t[0]] + (t[0] === "closed" && due ? " · " + due + " to review" : "") + "</span></button>"; }).join("");
     var live = S.list.projects.filter(function (p) { return p.state === "live"; }), out = "";
@@ -162,33 +176,29 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
     var keep = window.scrollY; $("#main").innerHTML = out; window.scrollTo(0, keep);
   }
   function card(p, mode) {
-    var e = effective(p), s = e.status, c = ST[s][1], ro = S.readOnly, h = '<div class="card p" style="--c:' + c + '" data-id="' + esc(p.id) + '"><div class="top">';
-    var inline = mode === "live" && !ro;
-    h += '<div class="nm">' + esc(p.name) + "</div>" + (inline ? "" : '<span class="chip" style="background:' + c + ';color:#fff">' + ST[s][0] + "</span>") + (e.auto ? '<span class="chip auto" title="Worked on in the last 3 days">auto</span>' : "");
-    if (inline) h += '<div class="arrows"><button class="btn tiny" data-a="up" aria-label="Move up">▲</button><button class="btn tiny" data-a="down" aria-label="Move down">▼</button></div>';
+    var e = effective(p), s = e.status, c = ST[s][1], ro = S.readOnly, live = mode === "live" && !ro, notes = p.notes || [], review = notes.filter(function (n) { return n.state === "review"; }).length;
+    var h = '<div class="card p' + (live ? "" : " nolead") + '" style="--c:' + c + '" data-id="' + esc(p.id) + '">';
+    if (live) h += '<div class="arrows"><button class="btn tiny" data-a="up" aria-label="Move up">▲</button><button class="btn tiny" data-a="down" aria-label="Move down">▼</button></div>';
+    h += '<div class="pb"><div class="top"><div class="nm">' + esc(p.name) + "</div>" + (live ? "" : '<span class="chip" style="background:' + c + ';color:#fff">' + ST[s][0] + "</span>") + (e.auto ? '<span class="chip auto" title="Shown as Active: worked on in the last 3 days">auto</span>' : "");
+    if (live && p.status !== "closed") h += '<button class="btn tiny" data-a="worked" title="Mark as worked on today">✓ Today</button>';
     h += "</div>";
     if (p.desc) h += '<div class="desc">' + esc(p.desc) + "</div>";
-    var m = []; if (p.note) m.push("Note: " + esc(p.note)); if (e.last) m.push("Last worked " + fmt(e.last)); if (p.status === "closed") m.push((p.closedAs === "completed" ? "Completed" : p.closedAs === "abandoned" ? "Abandoned" : "Closed") + " " + fmt(p.closedAt));
-    if (mode === "bin") m.push("Gone for good in " + daysLeft(p) + " days"); if (p.pinned && p.status !== "closed" && mode === "live") m.push("Status set by hand");
+    var m = [];
+    if (notes.length) m.push('<span class="chip note">' + notes.length + (notes.length === 1 ? " note" : " notes") + "</span>" + (review ? '<span class="chip warn">' + review + " to confirm</span>" : ""));
+    if (e.last) m.push("Last worked " + fmt(e.last)); if (p.status === "closed") m.push((p.closedAs === "completed" ? "Completed" : p.closedAs === "abandoned" ? "Abandoned" : "Closed") + " " + fmt(p.closedAt));
+    if (mode === "bin") m.push("Gone for good in " + daysLeft(p) + " days"); if (p.statusAt && p.status !== "closed" && mode === "live" && !e.auto && p.status !== "active") m.push("Set by hand");
     if (dueReview(p)) m.push('<span class="chip warn">due for review</span>');
     if (m.length) h += '<div class="meta">' + m.join(" · ") + "</div>";
-    if (ro) return h + "</div>";
-    if (mode === "live") {
-      h += '<div class="seg">' + Object.keys(ST).map(function (k) { return '<button class="btn tiny' + (p.status === k ? " on" : "") + '" style="--c:' + ST[k][1] + '" data-a="status" data-s="' + k + '">' + ST[k][0] + "</button>"; }).join("") + "</div>";
-      h += '<div class="acts">';
-      if (p.status === "closed") h += '<button class="btn tiny" data-a="closedas">' + (p.closedAs === "abandoned" ? "Abandoned ▾" : "Completed ▾") + "</button>";
-      if (p.pinned && p.status !== "closed") h += '<button class="btn tiny" data-a="auto" title="Let the 3-day rule decide again">Auto</button>';
-      if (p.status !== "closed") h += '<button class="btn tiny" data-a="worked">Worked on it today</button>';
-      if (dueReview(p)) h += '<button class="btn tiny" data-a="keep">Keep closed</button>';
-      h += '<span class="sp"></span><button class="btn tiny" data-a="edit">Edit</button><button class="btn tiny danger" data-a="remove">Remove</button></div>';
-    } else h += '<div class="acts"><button class="btn tiny" data-a="restore">Restore</button><button class="btn tiny danger" data-a="' + (mode === "bin" ? "purge" : "remove") + '">' + (mode === "bin" ? "Delete forever" : "Delete") + "</button></div>";
-    return h + "</div>";
+    if (ro) return h + "</div></div>";
+    if (mode === "live") h += '<div class="seg">' + Object.keys(ST).map(function (k) { return '<button class="btn tiny' + (p.status === k ? " on" : "") + '" style="--c:' + ST[k][1] + '" data-a="status" data-s="' + k + '" title="' + ST[k][0] + '">' + ST[k][0] + "</button>"; }).join("") + "</div>";
+    else h += '<div class="acts"><button class="btn tiny" data-a="restore">Restore</button><button class="btn tiny danger" data-a="' + (mode === "bin" ? "purge" : "remove") + '">' + (mode === "bin" ? "Delete forever" : "Delete") + "</button></div>";
+    return h + "</div></div>";
   }
 
   /* ---------- actions ---------- */
   function byId(id) { return S.list.projects.filter(function (p) { return p.id === id; })[0]; }
   function setStatus(p, s) {
-    var ch = { status: s, pinned: true }; if (s === "closed") { ch.closedAs = p.closedAs || "completed"; ch.closedAt = new Date().toISOString(); } else { ch.closedAs = ""; ch.closedAt = ""; }
+    var ch = { status: s, statusAt: new Date().toISOString() }; if (s === "closed") { ch.closedAs = p.closedAs || "completed"; ch.closedAt = new Date().toISOString(); } else { ch.closedAs = ""; ch.closedAt = ""; }
     return upsert(p, ch);
   }
   function dialog(html, wire) { var d = $("#dlg"); d.innerHTML = html; d.showModal(); d.querySelectorAll("[data-close]").forEach(function (b) { b.onclick = function () { d.close(); }; }); if (wire) wire(d); }
@@ -201,20 +211,51 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
     });
   }
   function editDlg(p) {
-    var isNew = !p; p = p || { name: "", category: S.list.categories[0] || "General", desc: "", status: "active", note: "", paths: [] };
+    var isNew = !p; p = p || { name: "", category: S.list.categories[0] || "General", desc: "", status: "active", auto: "", paths: [] };
     var paths = (p.paths || []).map(function (x) { return x.repo + ":" + x.path; }).join("\n");
     dialog("<h2>" + (isNew ? "New project" : "Edit project") + "</h2><form id='f'><label>Name<input name='name' value='" + esc(p.name) + "' required maxlength='120'></label>" +
       "<label>Category<input name='category' list='cats' value='" + esc(p.category) + "' maxlength='60'><datalist id='cats'>" + S.list.categories.map(function (c) { return "<option value='" + esc(c) + "'>"; }).join("") + "</datalist></label>" +
-      "<label>What it is<textarea name='desc' rows='2' maxlength='600'>" + esc(p.desc) + "</textarea></label><label>Note<input name='note' value='" + esc(p.note) + "' maxlength='600'></label>" +
+      "<label>What it is<textarea name='desc' rows='2' maxlength='600'>" + esc(p.desc) + "</textarea></label>" +
+      "<label>3-day rule for this project<select name='auto'><option value=''" + (!p.auto ? " selected" : "") + ">Follow the global setting</option><option value='on'" + (p.auto === "on" ? " selected" : "") + ">Always on</option><option value='off'" + (p.auto === "off" ? " selected" : "") + ">Off for this project</option></select></label>" +
+      (p.status === "closed" ? "<label>Closed as<select name='closedas'><option value='completed'" + (p.closedAs !== "abandoned" ? " selected" : "") + ">Completed (archive it)</option><option value='abandoned'" + (p.closedAs === "abandoned" ? " selected" : "") + ">Abandoned (delete it)</option></select></label>" : "") +
       (isNew ? "<label>Status<select name='status'>" + Object.keys(ST).map(function (k) { return "<option value='" + k + "'>" + ST[k][0] + "</option>"; }).join("") + "</select></label>" : "") +
       "<label>Repo folders (optional, one per line as owner/repo:path). Commits there count as work for the 3-day rule.<textarea name='paths' rows='2'>" + esc(paths) + "</textarea></label>" +
       "<div class='row'><button type='button' class='btn' data-close>Cancel</button><button class='btn primary'>Save</button></div></form>", function (d) {
       d.querySelector("#f").onsubmit = function (ev) {
         ev.preventDefault(); var f = ev.target.elements, pa = f.paths.value.split("\n").map(function (l) { var i = l.indexOf(":"); return i > 0 ? { repo: l.slice(0, i).trim(), path: l.slice(i + 1).trim() } : null; }).filter(Boolean);
-        var base = isNew ? { id: "p" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), rank: 9999, state: "live", pinned: false, lastWorked: "" } : p;
-        var ch = { name: f.name.value, category: f.category.value || "General", desc: f.desc.value, note: f.note.value, paths: pa }; if (isNew) { ch.status = f.status.value; ch.pinned = false; if (ch.status === "closed") { ch.closedAs = "completed"; ch.closedAt = new Date().toISOString(); } }
+        var base = isNew ? { id: "p" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), rank: 9999, state: "live", statusAt: "", lastWorked: "", notes: [] } : p;
+        var ch = { name: f.name.value, category: f.category.value || "General", desc: f.desc.value, auto: f.auto.value, paths: pa }; if (f.closedas) ch.closedAs = f.closedas.value; if (isNew) { ch.status = f.status.value; if (ch.status === "closed") { ch.closedAs = "completed"; ch.closedAt = new Date().toISOString(); } }
         d.close(); upsert(base, ch);
       };
+    });
+  }
+  function nid() { return "n" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5); }
+  function notesDlg(p) {
+    var ro = S.readOnly, ns = p.notes || [];
+    var rows = ns.map(function (n) {
+      return "<div class='nrow" + (n.state === "review" ? " review" : "") + "'><div class='t'>" + esc(n.text) + "</div><div class='m'>" + fmt(n.at) + (n.state === "review" ? " · Claude says this is done. Confirm?" : "") + "</div>" +
+        (ro ? "" : "<div class='acts'>" + (n.state === "review" ? "<button class='btn tiny primary' data-n='clear' data-id='" + esc(n.id) + "'>Yes, clear it</button><button class='btn tiny' data-n='reopen' data-id='" + esc(n.id) + "'>Not yet</button>" : "<button class='btn tiny' data-n='clear' data-id='" + esc(n.id) + "'>Remove</button>") + "</div>") + "</div>";
+    }).join("");
+    dialog("<h2>" + esc(p.name) + "</h2><p class='muted small'>Notes for this project. Claude reads them before working on it, then asks you to confirm each one is done before it is cleared.</p><div class='nlist'>" + (rows || "<p class='muted small'>No notes yet.</p>") + "</div>" +
+      (ro ? "" : "<form id='f'><label>New note<textarea name='t' rows='2' maxlength='600' placeholder='What needs doing?'></textarea></label><div class='row'><button type='button' class='btn' data-close>Close</button><button class='btn primary'>Add note</button></div></form>") + (ro ? "<div class='row'><button class='btn' data-close>Close</button></div>" : ""), function (d) {
+      var save = function (next) { d.close(); upsert(p, { notes: next }).then(function () { var q = byId(p.id); if (q) notesDlg(q); }); };
+      var f = d.querySelector("#f"); if (f) f.onsubmit = function (ev) { ev.preventDefault(); var t = f.elements.t.value.trim(); if (!t) return; save(ns.concat([{ id: nid(), text: t, at: new Date().toISOString(), state: "open" }])); };
+      d.querySelectorAll("[data-n]").forEach(function (b) { b.onclick = function () { var id = b.dataset.id; save(b.dataset.n === "clear" ? ns.filter(function (n) { return n.id !== id; }) : ns.map(function (n) { return n.id === id ? Object.assign({}, n, { state: "open" }) : n; })); }; });
+    });
+  }
+  function sheetDlg(p) {
+    dialog("<h2>" + esc(p.name) + "</h2><div class='sheet'><button class='btn' id='ed'>Edit</button>" + (dueReview(p) ? "<button class='btn' id='kp'>Keep closed</button>" : "") + "<button class='btn danger' id='rm'>Remove…</button><button class='btn' data-close>Cancel</button></div>", function (d) {
+      d.querySelector("#ed").onclick = function () { d.close(); editDlg(p); };
+      d.querySelector("#rm").onclick = function () { d.close(); if (p.state === "archived") upsert(p, { state: "bin" }); else removeDlg(p); };
+      var kp = d.querySelector("#kp"); if (kp) kp.onclick = function () { d.close(); upsert(p, { closedAt: new Date().toISOString() }); };
+    });
+  }
+  function settingsDlg() {
+    dialog("<h2>Settings</h2><label class='switch'><input type='checkbox' id='au'" + (S.auto !== false ? " checked" : "") + "><span><b>3-day rule for all projects</b><br><span class='muted small'>A Queued or Hiatus project worked on in the last 3 days shows as Active. You can turn it off for a single project in its Edit dialog. A status you set by hand stays until you work on the project on a later day.</span></span></label>" +
+      "<div class='sheet'><button class='btn' id='nl'>New private list</button>" + (S.owner ? "<button class='btn' id='cn'>GitHub connection</button>" : "") + "</div><p class='muted small'>Tip: tap a project for its notes. Press and hold it to edit or remove.</p><div class='row'><button class='btn primary' data-close>Done</button></div>", function (d) {
+      d.querySelector("#au").onchange = function () { S.auto = this.checked; savePrefs(); render(); };
+      d.querySelector("#nl").onclick = function () { d.close(); newListDlg(); };
+      var cn = d.querySelector("#cn"); if (cn) cn.onclick = function () { d.close(); connDlg(); };
     });
   }
   function connDlg() {
@@ -231,34 +272,46 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
     }).catch(function (e) { toast(e.message); });
   }
   $("#main").onclick = function (ev) {
-    var ds = ev.target.closest(".desc"); if (ds) { ds.classList.toggle("open"); return; }
+    if (Date.now() < holdUntil) return;   // the press-and-hold just opened a menu
     var cat = ev.target.closest(".cat"); if (cat) { S.collapsed[cat.dataset.cat] = !S.collapsed[cat.dataset.cat]; savePrefs(); return render(); }
-    var b = ev.target.closest("[data-a]"); if (!b) return; var a = b.dataset.a, card = b.closest(".p"), p = card && byId(card.dataset.id);
+    var b = ev.target.closest("[data-a]");
+    if (!b) { var tile = ev.target.closest(".p"); if (tile && !ev.target.closest(".seg,.arrows")) { var tp = byId(tile.dataset.id); if (tp) notesDlg(tp); } return; }
+    var a = b.dataset.a, card = b.closest(".p"), p = card && byId(card.dataset.id);
     if (a === "empty") { var ids = S.list.projects.filter(function (x) { return x.state === "bin"; }).map(function (x) { return x.id; }); return dialog("<h2>Empty the bin?</h2><p class='small'>" + ids.length + " project(s) will be deleted for good.</p><div class='row'><button class='btn' data-close>Cancel</button><button class='btn danger' id='go'>Delete for good</button></div>", function (d) { d.querySelector("#go").onclick = function () { d.close(); send({ ops: { remove: ids } }); }; }); }
     if (!p) return;
     if (a === "up" || a === "down") return send({ move: { id: p.id, dir: a === "up" ? -1 : 1 } });
     if (a === "status") return setStatus(p, b.dataset.s);
-    if (a === "closedas") return upsert(p, { closedAs: p.closedAs === "abandoned" ? "completed" : "abandoned" });
-    if (a === "auto") return upsert(p, { pinned: false });
-    if (a === "worked") return upsert(p, { lastWorked: today() });
-    if (a === "keep") return upsert(p, { closedAt: new Date().toISOString() });
-    if (a === "edit") return editDlg(p);
+    if (a === "worked") return upsert(p, { lastWorked: today(), statusAt: "" });
     if (a === "remove") return p.state === "archived" ? upsert(p, { state: "bin" }) : removeDlg(p);
     if (a === "restore") return upsert(p, { state: "live" });
     if (a === "purge") return send({ ops: { remove: [p.id] } });
   };
   $("#tabs").onclick = function (ev) { var b = ev.target.closest("[data-v]"); if (b) { S.view = b.dataset.v; savePrefs(); render(); } };
   $("#add").onclick = function () { editDlg(null); };
-  $("#conn").onclick = connDlg;
+  $("#settings").onclick = settingsDlg;
+  $("#home").onclick = function () { if (S.home) location.href = S.home; };
+  // Press and hold a project (or right-click it) for Edit / Remove.
+  var holdUntil = 0, holdT = 0, hx = 0, hy = 0;
+  var holdStop = function () { clearTimeout(holdT); };
+  $("#main").addEventListener("pointerdown", function (ev) {
+    var tile = ev.target.closest(".p"); if (!tile || ev.target.closest("button") || S.readOnly || ev.button > 0) return;
+    hx = ev.clientX; hy = ev.clientY; holdStop();
+    holdT = setTimeout(function () { var p = byId(tile.dataset.id); if (p) { holdUntil = Date.now() + 700; sheetDlg(p); } }, 550);
+  });
+  $("#main").addEventListener("pointermove", function (ev) { if (Math.abs(ev.clientX - hx) > 8 || Math.abs(ev.clientY - hy) > 8) holdStop(); });
+  ["pointerup", "pointercancel", "pointerleave", "scroll"].forEach(function (n) { $("#main").addEventListener(n, holdStop, true); });
+  window.addEventListener("scroll", holdStop, { passive: true });
+  $("#main").addEventListener("contextmenu", function (ev) { var tile = ev.target.closest(".p"); if (!tile) return; ev.preventDefault(); if (S.readOnly) return; var p = byId(tile.dataset.id); if (p) { holdStop(); holdUntil = Date.now() + 700; sheetDlg(p); } });
   $("#lists").onchange = function () { S.key = this.value; S.sha = ""; S.list = null; $("#main").innerHTML = '<p class="empty">Loading…</p>'; savePrefs(); poll(true); };
-  $("#newlist").onclick = function () {
+  function newListDlg() {
     dialog("<h2>New list</h2><p class='muted small'>Kept privately on your account. The shared App development list stays in GitHub.</p><form id='f'><label>Name<input name='name' required maxlength='80'></label><div class='row'><button type='button' class='btn' data-close>Cancel</button><button class='btn primary'>Create</button></div></form>", function (d) {
       d.querySelector("#f").onsubmit = function (ev) { ev.preventDefault(); api("api/lists", "POST", { name: ev.target.elements.name.value }).then(function (j) { d.close(); S.key = j.key; S.sha = ""; S.list = null; return loadLists().then(function () { return poll(true); }); }).catch(function (e) { toast(e.message); }); };
     });
-  };
+  }
   document.addEventListener("visibilitychange", function () { if (!document.hidden) poll(false); });
   setInterval(function () { poll(false); }, 4000); setInterval(status, 1000);
 
+  fetch("api/app-config").then(function (r) { return r.json(); }).then(function (c) { if (c && c.portalUrl) { S.home = c.portalUrl; $("#home").hidden = false; } }).catch(function () {});
   api("api/account/me").then(function (j) { S.user = j.user; return loadLists(); }).then(function () { return poll(true); }).catch(function (e) { if (e.status === 401 || e.status === 403) location.reload(); else { $("#main").innerHTML = '<p class="empty">' + esc(e.message) + "</p>"; } });
 })();
 </script>

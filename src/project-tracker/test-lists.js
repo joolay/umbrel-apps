@@ -18,7 +18,15 @@ assert.strictEqual(L.effective({ status: "maintenance", pinned: false, lastWorke
 assert.strictEqual(L.effective({ status: "maintenance", pinned: false, lastWorked: day(2) }, "", T).auto, true);
 assert.strictEqual(L.effective({ status: "maintenance", pinned: false, lastWorked: day(5) }, "", T).status, "maintenance");
 assert.strictEqual(L.effective({ status: "hiatus", pinned: false, lastWorked: day(9) }, day(1), T).status, "active");   // a recent commit counts too
-assert.strictEqual(L.effective({ status: "hiatus", pinned: true, lastWorked: day(0) }, "", T).status, "hiatus");   // set by hand: left alone
+const hand = new Date(T - 2 * 864e5).toISOString();   // status set by hand two days ago
+assert.strictEqual(L.effective({ status: "hiatus", statusAt: hand, lastWorked: day(3) }, "", T).status, "hiatus");   // earlier work does not undo it
+assert.strictEqual(L.effective({ status: "hiatus", statusAt: hand, lastWorked: day(0) }, "", T).status, "active");   // new work on a later day does
+assert.strictEqual(L.effective({ status: "hiatus", auto: "off", lastWorked: day(0) }, "", T).status, "hiatus");      // off for this project
+assert.strictEqual(L.effective({ status: "hiatus", lastWorked: day(0) }, "", T, false).status, "hiatus");            // off globally
+assert.strictEqual(L.effective({ status: "hiatus", auto: "on", lastWorked: day(0) }, "", T, false).status, "active"); // on for this project despite global off
+const mig = L.cleanProject({ id: "x", name: "X", note: "old note", pinned: true, updatedAt: hand }, NOW);
+assert.deepStrictEqual(mig.notes.map(n => n.text), ["old note"]); assert.strictEqual(mig.statusAt, hand); assert.ok(!("note" in mig) && !("pinned" in mig));
+assert.deepStrictEqual(L.cleanProject({ id: "y", name: "Y", notes: [{ id: "a", text: "t", state: "review" }, { text: "" }, { id: "a", text: "u", state: "zzz" }] }, NOW).notes.map(n => n.id + n.state), ["areview", "axopen"]);
 assert.strictEqual(L.effective({ status: "closed", pinned: false, lastWorked: day(0) }, "", T).status, "closed");   // closed never promotes
 // remove: archive, bin, restore, empty the bin
 l = L.applyOps(l, { upsert: [{ ...l.projects.find(p => p.id === "d"), state: "archived" }] }, NOW); assert.strictEqual(l.projects.find(p => p.id === "d").state, "archived");
