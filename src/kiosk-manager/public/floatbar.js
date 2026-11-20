@@ -19,7 +19,7 @@
   function spacer() {
     var bar = document.querySelector(".topbar"); if (!bar) return;
     var sp = bar.nextElementSibling; if (!sp || !sp.classList.contains("topbar-spacer")) { sp = document.createElement("div"); sp.className = "topbar-spacer"; sp.setAttribute("aria-hidden", "true"); bar.parentNode.insertBefore(sp, bar.nextSibling); }
-    sp.style.height = (bar.offsetHeight + 8 + 8) + "px";
+    sp.style.height = bar.offsetHeight + "px";
   }
   document.addEventListener("DOMContentLoaded", spacer); window.addEventListener("resize", spacer); window.addEventListener("load", spacer);
   if (window.ResizeObserver) document.addEventListener("DOMContentLoaded", function () { var b = document.querySelector(".topbar"); if (b) new ResizeObserver(spacer).observe(b); });

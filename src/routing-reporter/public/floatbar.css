@@ -2,8 +2,8 @@
    Markup:  <header class="topbar"><div class="brand"><img src="icon.svg" alt="" width="28" height="28"><span>App name</span></div>
             <span class="tb-gap"></span> ...optional app buttons... <button class="tb-btn" data-theme-toggle aria-label="Switch theme">(see README)</button></header>
    Load after glass.css and the app's own CSS; load floatbar.js in <head>. */
-.topbar{position:fixed;top:calc(var(--safe-t,0px) + 8px);left:12px;right:12px;z-index:20;display:flex;align-items:center;gap:10px;margin:0;padding:8px 12px;min-height:56px;
-  border-radius:28px;border:1px solid var(--glass-line);background:var(--glass-strong);-webkit-backdrop-filter:blur(22px) saturate(170%);backdrop-filter:blur(22px) saturate(170%);box-shadow:var(--shadow)}
+.topbar{position:fixed;top:0;left:0;right:0;z-index:20;display:flex;align-items:center;gap:10px;margin:0;padding:calc(var(--safe-t,0px) + 8px) 14px 8px;min-height:calc(var(--safe-t,0px) + 56px);
+  border-radius:0;border:0;border-bottom:1px solid var(--glass-line);background:var(--glass-strong);-webkit-backdrop-filter:blur(22px) saturate(170%);backdrop-filter:blur(22px) saturate(170%);box-shadow:0 2px 14px rgba(0,0,0,.12)}
 /* The bar is fixed so it stays put whatever the page does (a sticky bar silently stops working inside any overflow container); floatbar.js adds .topbar-spacer to keep the page below it. */
 .topbar-spacer{height:64px;margin:0;padding:0;pointer-events:none}
 .topbar .brand{display:flex;align-items:center;gap:10px;min-width:0;font-weight:700}
