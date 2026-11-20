@@ -70,3 +70,10 @@ Every app uses the same floating, frosted bar: the app's title on the left, the 
 Copy `install-help.js` (from `src/portal-admin/public/`) and `installbtn.js` next to the app's `index.html`, add `<button class="ic" data-pwa-install hidden aria-label="Install app">` to the bar
 and load both scripts at the end of `<body>` (`install-help.js` first). The icon shows only in a normal browser tab on https, never inside the installed app. Chromium browsers install in one tap;
 iPhone, iPad, Safari and Firefox get a sheet with the steps for that device. Project Tracker is the first app to use it.
+
+## Quick Access in an app (PIN or pattern)
+One shared piece, copied into every app that signs people in: `quick-server.js` (next to `pocketbase.js`, add it to the Dockerfile COPY line) and `quick-ui.js` (in `public/`, loaded by the sign-in page and the main page).
+Server: `require("./quick-server")({ pb, dataDir })`; a `quick` body on the login route signs in with `quick.login()` and `quick.mint()`; the session check accepts `quick.parse()` tokens (and refuses them
+when `quick.stale()`); `quick.handle()` serves `/api/account/quick*`. Pages: `JZQuick({ app, name, request })` gives `has()`, `signIn()`, `offer()` (once per device, after a password sign-in) and
+`manage()` (put a "Quick Access (PIN or pattern)" button in the app's Settings). The code is the person's ONE code for every JoolzApp (checked by Portal Admin); Quick Access never replaces the password.
+Project Tracker is the first app to use it (1.4.0); see its `test-server.js`.

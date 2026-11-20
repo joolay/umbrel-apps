@@ -11,6 +11,7 @@ const pb = require("./pocketbase");
 const L = require("./lists");
 const makeAi = require("./ai"), helper = require("./helper"), aiClient = makeAi();
 const makeGitHub = require("./github");
+const quick = require("./quick-server")({ pb, dataDir: process.env.DATA_DIR || path.join(__dirname, "data") });   // PIN / pattern sign-in on a device that signed in before
 
 const PORT = +process.env.PORT || 3915;
 const PUBLIC_DIR = path.join(__dirname, "public");
@@ -46,6 +47,14 @@ function verifyFresh(t, prev) {
   if (checking.has(t)) return checking.get(t);
   const p = (async () => {
     try {
+      const qs = quick.parse(t);           // a session made by Quick Access (PIN or pattern), not a PocketBase token
+      if (qs) {
+        const u = await pb.getUser(qs.id);
+        if (!u || quick.stale(u, qs)) { const n = { user: null, at: Date.now() }; tokenCache.set(t, n); return n; }
+        activity.touch(u.id);
+        const e = { user: u, at: Date.now(), fresh: t, renewedAt: prev && prev.renewedAt || 0 };
+        tokenCache.set(t, e); return e;
+      }
       const j = await pb.verifyToken(t);
       activity.touch(j.record.id);
       const e = { user: j.record, at: Date.now(), fresh: j.token, renewedAt: prev && prev.renewedAt || 0 };
@@ -94,6 +103,13 @@ async function accountRoutes(req, res, p) {
   if (!pb.enabled) { send(res, 404, { code: "accounts_off", message: "Accounts aren't switched on for this server." }); return true; }
   try {
     const body = req.method === "GET" ? {} : JSON.parse((await readBody(req)).toString() || "{}");
+    if (p === "/api/account/login" && req.method === "POST" && body.quick && typeof body.quick === "object") {
+      if (throttled(req, "quick", 40, 600e3)) return send(res, 429, { code: "slow_down", message: "Too many attempts. Try again in a few minutes." }), true;
+      let rec; try { rec = await quick.login(body.quick); } catch (e) { if (e && [401, 423, 429, 503, 504].includes(e.status)) return send(res, e.status, { code: "bad_login", message: e.message }), true; throw e; }
+      const token = quick.mint(rec.id); setSessionCookie(req, res, token, true); send(res, 200, { token, user: publicUser(rec) });
+      return true;
+    }
+    if (p === "/api/account/quick" || p.startsWith("/api/account/quick/")) { const u = await currentUser(req, true); if (await quick.handle(req, res, p, u, body, send)) return true; }
     if (p === "/api/account/login" && req.method === "POST") {
       if (throttled(req, "login", 10, 600e3)) return send(res, 429, { code: "slow_down", message: "Too many attempts. Try again in a few minutes." }), true;
       try { const j = await pb.login(String(body.email || "").trim().toLowerCase(), String(body.password || "")); setSessionCookie(req, res, j.token, !!body.remember); send(res, 200, { token: j.token, user: publicUser(j.record) }); }

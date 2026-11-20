@@ -93,6 +93,7 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
 <dialog id="dlg"></dialog>
 <div class="toast" id="toast" role="status" hidden></div>
 <script src="pwtoggle.js"></script>
+<script src="quick-ui.js"></script>
 <script src="install-help.js"></script>
 <script src="installbtn.js"></script>
 <script>
@@ -298,12 +299,13 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
       "<div class='sect'><b>Chat button on a project</b>" +
       "<label class='switch'><input type='radio' name='chat' value='claude'" + (S.chat !== "builtin" ? " checked" : "") + "><span><b>Claude app</b><br><span class='muted small'>Opens a new chat in Claude with the project and its notes filled in. Uses your Claude subscription.</span></span></label>" +
       "<label class='switch'><input type='radio' name='chat' value='builtin'" + (S.chat === "builtin" ? " checked" : "") + "><span><b>Built-in chat</b><br><span class='muted small'>Chats here with the AI key saved on your JoolzApp account. It can read the project's repo folders and suggest changes; nothing is saved until you press Apply.</span></span></label><p class='muted small' id='aik'>Checking your AI key…</p></div>" +
-      "<div class='sheet'><button class='btn' id='nl'>New private list</button>" + (S.role === "owner" && S.key !== "appdev" && S.list ? "<button class='btn' id='sh'>Share this list</button>" : "") + (S.source === "shared" ? "<button class='btn' id='lv'>Leave this shared list</button>" : "") + (S.owner ? "<button class='btn' id='cn'>GitHub connection</button>" : "") + "</div><p class='muted small'>Tip: tap a project for its notes. Press and hold it to edit or remove.</p><div class='row'><button class='btn primary' data-close>Done</button></div>", function (d) {
+      "<div class='sheet'><button class='btn' id='nl'>New private list</button><button class='btn' id='qa'>Quick Access (PIN or pattern)</button>" + (S.role === "owner" && S.key !== "appdev" && S.list ? "<button class='btn' id='sh'>Share this list</button>" : "") + (S.source === "shared" ? "<button class='btn' id='lv'>Leave this shared list</button>" : "") + (S.owner ? "<button class='btn' id='cn'>GitHub connection</button>" : "") + "</div><p class='muted small'>Tip: tap a project for its notes. Press and hold it to edit or remove.</p><div class='row'><button class='btn primary' data-close>Done</button></div>", function (d) {
       d.querySelector("#dy").onchange = function () { var v = Math.round(+this.value); if (!(v >= 1 && v <= 30)) { this.value = S.days; return; } S.days = v; this.value = v; savePrefs(); render(); };
       d.querySelector("#au").onchange = function () { S.auto = this.checked; savePrefs(); render(); };
       d.querySelectorAll("input[name=chat]").forEach(function (r) { r.onchange = function () { S.chat = r.value; savePrefs(); }; });
       api("api/ai/status").then(function (j) { var al = S.home ? " <a href='" + esc(S.home) + "#/me' target='_blank' rel='noopener'>Manage AI keys</a>" : ""; d.querySelector("#aik").innerHTML = j.ready ? "Built-in chat uses <b>" + esc(j.key.provider) + " · " + esc(j.key.model) + "</b> (key ends …" + esc(j.key.last4) + "). " + al : "No AI key is set for Project Tracker yet. Add one in Portal Admin > My settings > AI." + al; }).catch(function () { d.querySelector("#aik").textContent = ""; });
       d.querySelector("#nl").onclick = function () { d.close(); newListDlg(); };
+      d.querySelector("#qa").onclick = function () { d.close(); QA.manage(); };
       var cn = d.querySelector("#cn"); if (cn) cn.onclick = function () { d.close(); connDlg(); };
       var sh = d.querySelector("#sh"); if (sh) sh.onclick = function () { d.close(); shareDlg(); };
       var lv = d.querySelector("#lv"); if (lv) lv.onclick = function () { if (!confirm("Leave this list? You can be added again later.")) return; var k = S.key; api("api/list/" + k + "/leave", "POST", {}).then(function () { d.close(); S.key = ""; S.sha = ""; S.list = null; return loadLists().then(function () { return poll(true); }); }).catch(function (e) { toast(e.message); }); };
@@ -377,7 +379,8 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
   setInterval(function () { poll(false); }, 4000); setInterval(status, 1000);
 
   fetch("api/app-config").then(function (r) { return r.json(); }).then(function (c) { if (c && c.portalUrl) { S.home = c.portalUrl; $("#home").hidden = false; } }).catch(function () {});
-  api("api/account/me").then(function (j) { S.user = j.user; return loadLists(); }).then(function () { return poll(true); }).catch(function (e) { if (e.status === 401 || e.status === 403) location.reload(); else { $("#main").innerHTML = '<p class="empty">' + esc(e.message) + "</p>"; } });
+  var QA = JZQuick({ app: "project-tracker", name: "Project Tracker", request: function (m, p, b) { return api(p, m, b); } });
+  api("api/account/me").then(function (j) { S.user = j.user; return loadLists(); }).then(function () { return poll(true); }).then(function () { QA.offer(); }).catch(function (e) { if (e.status === 401 || e.status === 403) location.reload(); else { $("#main").innerHTML = '<p class="empty">' + esc(e.message) + "</p>"; } });
 })();
 </script>
 </body>

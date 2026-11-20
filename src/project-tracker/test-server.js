@@ -5,7 +5,17 @@ const rows = []; let n = 0; const prefs = [];
 const fakePb = {
   enabled: true, reload() { return true; }, PBError: class PBError extends Error { constructor(s, m) { super(m); this.status = s; } },
   async verifyToken(t) { if (t === "admin") return { token: "admin", record: { id: "u1", isAdmin: true, name: "Zahir", email: "zahir@x.co", portal: { prefs: {} } } }; if (t === "aikey") return { token: "aikey", record: { id: "u1", isAdmin: true, name: "Zahir", portal: { prefs: { "ai.provider": "anthropic", "ai.apiKey": "sk-ant-WXYZ", "ai.model": "claude-x" } } } }; if (t === "admin2") return { token: "admin2", record: { id: "u3", isAdmin: true, name: "Other admin", portal: { prefs: {} } } }; if (t === "user") return { token: "user", record: { id: "u2", isAdmin: false, email: "sam@x.co", name: "Sam" } }; if (t === "viewer") return { token: "viewer", record: { id: "u4", isAdmin: false, email: "view@x.co", portal: { readonly: true, prefs: {} } } }; const e = new this.PBError(401, "no"); throw e; },
-  async getUser(id) { return { id, name: id === "u1" ? "Zahir" : "", email: "x@x.co" }; }, async serviceCan() { return true; }, async portalUrl() { return ""; }, async setAppPref(id, v) { prefs.push([id, v]); },
+  portalOn() { return true; },
+  async portalCall(fn, a) {
+    const E = (st, m) => new fakePb.PBError(st, m), qa = global.qa || (global.qa = { code: null, devices: {} });
+    if (fn === "qa.status") return { kind: qa.code ? qa.code.kind : null };
+    if (fn === "qa.setup") { const o = a[1]; if (o.code) qa.code = { kind: o.kind, code: o.code }; if (!qa.code) throw E(400, "Choose a PIN or pattern first."); const id = ("dev" + Math.random().toString(36).slice(2) + "xxxxxxxxxxxxxxxxxxxx").slice(0, 22); qa.devices[id] = { secret: "sec-" + id, uid: a[0] }; return { deviceId: id, deviceSecret: "sec-" + id, kind: qa.code.kind }; }
+    if (fn === "qa.login") { const d = qa.devices[a[0]]; if (!d || d.secret !== a[1]) throw E(401, "Quick Access did not work. Sign in with your password."); if (a[2] !== qa.code.code) throw E(401, "Wrong PIN. 4 tries left."); return { userId: d.uid, kind: qa.code.kind }; }
+    if (fn === "qa.remove") { delete qa.devices[a[1]]; return {}; }
+    if (fn === "qa.list") return Object.keys(qa.devices).map(id => ({ id }));
+    throw E(400, "unknown " + fn);
+  },
+  async getUser(id) { return { id, name: id === "u1" ? "Zahir" : "", email: "x@x.co", portal: { prefs: {}, signedOutAt: global.signedOutAt || 0 } }; }, async serviceCan() { return true; }, async portalUrl() { return ""; }, async setAppPref(id, v) { prefs.push([id, v]); },
   async asApp(method, p, body) {
     const m = p.match(/records(?:\/(\w+))?(?:\?.*filter=([^&]*))?/), id = m && m[1];
     if (method === "GET") { const f = decodeURIComponent(m[2] || ""), o = (f.match(/owner = '([^']*)'/) || [])[1], k = (f.match(/key = '([^']*)'/) || [])[1]; return { items: rows.filter(r => (!o || r.owner === o) && (!k || r.key === k)) }; }
@@ -106,5 +116,21 @@ const call = (method, p, body, tok = "admin") => new Promise((ok, bad) => { cons
   await call("POST", "/api/list/" + ks + "/share", { email: "sam@x.co", role: "view" });
   await call("DELETE", "/api/list/" + ks); assert.strictEqual(rows.filter(x => String(x.owner).startsWith("inv:")).length, 0, "deleting a list tidies its shares");
   assert.strictEqual((await call("GET", "/api/lists", null, "user")).body.lists.length, 0);
+  // Quick Access: PIN on a device that signed in before
+  r = await call("GET", "/api/account/quick/status", null, "admin"); assert.deepStrictEqual(r.body, { available: true, kind: null });
+  assert.strictEqual((await call("GET", "/api/account/quick/status", null, "")).status, 401, "managing Quick Access needs a sign-in");
+  r = await call("POST", "/api/account/quick", { kind: "pin4", code: "1234", label: "Test phone" }, "admin"); assert.strictEqual(r.status, 201); const dev = r.body;
+  assert.strictEqual((await call("GET", "/api/account/quick/status", null, "admin")).body.kind, "pin4");
+  r = await call("POST", "/api/account/login", { quick: { deviceId: dev.deviceId, deviceSecret: dev.deviceSecret, code: "0000" } }, ""); assert.strictEqual(r.status, 401); assert.ok(/Wrong PIN/.test(r.body.message));
+  r = await call("POST", "/api/account/login", { quick: { deviceId: dev.deviceId, deviceSecret: "nope", code: "1234" } }, ""); assert.strictEqual(r.status, 401, "wrong device secret");
+  r = await call("POST", "/api/account/login", { quick: { deviceId: dev.deviceId, deviceSecret: dev.deviceSecret, code: "1234" } }, ""); assert.strictEqual(r.status, 200); assert.ok(/^s\./.test(r.body.token), "its own session"); assert.strictEqual(r.body.user.id, "u1"); const qtok = r.body.token;
+  assert.strictEqual((await call("GET", "/api/lists", null, qtok)).status, 200, "the Quick Access session opens the app");
+  assert.strictEqual((await call("GET", "/api/account/me", null, qtok)).body.user.id, "u1");
+  assert.strictEqual((await call("GET", "/api/lists", null, qtok.slice(0, -2) + "xx")).status, 401, "a tampered session is refused");
+  global.signedOutAt = Date.now() + 5000;
+  r = await call("POST", "/api/account/login", { quick: { deviceId: dev.deviceId, deviceSecret: dev.deviceSecret, code: "1234" } }, "");
+  assert.strictEqual((await call("GET", "/api/lists", null, r.body.token)).status, 401, "signed out everywhere ends sessions that began before it"); global.signedOutAt = 0;
+  assert.strictEqual((await call("DELETE", "/api/account/quick/" + dev.deviceId, null, "admin")).status, 200);
+  assert.strictEqual((await call("POST", "/api/account/login", { quick: { deviceId: dev.deviceId, deviceSecret: dev.deviceSecret, code: "1234" } }, "")).status, 401, "a removed device cannot sign in");
   console.log("server ok"); process.exit(0);
 })().catch(e => { console.error(e); process.exit(1); });
