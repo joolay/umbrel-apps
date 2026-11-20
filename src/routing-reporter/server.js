@@ -51,8 +51,14 @@ function schedule() { clearTimeout(timer); timer = setTimeout(async () => { try 
 const feedPayload = async () => {
   const r = mark(monitor.last); if (!r) return { note: 'No check has run yet.' };
   const down = []; r.apps.forEach((a) => a.routes.filter((x) => x.state === 'down' && !x.ignored).forEach((x) => down.push({ app: a.id, route: x.key, url: x.url, error: x.error, since: x.since })));
-  return { intervalMin: r.intervalMin, config: r.config, reportedToPortalAdmin: reportState.ok, reportError: reportState.error, routesDown: down,
-    apps: r.apps.map((a) => ({ id: a.id, version: a.version, port: a.port, published: a.published, routes: a.routes.map((x) => ({ key: x.key, state: x.state, ignored: x.ignored, status: x.status, error: x.error, since: x.since })) })) };
+  // Every port in one list (sorted), so a clash or a gap is easy to see: the app's own port, plus any host port it publishes itself.
+  const ports = [], by = {};
+  r.apps.forEach((a) => { const st = a.routes.some((x) => x.state === 'down' && !x.ignored) ? 'down' : a.routes.length && a.routes.every((x) => x.state === 'up' || x.ignored) ? 'up' : 'checking';
+    [[a.port, 'app'], ...(a.hostPorts || []).filter((p) => p !== a.port).map((p) => [p, 'published'])].forEach(([p, kind]) => { ports.push({ port: p, app: a.id, name: a.name, kind, state: st }); (by[p] = by[p] || new Set()).add(a.id); }); });
+  ports.sort((x, y) => x.port - y.port);
+  const conflicts = Object.keys(by).filter((p) => by[p].size > 1).map((p) => ({ port: Number(p), apps: [...by[p]] }));
+  return { intervalMin: r.intervalMin, config: r.config, reportedToPortalAdmin: reportState.ok, reportError: reportState.error, routesDown: down, portConflicts: conflicts, ports,
+    apps: r.apps.map((a) => ({ id: a.id, name: a.name, version: a.version, joolzapp: a.joolzapp, port: a.port, hostPorts: a.hostPorts || [], published: a.published, routes: a.routes.map((x) => ({ key: x.key, url: x.url, state: x.state, ignored: x.ignored, status: x.status, error: x.error, since: x.since })) })) };
 };
 
 /* ---------- web server ---------- */
@@ -79,7 +85,7 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(200, { 'content-type': TYPES[path.extname(file)] || 'application/octet-stream', 'cache-control': 'no-cache' }); fs.createReadStream(file).pipe(res);
   } catch (e) { console.error(e); send(res, 500, { message: 'Something went wrong.' }); }
 });
-module.exports = { clean, feedPayload };
+module.exports = { clean, feedPayload, _monitor: monitor };
 if (require.main === module) {
   fs.mkdirSync(DATA_DIR, { recursive: true });        // Portal Admin links an app once its data folder exists
   require('./status-feed')({ dataDir: DATA_DIR, getPayload: feedPayload, log: (m) => console.error(m) });
