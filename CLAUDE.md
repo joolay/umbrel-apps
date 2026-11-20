@@ -99,9 +99,9 @@ fetch that file (poll it fresh), read the project's `notes`, and treat the open 
 (never delete it yourself), tell him what changed and ask him to confirm. He clears it in the app (or tells you to). Write back with a fresh read first, changing only that project.
 
 ## Status feed: monitoring the apps on the Umbrel (read before diagnosing a problem)
-Nothing on the Umbrel is opened to the internet for monitoring. App Updater and Services Manager (and any app that copies `status-feed.js`, see `src/portal-admin/README.md`, "Status feed")
+Nothing on the Umbrel is opened to the internet for monitoring. App Updater, Services Manager and Kiosk Manager (and any app that copies `status-feed.js`, see `src/portal-admin/README.md`, "Status feed")
 push a cleaned status file to `status/<app>.json` in the feed repo (default `joolay/tracking-data`, readable like `appdev.json`). Before diagnosing an update or a server problem,
-fetch `status/app-updater.json` / `status/services-manager.json` fresh and check `at` (older than about 35 minutes means the app or the feed is down). Read-only: never try to act through it.
+fetch `status/app-updater.json` / `status/services-manager.json` / `status/kiosk-manager.json` fresh and check `at` (older than about 35 minutes means the app or the feed is down). Read-only: never try to act through it.
 A new owner-only app that should be monitorable: copy `status-feed.js`, call it with a `getPayload` that returns useful, secret-free state, declare `POCKETBASE_APP_ID`, add it to the notes here.
 
 

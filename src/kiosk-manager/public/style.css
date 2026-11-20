@@ -1,0 +1,13 @@
+:root{--accent:#be123c;--accent-2:#fb7185;--accent-t:#fff}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--accent:#fb7185;--accent-2:#fda4af;--accent-t:#2a0510}}
+:root[data-theme="dark"]{--accent:#fb7185;--accent-2:#fda4af;--accent-t:#2a0510}
+.wrap{max-width:640px;margin:0 auto;padding:84px 16px 32px;display:grid;gap:14px}
+.srow{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--line,rgba(127,127,127,.18))}
+.srow:last-child{border-bottom:0}
+.srow small{display:block;color:var(--muted)}
+.acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}
+.acts .btn{flex:1 1 150px}
+label.f{display:grid;gap:6px;font-size:14px;color:var(--muted)}
+input.f{width:100%;padding:12px;border-radius:14px;border:1px solid rgba(127,127,127,.3);background:var(--solid,transparent);color:var(--text)}
+pre.log{white-space:pre-wrap;font-size:11px;color:var(--muted);max-height:220px;overflow:auto;margin:8px 0 0}
+.note{color:var(--muted);font-size:13px;margin:0}

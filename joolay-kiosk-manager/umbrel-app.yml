@@ -1,0 +1,26 @@
+manifestVersion: 1
+id: joolay-kiosk-manager
+category: developer
+name: Kiosk Manager
+version: "1.0.0"
+tagline: Show Umbrel on the server's own screen
+description: >-
+  Installs and controls a fullscreen kiosk browser on the Umbrel device itself, so the dashboard
+  appears on a monitor plugged into the server with no other computer needed.
+  Load or unload the kiosk with one tap, and add or remove it as a boot-up service.
+  Installing the kiosk adds a few packages (Cage, Chromium) and a small "kiosk" user to the Umbrel's operating system.
+  This app runs with privileged access to the host, which gives it full control of this machine.
+developer: joolay
+website: https://github.com/joolay/umbrel-apps/tree/main/src/kiosk-manager
+dependencies: []
+repo: https://github.com/joolay/umbrel-apps
+support: https://github.com/joolay/umbrel-apps/issues
+port: 3920
+gallery: []
+path: ""
+defaultUsername: ""
+defaultPassword: ""
+releaseNotes: "First release: install the kiosk browser, load and unload it, and add or remove it as a boot service. Reports its status to the Portal Admin status feed (needs Portal Admin 0.33.0), with no JoolzApp sign-in."
+submitter: joolay
+submission: https://github.com/joolay/umbrel-apps
+icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-kiosk-manager/icon.svg
