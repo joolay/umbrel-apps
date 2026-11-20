@@ -1,0 +1,26 @@
+# Kiosk Manager: installs and controls a fullscreen kiosk browser on the Umbrel's own screen.
+# Source: src/kiosk-manager in this repo (built by .github/workflows/build-images.yml).
+# Keep the image tag equal to `version` in umbrel-app.yml.
+services:
+  app_proxy:
+    environment:
+      APP_HOST: joolay-kiosk-manager_web_1
+      APP_PORT: 3000
+      # Umbrel's login stays ON: this app can run commands on the server.
+      PROXY_AUTH_ADD: "true"
+
+  web:
+    image: ghcr.io/joolay/kiosk-manager:1.0.0
+    restart: on-failure
+    user: "0:0"
+    stop_grace_period: 10s
+    # Full host access: needed to install the kiosk packages and manage a systemd service on the Umbrel itself.
+    privileged: true
+    pid: host
+    volumes:
+      - ${APP_DATA_DIR}/data:/data
+    environment:
+      # Lets Portal Admin find this app and give it a Portal API key (used for the status feed). No JoolzApp sign-in, like App Updater.
+      - POCKETBASE_APP_ID=kiosk-manager
+      # Owner-only tool, opened from Umbrel: no icon on the JoolzApp home screen.
+      - JOOLZAPP_DASHBOARD=hidden
