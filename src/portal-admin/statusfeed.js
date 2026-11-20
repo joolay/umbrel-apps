@@ -100,7 +100,7 @@ module.exports = function makeFeed({ asSuper, fetchImpl = fetch, now = () => Dat
   }
 
   // Called through Portal API by an app (app = the slug its key belongs to).
-  async function publish(app, payload) {
+  async function publish(app, payload, opts = {}) {
     app = String(app || '');
     if (!/^[a-z0-9][a-z0-9-]{0,40}$/.test(app)) throw new FeedError(400, 'Unknown app.');
     const c = await load();
@@ -109,8 +109,8 @@ module.exports = function makeFeed({ asSuper, fetchImpl = fetch, now = () => Dat
     // "Has anything changed?" ignores timestamp fields (an app's own "last checked" time moves every minute), otherwise every poll would be a GitHub commit.
     const h = crypto.createHash('sha256').update(JSON.stringify(data, (k, v) => (k === 'at' || k === 't' || k === 'checkedAt') && typeof v === 'number' ? undefined : v)).digest('hex');
     if (body.length > MAX_BYTES) throw new FeedError(413, 'Status is too large to publish.');
-    if (p && p.ok && t - p.at < MIN_GAP) return { ok: true, skipped: 'too_soon' };
-    if (p && p.ok && p.hash === h && t - p.at < HEARTBEAT) return { ok: true, skipped: 'unchanged' };
+    if (!opts.force && p && p.ok && t - p.at < MIN_GAP) return { ok: true, skipped: 'too_soon' };
+    if (!opts.force && p && p.ok && p.hash === h && t - p.at < HEARTBEAT) return { ok: true, skipped: 'unchanged' };
     const job = chain.then(() => put(c, app, { app, at: new Date(t).toISOString(), data }, 'status: ' + app));
     chain = job.catch(() => {});
     try { await job; last.set(app, { at: t, hash: h, ok: true }); return { ok: true }; }

@@ -1,0 +1,24 @@
+:root{--accent:#0f766e;--accent-2:#2dd4bf;--accent-t:#fff}
+:root[data-theme="dark"]{--accent:#2dd4bf;--accent-2:#5eead4;--accent-t:#032b27}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--accent:#2dd4bf;--accent-2:#5eead4;--accent-t:#032b27}}
+*{box-sizing:border-box}
+main{max-width:980px;margin:0 auto;padding:12px 14px 60px}
+.tb-btn{flex:none;width:38px;height:38px;border-radius:50%;display:grid;place-items:center;padding:0;cursor:pointer;color:var(--text);background:var(--glass-strong);border:1px solid var(--glass-line)}
+.tb-btn svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}.tb-btn:active{transform:scale(.94)}
+.tb-btn.spin svg{animation:sp 1s linear infinite}@keyframes sp{to{transform:rotate(360deg)}}
+.card{padding:14px 16px;margin:12px 0}
+.sum{display:flex;flex-wrap:wrap;gap:6px 18px;align-items:center}.sum b{font-size:1.1rem}
+.warn{border-color:#f59e0b}.group h2{font-size:.8rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:22px 4px 6px}
+.app{display:grid;gap:8px}.app .t{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap}.app .t b{font-size:1.02rem}
+.rts{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:8px}
+.rt{border:1px solid var(--glass-line);border-radius:14px;padding:8px 11px;background:var(--glass)}
+.rt .h{display:flex;justify-content:space-between;gap:8px;font-weight:600;font-size:.88rem}.rt .u{font-size:.75rem;color:var(--muted);word-break:break-all;margin-top:2px}
+.rt .e{font-size:.8rem;margin-top:3px}
+.chip{border-radius:999px;padding:1px 9px;font-size:.75rem;font-weight:700;color:#fff;background:#6b7280;white-space:nowrap}
+.chip.up{background:#16a34a}.chip.down{background:#dc2626}.chip.checking{background:#d97706}
+.rt.down{border-color:#dc2626}.rt.down .e{color:#dc2626}
+.muted{color:var(--muted)}.small{font-size:.85rem}.foot{margin:24px 4px}
+dialog label{display:grid;gap:4px;margin:10px 0;font-size:.85rem;color:var(--muted)}dialog input{width:100%}
+dialog .actions{display:flex;gap:10px;justify-content:flex-end;margin-top:14px}
+.err{color:#dc2626;min-height:1.3em;margin:6px 0 0}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--solid,#222);color:var(--text);border:1px solid var(--glass-line);padding:10px 16px;border-radius:14px;z-index:30}

@@ -1,0 +1,76 @@
+'use strict';
+// Routing Reporter: checks, for every installed app, that its LAN, Tailscale and Public (Funnel) routes answer, shows the result, and reports it to Portal Admin
+// (Portal API `publishRoutes`, which feeds Portal Admin's "JoolzApp apps" page) and to the status feed (so a problem can be diagnosed without opening anything).
+// Node built-ins only. Owner-only: Umbrel's login stays in front of it.
+const http = require('http'), fs = require('fs'), path = require('path');
+const { makeMonitor } = require('./checker');
+
+const PORT = Number(process.env.PORT) || 3000, DATA_DIR = process.env.DATA_DIR || '/data', PUBLIC_DIR = path.join(__dirname, 'public');
+const APP_DIR = process.env.UMBREL_APP_DATA || '/umbrel-app-data', CONFIG_FILE = path.join(DATA_DIR, 'config.json');
+const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png', '.webmanifest': 'application/manifest+json' };
+
+/* ---------- settings (the addresses to test, kept in this app's data folder) ---------- */
+const DEFAULTS = { lanHost: process.env.LAN_HOST || 'host.docker.internal', tailscaleIp: process.env.TAILSCALE_IP || '', tailnet: process.env.TAILNET || '', intervalMin: 5 };
+const readJson = (f, d) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return d; } };
+const writeJson = (f, v) => { try { fs.mkdirSync(DATA_DIR, { recursive: true }); fs.writeFileSync(f + '.tmp', JSON.stringify(v, null, 2)); fs.renameSync(f + '.tmp', f); } catch (e) { console.error('Could not write', f, e.message); } };
+let config = { ...DEFAULTS, ...readJson(CONFIG_FILE, {}) };
+const clean = (b, old) => {
+  const o = { ...old }, bad = (m) => Object.assign(new Error(m), { status: 400 });
+  if (b.lanHost !== undefined) { const v = String(b.lanHost).trim(); if (!/^[A-Za-z0-9.-]{1,100}$/.test(v)) throw bad('The LAN address should look like 192.168.1.50 or umbrel.local.'); o.lanHost = v; }
+  if (b.tailscaleIp !== undefined) { const v = String(b.tailscaleIp).trim(); if (v && !/^100\.(?:\d{1,3}\.){2}\d{1,3}$/.test(v)) throw bad('A Tailscale address looks like 100.x.y.z.'); o.tailscaleIp = v; }
+  if (b.tailnet !== undefined) { const v = String(b.tailnet).trim().toLowerCase().replace(/^\.+|\.+$/g, ''); if (v && !/^[a-z0-9-]{1,60}\.ts\.net$/.test(v)) throw bad('Your tailnet name looks like tail1234.ts.net.'); o.tailnet = v; }
+  if (b.intervalMin !== undefined) { const v = Math.round(Number(b.intervalMin)); if (!(v >= 1 && v <= 60)) throw bad('Check every 1 to 60 minutes.'); o.intervalMin = v; }
+  return o;
+};
+
+/* ---------- checking and reporting ---------- */
+const monitor = makeMonitor({ dir: APP_DIR, getConfig: () => config });
+let reportState = { ok: null, at: 0, error: '' }, timer = null;
+function portalLink() {     // data/pocketbase.env is written by Portal Admin once you have signed in there (the same file every JoolzApp app uses)
+  try {
+    const kv = {}; for (const line of fs.readFileSync(path.join(DATA_DIR, 'pocketbase.env'), 'utf8').split(/\r?\n/)) { const m = line.match(/^\s*(POCKETBASE_PORTAL_(?:URL|KEY))\s*=\s*(.*?)\s*$/); if (m) kv[m[1]] = m[2].replace(/^(["'])(.*)\1$/, '$2'); }
+    return kv.POCKETBASE_PORTAL_URL && kv.POCKETBASE_PORTAL_KEY ? { url: kv.POCKETBASE_PORTAL_URL.replace(/\/+$/, ''), key: kv.POCKETBASE_PORTAL_KEY } : null;
+  } catch { return null; }
+}
+async function sendToPortal(report) {
+  const p = portalLink(); if (!p) { reportState = { ok: false, at: Date.now(), error: 'Not linked to Portal Admin yet: sign in to Portal Admin once and it links this app.' }; return; }
+  try {
+    const r = await fetch(p.url + '/app-api/call', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + p.key }, body: JSON.stringify({ fn: 'publishRoutes', args: [report] }), signal: AbortSignal.timeout(15000) });
+    const j = await r.json().catch(() => ({})); if (!r.ok || !j.ok) throw new Error(j.message || 'Portal API error ' + r.status);
+    reportState = { ok: true, at: Date.now(), error: '' };
+  } catch (e) { reportState = { ok: false, at: Date.now(), error: String(e.message || e).slice(0, 160) }; console.error('Report to Portal Admin: ' + reportState.error); }
+}
+async function checkNow() { const rep = await monitor.run(); await sendToPortal(rep); return rep; }
+function schedule() { clearTimeout(timer); timer = setTimeout(async () => { try { await checkNow(); } catch (e) { console.error('Check failed:', e.message); } schedule(); }, config.intervalMin * 60e3); if (timer.unref) timer.unref(); }
+// What the status feed carries: states and reasons, never latency (it changes every check and would be a commit every time).
+const feedPayload = async () => {
+  const r = monitor.last; if (!r) return { note: 'No check has run yet.' };
+  const down = []; r.apps.forEach((a) => a.routes.filter((x) => x.state === 'down').forEach((x) => down.push({ app: a.id, route: x.key, url: x.url, error: x.error, since: x.since })));
+  return { intervalMin: r.intervalMin, config: r.config, reportedToPortalAdmin: reportState.ok, reportError: reportState.error, routesDown: down,
+    apps: r.apps.map((a) => ({ id: a.id, version: a.version, port: a.port, published: a.published, routes: a.routes.map((x) => ({ key: x.key, state: x.state, status: x.status, error: x.error, since: x.since })) })) };
+};
+
+/* ---------- web server ---------- */
+const send = (res, code, obj) => { res.writeHead(code, { 'content-type': 'application/json', 'cache-control': 'no-store' }); res.end(JSON.stringify(obj)); };
+const body = (req) => new Promise((ok, bad) => { let s = ''; req.on('data', (c) => { s += c; if (s.length > 20000) { bad(new Error('Too large')); req.destroy(); } }); req.on('end', () => ok(s)); });
+const server = http.createServer(async (req, res) => {
+  try {
+    const p = decodeURIComponent(new URL(req.url, 'http://x').pathname);
+    if (p === '/api/state' && req.method === 'GET') return send(res, 200, { report: monitor.last, config, portal: { linked: !!portalLink(), ...reportState }, checking: false });
+    if (p === '/api/check' && req.method === 'POST') { const rep = await checkNow(); return send(res, 200, { report: rep, portal: { linked: !!portalLink(), ...reportState } }); }
+    if (p === '/api/config' && req.method === 'PUT') {
+      try { config = clean(JSON.parse((await body(req)) || '{}'), config); } catch (e) { return send(res, e.status || 400, { message: e.message }); }
+      writeJson(CONFIG_FILE, config); schedule(); const rep = await checkNow(); return send(res, 200, { config, report: rep, portal: { linked: !!portalLink(), ...reportState } });
+    }
+    const file = path.join(PUBLIC_DIR, p === '/' ? 'index.html' : p), ok = file.startsWith(PUBLIC_DIR + path.sep);
+    if (!ok || !fs.existsSync(file) || !fs.statSync(file).isFile()) return send(res, 404, { message: 'Not found' });
+    res.writeHead(200, { 'content-type': TYPES[path.extname(file)] || 'application/octet-stream', 'cache-control': 'no-cache' }); fs.createReadStream(file).pipe(res);
+  } catch (e) { console.error(e); send(res, 500, { message: 'Something went wrong.' }); }
+});
+module.exports = { clean, feedPayload };
+if (require.main === module) {
+  fs.mkdirSync(DATA_DIR, { recursive: true });        // Portal Admin links an app once its data folder exists
+  require('./status-feed')({ dataDir: DATA_DIR, getPayload: feedPayload, log: (m) => console.error(m) });
+  server.listen(PORT, '0.0.0.0', () => console.log('Routing Reporter listening on :' + PORT));
+  setTimeout(() => { checkNow().catch((e) => console.error('Check failed:', e.message)); schedule(); }, 5000);
+}

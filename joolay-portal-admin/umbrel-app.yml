@@ -2,7 +2,7 @@ manifestVersion: 1
 id: joolay-portal-admin
 category: developer
 name: Portal Admin
-version: "0.34.1"
+version: "0.35.0"
 tagline: One admin panel for all your custom PocketBase apps
 description: >-
   A central admin panel for your custom apps that use PocketBase. Register each app, then manage
@@ -21,7 +21,7 @@ gallery: []
 path: ""
 defaultUsername: ""
 defaultPassword: ""
-releaseNotes: "Fixes the Audit log on phones (one line per row, scrolls sideways). The status feed now only saves to GitHub when something really changed, instead of a commit every minute."
+releaseNotes: "New JoolzApp apps page for admins: shows each app's LAN, Tailscale and Public route from the Routing Reporter app, with a Notify Claude button that flags a broken route (which app, which route) in the status feed. Fixes the Audit log on phones (one line per row, scrolls sideways). The status feed now only saves to GitHub when something really changed, instead of a commit every minute."
 submitter: joolay
 submission: https://github.com/joolay/umbrel-apps
 icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-portal-admin/icon.svg

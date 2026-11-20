@@ -335,7 +335,7 @@ window.addEventListener('hashchange', () => { if (resetToken()) return showReset
 function route() {
   let [, view = 'home', arg] = location.hash.split('/');
   if (state.role === 'user') view = (view === 'me' || view === 'family' || view === 'paid' || view === 'qr') ? view : 'home';
-  const v = { home: viewHome, overview: viewOverview, global: viewGlobal, apps: viewApps, users: viewUsers, requests: viewRequests, cleanup: viewCleanup, audit: viewAudit, changes: viewChanges, setup: viewSetup, me: viewMe, family: viewFamily, paywall: viewPaywall, keys: viewKeys, names: viewNames, paid: viewPaid, qr: viewQr }[view] || viewHome;
+  const v = { home: viewHome, overview: viewOverview, global: viewGlobal, apps: viewApps, users: viewUsers, requests: viewRequests, cleanup: viewCleanup, audit: viewAudit, changes: viewChanges, setup: viewSetup, me: viewMe, family: viewFamily, paywall: viewPaywall, keys: viewKeys, joolzapps: viewJoolzApps, names: viewNames, paid: viewPaid, qr: viewQr }[view] || viewHome;
   if (!v || v === viewHome) view = 'home';
   setBar(view); $('#acct').open && $('#acct').close(); $('#sheet').open && $('#sheet').close();
   main().innerHTML = '<p class="muted">Loading…</p>';
@@ -1109,6 +1109,33 @@ async function viewPaid(slug) {
   const b = $('#paid-again'); if (b) b.onclick = () => viewPaid(slug);
 }
 const toCents = (v) => { const n = parseFloat(String(v).replace(',', '.')); return isFinite(n) && n > 0 ? Math.round(n * 100) : null; };
+/* ---------- JoolzApp apps: route health (LAN, Tailscale, Public) reported by Routing Reporter; flag a broken route to Claude ---------- */
+async function viewJoolzApps() {
+  const j = await acctFetch('/admin/routes'), r = j.report;
+  const when = (ms) => ms ? new Date(ms).toLocaleString('en-ZA', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }) : '';
+  const flagged = new Set(j.alerts.map((a) => a.appId + '|' + a.route));
+  const rchip = (x) => `<span class="chip ${x.state === 'up' ? 'ok' : x.state === 'down' ? 'bad' : 'warn'}" title="${esc(x.url)}">${esc(x.label)}: ${x.state === 'up' ? 'up' : x.state === 'down' ? 'down' : 'checking'}</span>`;
+  const card = (a) => {
+    const down = a.routes.filter((x) => x.state === 'down');
+    return `<div class="card"><div class="row spread"><h2>${esc(a.name)}</h2><span class="muted small">${esc(a.version)}${a.port ? ' · port ' + a.port : ''}</span></div>
+      <div class="row" style="gap:6px;flex-wrap:wrap">${a.routes.length ? a.routes.map(rchip).join('') : '<span class="muted small">No routes to check yet (add the Tailscale address in Routing Reporter).</span>'}</div>
+      ${down.map((x) => `<div class="routedown"><p class="small"><b>${esc(x.label)}</b> is down${x.since ? ' since ' + when(x.since) : ''}: ${esc(x.error)}.<br><span class="muted">${esc(x.url)}</span></p>
+        ${flagged.has(a.id + '|' + x.key) ? `<div class="row" style="gap:8px;flex-wrap:wrap"><span class="chip warn">Flagged to Claude</span><button class="btn rclear" data-app="${esc(a.id)}" data-route="${esc(x.key)}">Unflag</button></div>`
+          : `<form class="row rnotify" style="gap:8px;flex-wrap:wrap" data-app="${esc(a.id)}" data-route="${esc(x.key)}"><input name="note" placeholder="Note for Claude (optional)" maxlength="200" style="flex:1;min-width:160px"><button class="btn primary">Notify Claude</button></form>`}</div>`).join('')}</div>`;
+  };
+  const mine = r ? r.apps.filter((a) => a.joolzapp) : [], other = r ? r.apps.filter((a) => !a.joolzapp) : [];
+  const bad = r ? r.apps.reduce((n, a) => n + a.routes.filter((x) => x.state === 'down').length, 0) : 0;
+  main().innerHTML = `<h1>JoolzApp apps</h1><p class="sub">Whether each app answers on your home network (LAN), your Tailscale address and its public address. Checked every few minutes by the Routing Reporter app. If a route is down, tap Notify Claude: it goes into the status feed with the app and which route, and clears by itself when the route answers again.</p>
+    ${!r ? '<div class="card"><p class="muted">Nothing reported yet. Install Routing Reporter from the app store and sign in to Portal Admin here once so it can send its results.</p></div>' : `
+    <div class="card"><div class="row spread"><h2>${bad ? bad + ' route' + (bad > 1 ? 's' : '') + ' down' : 'All routes answering'}</h2><span class="chip ${j.stale ? 'bad' : bad ? 'warn' : 'ok'}">${j.stale ? 'Routing Reporter is not reporting' : bad ? 'Needs attention' : 'Healthy'}</span></div>
+      <p class="muted small">Last report ${when(j.receivedAt)}${j.stale ? '. It has gone quiet, so the picture below may be out of date; check that the Routing Reporter app is running.' : ''}</p></div>
+    ${mine.length ? '<h3 class="grp">JoolzApp apps</h3>' + mine.map(card).join('') : ''}
+    ${other.length ? '<h3 class="grp">Other apps</h3>' + other.map(card).join('') : ''}`}`;
+  const act = guard(async (body, msg) => { await acctFetch('/admin/routes', body); toast(msg); viewJoolzApps(); });
+  main().querySelectorAll('.rnotify').forEach((f) => { f.onsubmit = (e) => { e.preventDefault(); act({ action: 'notify', appId: f.dataset.app, route: f.dataset.route, note: f.elements.note.value }, 'Claude will see it in the status feed'); }; });
+  main().querySelectorAll('.rclear').forEach((b) => { b.onclick = () => act({ action: 'clear', appId: b.dataset.app, route: b.dataset.route }, 'Unflagged'); });
+}
+
 /* ---------- App keys: API keys an app needs (JoolzTV's TMDB key), saved once here and never shown again ---------- */
 async function viewKeys() {
   const j = await acctFetch('/admin/app-keys'), sf = await acctFetch('/admin/status-feed').catch(() => null);
@@ -1547,9 +1574,9 @@ const ICON_WARN = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 7v6M
 const ADMIN_TOOLS = [
   ['overview', 'Overview', ['#5b8cff', '#7c5cf0']], ['global', 'Global settings', ['#94a3b8', '#475569']], ['apps', 'Apps', ['#a855f7', '#6366f1']],
   ['users', 'Users', ['#10b981', '#0ea5e9']], ['requests', 'Access requests', ['#f43f5e', '#fb923c']], ['cleanup', 'Cleanup', ['#14b8a6', '#22c55e']],
-  ['paywall', 'Paid apps', ['#22c55e', '#0ea5e9']], ['keys', 'App keys', ['#f59e0b', '#ef4444']], ['names', 'App names', ['#06b6d4', '#6366f1']], ['audit', 'Audit log', ['#eab308', '#f97316']], ['changes', 'Changes', ['#8b5cf6', '#ec4899']], ['setup', 'Setup', ['#0ea5e9', '#6366f1']],
+  ['paywall', 'Paid apps', ['#22c55e', '#0ea5e9']], ['keys', 'App keys', ['#f59e0b', '#ef4444']], ['joolzapps', 'JoolzApp apps', ['#0f766e', '#2dd4bf']], ['names', 'App names', ['#06b6d4', '#6366f1']], ['audit', 'Audit log', ['#eab308', '#f97316']], ['changes', 'Changes', ['#8b5cf6', '#ec4899']], ['setup', 'Setup', ['#0ea5e9', '#6366f1']],
 ];
-const VIEW_TITLES = { overview: 'Overview', global: 'Global settings', apps: 'Apps', users: 'Users', requests: 'Access requests', cleanup: 'Cleanup', audit: 'Audit log', changes: 'PocketBase changes', setup: 'Setup & integration', me: 'My settings', family: 'Family', paywall: 'Paid apps', keys: 'App keys', names: 'App names', paid: 'Payment' };
+const VIEW_TITLES = { joolzapps: 'JoolzApp apps', overview: 'Overview', global: 'Global settings', apps: 'Apps', users: 'Users', requests: 'Access requests', cleanup: 'Cleanup', audit: 'Audit log', changes: 'PocketBase changes', setup: 'Setup & integration', me: 'My settings', family: 'Family', paywall: 'Paid apps', keys: 'App keys', names: 'App names', paid: 'Payment' };
 const PROTECTED = new Set(['sys:me', 'sys:admin']);
 const canFolder = (id) => !PROTECTED.has(id) && !String(id).startsWith('folder:');   // folders hold apps and Family, never nest, never hide the way back to Settings/Admin   // can't be hidden, so nobody loses the way back to their settings
 
