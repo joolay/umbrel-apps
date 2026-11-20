@@ -13,6 +13,7 @@ const C = require('./checker'), { clean } = require('./server');
   const mk = (id, port, compose) => { fs.mkdirSync(path.join(dir, id)); fs.writeFileSync(path.join(dir, id, 'umbrel-app.yml'), `id: ${id}\nname: ${id}\nversion: "1.0.0"\nport: ${port}\n`); if (compose) fs.writeFileSync(path.join(dir, id, 'docker-compose.yml'), compose); };
   mk('joolay-pub', 4001, pub); mk('joolay-priv', 4002, pub.replace(', tailscale_funnel', '').replace('project-tracker', 'priv')); mk('bitcoin', 4003); fs.mkdirSync(path.join(dir, 'empty'));
   const apps = C.discover(dir); assert.deepStrictEqual(apps.map((a) => [a.id, a.joolzapp]), [['bitcoin', false], ['joolay-priv', true], ['joolay-pub', true]]);
+  assert.deepStrictEqual(C.parseCompose('ports:\n  - "3916:3915"\n  - 8080:80/tcp\n  - "127.0.0.1:9000:9000"\n').hostPorts, [3916, 8080, 9000]);
   // which routes each app should have
   const cfg = { lanHost: '192.168.1.5', tailscaleIp: '100.64.0.9', tailnet: 'tail1.ts.net', intervalMin: 5 };
   const keys = (a) => C.routesFor(a, cfg).map((r) => r.key + '=' + r.url);
@@ -40,5 +41,6 @@ const C = require('./checker'), { clean } = require('./server');
   const base0 = { lanHost: 'a', tailscaleIp: '', tailnet: '', intervalMin: 5 };
   assert.throws(() => clean({ tailscaleIp: '192.168.1.5' }, base0), /100\.x\.y\.z/); assert.throws(() => clean({ tailnet: 'example.com' }, base0), /ts\.net/); assert.throws(() => clean({ intervalMin: 0 }, base0), /1 to 60/); assert.throws(() => clean({ lanHost: 'http://x/' }, base0), /LAN address/);
   assert.deepStrictEqual(clean({ tailscaleIp: '100.118.10.62', tailnet: 'Tail1.TS.net', intervalMin: '10' }, base0), { lanHost: 'a', tailscaleIp: '100.118.10.62', tailnet: 'tail1.ts.net', intervalMin: 10 });
+  const { feedPayload } = require('./server'); assert.strictEqual(typeof feedPayload, 'function');
   console.log('routing-reporter ok'); process.exit(0);
 })().catch((e) => { console.error(e); process.exit(1); });

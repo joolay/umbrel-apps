@@ -1601,6 +1601,7 @@ async function homeModel() {
     isAdmin ? count('portal_requests', 'status = "pending"').catch(() => 0) : Promise.resolve(0),
   ]);
   ssoSlugs = new Set(ssoRows.filter((r) => r.value === true).map((r) => r.app));
+  // The Store holds apps only: no Admin folder or Admin link here (an admin uses the Portal Admin app).
   // On the Portal the layout is ONE shared App Store layout that an admin edits and everyone sees (GET /store/layout; saving is admin-only on the server).
   const sl = !onlyTools && selfId() ? await acctFetch('/store/layout').catch(() => null) : null, canEdit = onlyTools ? true : !!(sl && sl.admin), viaStore = !onlyTools;
   const rank = (r) => r.scope === 'global' ? 0 : r.scope === 'app' ? 1 : (r.app ? 3 : 2);
@@ -1616,19 +1617,16 @@ async function homeModel() {
   const dsrc = sl && sl.layout && sl.layout.descs ? sl.layout.descs : {};
   apps.forEach((a) => { if (dsrc[a.slug]) a.description = String(dsrc[a.slug]); const nm = names[a.slug] || a.name; items['app:' + a.slug] = { id: 'app:' + a.slug, kind: 'app', name: nm, orig: a.name, app: a, grad: GRADS[hashN(a.slug) % GRADS.length], letter: (nm || '?').trim().charAt(0).toUpperCase(), ok: allowed(a.slug) }; });
   if (onlyTools) for (const [k, name, g] of ADMIN_TOOLS) items['tool:' + k] = { id: 'tool:' + k, kind: 'sys', name, glyph: k, grad: g, href: '#/' + k, badge: k === 'requests' ? pend : 0 };
-  else if (isAdmin) items['sys:admin'] = { id: 'sys:admin', kind: 'folder', name: 'Admin', grad: ['#64748b', '#334155'], badge: pend };
   if (!isAdmin || selfId()) {
     items['sys:family'] = { id: 'sys:family', kind: 'sys', name: 'Family', glyph: 'family', img: 'icons/family.svg', grad: ['#fb7185', '#f59e0b'], href: '#/family' };
     items['sys:me'] = { id: 'sys:me', kind: 'sys', name: 'Settings', glyph: 'me', img: 'icons/settings.svg', grad: ['#94a3b8', '#475569'], href: '#/me' };
   }
-  // On JoolzApp Store an admin gets a way into Portal Admin (a separate app, reachable on their home network or tailnet only).
-  if (!isAdmin && adminRow && /^https?:\/\//i.test(String(adminRow.value || '')) && String(adminRow.value) !== location.origin) items['sys:adminlink'] = { id: 'sys:adminlink', kind: 'sys', name: 'Admin', glyph: 'admin', img: 'icons/admin.svg', grad: ['#3b4a7a', '#1e2a52'], href: String(adminRow.value) };
   let pw = null; if (selfId()) { try { pw = await acctFetch('/paywall'); } catch { pw = null; } }
   let saved = lrows[0] && lrows[0].value && typeof lrows[0].value === 'object' ? lrows[0].value : null;
   if (!saved) { try { saved = JSON.parse(store.lget((onlyTools ? 'pa.adminlayout.' : 'pa.layout.') + uid) || 'null'); } catch { saved = null; } }
   if (sl && sl.layout) saved = sl.layout;
   const fresh = !saved;
-  saved = saved || { order: [], dock: onlyTools ? (selfId() ? ['sys:family', 'sys:me'] : []) : isAdmin ? (selfId() ? ['sys:admin', 'sys:family', 'sys:me'] : ['sys:admin']) : ['sys:family', 'sys:me'], hidden: [] };
+  saved = saved || { order: [], dock: onlyTools ? (selfId() ? ['sys:family', 'sys:me'] : []) : (isAdmin && !selfId()) ? [] : ['sys:family', 'sys:me'], hidden: [] };
   const seen = new Set(), keep = (arr, f = () => true) => (Array.isArray(arr) ? arr : []).filter((id) => items[id] && f(id) && !seen.has(id) && seen.add(id));
   // Folders the person made: { id: { name, items: [ids] } }. Their apps are claimed first so they don't also show on the grid.
   const folders = {};
