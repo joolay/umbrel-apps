@@ -21,6 +21,14 @@ const C = require('./checker'), { clean } = require('./server');
   assert.deepStrictEqual(keys(apps[2]).slice(2), ['public=https://project-tracker.tail1.ts.net/']);
   assert.deepStrictEqual(keys(apps[1]).slice(2), ['name=https://priv.tail1.ts.net/']);
   assert.deepStrictEqual(C.routesFor(apps[2], { lanHost: '', tailscaleIp: '', tailnet: '' }), [], 'nothing to test without addresses');
+  // .local route: its own route, and a name that does not resolve is reported as the name's problem
+  const cfgL = { ...cfg, localHost: 'umbrel.local' };
+  assert.deepStrictEqual(C.routesFor(apps[0], cfgL).map((r) => r.key + '=' + r.url).slice(0, 2), ['lan=http://192.168.1.5:4003/', 'local=http://umbrel.local:4003/']);
+  const q = C.mdnsQuery('umbrel.local'); assert.strictEqual(q.readUInt16BE(q.length - 4), 1); assert.strictEqual(q.readUInt16BE(q.length - 2), 0x8001);
+  const nm = Buffer.from([6, ...Buffer.from('umbrel'), 5, ...Buffer.from('local'), 0]);
+  const reply = Buffer.concat([Buffer.from([0, 0, 0x84, 0, 0, 0, 0, 1, 0, 0, 0, 0]), nm, Buffer.from([0, 1, 0x80, 1, 0, 0, 0, 120, 0, 4, 192, 168, 1, 50])]);
+  assert.strictEqual(C.mdnsParse(reply, 'Umbrel.local'), '192.168.1.50'); assert.strictEqual(C.mdnsParse(reply, 'other.local'), ''); assert.strictEqual(C.mdnsParse(Buffer.alloc(3), 'umbrel.local'), '');
+  const noName = await C.probe('http://umbrel.local:4003/', { resolver: async () => '' }); assert.strictEqual(noName.ok, false); assert.ok(/\.local name did not resolve/.test(noName.error));
   // probing a real local server: any answer under 500 is up; 502 and refused connections are down
   const srv = http.createServer((q, r) => { r.statusCode = q.url === '/bad' ? 502 : q.url === '/login' ? 401 : 200; r.end('x'); }).listen(0);
   await new Promise((r) => srv.on('listening', r)); const base = 'http://127.0.0.1:' + srv.address().port;
@@ -37,6 +45,9 @@ const C = require('./checker'), { clean } = require('./server');
   rep = await mon.run(); assert.strictEqual(route(rep, 'bitcoin', 'lan').state, 'down'); assert.ok(route(rep, 'bitcoin', 'lan').since > 0); assert.strictEqual(route(rep, 'joolay-pub', 'public').state, 'up', 'other routes are unaffected');
   ok = true; rep = await mon.run(); assert.strictEqual(route(rep, 'bitcoin', 'lan').state, 'up', 'recovers on the first good check');
   assert.deepStrictEqual(rep.apps.map((a) => a.joolzapp), [false, true, true]); assert.strictEqual(rep.apps[2].published, 'public');
+  const viaName = http.createServer((q, r) => { r.statusCode = q.headers.host && q.headers.host.startsWith('umbrel.local') ? 200 : 421; r.end('x'); }).listen(0); await new Promise((r) => viaName.on('listening', r));
+  assert.strictEqual((await C.probe('http://umbrel.local:' + viaName.address().port + '/', { resolver: async () => '127.0.0.1' })).ok, true, 'connects to the resolved address and keeps the .local Host'); viaName.close();
+  assert.strictEqual(clean({ localHost: 'Umbrel.local' }, { lanHost: 'a' }).localHost, 'umbrel.local'); assert.throws(() => clean({ localHost: 'umbrel.com' }, { lanHost: 'a' }), /\.local/);
   // settings are checked
   const base0 = { lanHost: 'a', tailscaleIp: '', tailnet: '', intervalMin: 5 };
   assert.throws(() => clean({ tailscaleIp: '192.168.1.5' }, base0), /100\.x\.y\.z/); assert.throws(() => clean({ tailnet: 'example.com' }, base0), /ts\.net/); assert.throws(() => clean({ intervalMin: 0 }, base0), /1 to 60/); assert.throws(() => clean({ lanHost: 'http://x/' }, base0), /LAN address/);

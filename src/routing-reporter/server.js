@@ -10,18 +10,19 @@ const APP_DIR = process.env.UMBREL_APP_DATA || '/umbrel-app-data', CONFIG_FILE =
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png', '.webmanifest': 'application/manifest+json' };
 
 /* ---------- settings (the addresses to test, kept in this app's data folder) ---------- */
-const DEFAULTS = { lanHost: process.env.LAN_HOST || 'host.docker.internal', tailscaleIp: process.env.TAILSCALE_IP || '', tailnet: process.env.TAILNET || '', intervalMin: 5 };
+const DEFAULTS = { lanHost: process.env.LAN_HOST || 'host.docker.internal', localHost: process.env.LOCAL_HOST || 'umbrel.local', tailscaleIp: process.env.TAILSCALE_IP || '', tailnet: process.env.TAILNET || '', intervalMin: 5 };
 const readJson = (f, d) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return d; } };
 const writeJson = (f, v) => { try { fs.mkdirSync(DATA_DIR, { recursive: true }); fs.writeFileSync(f + '.tmp', JSON.stringify(v, null, 2)); fs.renameSync(f + '.tmp', f); } catch (e) { console.error('Could not write', f, e.message); } };
 let config = { ...DEFAULTS, ...readJson(CONFIG_FILE, {}) };
 // Routes you chose to ignore ("<app id>|<route key>", e.g. an app that is not meant to be on Tailscale). They are still checked, but never count as a problem.
-let ignored = new Set(Array.isArray(config.ignored) ? config.ignored.filter((k) => /^[A-Za-z0-9._-]{1,80}\|(lan|tailscale|name|public)$/.test(k)).slice(0, 400) : []);
+let ignored = new Set(Array.isArray(config.ignored) ? config.ignored.filter((k) => /^[A-Za-z0-9._-]{1,80}\|(lan|local|tailscale|name|public)$/.test(k)).slice(0, 400) : []);
 delete config.ignored;
 const saveConfig = () => writeJson(CONFIG_FILE, { ...config, ignored: [...ignored] });
 const mark = (r) => r && { ...r, apps: r.apps.map((a) => ({ ...a, routes: a.routes.map((x) => ({ ...x, ignored: ignored.has(a.id + '|' + x.key) })) })) };
 const clean = (b, old) => {
   const o = { ...old }, bad = (m) => Object.assign(new Error(m), { status: 400 });
   if (b.lanHost !== undefined) { const v = String(b.lanHost).trim(); if (!/^[A-Za-z0-9.-]{1,100}$/.test(v)) throw bad('The LAN address should look like 192.168.1.50 or umbrel.local.'); o.lanHost = v; }
+  if (b.localHost !== undefined) { const v = String(b.localHost).trim().toLowerCase(); if (v && !/^[a-z0-9-]{1,63}\.local$/.test(v)) throw bad('The .local name looks like umbrel.local (leave it empty to skip this route).'); o.localHost = v; }
   if (b.tailscaleIp !== undefined) { const v = String(b.tailscaleIp).trim(); if (v && !/^100\.(?:\d{1,3}\.){2}\d{1,3}$/.test(v)) throw bad('A Tailscale address looks like 100.x.y.z.'); o.tailscaleIp = v; }
   if (b.tailnet !== undefined) { const v = String(b.tailnet).trim().toLowerCase().replace(/^\.+|\.+$/g, ''); if (v && !/^[a-z0-9-]{1,60}\.ts\.net$/.test(v)) throw bad('Your tailnet name looks like tail1234.ts.net.'); o.tailnet = v; }
   if (b.intervalMin !== undefined) { const v = Math.round(Number(b.intervalMin)); if (!(v >= 1 && v <= 60)) throw bad('Check every 1 to 60 minutes.'); o.intervalMin = v; }
