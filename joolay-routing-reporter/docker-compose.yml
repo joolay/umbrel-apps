@@ -1,0 +1,31 @@
+# Routing Reporter: checks every app's LAN, Tailscale and Public routes and reports to Portal Admin.
+# Source: src/routing-reporter in this repo (built by .github/workflows/build-images.yml).
+# Keep the image tag equal to `version` in umbrel-app.yml.
+services:
+  app_proxy:
+    environment:
+      APP_HOST: joolay-routing-reporter_web_1
+      APP_PORT: 3000
+      # Umbrel's login stays ON: an owner-only tool that shows every route on the server.
+      PROXY_AUTH_ADD: "true"
+
+  web:
+    image: ghcr.io/joolay/routing-reporter:1.0.0
+    restart: on-failure
+    stop_grace_period: 10s
+    # Lets the container reach the Umbrel's own ports (the default "LAN" address is the host itself).
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ${APP_DATA_DIR}/data:/data
+      # Read-only: Umbrel's installed-app folders (umbrel-app.yml and docker-compose.yml) tell it which apps exist, their ports and which are published.
+      - ${UMBREL_ROOT}/app-data:/umbrel-app-data:ro
+    environment:
+      # Signs this app in to Portal Admin (it writes data/pocketbase.env after you sign in there) so the report reaches the "JoolzApp apps" page and the status feed.
+      - POCKETBASE_APP_ID=routing-reporter
+      # Owner-only tool, opened from Umbrel: no icon on the JoolzApp home screen.
+      - JOOLZAPP_DASHBOARD=hidden
+      # Optional starting values; all of them can be set in the app's Settings.
+      - LAN_HOST=${ROUTING_LAN_HOST:-}
+      - TAILSCALE_IP=${ROUTING_TAILSCALE_IP:-}
+      - TAILNET=${ROUTING_TAILNET:-}
