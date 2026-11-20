@@ -15,5 +15,13 @@
   apply(stored());
   document.addEventListener("click", function (e) { var b = e.target.closest && e.target.closest("[data-theme-toggle]"); if (b) set(effective() === "dark" ? "light" : "dark"); });
   document.addEventListener("DOMContentLoaded", paint);
+  // Keep the page below the fixed bar: an in-flow spacer as tall as the bar (+ its top gap), kept right as the bar wraps or the screen turns.
+  function spacer() {
+    var bar = document.querySelector(".topbar"); if (!bar) return;
+    var sp = bar.nextElementSibling; if (!sp || !sp.classList.contains("topbar-spacer")) { sp = document.createElement("div"); sp.className = "topbar-spacer"; sp.setAttribute("aria-hidden", "true"); bar.parentNode.insertBefore(sp, bar.nextSibling); }
+    sp.style.height = bar.offsetHeight + "px";
+  }
+  document.addEventListener("DOMContentLoaded", spacer); window.addEventListener("resize", spacer); window.addEventListener("load", spacer);
+  if (window.ResizeObserver) document.addEventListener("DOMContentLoaded", function () { var b = document.querySelector(".topbar"); if (b) new ResizeObserver(spacer).observe(b); });
   window.JZTheme = { set: set, effective: effective, paint: paint };
 })();

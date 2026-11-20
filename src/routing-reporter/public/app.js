@@ -12,19 +12,28 @@
       return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok) throw new Error(j.message || "Something went wrong (" + r.status + ")"); return j; });
     });
   }
-  var COLS = [["lan", "LAN"], ["tailscale", "Tailscale"], ["name", "Tailnet name"], ["public", "Public"]];
+  var COLS = [["lan", "LAN"], ["tailscale", "Tailscale"], ["name", "Name"], ["public", "Public"]];
+  // Icons instead of words: green tick = answering, red cross = down, amber arrow hitting a wall = checking / in conflict, grey dash = ignored.
+  var IC = {
+    up: '<svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
+    down: '<svg viewBox="0 0 24 24"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg>',
+    checking: '<svg viewBox="0 0 24 24"><path d="M3 12h9"/><path d="M9 8.5l3.5 3.5L9 15.5"/><path d="M18 5v14"/><path d="M15.2 9.5l-1.6 2.5 1.6 2.5"/></svg>',
+    ign: '<svg viewBox="0 0 24 24"><path d="M6 12h12"/></svg>'
+  }, TXT = { up: "Answering", down: "Down", checking: "Checking or in conflict", ign: "Ignored" };
+  function ico(st) { return '<span class="ic ' + st + '" role="img" aria-label="' + TXT[st] + '" title="' + TXT[st] + '">' + IC[st] + "</span>"; }
   function cell(a, k) {
     var x = a.routes.filter(function (r) { return r.key === k; })[0];
     if (!x) return '<td class="na">–</td>';
     var st = x.ignored ? "ign" : x.state === "up" ? "up" : x.state === "down" ? "down" : "checking";
-    return '<td><span class="chip ' + st + '">' + (x.ignored ? "Ignored" : st === "up" ? "Up" : st === "down" ? "Down" : "…") + "</span></td>";
+    return '<td title="' + esc(x.url) + '">' + ico(st) + "</td>";
   }
   // Details (address, speed, reason, Ignore) stay folded until the app's row is tapped.
   function detail(a, n) {
-    return '<tr class="det"><td colspan="' + n + '">' + a.routes.map(function (x) {
+    var meta = (a.version ? "v" + a.version + " · " : "") + "port " + a.port + (a.published === "public" ? " · public" : a.published === "tailnet" ? " · tailnet only" : "");
+    return '<tr class="det"><td colspan="' + n + '"><div class="meta muted small">' + esc(meta) + "</div>" + a.routes.map(function (x) {
       var st = x.ignored ? "ign" : x.state === "up" ? "up" : x.state === "down" ? "down" : "checking";
       var btn = x.ignored ? '<button class="lnk" data-i="0" data-a="' + esc(a.id) + '" data-r="' + x.key + '">Unignore</button>' : x.state === "down" ? '<button class="lnk" data-i="1" data-a="' + esc(a.id) + '" data-r="' + x.key + '">Ignore</button>' : "";
-      return '<div class="dr"><span class="chip ' + st + '">' + esc(x.label) + "</span><span class=\"u\">" + esc(x.url) + "</span><span class=\"small\">" + (x.state === "up" ? (x.ms || 0) + " ms" : x.state === "down" ? esc(x.error) + " · since " + esc(when(x.since)) : "Checking") + "</span>" + btn + "</div>";
+      return '<div class="dr">' + ico(st) + "<b>" + esc(x.label) + "</b><span class=\"u\">" + esc(x.url) + "</span><span class=\"small\">" + (x.state === "up" ? (x.ms || 0) + " ms" : x.state === "down" ? esc(x.error) + " · since " + esc(when(x.since)) : "Checking") + "</span>" + btn + "</div>";
     }).join("") + "</td></tr>";
   }
   function tableHtml(apps) {
@@ -32,7 +41,7 @@
     return '<div class="card tw"><table><thead><tr><th>App</th>' + cols.map(function (c) { return "<th>" + c[1] + "</th>"; }).join("") + "</tr></thead><tbody>" +
       apps.map(function (a) {
         var open = !!S.open[a.id];
-        return '<tr class="ar' + (open ? " open" : "") + '" data-id="' + esc(a.id) + '" tabindex="0" role="button" aria-expanded="' + open + '"><th scope="row"><b>' + esc(a.name || a.id) + '</b><span class="muted small">' + esc(a.version ? "v" + a.version + " · " : "") + "port " + a.port + "</span></th>" + cols.map(function (c) { return cell(a, c[0]); }).join("") + "</tr>" + (open ? detail(a, cols.length + 1) : "");
+        return '<tr class="ar' + (open ? " open" : "") + '" data-id="' + esc(a.id) + '" tabindex="0" role="button" aria-expanded="' + open + '"><th scope="row"><b>' + esc(a.name || a.id) + "</b></th>" + cols.map(function (c) { return cell(a, c[0]); }).join("") + "</tr>" + (open ? detail(a, cols.length + 1) : "");
       }).join("") + "</tbody></table></div>";
   }
   function problems(r) { var out = []; r.apps.forEach(function (a) { var l = a.routes.filter(function (x) { return x.state === "down" && !x.ignored; }).map(function (x) { return x.label; }); if (l.length) out.push({ name: a.name || a.id, routes: l }); }); return out; }
