@@ -16,7 +16,8 @@ table{width:100%;border-collapse:collapse;display:table;font-size:.85rem}
 th,td{padding:7px 8px;text-align:left;vertical-align:top;border-bottom:1px solid var(--glass-line)}tr:last-child>*{border-bottom:0}
 thead th{font-size:.72rem;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);white-space:nowrap}
 tbody th{font-weight:400;min-width:130px}tbody th b{display:block;font-size:.95rem}
-td{min-width:92px}td.na{color:var(--muted)}td .e{font-size:.72rem;color:#dc2626;margin-top:3px;max-width:190px}
+td{min-width:92px}td.na{color:var(--muted)}tr.ar{cursor:pointer}tr.ar:hover{background:var(--glass)}tr.ar th::after{content:" ▾";color:var(--muted);font-size:.7rem}tr.ar.open th::after{content:" ▴"}tr.det td{background:var(--glass);border-bottom:1px solid var(--glass-line)}
+.dr{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;padding:4px 0}.dr .u{font-size:.75rem;color:var(--muted);word-break:break-all}.dr .lnk{display:inline;margin:0}
 .chip{border-radius:999px;padding:1px 9px;font-size:.75rem;font-weight:700;color:#fff;background:#6b7280;white-space:nowrap}
 .chip.up{background:#16a34a}.chip.down{background:#dc2626}.chip.checking{background:#d97706}.chip.ign{background:#6b7280}
 .lnk{display:block;margin-top:4px;padding:0;background:none;border:0;color:var(--accent);font:inherit;font-size:.75rem;text-decoration:underline;cursor:pointer}
