@@ -54,8 +54,9 @@ module.exports = function makeGitHub({ getConfig, fetchImpl = fetch, now = Date.
   }
   // Date of the newest commit that touched a path (for the 3-day rule). null when unknown.
   const commitCache = new Map();
-  async function lastCommit(repo, path, ttlMs) {
-    const c = await getConfig(), k = repo + "|" + path, hit = commitCache.get(k);
+  // anon: never send the owner's token (other people's lists must not be able to look at the owner's private repos).
+  async function lastCommit(repo, path, ttlMs, anon) {
+    const c = anon ? {} : await getConfig(), k = (anon ? "anon|" : "") + repo + "|" + path, hit = commitCache.get(k);
     if (hit && now() - hit.at < ttlMs) return hit.day;
     const r = await call(`https://api.github.com/repos/${repo}/commits?per_page=1&path=${encodeURIComponent(path)}`, { headers: headers(c || {}) });
     if (!r.ok) { commitCache.set(k, { at: now(), day: hit ? hit.day : null }); return hit ? hit.day : null; }

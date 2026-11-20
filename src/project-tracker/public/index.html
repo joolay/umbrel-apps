@@ -128,7 +128,7 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
       S.lists = j.lists; S.owner = !!j.owner; var pr = (S.user.prefs || {})["project-tracker"] || {};
       if (!S.key) { S.key = pr.list && j.lists.some(function (l) { return l.key === pr.list; }) ? pr.list : j.lists[0].key; if (pr.view) S.view = pr.view; if (typeof pr.auto === "boolean") S.auto = pr.auto; if (pr.days >= 1 && pr.days <= 30) S.days = pr.days; if (pr.chat === "builtin") S.chat = "builtin"; (pr.collapsed || []).forEach(function (c) { S.collapsed[c] = true; }); }
       if (!j.lists.some(function (l) { return l.key === S.key; })) S.key = j.lists[0].key;
-      $("#lists").innerHTML = j.lists.map(function (l) { return '<option value="' + esc(l.key) + '"' + (l.key === S.key ? " selected" : "") + ">" + esc(l.name) + " (" + l.count + ")</option>"; }).join("");
+      $("#lists").innerHTML = j.lists.map(function (l) { return '<option value="' + esc(l.key) + '"' + (l.key === S.key ? " selected" : "") + ">" + esc(l.name) + " (" + l.count + ")" + (l.source === "shared" ? " · from " + esc(l.by || "someone") : "") + "</option>"; }).join("");
     });
   }
   function poll(force) {
@@ -137,7 +137,7 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
     return api("api/list/" + key + (!force && S.sha ? "?sha=" + encodeURIComponent(S.sha) : "")).then(function (j) {
       if (key !== S.key) return;
       S.lastOk = Date.now(); S.err = "";
-      if (!j.unchanged) { S.sha = j.sha; S.list = j.list; S.worked = j.worked || {}; S.readOnly = !!j.readOnly; render(); }
+      if (!j.unchanged) { S.sha = j.sha; S.list = j.list; S.worked = j.worked || {}; S.readOnly = !!j.readOnly; S.role = j.role || "owner"; S.shares = j.shares || []; S.by = j.by || ""; S.source = j.source || ""; render(); }
       status();
     }).catch(function (e) { S.err = e.message; if (e.status === 401) location.reload(); status(); });
   }
@@ -145,7 +145,7 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
     var d = $("#dot"), ago = S.lastOk ? Math.max(0, Math.round((Date.now() - S.lastOk) / 1000)) : null;
     d.className = "dot" + (S.err ? " bad" : S.readOnly ? " off" : "");
     d.title = S.err ? "Can't sync: " + S.err : (S.readOnly ? "Read-only · " : "Live · ") + (ago == null ? "connecting" : ago < 4 ? "just now" : ago + "s ago");
-    $("#banner").innerHTML = S.readOnly && S.key === "appdev" ? '<div class="banner">This list is read-only until a GitHub token is added. Open <b>Settings</b> to add one.</div>' : "";
+    $("#banner").innerHTML = S.readOnly && S.source === "shared" ? '<div class="banner">Shared with you' + (S.by ? " by <b>" + esc(S.by) + "</b>" : "") + " to view only. You can't change it.</div>" : S.readOnly && S.key === "appdev" ? '<div class="banner">This list is read-only until a GitHub token is added. Open <b>Settings</b> to add one.</div>' : "";
   }
   function send(body) {
     S.busy++;
@@ -295,13 +295,29 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
       "<div class='sect'><b>Chat button on a project</b>" +
       "<label class='switch'><input type='radio' name='chat' value='claude'" + (S.chat !== "builtin" ? " checked" : "") + "><span><b>Claude app</b><br><span class='muted small'>Opens a new chat in Claude with the project and its notes filled in. Uses your Claude subscription.</span></span></label>" +
       "<label class='switch'><input type='radio' name='chat' value='builtin'" + (S.chat === "builtin" ? " checked" : "") + "><span><b>Built-in chat</b><br><span class='muted small'>Chats here with the AI key saved on your JoolzApp account. It can read the project's repo folders and suggest changes; nothing is saved until you press Apply.</span></span></label><p class='muted small' id='aik'>Checking your AI key…</p></div>" +
-      "<div class='sheet'><button class='btn' id='nl'>New private list</button>" + (S.owner ? "<button class='btn' id='cn'>GitHub connection</button>" : "") + "</div><p class='muted small'>Tip: tap a project for its notes. Press and hold it to edit or remove.</p><div class='row'><button class='btn primary' data-close>Done</button></div>", function (d) {
+      "<div class='sheet'><button class='btn' id='nl'>New private list</button>" + (S.role === "owner" && S.key !== "appdev" && S.list ? "<button class='btn' id='sh'>Share this list</button>" : "") + (S.source === "shared" ? "<button class='btn' id='lv'>Leave this shared list</button>" : "") + (S.owner ? "<button class='btn' id='cn'>GitHub connection</button>" : "") + "</div><p class='muted small'>Tip: tap a project for its notes. Press and hold it to edit or remove.</p><div class='row'><button class='btn primary' data-close>Done</button></div>", function (d) {
       d.querySelector("#dy").onchange = function () { var v = Math.round(+this.value); if (!(v >= 1 && v <= 30)) { this.value = S.days; return; } S.days = v; this.value = v; savePrefs(); render(); };
       d.querySelector("#au").onchange = function () { S.auto = this.checked; savePrefs(); render(); };
       d.querySelectorAll("input[name=chat]").forEach(function (r) { r.onchange = function () { S.chat = r.value; savePrefs(); }; });
       api("api/ai/status").then(function (j) { var al = S.home ? " <a href='" + esc(S.home) + "#/me' target='_blank' rel='noopener'>Manage AI keys</a>" : ""; d.querySelector("#aik").innerHTML = j.ready ? "Built-in chat uses <b>" + esc(j.key.provider) + " · " + esc(j.key.model) + "</b> (key ends …" + esc(j.key.last4) + "). " + al : "No AI key is set for Project Tracker yet. Add one in Portal Admin > My settings > AI." + al; }).catch(function () { d.querySelector("#aik").textContent = ""; });
       d.querySelector("#nl").onclick = function () { d.close(); newListDlg(); };
       var cn = d.querySelector("#cn"); if (cn) cn.onclick = function () { d.close(); connDlg(); };
+      var sh = d.querySelector("#sh"); if (sh) sh.onclick = function () { d.close(); shareDlg(); };
+      var lv = d.querySelector("#lv"); if (lv) lv.onclick = function () { if (!confirm("Leave this list? You can be added again later.")) return; var k = S.key; api("api/list/" + k + "/leave", "POST", {}).then(function () { d.close(); S.key = ""; S.sha = ""; S.list = null; return loadLists().then(function () { return poll(true); }); }).catch(function (e) { toast(e.message); }); };
+    });
+  }
+  // Share the open list by email. The server keeps the shares inside the list; view-only people can never change it.
+  function shareDlg() {
+    var shares = S.shares || [], k = S.key;
+    function again() { var el = $("#dlg"); el.close(); return poll(true).then(function () { shareDlg(); }); }
+    dialog("<h2>Share “" + esc(S.list.name) + "”</h2><p class='muted small'>Type the email of their JoolzApp account. The list shows up the next time they open Project Tracker. Only you can delete it.</p>" +
+      "<form id='f'><label>Email<input name='email' type='email' required autocomplete='off' maxlength='200'></label><label>They can<select name='role'><option value='view'>View only</option><option value='edit'>View and edit</option></select></label><div class='row'><button class='btn primary'>Share</button></div></form>" +
+      "<div class='sect'><b>Shared with</b>" + (shares.length ? shares.map(function (x, i) { return "<div class='row'><span class='small' style='flex:1;overflow:hidden;text-overflow:ellipsis'>" + esc(x.email) + "</span><select data-i='" + i + "' aria-label='Access for " + esc(x.email) + "'><option value='view'" + (x.role === "view" ? " selected" : "") + ">View</option><option value='edit'" + (x.role === "edit" ? " selected" : "") + ">Edit</option></select><button class='btn' data-rm='" + i + "'>Remove</button></div>"; }).join("") : "<p class='muted small'>Nobody yet.</p>") + "</div>" +
+      "<div class='row'><button class='btn' id='del'>Delete list</button><button class='btn primary' data-close>Done</button></div>", function (d) {
+      d.querySelector("#f").onsubmit = function (ev) { ev.preventDefault(); var e = ev.target.elements; api("api/list/" + k + "/share", "POST", { email: e.email.value, role: e.role.value }).then(again).catch(function (er) { toast(er.message); }); };
+      d.querySelectorAll("select[data-i]").forEach(function (sel) { sel.onchange = function () { var x = shares[+sel.dataset.i]; api("api/list/" + k + "/share", "POST", { email: x.email, role: sel.value }).then(again).catch(function (er) { toast(er.message); }); }; });
+      d.querySelectorAll("button[data-rm]").forEach(function (b) { b.onclick = function () { var x = shares[+b.dataset.rm]; api("api/list/" + k + "/share", "POST", { email: x.email, remove: true }).then(again).catch(function (er) { toast(er.message); }); }; });
+      d.querySelector("#del").onclick = function () { if (!confirm("Delete this whole list" + (shares.length ? " for everyone it is shared with" : "") + "? This can't be undone.")) return; api("api/list/" + k, "DELETE").then(function () { d.close(); S.key = ""; S.sha = ""; S.list = null; return loadLists().then(function () { return poll(true); }); }).catch(function (er) { toast(er.message); }); };
     });
   }
   function connDlg() {
@@ -350,7 +366,7 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
   $("#main").addEventListener("contextmenu", function (ev) { var tile = ev.target.closest(".p"); if (!tile) return; ev.preventDefault(); if (S.readOnly) return; var p = byId(tile.dataset.id); if (p) { holdStop(); holdUntil = Date.now() + 700; sheetDlg(p); } });
   $("#lists").onchange = function () { S.key = this.value; S.sha = ""; S.list = null; $("#main").innerHTML = '<p class="empty">Loading…</p>'; savePrefs(); poll(true); };
   function newListDlg() {
-    dialog("<h2>New list</h2><p class='muted small'>Kept privately on your account. The shared App development list stays in GitHub.</p><form id='f'><label>Name<input name='name' required maxlength='80'></label><div class='row'><button type='button' class='btn' data-close>Cancel</button><button class='btn primary'>Create</button></div></form>", function (d) {
+    dialog("<h2>New list</h2><p class='muted small'>Kept privately on your account until you share it (Settings > Share this list).</p><form id='f'><label>Name<input name='name' required maxlength='80'></label><div class='row'><button type='button' class='btn' data-close>Cancel</button><button class='btn primary'>Create</button></div></form>", function (d) {
       d.querySelector("#f").onsubmit = function (ev) { ev.preventDefault(); api("api/lists", "POST", { name: ev.target.elements.name.value }).then(function (j) { d.close(); S.key = j.key; S.sha = ""; S.list = null; return loadLists().then(function () { return poll(true); }); }).catch(function (e) { toast(e.message); }); };
     });
   }
