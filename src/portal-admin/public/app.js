@@ -334,8 +334,8 @@ $('#login-forgot').onclick = async (e) => {
 window.addEventListener('hashchange', () => { if (resetToken()) return showReset(); state.token && route(); });
 function route() {
   let [, view = 'home', arg] = location.hash.split('/');
-  if (state.role === 'user') view = (view === 'me' || view === 'family' || view === 'paid' || view === 'qr') ? view : 'home';
-  const v = { home: viewHome, overview: viewOverview, global: viewGlobal, apps: viewApps, users: viewUsers, requests: viewRequests, cleanup: viewCleanup, audit: viewAudit, changes: viewChanges, setup: viewSetup, me: viewMe, family: viewFamily, paywall: viewPaywall, keys: viewKeys, names: viewNames, paid: viewPaid, qr: viewQr }[view] || viewHome;
+  if (state.role === 'user') view = (view === 'me' || view === 'family' || view === 'store' || view === 'paid' || view === 'qr') ? view : 'home';
+  const v = { home: viewHome, overview: viewOverview, global: viewGlobal, apps: viewApps, users: viewUsers, requests: viewRequests, cleanup: viewCleanup, audit: viewAudit, changes: viewChanges, setup: viewSetup, me: viewMe, family: viewFamily, store: viewStore, paywall: viewPaywall, keys: viewKeys, names: viewNames, paid: viewPaid, qr: viewQr }[view] || viewHome;
   if (!v || v === viewHome) view = 'home';
   setBar(view); $('#acct').open && $('#acct').close(); $('#sheet').open && $('#sheet').close();
   main().innerHTML = '<p class="muted">Loading…</p>';
@@ -1513,6 +1513,7 @@ async function familyPane(uid) {
 const GRADS = [['#5b8cff', '#7c5cf0'], ['#fb923c', '#ec4899'], ['#10b981', '#0ea5e9'], ['#a855f7', '#6366f1'], ['#f43f5e', '#fb923c'], ['#14b8a6', '#22c55e'], ['#eab308', '#f97316'], ['#0ea5e9', '#6366f1']];
 const hashN = (s) => { let h = 0; for (const c of String(s)) h = (h * 31 + c.charCodeAt(0)) >>> 0; return h; };
 const GL = {
+  store: '<path d="M5.2 8.2h13.6l-1 11.6H6.2z"/><path d="M9 8.2V6.6a3 3 0 0 1 6 0v1.6"/>',   // a shopping bag
   family: '<path d="M3.5 11.2 12 4l8.5 7.2"/><path d="M5.8 9.8V20h12.4V9.8"/><path d="M12 18c-2.6-1.7-3.9-3.1-3.9-4.7a2.1 2.1 0 0 1 3.9-1.1 2.1 2.1 0 0 1 3.9 1.1c0 1.6-1.3 3-3.9 4.7z"/>',   // a home with a heart: your household
   me: '<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>',   // a gear: settings
   admin: '<path d="M12 3.2 5 5.8v5.6c0 4.3 2.8 7.6 7 9.4 4.2-1.8 7-5.1 7-9.4V5.8z"/><path d="m9 12 2.2 2.2 4-4.2"/>',   // a shield with a tick: the admin's door
@@ -1539,7 +1540,7 @@ const ADMIN_TOOLS = [
   ['users', 'Users', ['#10b981', '#0ea5e9']], ['requests', 'Access requests', ['#f43f5e', '#fb923c']], ['cleanup', 'Cleanup', ['#14b8a6', '#22c55e']],
   ['paywall', 'Paid apps', ['#22c55e', '#0ea5e9']], ['keys', 'App keys', ['#f59e0b', '#ef4444']], ['names', 'App names', ['#06b6d4', '#6366f1']], ['audit', 'Audit log', ['#eab308', '#f97316']], ['changes', 'Changes', ['#8b5cf6', '#ec4899']], ['setup', 'Setup', ['#0ea5e9', '#6366f1']],
 ];
-const VIEW_TITLES = { overview: 'Overview', global: 'Global settings', apps: 'Apps', users: 'Users', requests: 'Access requests', cleanup: 'Cleanup', audit: 'Audit log', changes: 'PocketBase changes', setup: 'Setup & integration', me: 'My settings', family: 'Family', paywall: 'Paid apps', keys: 'App keys', names: 'App names', paid: 'Payment' };
+const VIEW_TITLES = { overview: 'Overview', global: 'Global settings', apps: 'Apps', users: 'Users', requests: 'Access requests', cleanup: 'Cleanup', audit: 'Audit log', changes: 'PocketBase changes', setup: 'Setup & integration', me: 'My settings', family: 'Family', store: 'App Store', paywall: 'Paid apps', keys: 'App keys', names: 'App names', paid: 'Payment' };
 const PROTECTED = new Set(['sys:me', 'sys:admin']);
 const canFolder = (id) => !PROTECTED.has(id) && !String(id).startsWith('folder:');   // folders hold apps and Family, never nest, never hide the way back to Settings/Admin   // can't be hidden, so nobody loses the way back to their settings
 
@@ -1576,6 +1577,7 @@ async function homeModel() {
   apps.forEach((a) => { const nm = names[a.slug] || a.name; items['app:' + a.slug] = { id: 'app:' + a.slug, kind: 'app', name: nm, orig: a.name, app: a, grad: GRADS[hashN(a.slug) % GRADS.length], letter: (nm || '?').trim().charAt(0).toUpperCase(), ok: allowed(a.slug) }; });
   if (onlyTools) for (const [k, name, g] of ADMIN_TOOLS) items['tool:' + k] = { id: 'tool:' + k, kind: 'sys', name, glyph: k, grad: g, href: '#/' + k, badge: k === 'requests' ? pend : 0 };
   else if (isAdmin) items['sys:admin'] = { id: 'sys:admin', kind: 'folder', name: 'Admin', grad: ['#64748b', '#334155'], badge: pend };
+  if (!onlyTools) items['sys:store'] = { id: 'sys:store', kind: 'sys', name: 'App Store', glyph: 'store', img: 'icons/store.svg', grad: ['#0ea5e9', '#2563eb'], href: '#/store' };
   if (!isAdmin || selfId()) {
     items['sys:family'] = { id: 'sys:family', kind: 'sys', name: 'Family', glyph: 'family', img: 'icons/family.svg', grad: ['#fb7185', '#f59e0b'], href: '#/family' };
     items['sys:me'] = { id: 'sys:me', kind: 'sys', name: 'Settings', glyph: 'me', img: 'icons/settings.svg', grad: ['#94a3b8', '#475569'], href: '#/me' };
@@ -1586,7 +1588,7 @@ async function homeModel() {
   let saved = lrows[0] && lrows[0].value && typeof lrows[0].value === 'object' ? lrows[0].value : null;
   if (!saved) { try { saved = JSON.parse(store.lget((onlyTools ? 'pa.adminlayout.' : 'pa.layout.') + uid) || 'null'); } catch { saved = null; } }
   const fresh = !saved;
-  saved = saved || { order: [], dock: onlyTools ? (selfId() ? ['sys:family', 'sys:me'] : []) : isAdmin ? (selfId() ? ['sys:admin', 'sys:family', 'sys:me'] : ['sys:admin']) : ['sys:family', 'sys:me'], hidden: [] };
+  saved = saved || { order: [], dock: onlyTools ? (selfId() ? ['sys:family', 'sys:me'] : []) : isAdmin ? (selfId() ? ['sys:admin', 'sys:store', 'sys:family', 'sys:me'] : ['sys:admin', 'sys:store']) : ['sys:store', 'sys:family', 'sys:me'], hidden: [] };
   const seen = new Set(), keep = (arr, f = () => true) => (Array.isArray(arr) ? arr : []).filter((id) => items[id] && f(id) && !seen.has(id) && seen.add(id));
   // Folders the person made: { id: { name, items: [ids] } }. Their apps are claimed first so they don't also show on the grid.
   const folders = {};
@@ -1644,7 +1646,7 @@ function tileText(it) {
     st = !a.enabled ? 'Off' : a.maintenance ? 'Maintenance' : !it.ok ? (pcfg ? priceText(pcfg) : 'Request access') : 'Open';
   } else if (it.kind === 'ufolder') { const n = ((HM && HM.layout.folders[it.fid]) || { items: [] }).items.length; d = n ? n + (n === 1 ? ' app' : ' apps') : 'Empty folder'; st = 'Open'; }
   else if (it.kind === 'folder') { d = 'Users, apps, requests and settings'; st = it.badge ? it.badge + ' waiting' : 'Open'; }
-  else d = it.id === 'sys:family' ? 'Your household and relatives' : it.id === 'sys:adminlink' ? 'Portal Admin (home network or tailnet)' : 'Your preferences and account';
+  else d = it.id === 'sys:store' ? 'Open or install any app' : it.id === 'sys:family' ? 'Your household and relatives' : it.id === 'sys:adminlink' ? 'Portal Admin (home network or tailnet)' : 'Your preferences and account';
   return `<span class="ic-desc">${esc(d)}</span><span class="ic-state">${esc(st || 'Open')}</span>`;
 }
 const homeView = () => (HM && HM.layout.view) || (matchMedia('(min-width:900px)').matches ? 'tiles' : 'icons');
@@ -1833,6 +1835,41 @@ function payBody(slug, renew) {
   return `<div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn primary" data-pay="${esc(slug)}" data-scope="person">${renew ? 'Renew' : 'Pay'} ${esc(priceText(c))}</button>${c.householdPrice && HM.pw.household ? `<button class="btn" data-pay="${esc(slug)}" data-scope="household">Whole household: ${esc(rand(c.householdPrice))}${c.mode === 'once' ? '' : ' / ' + c.days + ' days'}</button>` : ''}</div>`
     + (c.householdPrice && !HM.pw.household ? '<p class="muted small">Create a household under Family to pay once for everyone who lives with you.</p>' : '') + '<p class="muted small">Secure card payment by Yoco.</p>';
 }
+/* ---------- App Store: every app, to view on the web or install as a web app (PWA) ---------- */
+const deviceEnv = () => ({ ua: navigator.userAgent, platform: navigator.platform, touch: navigator.maxTouchPoints || 0, standalone: !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches)) });
+function installSheet(slug) {
+  const it = HM && HM.items['app:' + slug]; if (!it) return;
+  const a = it.app, H = window.InstallHelp, dev = H.detect(deviceEnv()), why = H.blocker(a, it.ok);
+  const note = H.signInNote(dev);
+  const body = why ? `<p>${esc(why)}</p><div class="row" style="gap:8px"><button class="btn" data-close>Close</button></div>`
+    : `<p class="muted small">Installing puts ${esc(a.name)} on your ${dev.ios || /^android/.test(dev.kind) ? 'home screen' : 'computer'} like any other app, in its own window.</p>`
+      + `<ol class="inst-steps">${H.steps(dev).map((x) => `<li>${esc(x)}</li>`).join('')}</ol>`
+      + (dev.standalone ? '<p class="muted small">You are using the installed Portal. If Add to Home Screen is missing here, open Safari or Chrome and go to the address below.</p>' : '')
+      + (note ? `<p class="muted small">${esc(note)}</p>` : '')
+      + `<p class="small"><span class="muted">Address:</span> <code>${esc(a.url)}</code></p>`
+      + `<div class="row" style="gap:8px;flex-wrap:wrap"><a class="btn primary" href="${esc(a.url)}" data-open="${esc(a.slug)}" target="_blank" rel="noopener">Open ${esc(a.name)}</a><button class="btn" data-copyurl="${esc(a.slug)}">Copy address</button></div>`;
+  openSheet(`<div class="sheet-head"><span class="ic-tile" style="--c1:${it.grad[0]};--c2:${it.grad[1]}">${tileInner(it)}</span><h2>Install ${esc(a.name)}</h2></div>${body}`);
+}
+async function viewStore() {
+  HM = await homeModel();
+  const all = Object.values(HM.items).filter((it) => it.kind === 'app' && (HM.isAdmin || it.app.enabled)).sort((x, y) => x.name.localeCompare(y.name));
+  const card = (it) => {
+    const a = it.app, web = /^https?:\/\//i.test(a.url || ''), pcfg = HM.pw && HM.pw.ready && HM.pw.apps[a.slug];
+    const chip = !a.enabled ? '<span class="chip bad">unavailable</span>' : a.maintenance ? '<span class="chip warn">maintenance</span>' : !it.ok ? `<span class="chip warn">${esc(pcfg ? priceText(pcfg) : 'needs access')}</span>` : '';
+    const live = a.enabled && !a.maintenance && it.ok && web;
+    return `<div class="store-card" data-name="${esc((it.name + ' ' + (a.description || '')).toLowerCase())}"><button class="store-top" data-info="${esc(a.slug)}" aria-label="About ${esc(it.name)}"><span class="ic-tile" style="--c1:${it.grad[0]};--c2:${it.grad[1]}">${tileInner(it)}</span><span class="store-txt"><b>${esc(it.name)}</b> ${chip}<span class="muted small store-desc">${esc(a.description || '')}</span></span></button>`
+      + `<div class="row store-act">${live ? `<a class="btn small primary" href="${esc(a.url)}" data-open="${esc(a.slug)}" target="_blank" rel="noopener">View on web</a><button class="btn small" data-install="${esc(a.slug)}">Install</button>` : `<button class="btn small" data-info="${esc(a.slug)}">${it.ok ? 'Details' : 'Get access'}</button>`}</div></div>`;
+  };
+  main().innerHTML = `<h1>App Store</h1><p class="sub">Open any app in your browser, or install it on your phone or computer so it opens like a regular app.</p>`
+    + `<input id="store-q" type="search" placeholder="Search apps" aria-label="Search apps" autocomplete="off" style="max-width:420px;margin:0 0 12px">`
+    + `<div class="store-grid" id="store-grid">${all.map(card).join('') || '<p class="muted">No apps have been added yet.</p>'}</div><p class="muted small" id="store-none" hidden>No app matches that.</p>`;
+  const q = $('#store-q'); q.oninput = () => { const t = q.value.trim().toLowerCase(); let n = 0; document.querySelectorAll('#store-grid .store-card').forEach((c) => { const on = !t || c.dataset.name.includes(t); c.hidden = !on; if (on) n++; }); $('#store-none').hidden = n > 0; };
+}
+document.addEventListener('click', (e) => {
+  const ib = e.target.closest('[data-install]'); if (ib) { e.preventDefault(); installSheet(ib.dataset.install); return; }
+  const cb = e.target.closest('[data-copyurl]');
+  if (cb && HM) { const it = HM.items['app:' + cb.dataset.copyurl]; if (it) { try { navigator.clipboard.writeText(it.app.url).then(() => toast('Address copied'), () => toast('Press and hold the address to copy it', true)); } catch { toast('Press and hold the address to copy it', true); } } }
+});
 function infoSheet(slug, startEdit) {
   const it = HM.items['app:' + slug]; if (!it) return;
   const a = it.app, isAdmin = HM.isAdmin, reqs = HM.reqs;
@@ -1840,7 +1877,7 @@ function infoSheet(slug, startEdit) {
   let body;
   if (!a.enabled) body = '<span class="chip bad">unavailable</span>';
   else if (a.maintenance) body = `<span class="chip warn">maintenance</span><p class="muted small">${esc(a.message || 'Back soon.')}</p>`;
-  else if (it.ok) body = /^https?:\/\//i.test(a.url || '') ? `<a class="btn primary" href="${esc(a.url)}" data-open="${esc(a.slug)}" target="_blank" rel="noopener">Open ${esc(a.name)}</a>` : '<span class="muted small">No address set yet</span>';
+  else if (it.ok) body = /^https?:\/\//i.test(a.url || '') ? `<div class="row" style="gap:8px;flex-wrap:wrap"><a class="btn primary" href="${esc(a.url)}" data-open="${esc(a.slug)}" target="_blank" rel="noopener">View ${esc(a.name)} on web</a><button class="btn" data-install="${esc(a.slug)}">Install</button></div>` : '<span class="muted small">No address set yet</span>';
   else body = HM.reqs === null ? '<span class="muted small">Ask the admin for access</span>' : pend ? '<span class="chip warn">request pending</span>'
     : `<div class="req-row"><input data-msg="${esc(a.slug)}" placeholder="Why do you need it? (optional)" maxlength="300"><button class="btn small primary" data-req="${esc(a.slug)}">Request access</button></div>${denied ? '<div class="muted small" style="margin-top:6px">Your last request was denied.</div>' : ''}`;
   const pcfg = HM.pw && HM.pw.ready && HM.pw.apps[a.slug];

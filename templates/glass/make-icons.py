@@ -41,6 +41,7 @@ BOLTS=GOLD+'<g transform="translate(70 86) scale(3.5)"><path d="M50 10L24 46H42L
 SHIELD='<path d="M12 3.2 5 5.8v5.6c0 4.3 2.8 7.6 7 9.4 4.2-1.8 7-5.1 7-9.4V5.8z"/>'
 HOME='<path d="M3.5 11.2 12 4l8.5 7.2"/><path d="M5.8 9.8V20h12.4V9.8"/><path d="M12 18c-2.6-1.7-3.9-3.1-3.9-4.7a2.1 2.1 0 0 1 3.9-1.1 2.1 2.1 0 0 1 3.9 1.1c0 1.6-1.3 3-3.9 4.7z"/>'
 GEAR='<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>'
+BAG='<path d="M5.2 8.2h13.6l-1 11.6H6.2z"/><path d="M9 8.2V6.6a3 3 0 0 1 6 0v1.6"/>'
 ADMIN=GOLD+line24(SHIELD,11.5,2,'<path d="M13 7.6 9.4 12.7h2.4l-.9 3.9 3.8-5.2h-2.5z" fill="url(#gold)"/>')
 # name: (dark, light, glyph, [files to write], folder that also gets the PNG set or None)
 special={
@@ -50,6 +51,7 @@ special={
  'portal-admin':('#1e2a52','#5b6fc4',ADMIN,['joolay-portal-admin/icon.svg','src/portal-admin/public/icons/admin.svg'],None),
  'family':('#e8590c','#ff8fa3',line24(HOME,12.2,2),['src/portal-admin/public/icons/family.svg'],None),
  'settings':('#475569','#9aa7bd',line24(GEAR,10,4),['src/portal-admin/public/icons/settings.svg'],None),
+ 'store':('#1d4ed8','#38bdf8',line24(BAG,10.5,4),['src/portal-admin/public/icons/store.svg'],None),
 }
 def pngs(pub,c1):
     run('rsvg-convert','-w','180','-h','180',f'{pub}/icon.svg','-o',f'{pub}/icon-180.png')

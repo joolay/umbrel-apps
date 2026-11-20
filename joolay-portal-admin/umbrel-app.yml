@@ -2,7 +2,7 @@ manifestVersion: 1
 id: joolay-portal-admin
 category: developer
 name: Portal Admin
-version: "0.33.2"
+version: "0.34.0"
 tagline: One admin panel for all your custom PocketBase apps
 description: >-
   A central admin panel for your custom apps that use PocketBase. Register each app, then manage
@@ -21,7 +21,7 @@ gallery: []
 path: ""
 defaultUsername: ""
 defaultPassword: ""
-releaseNotes: "Fix: the bottom dock no longer gets cut off on iPhone Safari (it is centred without a transform now, which Safari clips when a blurred bar is fixed to the bottom)."
+releaseNotes: "New: the App Store. A new tile and page list every app you can use, each with View on web and Install. Install shows the exact steps for your phone or computer (iPhone and iPad, Android, Chrome, Edge, Safari) and opens the app so you can add it to your home screen as a standalone app. Apps without a secure address say so instead of failing."
 submitter: joolay
 submission: https://github.com/joolay/umbrel-apps
 icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-portal-admin/icon.svg
