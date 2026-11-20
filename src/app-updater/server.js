@@ -357,6 +357,7 @@ async function check() {
     if (update) {
       if (!status.detectedAt[a.id] || status.detectedAt[a.id].version !== (latest || '?')) {
         status.detectedAt[a.id] = { version: latest || '?', at: Date.now() };
+        speedUp();
       }
       if (settings.seen[a.id] !== (latest || '?')) {
         settings.seen[a.id] = latest || '?';
@@ -431,6 +432,8 @@ function updateApp(item, reason) {
           delete status.failedAt[item.id];
           await announce(item, before, a.version || null);
           await check().catch(() => {});
+          speedUp();
+          if (!queueDepth || queueDepth === 1) nudgeFeed('updating ' + item.name);
           return;
         }
         await sleep(10000);
@@ -536,11 +539,32 @@ async function tick(force) {
   }
 }
 
+// Right after something changes (a new version seen, an update finished) look more often for a while: releases usually arrive in a run, and the
+// umbrelOS store listing can change at any moment.
+let fastUntil = 0;
+const FAST_POLL_SECS = 15, FAST_POLL_MS = 3 * 60e3;
+const speedUp = () => { fastUntil = Date.now() + FAST_POLL_MS; };
+
+// Send the status to the feed straight away instead of waiting for the next minute. Portal Admin (and the Portal) restart while they update, so a
+// failed send is retried every 10 s for 2 minutes; one more send follows 35 s later because the feed ignores sends less than 30 s apart.
+let feed = null, nudging = false;
+async function nudgeFeed(why) {
+  if (!feed || nudging) return;
+  nudging = true;
+  const t0 = Date.now();
+  try {
+    let ok = false, tries = 0;
+    for (; tries < 12 && !ok; tries++) { ok = await feed.tick(); if (!ok) await sleep(10000); }
+    addLog(ok ? 'info' : 'warn', ok ? 'Status feed sent after ' + why + ' (' + Math.round((Date.now() - t0) / 1000) + ' s' + (tries > 1 ? ', ' + tries + ' tries' : '') + ')' : 'Status feed could not be sent after ' + why + ' (tried for 2 minutes)');
+    await sleep(35000); await feed.tick();
+  } catch {} finally { nudging = false; }
+}
+
 let timer = null;
 function schedule() {
   clearTimeout(timer);
   if (status.self.phase === 'updating') return;   // resumed by the self-update once it ends, or by the next start
-  const secs = Math.max(30, Math.min(3600, Number(settings.pollSeconds) || 60));
+  const secs = Date.now() < fastUntil ? FAST_POLL_SECS : Math.max(30, Math.min(3600, Number(settings.pollSeconds) || 60));
   timer = setTimeout(async () => { await tick(); schedule(); }, secs * 1000);
   timer.unref();
 }
@@ -718,7 +742,7 @@ async function feedPayload() {
 
 if (require.main === module) {
   resumeAfterSelfUpdate();
-  require('./status-feed')({ dataDir: DATA_DIR, getPayload: feedPayload, log: (m) => addLog('warn', m) });
+  feed = require('./status-feed')({ dataDir: DATA_DIR, getPayload: feedPayload, log: (m) => addLog('warn', m) });
   server.listen(PORT, '0.0.0.0', () => console.log('App Updater listening on :' + PORT));
   setTimeout(() => tick().then(schedule), 3000).unref();
 }
