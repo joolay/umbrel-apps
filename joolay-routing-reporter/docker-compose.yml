@@ -1,4 +1,4 @@
-# Routing Reporter: checks every app's LAN, Tailscale and Public routes and reports to Portal Admin.
+# Port Master: checks every app's LAN, Tailscale and Public routes and reports to Portal Admin.
 # Source: src/routing-reporter in this repo (built by .github/workflows/build-images.yml).
 # Keep the image tag equal to `version` in umbrel-app.yml.
 services:
@@ -10,7 +10,7 @@ services:
       PROXY_AUTH_ADD: "true"
 
   web:
-    image: ghcr.io/joolay/routing-reporter:1.0.0
+    image: ghcr.io/joolay/routing-reporter:1.1.0
     restart: on-failure
     stop_grace_period: 10s
     # Lets the container reach the Umbrel's own ports (the default "LAN" address is the host itself).

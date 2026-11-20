@@ -1,5 +1,5 @@
 'use strict';
-// Routing Reporter's brain: finds the installed apps (from Umbrel's app-data folder), works out which routes each one should have, and probes them.
+// Port Master's brain: finds the installed apps (from Umbrel's app-data folder), works out which routes each one should have, and probes them.
 // Routes: LAN (http://<umbrel LAN address>:<port>), Tailscale (http://<tailscale IP>:<port>), Tailscale name (https://<name>.<tailnet>, for apps TSDProxy publishes
 // inside the tailnet only) and Public (https://<name>.<tailnet> when TSDProxy publishes the app with Funnel). A route is "up" if the app answers at all
 // (even a sign-in page or a redirect); a refused connection, a timeout or a 5xx answer (bad gateway: the app behind it is down) is "down".

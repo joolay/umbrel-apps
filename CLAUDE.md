@@ -18,8 +18,8 @@ Everything is managed here; never create a separate repo for a new app.
 Apps backed by PocketBase should read config via the Portal Admin settings (`src/portal-admin`).
 ShutterWorth (`src/shutterworth`) and Portal Admin (`src/portal-admin`) both follow this layout.
 
-## JoolzApp Portal and Portal Admin: two apps, one image
-The home screen people use is its own store app, `joolay-portal` ("JoolzApp Portal"), and it is the one that faces the internet.
+## JoolzApp Store and Portal Admin: two apps, one image
+The home screen people use is its own store app, `joolay-portal` ("JoolzApp Store"), and it is the one that faces the internet.
 It has no `src/portal` folder: its compose file runs the **Portal Admin image** with `command: ["node", "portal.js"]` (source `src/portal-admin/portal.js`),
 so the dashboard UI (`src/portal-admin/public`) exists once and the two apps can never drift apart.
 - Releasing Portal Admin means bumping BOTH manifests to the same version: `joolay-portal-admin/*` and `joolay-portal/*` (image tag `ghcr.io/joolay/portal-admin:<version>` in both).
@@ -43,7 +43,7 @@ startup), opens a sign-in prompt, verifies the PocketBase superuser login, and w
 by Portal Admin and an existing file is never overwritten. Apps must fail closed without the file, but must NOT need a restart: while
 accounts are off, call `pb.reload()` on each request (it re-reads the file, at most every 2 s) and make the waiting page refresh itself.
 
-## JoolzApp Portal is the App Store
+## JoolzApp Store is the App Store
 The Portal home screen IS the app store: every app is a tile, tapping one opens a sheet with **View on web** (signs the person in) and **Install** (steps for their device; installing is
 done by the browser from the app's own address, so a page cannot do it for another address). Apps are grouped in folders. ONE shared layout (order, dock, hidden apps, folders with names and
 descriptions, app names and descriptions) is stored as the global `store.layout` row in `portal_settings`; everyone reads it (`GET /store/layout`) and only an admin saves it (`POST /store/layout`,
@@ -58,7 +58,8 @@ existing apps move onto it one at a time. Every `index.html` head also carries: 
 
 ## Floating top bar (standard for every app)
 Title on the left, light/dark theme icon on the right, floating and frosted. Files and markup are in `templates/glass/README.md` ("Floating top bar"): copy `floatbar.css` + `floatbar.js`.
-The JoolzApp Portal has it; other apps move over one at a time, like the Glass theme.
+The JoolzApp Store has it; other apps move over one at a time, like the Glass theme.
+Every app's top bar also carries the **Install** icon (`data-pwa-install` button, `install-help.js` + `installbtn.js`; see `templates/glass/README.md`, "Install icon"): it shows only in a browser tab and opens the install steps for the person's device. Add it to every app as it is edited; Project Pilot and Port Master have it.
 
 ## Preview before pushing
 Before asking the owner to confirm a push, publish or update an artifact that previews the changed app in the Glass theme (light and dark, phone width).
@@ -105,8 +106,8 @@ fetch `status/app-updater.json` / `status/services-manager.json` / `status/kiosk
 A new owner-only app that should be monitorable: copy `status-feed.js`, call it with a `getPayload` that returns useful, secret-free state, declare `POCKETBASE_APP_ID`, add it to the notes here.
 
 
-## Routing Reporter: monitoring access routes (LAN, Tailscale, Public)
+## Port Master (formerly Routing Reporter): monitoring access routes (LAN, Tailscale, Public)
 `src/routing-reporter` (store app `joolay-routing-reporter`, port 3906, owner-only, `JOOLZAPP_DASHBOARD=hidden`) reads every installed app's manifest and compose file, checks each app's LAN, Tailscale-IP
 and TSDProxy (Funnel = Public) route from inside the Umbrel, and sends the report to Portal Admin (`publishRoutes` in the Portal API, kept by `src/portal-admin/routes.js`).
 Portal Admin > **JoolzApp apps** shows it; an admin taps **Notify Claude** on a down route, which writes `status/route-alerts.json` in the feed (app, route, URL, error, since when; clears itself when the route answers).
-Routing Reporter's own summary is `status/routing-reporter.json`. Before diagnosing "can't reach app X" fetch `status/route-alerts.json` and `status/routing-reporter.json` fresh and check `at`. Read-only, like the rest of the feed.
+Port Master's own summary is `status/routing-reporter.json`. Before diagnosing "can't reach app X" fetch `status/route-alerts.json` and `status/routing-reporter.json` fresh and check `at`. Read-only, like the rest of the feed.

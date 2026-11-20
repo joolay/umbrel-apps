@@ -1,4 +1,4 @@
-# JoolzApp Portal: the home screen everyone uses. Source: src/portal-admin/portal.js.
+# JoolzApp Store: the home screen everyone uses. Source: src/portal-admin/portal.js.
 # It runs from the SAME image as Portal Admin (one build, one version, the two always match) but starts a different, much smaller
 # program: no admin pages, no PocketBase superuser login, no access to other apps' folders. Keep the image tag equal to
 # `version` in umbrel-app.yml AND to Portal Admin's version.
@@ -11,7 +11,7 @@ services:
       PROXY_AUTH_ADD: "false"
 
   web:
-    image: ghcr.io/joolay/portal-admin:0.35.0
+    image: ghcr.io/joolay/portal-admin:0.35.1
     command: ["node", "portal.js"]
     restart: on-failure
     stop_grace_period: 10s

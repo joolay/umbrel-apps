@@ -461,7 +461,7 @@ var Views = (function () {
     toast(r.profile.name + ' added'); members(false);
   }
 
-  /* ---- Sign in with a QR code: scan with a phone that is signed in to the JoolzApp Portal and tap Approve ---- */
+  /* ---- Sign in with a QR code: scan with a phone that is signed in to the JoolzApp Store and tap Approve ---- */
   var qrRun = 0;
   function qrStop() { qrRun++; }
   function qrScreen(title, sub, back, done) {
@@ -490,7 +490,7 @@ var Views = (function () {
     }
     fresh();
   }
-  var QRSUB = 'Open the JoolzApp Portal on your phone (signed in), scan this code and tap Approve.';
+  var QRSUB = 'Open the JoolzApp Store on your phone (signed in), scan this code and tap Approve.';
   function qrWizard() { qrScreen('Sign in with a QR code', QRSUB, wizard, function (qr) { Backend.addProfile('', '', '', null, qr).then(function (r) { wizardAfter(r, (r.user && r.user.email) || ''); }).catch(function (e) { ferr(e.message); }); }); }
   function qrDevice() { qrScreen('Sign in with a QR code', QRSUB, deviceSignin, function (qr) { Backend.login('', '', qr).then(function (r) { return deviceAfter(r, (r.user && r.user.email) || ''); }).catch(function (e) { ferr(e.message); }); }); }
   function qrMember() { qrScreen('Add by QR code', 'Ask them to scan this with their phone (signed in to their own JoolzApp account) and tap Approve.', addMember, function (qr) { Backend.addProfile('', '', '', Backend.token(), qr).then(function (r) { memberAfter(r, (r.user && r.user.email) || ''); }).catch(function (e) { ferr(e.message); }); }); }

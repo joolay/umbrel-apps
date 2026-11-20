@@ -252,7 +252,7 @@ async function showShell() {
   loadEvents(); qaWatch();
   if (state.role !== 'user' && !state.public) rememberAdminUrl().catch(() => {});
 }
-// Portal Admin notes its own address on every admin's account (a private pref.* row each), so JoolzApp Portal can show them an Admin icon.
+// Portal Admin notes its own address on every admin's account (a private pref.* row each), so JoolzApp Store can show them an Admin icon.
 async function rememberAdminUrl() {
   const admins = new Set((await listAll(state.usersColl, { filter: 'isAdmin = true', max: 50 }).catch(() => [])).map((u) => u.id)); if (state.pid) admins.add(state.pid);
   if (!admins.size) return;
@@ -1109,26 +1109,26 @@ async function viewPaid(slug) {
   const b = $('#paid-again'); if (b) b.onclick = () => viewPaid(slug);
 }
 const toCents = (v) => { const n = parseFloat(String(v).replace(',', '.')); return isFinite(n) && n > 0 ? Math.round(n * 100) : null; };
-/* ---------- JoolzApp apps: route health (LAN, Tailscale, Public) reported by Routing Reporter; flag a broken route to Claude ---------- */
+/* ---------- JoolzApp apps: route health (LAN, Tailscale, Public) reported by Port Master; flag a broken route to Claude ---------- */
 async function viewJoolzApps() {
   const j = await acctFetch('/admin/routes'), r = j.report;
   const when = (ms) => ms ? new Date(ms).toLocaleString('en-ZA', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }) : '';
-  const flagged = new Set(j.alerts.map((a) => a.appId + '|' + a.route));
-  const rchip = (x) => `<span class="chip ${x.state === 'up' ? 'ok' : x.state === 'down' ? 'bad' : 'warn'}" title="${esc(x.url)}">${esc(x.label)}: ${x.state === 'up' ? 'up' : x.state === 'down' ? 'down' : 'checking'}</span>`;
+  const live = (x) => x.state === 'down' && !x.ignored, flagged = new Set(j.alerts.map((a) => a.appId + '|' + a.route));
+  const rchip = (x) => x.ignored ? `<span class="chip" title="${esc(x.url)}">${esc(x.label)}: ignored</span>` : `<span class="chip ${x.state === 'up' ? 'ok' : x.state === 'down' ? 'bad' : 'warn'}" title="${esc(x.url)}">${esc(x.label)}: ${x.state === 'up' ? 'up' : x.state === 'down' ? 'down' : 'checking'}</span>`;
   const card = (a) => {
-    const down = a.routes.filter((x) => x.state === 'down');
+    const down = a.routes.filter(live);
     return `<div class="card"><div class="row spread"><h2>${esc(a.name)}</h2><span class="muted small">${esc(a.version)}${a.port ? ' · port ' + a.port : ''}</span></div>
-      <div class="row" style="gap:6px;flex-wrap:wrap">${a.routes.length ? a.routes.map(rchip).join('') : '<span class="muted small">No routes to check yet (add the Tailscale address in Routing Reporter).</span>'}</div>
+      <div class="row" style="gap:6px;flex-wrap:wrap">${a.routes.length ? a.routes.map(rchip).join('') : '<span class="muted small">No routes to check yet (add the Tailscale address in Port Master).</span>'}</div>
       ${down.map((x) => `<div class="routedown"><p class="small"><b>${esc(x.label)}</b> is down${x.since ? ' since ' + when(x.since) : ''}: ${esc(x.error)}.<br><span class="muted">${esc(x.url)}</span></p>
         ${flagged.has(a.id + '|' + x.key) ? `<div class="row" style="gap:8px;flex-wrap:wrap"><span class="chip warn">Flagged to Claude</span><button class="btn rclear" data-app="${esc(a.id)}" data-route="${esc(x.key)}">Unflag</button></div>`
           : `<form class="row rnotify" style="gap:8px;flex-wrap:wrap" data-app="${esc(a.id)}" data-route="${esc(x.key)}"><input name="note" placeholder="Note for Claude (optional)" maxlength="200" style="flex:1;min-width:160px"><button class="btn primary">Notify Claude</button></form>`}</div>`).join('')}</div>`;
   };
   const mine = r ? r.apps.filter((a) => a.joolzapp) : [], other = r ? r.apps.filter((a) => !a.joolzapp) : [];
-  const bad = r ? r.apps.reduce((n, a) => n + a.routes.filter((x) => x.state === 'down').length, 0) : 0;
-  main().innerHTML = `<h1>JoolzApp apps</h1><p class="sub">Whether each app answers on your home network (LAN), your Tailscale address and its public address. Checked every few minutes by the Routing Reporter app. If a route is down, tap Notify Claude: it goes into the status feed with the app and which route, and clears by itself when the route answers again.</p>
-    ${!r ? '<div class="card"><p class="muted">Nothing reported yet. Install Routing Reporter from the app store and sign in to Portal Admin here once so it can send its results.</p></div>' : `
-    <div class="card"><div class="row spread"><h2>${bad ? bad + ' route' + (bad > 1 ? 's' : '') + ' down' : 'All routes answering'}</h2><span class="chip ${j.stale ? 'bad' : bad ? 'warn' : 'ok'}">${j.stale ? 'Routing Reporter is not reporting' : bad ? 'Needs attention' : 'Healthy'}</span></div>
-      <p class="muted small">Last report ${when(j.receivedAt)}${j.stale ? '. It has gone quiet, so the picture below may be out of date; check that the Routing Reporter app is running.' : ''}</p></div>
+  const bad = r ? r.apps.reduce((n, a) => n + a.routes.filter(live).length, 0) : 0;
+  main().innerHTML = `<h1>JoolzApp apps</h1><p class="sub">Whether each app answers on your home network (LAN), your Tailscale address and its public address. Checked every few minutes by the Port Master app. If a route is down, tap Notify Claude: it goes into the status feed with the app and which route, and clears by itself when the route answers again.</p>
+    ${!r ? '<div class="card"><p class="muted">Nothing reported yet. Install Port Master from the app store and sign in to Portal Admin here once so it can send its results.</p></div>' : `
+    <div class="card"><div class="row spread"><h2>${bad ? bad + ' route' + (bad > 1 ? 's' : '') + ' down' : 'All routes answering'}</h2><span class="chip ${j.stale ? 'bad' : bad ? 'warn' : 'ok'}">${j.stale ? 'Port Master is not reporting' : bad ? 'Needs attention' : 'Healthy'}</span></div>
+      <p class="muted small">Last report ${when(j.receivedAt)}${j.stale ? '. It has gone quiet, so the picture below may be out of date; check that the Port Master app is running.' : ''}</p></div>
     ${mine.length ? '<h3 class="grp">JoolzApp apps</h3>' + mine.map(card).join('') : ''}
     ${other.length ? '<h3 class="grp">Other apps</h3>' + other.map(card).join('') : ''}`}`;
   const act = guard(async (body, msg) => { await acctFetch('/admin/routes', body); toast(msg); viewJoolzApps(); });
@@ -1585,8 +1585,8 @@ let HM = null, editing = false, saveChain = Promise.resolve();
 const isAdminRole = () => state.role !== 'user';
 
 let adminRow = null;   // where this person's Portal Admin lives (only an admin has the row; Portal Admin writes it when they use it)
-// On Portal Admin itself an admin sees the Admin tools directly on the main screen. The apps live on JoolzApp Portal, so they are not shown here.
-// That screen keeps its own layout row (pref.adminhome.layout) so it never overwrites the app layout the same person has on JoolzApp Portal.
+// On Portal Admin itself an admin sees the Admin tools directly on the main screen. The apps live on JoolzApp Store, so they are not shown here.
+// That screen keeps its own layout row (pref.adminhome.layout) so it never overwrites the app layout the same person has on JoolzApp Store.
 const adminMode = () => isAdminRole() && !state.public;
 const layoutKey = () => (adminMode() ? 'pref.adminhome.layout' : 'pref.home.layout');
 async function homeModel() {
@@ -1621,7 +1621,7 @@ async function homeModel() {
     items['sys:family'] = { id: 'sys:family', kind: 'sys', name: 'Family', glyph: 'family', img: 'icons/family.svg', grad: ['#fb7185', '#f59e0b'], href: '#/family' };
     items['sys:me'] = { id: 'sys:me', kind: 'sys', name: 'Settings', glyph: 'me', img: 'icons/settings.svg', grad: ['#94a3b8', '#475569'], href: '#/me' };
   }
-  // On JoolzApp Portal an admin gets a way into Portal Admin (a separate app, reachable on their home network or tailnet only).
+  // On JoolzApp Store an admin gets a way into Portal Admin (a separate app, reachable on their home network or tailnet only).
   if (!isAdmin && adminRow && /^https?:\/\//i.test(String(adminRow.value || '')) && String(adminRow.value) !== location.origin) items['sys:adminlink'] = { id: 'sys:adminlink', kind: 'sys', name: 'Admin', glyph: 'admin', img: 'icons/admin.svg', grad: ['#3b4a7a', '#1e2a52'], href: String(adminRow.value) };
   let pw = null; if (selfId()) { try { pw = await acctFetch('/paywall'); } catch { pw = null; } }
   let saved = lrows[0] && lrows[0].value && typeof lrows[0].value === 'object' ? lrows[0].value : null;

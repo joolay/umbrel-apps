@@ -1,5 +1,5 @@
 'use strict';
-// Routing Reporter: checks, for every installed app, that its LAN, Tailscale and Public (Funnel) routes answer, shows the result, and reports it to Portal Admin
+// Port Master: checks, for every installed app, that its LAN, Tailscale and Public (Funnel) routes answer, shows the result, and reports it to Portal Admin
 // (Portal API `publishRoutes`, which feeds Portal Admin's "JoolzApp apps" page) and to the status feed (so a problem can be diagnosed without opening anything).
 // Node built-ins only. Owner-only: Umbrel's login stays in front of it.
 const http = require('http'), fs = require('fs'), path = require('path');
@@ -14,6 +14,11 @@ const DEFAULTS = { lanHost: process.env.LAN_HOST || 'host.docker.internal', tail
 const readJson = (f, d) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return d; } };
 const writeJson = (f, v) => { try { fs.mkdirSync(DATA_DIR, { recursive: true }); fs.writeFileSync(f + '.tmp', JSON.stringify(v, null, 2)); fs.renameSync(f + '.tmp', f); } catch (e) { console.error('Could not write', f, e.message); } };
 let config = { ...DEFAULTS, ...readJson(CONFIG_FILE, {}) };
+// Routes you chose to ignore ("<app id>|<route key>", e.g. an app that is not meant to be on Tailscale). They are still checked, but never count as a problem.
+let ignored = new Set(Array.isArray(config.ignored) ? config.ignored.filter((k) => /^[A-Za-z0-9._-]{1,80}\|(lan|tailscale|name|public)$/.test(k)).slice(0, 400) : []);
+delete config.ignored;
+const saveConfig = () => writeJson(CONFIG_FILE, { ...config, ignored: [...ignored] });
+const mark = (r) => r && { ...r, apps: r.apps.map((a) => ({ ...a, routes: a.routes.map((x) => ({ ...x, ignored: ignored.has(a.id + '|' + x.key) })) })) };
 const clean = (b, old) => {
   const o = { ...old }, bad = (m) => Object.assign(new Error(m), { status: 400 });
   if (b.lanHost !== undefined) { const v = String(b.lanHost).trim(); if (!/^[A-Za-z0-9.-]{1,100}$/.test(v)) throw bad('The LAN address should look like 192.168.1.50 or umbrel.local.'); o.lanHost = v; }
@@ -40,14 +45,14 @@ async function sendToPortal(report) {
     reportState = { ok: true, at: Date.now(), error: '' };
   } catch (e) { reportState = { ok: false, at: Date.now(), error: String(e.message || e).slice(0, 160) }; console.error('Report to Portal Admin: ' + reportState.error); }
 }
-async function checkNow() { const rep = await monitor.run(); await sendToPortal(rep); return rep; }
+async function checkNow() { const rep = mark(await monitor.run()); await sendToPortal(rep); return rep; }
 function schedule() { clearTimeout(timer); timer = setTimeout(async () => { try { await checkNow(); } catch (e) { console.error('Check failed:', e.message); } schedule(); }, config.intervalMin * 60e3); if (timer.unref) timer.unref(); }
 // What the status feed carries: states and reasons, never latency (it changes every check and would be a commit every time).
 const feedPayload = async () => {
-  const r = monitor.last; if (!r) return { note: 'No check has run yet.' };
-  const down = []; r.apps.forEach((a) => a.routes.filter((x) => x.state === 'down').forEach((x) => down.push({ app: a.id, route: x.key, url: x.url, error: x.error, since: x.since })));
+  const r = mark(monitor.last); if (!r) return { note: 'No check has run yet.' };
+  const down = []; r.apps.forEach((a) => a.routes.filter((x) => x.state === 'down' && !x.ignored).forEach((x) => down.push({ app: a.id, route: x.key, url: x.url, error: x.error, since: x.since })));
   return { intervalMin: r.intervalMin, config: r.config, reportedToPortalAdmin: reportState.ok, reportError: reportState.error, routesDown: down,
-    apps: r.apps.map((a) => ({ id: a.id, version: a.version, port: a.port, published: a.published, routes: a.routes.map((x) => ({ key: x.key, state: x.state, status: x.status, error: x.error, since: x.since })) })) };
+    apps: r.apps.map((a) => ({ id: a.id, version: a.version, port: a.port, published: a.published, routes: a.routes.map((x) => ({ key: x.key, state: x.state, ignored: x.ignored, status: x.status, error: x.error, since: x.since })) })) };
 };
 
 /* ---------- web server ---------- */
@@ -56,11 +61,18 @@ const body = (req) => new Promise((ok, bad) => { let s = ''; req.on('data', (c) 
 const server = http.createServer(async (req, res) => {
   try {
     const p = decodeURIComponent(new URL(req.url, 'http://x').pathname);
-    if (p === '/api/state' && req.method === 'GET') return send(res, 200, { report: monitor.last, config, portal: { linked: !!portalLink(), ...reportState }, checking: false });
+    if (p === '/api/state' && req.method === 'GET') return send(res, 200, { report: mark(monitor.last), config, portal: { linked: !!portalLink(), ...reportState }, checking: false });
     if (p === '/api/check' && req.method === 'POST') { const rep = await checkNow(); return send(res, 200, { report: rep, portal: { linked: !!portalLink(), ...reportState } }); }
+    if (p === '/api/ignore' && req.method === 'POST') {
+      let b; try { b = JSON.parse((await body(req)) || '{}'); } catch { return send(res, 400, { message: 'Bad request.' }); }
+      const k = String(b.appId || '') + '|' + String(b.route || '');
+      if (!monitor.last || !monitor.last.apps.some((a) => a.id === b.appId && a.routes.some((x) => x.key === b.route))) return send(res, 404, { message: 'That route is not in the latest check.' });
+      if (b.ignore) ignored.add(k); else ignored.delete(k);
+      saveConfig(); const rep = mark(monitor.last); await sendToPortal(rep); return send(res, 200, { report: rep, portal: { linked: !!portalLink(), ...reportState } });
+    }
     if (p === '/api/config' && req.method === 'PUT') {
       try { config = clean(JSON.parse((await body(req)) || '{}'), config); } catch (e) { return send(res, e.status || 400, { message: e.message }); }
-      writeJson(CONFIG_FILE, config); schedule(); const rep = await checkNow(); return send(res, 200, { config, report: rep, portal: { linked: !!portalLink(), ...reportState } });
+      saveConfig(); schedule(); const rep = await checkNow(); return send(res, 200, { config, report: rep, portal: { linked: !!portalLink(), ...reportState } });
     }
     const file = path.join(PUBLIC_DIR, p === '/' ? 'index.html' : p), ok = file.startsWith(PUBLIC_DIR + path.sep);
     if (!ok || !fs.existsSync(file) || !fs.statSync(file).isFile()) return send(res, 404, { message: 'Not found' });
@@ -71,6 +83,6 @@ module.exports = { clean, feedPayload };
 if (require.main === module) {
   fs.mkdirSync(DATA_DIR, { recursive: true });        // Portal Admin links an app once its data folder exists
   require('./status-feed')({ dataDir: DATA_DIR, getPayload: feedPayload, log: (m) => console.error(m) });
-  server.listen(PORT, '0.0.0.0', () => console.log('Routing Reporter listening on :' + PORT));
+  server.listen(PORT, '0.0.0.0', () => console.log('Port Master listening on :' + PORT));
   setTimeout(() => { checkNow().catch((e) => console.error('Check failed:', e.message)); schedule(); }, 5000);
 }

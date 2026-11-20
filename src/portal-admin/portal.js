@@ -1,5 +1,5 @@
 'use strict';
-// JoolzApp Portal: the home screen everyone uses (sign-in, sign-up, app icons, family, settings, payments).
+// JoolzApp Store: the home screen everyone uses (sign-in, sign-up, app icons, family, settings, payments).
 // It runs from the same image as Portal Admin but is a different, much smaller program, and it is the one that faces the internet:
 //  - it holds NO PocketBase superuser login and has no admin pages, Changes, or app folders mounted;
 //  - /pb/*   : people's own PocketBase calls (their own token, collection rules apply). Admin APIs and superuser tokens are refused;
@@ -140,7 +140,7 @@ const server = http.createServer(async (req, res) => {
   } catch (e) { send(res, 500, { message: String(e.message || e) }); }
 });
 if (require.main === module) {
-  server.listen(PORT, '0.0.0.0', () => console.log(`JoolzApp Portal listening on :${PORT} (PocketBase ${PB_URL}, Portal Admin link ${loadLink().key ? 'ready' : 'waiting for its key'})`));
+  server.listen(PORT, '0.0.0.0', () => console.log(`JoolzApp Store listening on :${PORT} (PocketBase ${PB_URL}, Portal Admin link ${loadLink().key ? 'ready' : 'waiting for its key'})`));
   process.on('SIGTERM', () => server.close(() => process.exit(0)));
 }
 module.exports = { server, VIA_ADMIN: [...VIA_ADMIN] };

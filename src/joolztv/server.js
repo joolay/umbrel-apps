@@ -907,7 +907,7 @@ function serveDevtest(req, res, name) {
 const configJs = () => "window.FLIX_CONFIG = " + JSON.stringify({ internalServerUrl: INTERNAL, appName: APP_NAME, accounts: REQUIRE_ACCOUNTS }) + ";\nwindow.JTV = { backend: true, maxProfiles: " + MAX_PROFILES + " };\n";
 
 /* ---------- sign-in by password, or by an approved QR code ---------- */
-// Returns what pb.login returns ({ record }). A QR approval was made by a signed-in person in the JoolzApp Portal; from here on it is the same as a password sign-in.
+// Returns what pb.login returns ({ record }). A QR approval was made by a signed-in person in the JoolzApp Store; from here on it is the same as a password sign-in.
 async function loginWith(body) {
   if (body && body.quick && typeof body.quick === "object") {                  // PIN or pattern on a device that already signed in once
     const q = body.quick; let r;

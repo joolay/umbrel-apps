@@ -1,5 +1,5 @@
 'use strict';
-// The App Store layout everyone sees on the JoolzApp Portal: which apps sit in which folder, folder names and descriptions, the order,
+// The App Store layout everyone sees on the JoolzApp Store: which apps sit in which folder, folder names and descriptions, the order,
 // the dock, hidden apps and the names shown. One shared row (portal_settings, scope global, key store.layout). Everyone may read it;
 // only an admin may change it (checked in server.js against the signed-in person, never trusted from the browser). Whatever an admin
 // sends is cleaned here first, so a bad or oversized layout can never be saved.
