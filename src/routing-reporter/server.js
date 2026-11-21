@@ -30,7 +30,7 @@ const clean = (b, old) => {
 };
 
 /* ---------- checking and reporting ---------- */
-const monitor = makeMonitor({ dir: APP_DIR, getConfig: () => config });
+const monitor = makeMonitor({ dir: APP_DIR, listFile: process.env.TSDPROXY_LIST || '/tsdproxy-config/joolz-published.yaml', getConfig: () => config });
 // The hidden list of official Umbrel store ports (see official.js): fetched about once a week, kept in the data folder, used only to find clashes.
 const registry = makeRegistry({ file: path.join(DATA_DIR, 'official-ports.json'), url: process.env.OFFICIAL_STORE_URL || undefined });
 const officialInfo = () => ({ count: registry.count, at: registry.at, error: registry.error });

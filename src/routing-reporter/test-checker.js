@@ -55,3 +55,16 @@ const C = require('./checker'), { clean } = require('./server');
   const { feedPayload } = require('./server'); assert.strictEqual(typeof feedPayload, 'function');
   console.log('routing-reporter ok'); process.exit(0);
 })().catch((e) => { console.error(e); process.exit(1); });
+
+// apps published through a TSDProxy list file (no labels of their own)
+{
+  const assert2 = require('assert'), C2 = require('./checker'), fs2 = require('fs'), os2 = require('os'), p2 = require('path');
+  const list = '# c\nopenclaw:\n  ports:\n    443/https:\n      targets:\n        - http://host.docker.internal:18789\n';
+  assert2.deepStrictEqual(C2.parseList(list), [{ name: 'openclaw', port: 18789, funnel: false }]);
+  const d = fs2.mkdtempSync(p2.join(os2.tmpdir(), 'rl-')); fs2.mkdirSync(p2.join(d, 'openclaw'));
+  fs2.writeFileSync(p2.join(d, 'openclaw', 'umbrel-app.yml'), 'id: openclaw\nname: OpenClaw\nversion: "1"\nport: 18789\n');
+  const lf = p2.join(d, 'l.yaml'); fs2.writeFileSync(lf, list);
+  assert2.deepStrictEqual(C2.discover(d, lf)[0].tsdproxy, { name: 'openclaw', funnel: false });
+  assert2.strictEqual(C2.discover(d)[0].tsdproxy, null);
+  console.log('list-file test ok');
+}
