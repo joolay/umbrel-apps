@@ -2,7 +2,7 @@ manifestVersion: 1
 id: joolay-diner-bell
 category: files
 name: Diner Bell
-version: "2.0.11"
+version: "2.0.12"
 tagline: Tile your favourite restaurants, order by phone or WhatsApp, split the bill
 description: >-
   Diner Bell reads a restaurant menu from a photo, PDF, link or pasted text, lets you build an order from one or more
@@ -18,7 +18,7 @@ gallery: []
 path: ""
 defaultUsername: ""
 defaultPassword: ""
-releaseNotes: "Sharper icon: a larger glass square with no outer border. Menu photos: add every page first (one photo at a time is fine), then tap Read menu. Pages can be removed before reading."
+releaseNotes: "Menus can now be read from up to 12 photos or PDF pages at a time. Sharper icon: a larger glass square with no outer border. Menu photos: add every page first (one photo at a time is fine), then tap Read menu. Pages can be removed before reading."
 submitter: joolay
 submission: https://github.com/joolay/umbrel-apps
 icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-diner-bell/icon.svg

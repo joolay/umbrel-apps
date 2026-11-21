@@ -182,7 +182,7 @@ let view = 'home';         // home | add | menu | summary | orders | history | s
 let spendPeriod = 6, spendCur = '', scope = 'me';   // scope: me (personal orders) | family
 let curId = null, addTab = 'photo', busy = null, error = '', query = '', openCat = null;
 // Photos of a menu are collected first (one page per photo is fine) and only read when the person taps "Read menu".
-const MAX_SHOTS = 6; let shots = [];
+const MAX_SHOTS = 12; let shots = [];
 function clearShots() { shots.forEach(p => URL.revokeObjectURL(p.url)); shots = []; }
 let sample = true, canImages = true;
 let me = null, ai = { configured: true, isAdmin: false }, pushT = null, editMode = false, restEdit = false, instrOpen = false;
@@ -406,7 +406,7 @@ function addHTML() {
        <p class="mute">${shots.length} of up to ${MAX_SHOTS} pages. Add every page of the menu, then read them together.</p>
        <div class="row" style="gap:8px"><button class="btn" data-a="go-shots">Read menu (${shots.length} ${shots.length === 1 ? 'page' : 'pages'})</button><button class="btn sec" data-a="shots-clear">Start over</button></div>`
     : `<label class="drop"><b>📷 Take or choose photos</b>One page at a time is fine: add them all, then read the menu<input id="f-photo" type="file" accept="image/*" multiple hidden></label>`;
-  if (addTab === 'pdf') body = `<label class="drop"><b>📄 Choose a PDF menu</b>Up to 6 pages are read<input id="f-pdf" type="file" accept="application/pdf" hidden></label>`;
+  if (addTab === 'pdf') body = `<label class="drop"><b>📄 Choose a PDF menu</b>Up to 12 pages are read<input id="f-pdf" type="file" accept="application/pdf" hidden></label>`;
   if (addTab === 'url') body = `<input id="f-url" type="url" placeholder="https://restaurant.com/menu" inputmode="url"><p class="mute">Not every site can be read. If this fails, screenshot the menu page or use the Paste tab.</p><button class="btn" data-a="go-url">Read menu</button>`;
   if (addTab === 'text') body = `<textarea id="f-text" placeholder="Paste the menu text here…" style="min-height:160px"></textarea><div style="height:10px"></div><button class="btn" data-a="go-text">Read menu</button>`;
   return `<div class="tabs">${T('photo', 'Photo')}${T('pdf', 'PDF')}${T('url', 'Link')}${T('text', 'Paste')}</div>
@@ -1082,17 +1082,17 @@ async function ingest(src) {
 const b64 = blob => new Promise((res, rej) => { const f = new FileReader(); f.onload = () => res({ type: 'image/jpeg', data: String(f.result).split(',')[1] }); f.onerror = rej; f.readAsDataURL(blob); });
 async function shrink(file) {
   const bmp = await createImageBitmap(file);
-  const k = Math.min(1, 2400 / Math.max(bmp.width, bmp.height));
+  const k = Math.min(1, 2000 / Math.max(bmp.width, bmp.height));
   const cv = document.createElement('canvas'); cv.width = Math.round(bmp.width * k); cv.height = Math.round(bmp.height * k);
   cv.getContext('2d').drawImage(bmp, 0, 0, cv.width, cv.height);
-  return new Promise(r => cv.toBlob(r, 'image/jpeg', 0.9));
+  return new Promise(r => cv.toBlob(r, "image/jpeg", 0.85));
 }
 function loadScript(src) { return new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error('Could not load the PDF reader.')); document.head.appendChild(s); }); }
 async function readPdf(file) {
   if (!window.pdfjsLib) await loadScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js');
   pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
   const pdf = await pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise;
-  const pages = Math.min(pdf.numPages, 6); let text = ''; const images = [];
+  const pages = Math.min(pdf.numPages, 12); let text = ''; const images = [];
   for (let p = 1; p <= pages; p++) { const pg = await pdf.getPage(p); const tc = await pg.getTextContent(); text += tc.items.map(i => i.str).join(' ') + '\n'; }
   if (text.length <= 300) {
     for (let p = 1; p <= pages; p++) {

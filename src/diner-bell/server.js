@@ -17,7 +17,7 @@ const PUBLIC_DIR = path.join(__dirname, "public");
 const USERS_DIR = path.join(DATA_DIR, "users");
 const AI_FILE = path.join(DATA_DIR, "ai-config.json");
 const REQUIRE_ACCOUNTS = /^(1|true|yes)$/i.test(process.env.REQUIRE_ACCOUNTS || "");
-const MAX_BODY = 25 * 1024 * 1024;
+const MAX_BODY = 40 * 1024 * 1024;
 fs.mkdirSync(USERS_DIR, { recursive: true });
 
 /* ---------- AI (reads menus) ---------- */
@@ -109,7 +109,7 @@ async function verifyMenu(menu, images, user) {
 async function extractFor(user, b) {
   let prompt, images = [];
   if (b.url) prompt = PROMPT + "\n\nMENU TEXT (from " + String(b.url).slice(0, 200) + "):\n" + await fetchPage(String(b.url));
-  else if (Array.isArray(b.images) && b.images.length) { images = b.images.slice(0, 6).filter(i => i && typeof i.data === "string"); prompt = PROMPT + "\n\nThe menu is in the attached image(s)."; }
+  else if (Array.isArray(b.images) && b.images.length) { images = b.images.slice(0, 12).filter(i => i && typeof i.data === "string"); prompt = PROMPT + "\n\nThe menu is in the attached image(s)."; }
   else if (typeof b.text === "string" && b.text.trim()) prompt = PROMPT + "\n\nMENU TEXT:\n" + b.text.slice(0, 40000);
   else throw new AIError("empty", "Nothing to read.");
   const c = aiFor(user), trial = await trialInfo(user, c);
