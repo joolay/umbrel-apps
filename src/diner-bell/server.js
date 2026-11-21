@@ -56,6 +56,21 @@ async function trialInfo(user, c) {
   return { on: true, used: t.used, over: t.used >= TRIAL_LIMIT };
 }
 
+// A long menu (many photos or pages) needs a longer reply than a one-page menu, or the JSON is cut off mid-way.
+const maxTok = images => Math.min(16000, 8000 + 800 * images.length);
+// If the reply was cut off anyway, keep every complete dish and close the open brackets instead of failing.
+function repairJSON(t) {
+  for (let end = t.length; end > 0; end = t.lastIndexOf("}", end - 1)) {
+    const head = t.slice(0, end + 1); let stack = [], inStr = false, esc = false;
+    for (const ch of head) {
+      if (inStr) { if (esc) esc = false; else if (ch === "\\") esc = true; else if (ch === '"') inStr = false; continue; }
+      if (ch === '"') inStr = true; else if (ch === "{" || ch === "[") stack.push(ch); else if (ch === "}" || ch === "]") stack.pop();
+    }
+    if (inStr) continue;
+    try { return JSON.parse(head + stack.reverse().map(c => c === "{" ? "}" : "]").join("")); } catch {}
+  }
+  return null;
+}
 async function callAI(prompt, images = [], user = null) {
   const c = aiFor(user);
   if (!aiReady(c)) throw new AIError("not_configured", "Menu reading isn't set up yet. Add your own AI key in Portal Admin (My settings), or ask an admin to add a shared one.");
@@ -66,20 +81,22 @@ async function callAI(prompt, images = [], user = null) {
     r = await fetch(c.baseUrl.replace(/\/+$/, "") + "/v1/messages", {
       method: "POST", signal: AbortSignal.timeout(120000),
       headers: { "content-type": "application/json", "x-api-key": c.apiKey, "anthropic-version": "2023-06-01" },
-      body: JSON.stringify({ model: c.model, max_tokens: 8000, messages: [{ role: "user", content }] }),
+      body: JSON.stringify({ model: c.model, max_tokens: maxTok(images), messages: [{ role: "user", content }] }),
     });
     text = ((await readAI(r)).content || []).filter(b => b.type === "text").map(b => b.text).join("");
   } else {
     const content = [{ type: "text", text: prompt }, ...images.map(im => ({ type: "image_url", image_url: { url: `data:${im.type || "image/jpeg"};base64,${im.data}` } }))];
     const headers = { "content-type": "application/json" }; if (c.apiKey) headers.authorization = "Bearer " + c.apiKey;
     if (c.provider === "openrouter") { headers["x-title"] = "Diner Bell"; }
-    r = await fetch(c.baseUrl.replace(/\/+$/, "") + "/chat/completions", { method: "POST", headers, signal: AbortSignal.timeout(120000), body: JSON.stringify({ model: c.model, max_tokens: 8000, messages: [{ role: "user", content }] }) });
+    r = await fetch(c.baseUrl.replace(/\/+$/, "") + "/chat/completions", { method: "POST", headers, signal: AbortSignal.timeout(120000), body: JSON.stringify({ model: c.model, max_tokens: maxTok(images), messages: [{ role: "user", content }] }) });
     const j = await readAI(r); text = j.choices?.[0]?.message?.content || "";
     if (Array.isArray(text)) text = text.map(p => p.text || "").join("");
   }
   const m = String(text).match(/\{[\s\S]*\}/);
   if (!m) throw new AIError("bad_response", "Couldn't read a menu from that.");
-  try { return JSON.parse(m[0]); } catch { throw new AIError("bad_response", "The AI reply wasn't valid JSON."); }
+  try { return JSON.parse(m[0]); } catch {}
+  const fixed = repairJSON(m[0]); if (fixed && countItems(fixed) > 0) return fixed;
+  throw new AIError("bad_response", "The AI reply wasn't valid JSON.");
 }
 async function readAI(r) {
   const body = await r.text(); let j = {}; try { j = JSON.parse(body); } catch {}
