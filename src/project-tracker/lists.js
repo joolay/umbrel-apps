@@ -5,7 +5,7 @@
 //   statusAt (when someone last set the status by hand; the 3-day rule then waits for work done on a LATER day), auto ("" follow the global
 //   switch | "on" | "off"), lastWorked (YYYY-MM-DD), paths ([{repo, path}] used to read the last commit),
 //   notes ([{id, text, at, state: open|review}]: Claude reads them before working on the project, marks them "review" when done and asks before clearing),
-//   rank (lower is higher priority), state (live|archived|bin), binnedAt, updatedAt.
+//   rank (lower is higher in its category), prank (optional global priority, lower is first, 0/absent = unranked), state (live|archived|bin), binnedAt, updatedAt.
 const STATUSES = ["active", "maintenance", "hiatus", "closed"];
 const STATES = ["live", "archived", "bin"];
 const BIN_DAYS = 30, ACTIVE_DAYS = 3, REVIEW_DAYS = 30, DAY = 86400e3;
@@ -39,7 +39,7 @@ function cleanProject(p, now) {
     closedAt: status === "closed" && iso(p.closedAt) ? iso(p.closedAt) : status === "closed" ? now : "",
     statusAt: iso(p.statusAt) || (p.pinned ? iso(p.updatedAt) || now : ""), auto: ["on", "off"].includes(p.auto) ? p.auto : "",
     lastWorked: isDay(p.lastWorked) ? p.lastWorked : "", paths, notes: cleanNotes(p, now),
-    rank: Number.isFinite(+p.rank) ? +p.rank : 0, state: STATES.includes(p.state) ? p.state : "live",
+    rank: Number.isFinite(+p.rank) ? +p.rank : 0, ...(Number.isFinite(+p.prank) && +p.prank > 0 ? { prank: +p.prank } : {}), state: STATES.includes(p.state) ? p.state : "live",
     binnedAt: p.state === "bin" ? (iso(p.binnedAt) || now) : "", updatedAt: iso(p.updatedAt) || now,
   };
 }

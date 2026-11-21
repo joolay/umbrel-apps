@@ -35,6 +35,22 @@
 .p .desc{color:var(--muted);font-size:.84rem;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .p .desc.open{-webkit-line-clamp:unset}
 .p .meta{display:flex;gap:4px 6px;flex-wrap:wrap;align-items:center;font-size:.76rem;color:var(--muted)}
+.tbx{margin-left:auto;display:flex;gap:6px;flex:0 0 auto}
+.p.compact{display:flex;align-items:center;gap:6px;padding:0 8px 0 0;cursor:pointer}
+.p.compact .nm{padding:12px 0}
+.p.compact .chev{font-size:1.1rem;padding:10px 4px}
+.chev{min-width:34px;min-height:34px}
+.drag{width:44px;align-self:stretch;display:flex;align-items:center;justify-content:center;color:var(--muted);touch-action:none;cursor:grab;font-size:1.1rem;letter-spacing:-2px}
+.p.dragging{opacity:.9;box-shadow:var(--shadow);position:relative;z-index:3}
+.p.compact .nm{display:flex;gap:8px;align-items:center;min-width:0;flex:1}
+.arrows.h{flex-direction:row;padding-left:8px}
+.arrows.h button{width:34px;height:34px}
+.p.prio .nm{display:flex;gap:8px;align-items:center;min-width:0}
+.pn{color:var(--muted);font-size:.8rem;min-width:1.6em}
+.chev{background:none;border:0;color:var(--muted);font-size:.9rem;padding:0 4px;cursor:pointer;line-height:1}
+.list{display:grid;gap:6px}
+.p.row{padding:8px 12px 8px 8px}
+.p.row .top{min-height:30px}
 .arrows{display:flex;flex-direction:column;justify-content:center;gap:6px}
 .arrows button{padding:0;width:34px;height:38px;line-height:1;font-size:.8rem}
 .seg{display:flex;gap:4px}
@@ -100,7 +116,7 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
   "use strict";
   var TOKEN = "gd.token", ST = { active: ["Active", "#2563eb"], maintenance: ["Queued", "#d97706"], hiatus: ["Hiatus", "#7c3aed"], closed: ["Closed", "#6b7280"] };
   var $ = function (s) { return document.querySelector(s); };
-  var S = { lists: [], key: "", sha: "", list: null, worked: {}, readOnly: false, view: "all", collapsed: {}, user: null, busy: 0, lastOk: 0, err: "", auto: true, days: 3, owner: false, home: "", chat: "claude" };
+  var S = { lists: [], key: "", sha: "", list: null, worked: {}, readOnly: false, view: "all", collapsed: {}, layout: "grid", details: false, open: {}, user: null, busy: 0, lastOk: 0, err: "", auto: true, days: 3, owner: false, home: "", chat: "claude" };
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); };
   function tok() { try { return sessionStorage.getItem(TOKEN) || localStorage.getItem(TOKEN) || ""; } catch (e) { return ""; } }
   function api(path, method, body) {
@@ -125,11 +141,11 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
   var daysLeft = function (p) { return Math.max(0, 30 - Math.floor((Date.now() - Date.parse(p.binnedAt || new Date().toISOString())) / DAY)); };
 
   /* ---------- loading and live polling ---------- */
-  function savePrefs() { clearTimeout(savePrefs.h); savePrefs.h = setTimeout(function () { api("api/prefs", "PUT", { list: S.key, view: S.view, auto: S.auto, days: S.days, chat: S.chat, collapsed: Object.keys(S.collapsed).filter(function (k) { return S.collapsed[k]; }) }).catch(function () {}); }, 600); }
+  function savePrefs() { clearTimeout(savePrefs.h); savePrefs.h = setTimeout(function () { api("api/prefs", "PUT", { list: S.key, view: S.view, auto: S.auto, days: S.days, chat: S.chat, layout: S.layout, details: S.details, collapsed: Object.keys(S.collapsed).filter(function (k) { return S.collapsed[k]; }) }).catch(function () {}); }, 600); }
   function loadLists(keep) {
     return api("api/lists").then(function (j) {
       S.lists = j.lists; S.owner = !!j.owner; var pr = (S.user.prefs || {})["project-tracker"] || {}; if (window.JZTheme && !S.themeSet) { S.themeSet = 1; var th = pr.theme || (S.user.prefs || {}).theme; if (th === "light" || th === "dark") JZTheme.set(th, true); }
-      if (!S.key) { S.key = pr.list && j.lists.some(function (l) { return l.key === pr.list; }) ? pr.list : j.lists[0].key; if (pr.view) S.view = pr.view; if (typeof pr.auto === "boolean") S.auto = pr.auto; if (pr.days >= 1 && pr.days <= 30) S.days = pr.days; if (pr.chat === "builtin") S.chat = "builtin"; (pr.collapsed || []).forEach(function (c) { S.collapsed[c] = true; }); }
+      if (!S.key) { S.key = pr.list && j.lists.some(function (l) { return l.key === pr.list; }) ? pr.list : j.lists[0].key; if (pr.view) S.view = pr.view; if (typeof pr.auto === "boolean") S.auto = pr.auto; if (pr.days >= 1 && pr.days <= 30) S.days = pr.days; if (pr.chat === "builtin") S.chat = "builtin"; if (pr.layout === "list") S.layout = "list"; if (pr.details === true) S.details = true; (pr.collapsed || []).forEach(function (c) { S.collapsed[c] = true; }); }
       if (!j.lists.some(function (l) { return l.key === S.key; })) S.key = j.lists[0].key;
       $("#lists").innerHTML = j.lists.map(function (l) { return '<option value="' + esc(l.key) + '"' + (l.key === S.key ? " selected" : "") + ">" + esc(l.name) + " (" + l.count + ")" + (l.source === "shared" ? " · from " + esc(l.by || "someone") : "") + "</option>"; }).join("");
     });
@@ -158,48 +174,83 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
 
   /* ---------- drawing ---------- */
   function counts() {
-    var c = { all: 0, active: 0, maintenance: 0, hiatus: 0, closed: 0, archive: 0, bin: 0 };
-    S.list.projects.forEach(function (p) { if (p.state === "archived") c.archive++; else if (p.state === "bin") c.bin++; else { c.all++; c[effective(p).status]++; } });
+    var c = { all: 0, priority: 0, active: 0, maintenance: 0, hiatus: 0, closed: 0, archive: 0, bin: 0 };
+    S.list.projects.forEach(function (p) { if (p.state === "archived") c.archive++; else if (p.state === "bin") c.bin++; else { c.all++; c[effective(p).status]++; if (p.status !== "closed") c.priority++; } });
     return c;
+  }
+  function gOrder() {
+    var cl = S.list.categories.slice(), live = S.list.projects.filter(function (p) { return p.state === "live"; }); live.forEach(function (p) { if (cl.indexOf(p.category) < 0) cl.push(p.category); });
+    return live.sort(function (a, b) { var ra = a.prank > 0, rb = b.prank > 0; if (ra !== rb) return ra ? -1 : 1; if (ra) return a.prank - b.prank;
+      return cl.indexOf(a.category) - cl.indexOf(b.category) || a.rank - b.rank || a.name.localeCompare(b.name); });
+  }
+  function applyOrder(ids) {   // put these projects in this order, using the slots they already hold in the one global priority list
+    var g = gOrder().map(function (x) { return x.id; }), pos = ids.map(function (id) { return g.indexOf(id); }).filter(function (i) { return i >= 0; }).sort(function (a, b) { return a - b; });
+    ids.forEach(function (id, i) { if (pos[i] != null) g[pos[i]] = id; });
+    var ups = []; g.forEach(function (id, n) { var q = byId(id); if (q && q.prank !== (n + 1) * 10) ups.push(Object.assign({}, q, { prank: (n + 1) * 10 })); });
+    return ups.length ? send({ ops: { upsert: ups } }) : render();
+  }
+  function visibleLive() { return S.list.projects.filter(function (p) { return p.state === "live" && (S.view === "all" || effective(p).status === S.view); }); }
+  function visibleCats() { var seen = {}; visibleLive().forEach(function (p) { seen[p.category] = 1; }); return Object.keys(seen); }
+  function viewItems() {
+    if (S.view === "archive" || S.view === "bin") return S.list.projects.filter(function (p) { return p.state === (S.view === "bin" ? "bin" : "archived"); });
+    if (S.view === "priority") return gOrder().filter(function (p) { return p.status !== "closed"; });
+    return visibleLive();
+  }
+  function allOpen() {
+    var cs = (S.view === "archive" || S.view === "bin" || S.view === "priority") ? [] : visibleCats(), its = viewItems(); if (!cs.length && !its.length) return false;
+    if (cs.some(function (c) { return S.collapsed[c]; })) return false;
+    return S.layout !== "list" || S.details || its.every(function (p) { return S.open[p.id]; });
+  }
+  function setAll(open) {
+    visibleCats().forEach(function (c) { if (open) delete S.collapsed[c]; else S.collapsed[c] = true; });
+    viewItems().forEach(function (p) { if (open) S.open[p.id] = true; else delete S.open[p.id]; }); savePrefs(); render();
   }
   function render() {
     if (!S.list) return;
     $("#add").hidden = S.readOnly;
-    var c = counts(), tabs = [["all", "All"], ["active", "Active"], ["maintenance", "Queued"], ["hiatus", "Hiatus"], ["closed", "Closed"], ["archive", "Archive"], ["bin", "Bin"]];
+    var c = counts(), tabs = [["all", "All"], ["priority", "Priority"], ["active", "Active"], ["maintenance", "Queued"], ["hiatus", "Hiatus"], ["closed", "Closed"], ["archive", "Archive"], ["bin", "Bin"]];
     var due = S.list.projects.filter(dueReview).length;
-    $("#tabs").innerHTML = tabs.map(function (t) { return '<button class="btn tiny' + (S.view === t[0] ? " primary" : "") + '" data-v="' + t[0] + '">' + t[1] + '<span class="n">' + c[t[0]] + (t[0] === "closed" && due ? " · " + due + " to review" : "") + "</span></button>"; }).join("");
+    $("#tabs").innerHTML = tabs.map(function (t) { return '<button class="btn tiny' + (S.view === t[0] ? " primary" : "") + '" data-v="' + t[0] + '">' + t[1] + '<span class="n">' + c[t[0]] + (t[0] === "closed" && due ? " · " + due + " to review" : "") + "</span></button>"; }).join("") + ('<span class="tbx"><button class="btn tiny" data-tb="layout">' + (S.layout === "list" ? "▦ Grid" : "☰ List") + '</button>' + (S.layout === "list" ? '<button class="btn tiny' + (S.details ? " primary" : "") + '" data-tb="details" aria-pressed="' + S.details + '">Details</button>' : "") + '<button class="btn tiny" data-tb="all">' + (allOpen() ? "Collapse all" : "Expand all") + "</button></span>");
     var live = S.list.projects.filter(function (p) { return p.state === "live"; }), out = "";
     if (S.view === "archive" || S.view === "bin") {
       var rows = S.list.projects.filter(function (p) { return p.state === (S.view === "bin" ? "bin" : "archived"); }).sort(function (a, b) { return a.name.localeCompare(b.name); });
       if (S.view === "bin" && rows.length) out += '<p class="muted small">Deleted projects stay here for 30 days, then go for good. <button class="btn tiny danger" data-a="empty">Empty bin now</button></p>';
-      out += rows.length ? '<div class="grid">' + rows.map(function (p) { return card(p, S.view); }).join("") + "</div>" : '<p class="empty">' + (S.view === "bin" ? "The bin is empty." : "Nothing archived.") + "</p>";
+      out += rows.length ? '<div class="' + (S.layout === "list" ? "list" : "grid") + '">' + rows.map(function (p) { return card(p, S.view); }).join("") + "</div>" : '<p class="empty">' + (S.view === "bin" ? "The bin is empty." : "Nothing archived.") + "</p>";
+    } else if (S.view === "priority") {
+      var pl = gOrder().filter(function (p) { return p.status !== "closed"; });
+      out += '<p class="muted small">One list across every category. ' + (S.readOnly ? "" : "Drag ⋮⋮ to set what matters most; the top is first.") + "</p>";
+      out += pl.length ? '<div class="' + (S.layout === "list" ? "list" : "grid") + '" data-prio>' + pl.map(function (p, n) { return card(p, "live", n + 1); }).join("") + "</div>" : '<p class="empty">Nothing to prioritise yet.</p>';
     } else {
       var cats = S.list.categories.slice(); live.forEach(function (p) { if (cats.indexOf(p.category) < 0) cats.push(p.category); });
       cats.forEach(function (cat) {
-        var ps = live.filter(function (p) { return p.category === cat && (S.view === "all" || effective(p).status === S.view); }).sort(function (a, b) { return a.rank - b.rank || a.name.localeCompare(b.name); });
+        var gi = gOrder(), ps = live.filter(function (p) { return p.category === cat && (S.view === "all" || effective(p).status === S.view); }).sort(function (a, b) { return gi.indexOf(a) - gi.indexOf(b); });
         if (!ps.length) return;
         out += '<div class="cat" data-cat="' + esc(cat) + '"><span>' + esc(cat) + "</span><span>" + ps.length + (S.collapsed[cat] ? " ▸" : " ▾") + "</span></div>";
-        if (!S.collapsed[cat]) out += '<div class="grid">' + ps.map(function (p) { return card(p, "live"); }).join("") + "</div>";
+        if (!S.collapsed[cat]) out += '<div class="' + (S.layout === "list" ? "list" : "grid") + '">' + ps.map(function (p) { return card(p, "live"); }).join("") + "</div>";
       });
       if (!out) out = '<p class="empty">Nothing here yet.</p>';
     }
     var keep = window.scrollY; $("#main").innerHTML = out; window.scrollTo(0, keep);
   }
-  function card(p, mode) {
+  function card(p, mode, n) {
     var e = effective(p), s = e.status, c = ST[s][1], ro = S.readOnly, live = mode === "live" && !ro, notes = p.notes || [], review = notes.filter(function (n) { return n.state === "review"; }).length;
-    var h = '<div class="card p' + (live ? "" : " nolead") + '" style="--c:' + c + '" data-id="' + esc(p.id) + '">';
+    var lst = S.layout === "list", opn = true, pr = n ? '<span class="pn">' + n + "</span>" : "", cc = n ? '<span class="chip">' + esc(p.category) + "</span>" : "";
+    if (lst && !S.details && !S.open[p.id]) return '<div class="card p compact' + (n ? " prio" : "") + '" style="--c:' + c + '" data-id="' + esc(p.id) + '">' + (live && n ? '<div class="arrows h"><button class="btn tiny" data-a="up" aria-label="Higher priority">▲</button><button class="btn tiny" data-a="down" aria-label="Lower priority">▼</button></div>' : "") + (live ? '<span class="drag" data-drag aria-label="Drag to reorder" title="Drag to reorder">⋮⋮</span>' : '<span class="drag"></span>') + '<div class="nm">' + pr + esc(p.name) + "</div>" + cc + (n || !live ? '<span class="chip" style="background:' + c + ';color:#fff">' + ST[s][0] + "</span>" : "") + '<button class="chev" data-a="tog" aria-label="Expand details" aria-expanded="false">▸</button></div>';
+    var h = '<div class="card p' + (live ? "" : " nolead") + (lst ? " row" : "") + '" style="--c:' + c + '" data-id="' + esc(p.id) + '">';
     if (live) h += '<div class="arrows"><button class="btn tiny" data-a="up" aria-label="Move up">▲</button><button class="btn tiny" data-a="down" aria-label="Move down">▼</button></div>';
-    h += '<div class="pb"><div class="top"><div class="nm">' + esc(p.name) + "</div>" + (live ? "" : '<span class="chip" style="background:' + c + ';color:#fff">' + ST[s][0] + "</span>") + (e.auto ? '<span class="chip auto" title="Shown as Active: worked on in the last 3 days">auto</span>' : "");
+    h += '<div class="pb"><div class="top">' + (lst && !S.details ? '<button class="chev" data-a="tog" aria-label="Collapse details" aria-expanded="true">▾</button>' : "") + '<div class="nm">' + pr + esc(p.name) + "</div>" + cc + (live ? "" : '<span class="chip" style="background:' + c + ';color:#fff">' + ST[s][0] + "</span>") + (e.auto ? '<span class="chip auto" title="Shown as Active: worked on in the last 3 days">auto</span>' : "");
     if (live && p.status !== "closed") h += '<button class="btn tiny" data-a="worked" title="Mark as worked on today">✓ Today</button>';
     h += "</div>";
+    if (!opn) return h + "</div></div>";
     if (p.desc) h += '<div class="desc">' + esc(p.desc) + "</div>";
     var m = [];
-    if (notes.length) m.push('<span class="chip note">' + notes.length + (notes.length === 1 ? " note" : " notes") + "</span>" + (review ? '<span class="chip warn">' + review + " to confirm</span>" : ""));
+    if (review) m.push('<span class="chip warn">' + review + " to confirm</span>");
     if (e.last) m.push("Last worked " + fmt(e.last)); if (p.status === "closed") m.push((p.closedAs === "completed" ? "Completed" : p.closedAs === "abandoned" ? "Abandoned" : "Closed") + " " + fmt(p.closedAt));
     if (mode === "bin") m.push("Gone for good in " + daysLeft(p) + " days"); if (p.statusAt && p.status !== "closed" && mode === "live" && !e.auto && p.status !== "active") m.push("Set by hand");
     if (dueReview(p)) m.push('<span class="chip warn">due for review</span>');
     if (m.length) h += '<div class="meta">' + m.join(" · ") + "</div>";
     if (ro) return h + "</div></div>";
+    if (live) h += '<div class="acts"><button class="btn tiny" data-a="notes">Notes</button></div>';
     if (mode === "live") h += '<div class="seg">' + Object.keys(ST).map(function (k) { return '<button class="btn tiny' + (p.status === k ? " on" : "") + '" style="--c:' + ST[k][1] + '" data-a="status" data-s="' + k + '" title="' + ST[k][0] + '">' + ST[k][0] + "</button>"; }).join("") + "</div>";
     else h += '<div class="acts"><button class="btn tiny" data-a="restore">Restore</button><button class="btn tiny danger" data-a="' + (mode === "bin" ? "purge" : "remove") + '">' + (mode === "bin" ? "Delete forever" : "Delete") + "</button></div>";
     return h + "</div></div>";
@@ -341,22 +392,42 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
     if (Date.now() < holdUntil) return;   // the press-and-hold just opened a menu
     var cat = ev.target.closest(".cat"); if (cat) { S.collapsed[cat.dataset.cat] = !S.collapsed[cat.dataset.cat]; savePrefs(); return render(); }
     var b = ev.target.closest("[data-a]");
-    if (!b) { var tile = ev.target.closest(".p"); if (tile && !ev.target.closest(".seg,.arrows")) { var tp = byId(tile.dataset.id); if (tp) notesDlg(tp); } return; }
+    if (!b) { var tile = ev.target.closest(".p"); if (tile && S.layout === "list" && !S.details && !ev.target.closest(".seg,.arrows,.drag,.acts")) { S.open[tile.dataset.id] = !S.open[tile.dataset.id]; return render(); } if (tile && tile.classList.contains("compact")) return; if (tile && !ev.target.closest(".seg,.arrows")) { var tp = byId(tile.dataset.id); if (tp) notesDlg(tp); } return; }
     var a = b.dataset.a, card = b.closest(".p"), p = card && byId(card.dataset.id);
+    if (a === "tog" && p) { S.open[p.id] = !S.open[p.id]; return render(); }
+    if (a === "notes" && p) return notesDlg(p);
     if (a === "empty") { var ids = S.list.projects.filter(function (x) { return x.state === "bin"; }).map(function (x) { return x.id; }); return dialog("<h2>Empty the bin?</h2><p class='small'>" + ids.length + " project(s) will be deleted for good.</p><div class='row'><button class='btn' data-close>Cancel</button><button class='btn danger' id='go'>Delete for good</button></div>", function (d) { d.querySelector("#go").onclick = function () { d.close(); send({ ops: { remove: ids } }); }; }); }
     if (!p) return;
-    if (a === "up" || a === "down") return send({ move: { id: p.id, dir: a === "up" ? -1 : 1 } });
+    if (a === "up" || a === "down") { var sib = Array.prototype.map.call(card.parentNode.children, function (x) { return x.dataset.id; }), i = sib.indexOf(p.id), j = i + (a === "up" ? -1 : 1); if (j < 0 || j >= sib.length) return; var t = sib[i]; sib[i] = sib[j]; sib[j] = t; return applyOrder(sib); }
     if (a === "status") return setStatus(p, b.dataset.s);
     if (a === "worked") return upsert(p, { lastWorked: today(), statusAt: "" });
     if (a === "remove") return p.state === "archived" ? upsert(p, { state: "bin" }) : removeDlg(p);
     if (a === "restore") return upsert(p, { state: "live" });
     if (a === "purge") return send({ ops: { remove: [p.id] } });
   };
-  $("#tabs").onclick = function (ev) { var b = ev.target.closest("[data-v]"); if (b) { S.view = b.dataset.v; savePrefs(); render(); } };
+  $("#tabs").onclick = function (ev) { var t = ev.target.closest("[data-tb]"); if (t) { if (t.dataset.tb === "details") { S.details = !S.details; savePrefs(); return render(); } if (t.dataset.tb === "layout") { S.layout = S.layout === "list" ? "grid" : "list"; savePrefs(); return render(); } return setAll(!allOpen()); } var b = ev.target.closest("[data-v]"); if (b) { S.view = b.dataset.v; savePrefs(); render(); } };
   $("#add").onclick = function () { editDlg(null); };
   $("#settings").onclick = settingsDlg;
   $("#home").onclick = function () { if (S.home) location.href = S.home; };
   // Press and hold a project (or right-click it) for Edit / Remove.
+  var drag = null;
+  $("#main").addEventListener("pointerdown", function (ev) {
+    var g = ev.target.closest("[data-drag]"); if (!g || S.readOnly || ev.button > 0) return;
+    var row = g.closest(".p"), box = row.parentNode; ev.preventDefault(); ev.stopPropagation(); holdStop();
+    drag = { row: row, box: box, id: row.dataset.id, y0: row.getBoundingClientRect().top + row.getBoundingClientRect().height / 2, pid: ev.pointerId }; row.classList.add("dragging"); try { g.setPointerCapture(ev.pointerId); } catch (e) {}
+  }, true);
+  $("#main").addEventListener("pointermove", function (ev) {
+    if (!drag) return; ev.preventDefault();
+    var rows = Array.prototype.slice.call(drag.box.children), r = drag.row;
+    r.style.transform = "translateY(" + (ev.clientY - drag.y0) + "px)";
+    for (var i = 0; i < rows.length; i++) { var o = rows[i]; if (o === r) continue; var b = o.getBoundingClientRect(); if (ev.clientY > b.top && ev.clientY < b.bottom) {
+      var before = rows.indexOf(r) > i; drag.box.insertBefore(r, before ? o : o.nextSibling); r.style.transform = ""; var rb = r.getBoundingClientRect(); drag.y0 = rb.top + rb.height / 2; break; } }
+  }, true);
+  function endDrag() {
+    if (!drag) return; var d = drag; drag = null; d.row.classList.remove("dragging"); d.row.style.transform = "";
+    applyOrder(Array.prototype.map.call(d.box.children, function (x) { return x.dataset.id; }));
+  }
+  ["pointerup", "pointercancel"].forEach(function (n) { $("#main").addEventListener(n, endDrag, true); });
   var holdUntil = 0, holdT = 0, hx = 0, hy = 0;
   var holdStop = function () { clearTimeout(holdT); };
   $("#main").addEventListener("pointerdown", function (ev) {

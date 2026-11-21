@@ -388,11 +388,13 @@ const server = http.createServer(async (req, res) => {
     if (p === "/api/prefs" && req.method === "PUT") {
       const b = JSON.parse((await readBody(req)).toString() || "{}"), prev = (user.portal && user.portal.prefs && user.portal.prefs["project-tracker"]) || {}, next = { ...prev };
       if (typeof b.list === "string" && /^[a-z0-9-]{1,120}$/.test(b.list)) next.list = b.list;
-      if (["all", "active", "maintenance", "hiatus", "closed", "archive", "bin"].includes(b.view)) next.view = b.view;
+      if (["all", "priority", "active", "maintenance", "hiatus", "closed", "archive", "bin"].includes(b.view)) next.view = b.view;
       if (b.chat === "claude" || b.chat === "builtin") next.chat = b.chat;   // how the Chat button works: the Claude app, or the built-in helper
       if (typeof b.auto === "boolean") next.auto = b.auto;   // global switch for the 3-day rule (default on)
       if (Number.isInteger(b.days) && b.days >= 1 && b.days <= 30) next.days = b.days;   // length of the 3-day rule
       if (b.theme === "light" || b.theme === "dark" || b.theme === "") next.theme = b.theme;   // light / dark, or "" for the device setting
+      if (typeof b.details === "boolean") next.details = b.details;   // List view: title-only rows (off) or expandable rows (on)
+      if (b.layout === "grid" || b.layout === "list") next.layout = b.layout;   // grid cards or compact expandable list
       if (Array.isArray(b.collapsed)) next.collapsed = b.collapsed.map(x => L.str(x, 60)).slice(0, 60);
       await pb.setAppPref(user.id, next); tokenCache.clear(); return send(res, 200, { ok: true });
     }
