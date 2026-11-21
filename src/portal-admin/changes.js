@@ -6,7 +6,7 @@
 // a change exists only if it was built into this image.
 const fs = require('fs'), path = require('path'), crypto = require('crypto');
 
-module.exports = function makeChanges({ pbx, installedApps, APPS_DIR, DATA_DIR, appKeys }) {
+module.exports = function makeChanges({ pbx, installQueue, installedApps, APPS_DIR, DATA_DIR, appKeys }) {
   const DIR = path.join(__dirname, 'changes'), HISTORY = path.join(DATA_DIR, 'changes-history.json');
   const sets = () => { try { return fs.readdirSync(DIR).filter((f) => /^\d+[\w-]*\.js$/.test(f)).sort().map((f) => require(path.join(DIR, f))); } catch { return []; } };
 
@@ -18,6 +18,7 @@ module.exports = function makeChanges({ pbx, installedApps, APPS_DIR, DATA_DIR, 
   const parseEnv = (txt) => { const o = {}; for (const l of String(txt).split(/\r?\n/)) { const m = l.match(/^\s*(POCKETBASE_[A-Z_]+)\s*=\s*(.*?)\s*$/); if (m) o[m[1]] = m[2].replace(/^(["'])(.*)\1$/, '$2'); } return o; };
   const ctx = {
     pb: (method, p, body) => pbx.asSuper(method, p, body),
+    installQueue,
     async getCollection(name) { try { return await pbx.asSuper('GET', '/api/collections/' + encodeURIComponent(name)); } catch (e) { if (e.status === 404) return null; throw e; } },
     async needNewPocketBase() { try { await pbx.asSuper('GET', '/api/collections/_superusers'); } catch (e) { if (e.status === 404) throw new Error('These changes need PocketBase 0.23 or newer.'); throw e; } },
     // Apps of your own store that use the JoolzApp account and have a data folder we can write to.

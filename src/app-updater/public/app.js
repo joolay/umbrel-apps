@@ -110,6 +110,15 @@ function render() {
   $('#qEnd').value = d.settings.quiet.end;
   const tk = d.settings.ticker || {};
   $('#tickerSw').checked = !!tk.enabled;
+  const ins = d.install || {}, iq = ins.queue || [], iw = Object.keys(ins.waiting || {});
+  $('#installSw').checked = !!ins.enabled;
+  $('#installChip').textContent = !ins.enabled ? 'off' : iq.length ? iq.length + ' queued' : 'nothing queued';
+  const inote = $('#installNote'), lastIns = (ins.last || [])[0];
+  const imsg = !ins.enabled ? '' : ins.error ? 'Could not read the install queue: ' + ins.error
+    : iw.length ? 'Waiting for umbrelOS to list ' + iw.join(', ') + ' in the app store (it can take several minutes after a release).'
+    : iq.length ? 'Installing ' + iq.join(', ') + '.'
+    : lastIns ? 'Last install: ' + lastIns.id + (lastIns.ok ? ' worked.' : ' failed: ' + lastIns.note) : '';
+  inote.textContent = imsg; inote.hidden = !imsg;
   const tc = $('#tickerChip'), tn = $('#tickerNote');
   tc.textContent = tk.linked ? 'Linked to Portal Admin' : 'Not linked yet';
   tc.className = 'chip ' + (tk.linked ? 'ok' : 'warn');
@@ -276,6 +285,7 @@ $('#nightly').addEventListener('change', (e) => e.target.value && save({ nightly
 $('#tz').addEventListener('change', (e) => save({ timezone: e.target.value.trim() }));
 $('#poll').addEventListener('change', (e) => save({ pollSeconds: Number(e.target.value) }));
 $('#selfSw').addEventListener('change', (e) => save({ selfUpdate: { enabled: e.target.checked } }));
+$('#installSw').addEventListener('change', (e) => save({ autoInstall: { enabled: e.target.checked } }));
 $('#tickerSw').addEventListener('change', (e) => save({ ticker: { enabled: e.target.checked } }));
 $('#quietSw').addEventListener('change', (e) => save({ quiet: { enabled: e.target.checked } }));
 $('#qStart').addEventListener('change', (e) => e.target.value && save({ quiet: { start: e.target.value } }));

@@ -92,7 +92,7 @@ The top bar of the JoolzApp home screen scrolls upcoming events. Apps that own d
 ## Change inbox: sending PocketBase changes to Portal Admin
 The owner never edits PocketBase by hand. For a settings change (set or remove a global setting such as `portal.url`) add a data file to `portal-changes/<NNN-name>.json` on `main`
 (format in `portal-changes/README.md`; `src/portal-admin/inbox.js` reads it, no image build or release needed). It appears in Portal Admin > Changes with a plan and an Apply button.
-Same rules as any push: show the owner what it will do and wait for his confirmation, then merge to `main`. Anything beyond settings (collections, fields, files) is a built-in change in `src/portal-admin/changes/`.
+Same rules as any push: show the owner what it will do and wait for his confirmation, then merge to `main`. For a NEW app, add `portal-changes/<NNN>-install-<name>.json` with `{ "op": "install-app", "id": "joolay-<name>" }` in the same merge: Apply queues it and App Updater installs it by itself once umbrelOS lists it (App Updater's "Install new JoolzApps by itself" is on by default). Anything beyond settings (collections, fields, files) is a built-in change in `src/portal-admin/changes/`.
 
 ## Paid apps
 Admin > Paid apps (Yoco) locks an app behind payment using the existing `portal.access` rows, so apps need no changes. Details: `src/portal-admin/README.md`, "Paid apps (Yoco)".

@@ -2,7 +2,7 @@ manifestVersion: 1
 id: joolay-portal
 category: social
 name: JoolzApp Store
-version: "0.37.0"
+version: "0.38.0"
 tagline: The JoolzApp home screen for everyone in the family
 description: >-
   The home screen people use for every JoolzApp app: sign in or create an account, open your apps, arrange icons and folders,
@@ -20,7 +20,7 @@ gallery: []
 path: ""
 defaultUsername: ""
 defaultPassword: ""
-releaseNotes: "Changes: Portal Admin now keeps a change counter and a read marker in each app's status file and works out the handshake state (status/claude-<app>.json is Claude's side), and reports it back to the apps. The top bar shows the connected icon. Before: Admins now see an Admin folder in the JoolzApp Store listing the owner-only apps (Port Master, Theme Editor, App Updater and the other hidden tools); nobody else gets it, and the server refuses anyone who is not an admin. New global theme: Portal Admin serves the Glass theme as /theme.css (edited in the new Theme Editor app), and apps that load theme-global.js pick it up without an update. New change in Portal Admin > Changes: gives OpenClaw a private tailnet address (https://openclaw.<your tailnet>) through TSDProxy; Services Manager (1.1.1 or newer) then restarts TSDProxy by itself 30 seconds later. The Store no longer shows an Admin folder or Admin link; it holds apps only (admins use the Portal Admin app). The top bar now stays at the top of the screen when you scroll. JoolzApp Portal is now called JoolzApp Store (same app, same address). JoolzApp apps page skips routes you ignored in Port Master."
+releaseNotes: "Changes: New Changes-card step that queues a new JoolzApp for App Updater to install automatically; App Updater reads the queue and reports each install through the Portal API. Before: Changes: Portal Admin now keeps a change counter and a read marker in each app's status file and works out the handshake state (status/claude-<app>.json is Claude's side), and reports it back to the apps. The top bar shows the connected icon. Before: Admins now see an Admin folder in the JoolzApp Store listing the owner-only apps (Port Master, Theme Editor, App Updater and the other hidden tools); nobody else gets it, and the server refuses anyone who is not an admin. New global theme: Portal Admin serves the Glass theme as /theme.css (edited in the new Theme Editor app), and apps that load theme-global.js pick it up without an update. New change in Portal Admin > Changes: gives OpenClaw a private tailnet address (https://openclaw.<your tailnet>) through TSDProxy; Services Manager (1.1.1 or newer) then restarts TSDProxy by itself 30 seconds later. The Store no longer shows an Admin folder or Admin link; it holds apps only (admins use the Portal Admin app). The top bar now stays at the top of the screen when you scroll. JoolzApp Portal is now called JoolzApp Store (same app, same address). JoolzApp apps page skips routes you ignored in Port Master."
 submitter: joolay
 submission: https://github.com/joolay/umbrel-apps
 icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-portal/icon.svg

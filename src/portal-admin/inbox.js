@@ -7,6 +7,7 @@
 // Operations (more need a Portal Admin release, on purpose):
 //   { "op": "setting",        "key": "portal.url", "value": "https://...", "note": "optional" }   set a global (non-secret) setting
 //   { "op": "delete-setting", "key": "some.key" }                                                  remove a global setting
+//   { "op": "install-app",    "id": "joolay-name" }                                                add a new JoolzApp to App Updater's install queue (see installqueue.js)
 const REPO = process.env.INBOX_REPO || 'joolay/umbrel-apps', DIR = 'portal-changes', BRANCH = 'main';
 const API = process.env.INBOX_API || 'https://api.github.com', RAW = process.env.INBOX_RAW || 'https://raw.githubusercontent.com';
 const KEY = /^[a-z][a-z0-9._-]{0,63}$/, ID = /^[a-z0-9][a-z0-9._-]{0,63}$/i, MAX_FILES = 30, MAX_BYTES = 20000, TTL = 60000;
@@ -24,6 +25,7 @@ function validate(f) {
   if (!Array.isArray(f.ops) || !f.ops.length || f.ops.length > 20) throw bad('needs 1 to 20 operations');
   for (const o of f.ops) {
     if (!o || typeof o !== 'object') throw bad('bad operation');
+    if (o.op === 'install-app') { if (!/^joolay-[a-z0-9][a-z0-9-]{0,60}$/.test(String(o.id || ''))) throw bad('install-app needs an id like joolay-name'); continue; }
     if (o.op !== 'setting' && o.op !== 'delete-setting') throw bad('unknown operation "' + String(o.op).slice(0, 30) + '" (needs a newer Portal Admin)');
     if (!KEY.test(String(o.key || ''))) throw bad('invalid setting key');
     if (/^secret\./.test(o.key)) throw bad('secret settings are never changed from the inbox');
@@ -76,6 +78,7 @@ module.exports = function makeInbox(ctx) {
     async plan(c) {
       const out = [];
       for (const o of f.ops) {
+        if (o.op === 'install-app') { out.push(...await ctx.installQueue.planAdd(o.id)); continue; }
         const r = await row(o.key);
         if (o.op === 'setting') {
           if (!r) out.push(`Add setting ${o.key} = ${show(o.value)}`);
@@ -86,6 +89,7 @@ module.exports = function makeInbox(ctx) {
     },
     async apply() {
       for (const o of f.ops) {
+        if (o.op === 'install-app') { await ctx.installQueue.add(o.id); continue; }
         const r = await row(o.key);
         if (o.op === 'setting') {
           if (!r) await ctx.pb('POST', '/api/collections/portal_settings/records', { scope: 'global', app: '', user: '', key: o.key, value: o.value, secret: false, note: o.note || '' });
