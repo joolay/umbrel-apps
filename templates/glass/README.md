@@ -47,8 +47,8 @@ Add `theme-global.js` (copy from this folder) as the last tag in `<head>`: it lo
 Edit `templates/glass/glass.css`, bump the version in its header comment, then copy it into every app's `public/` and bump each app's version.
 
 ## Icons
-Every icon people see is the same glass tile: brand gradient, one light sheen, a large frosted rounded square (444 of 512, no outline or outer border), a bold white glyph (gold only for the
-JoolzApp bolt). That covers each app's own icon, JoolzApp Store, Portal Admin, and the home screen's built-in tiles (Family, Settings, Admin).
+Every icon people see is the same clean tile: the brand gradient edge to edge, nothing else behind the glyph (no border or frame, no frosted square, no sheen or haze), and a bold white glyph (gold only for the
+JoolzApp bolt) with one tight shadow so it stays sharp at any size. That covers each app's own icon, JoolzApp Store, Portal Admin, and the home screen's built-in tiles (Family, Settings, Admin).
 `make-icons.py` builds them all from one template, so nothing is drawn by hand:
 
 - **An app**: add its glyph and two brand colours to the `icons` table, then run `python3 templates/glass/make-icons.py <app>` from the repo root.
