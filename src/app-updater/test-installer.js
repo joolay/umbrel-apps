@@ -1,0 +1,22 @@
+'use strict';
+const assert = require('assert'), make = require('./installer');
+(async () => {
+  let queue = ['joolay-new', 'evil', 'joolay-gone'], apps = [], reg = new Map(), t = 0, on = true; const calls = [], reports = [], logs = [];
+  const portalCall = async (fn, args) => { if (fn === 'updater.queue') return { queue }; reports.push(...args[0]); queue = queue.filter((id) => !args[0].some((r) => r.id === id)); return { queue }; };
+  const umbrelCall = async (proc, type, input) => { if (proc === 'apps.list') return apps; calls.push([proc, input.appId]); if (input.appId === 'joolay-gone') throw new Error('nope'); apps.push({ id: input.appId, state: 'installing' }); };
+  const ins = make({ portalCall, umbrelCall, registry: () => reg, enabled: () => on, now: () => t, log: (l, m) => logs.push(m) });
+  await ins.tick(); assert.deepStrictEqual(ins.state().queue, ['joolay-new', 'joolay-gone'], 'junk ids are dropped');
+  assert.strictEqual(calls.length, 0, 'not listed in the store yet: waits, installs nothing');
+  assert.deepStrictEqual(Object.keys(ins.state().waiting), ['joolay-new', 'joolay-gone']);
+  reg = new Map([['joolay-new', '1.0.0'], ['joolay-gone', '1.0.0']]); await ins.tick(); await new Promise((r) => setImmediate(r));
+  assert.deepStrictEqual(calls, [['apps.install', 'joolay-new'], ['apps.install', 'joolay-gone']], 'listed: install called');
+  await ins.tick(); assert.strictEqual(reports.length, 0, 'still installing: no report yet');
+  apps[0].state = 'ready'; apps[0].version = '1.0.0'; await ins.tick();
+  assert.deepStrictEqual(reports.map((r) => [r.id, r.ok]), [['joolay-new', true]], 'ready: reported once');
+  await ins.tick(); await new Promise((r) => setImmediate(r)); await ins.tick(); await new Promise((r) => setImmediate(r)); await ins.tick();
+  assert.ok(reports.some((r) => r.id === 'joolay-gone' && !r.ok), 'three refusals: reported as failed, not retried forever');
+  queue = ['joolay-late']; reg = new Map(); await ins.tick(); t = 25 * 3600e3; await ins.tick();
+  assert.ok(reports.some((r) => r.id === 'joolay-late' && !r.ok && /24 hours/.test(r.note)), 'never listed: gives up after 24 hours');
+  on = false; queue = ['joolay-x']; const n = calls.length; await ins.tick(); assert.strictEqual(calls.length, n); assert.deepStrictEqual(ins.state().queue, [], 'switched off: does nothing');
+  console.log('installer ok');
+})().catch((e) => { console.error(e); process.exit(1); });

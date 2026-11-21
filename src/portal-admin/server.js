@@ -495,10 +495,11 @@ async function signup(req, res) {
 const feed = require('./statusfeed')({ asSuper: (m, p, b) => pbx.asSuper(m, p, b) });
 const routes = require('./routes')({ dataDir: pbx.dataDir, feed });
 const theme = require('./theme')(pbx);
-const appapi = makeAppApi({ qrlogin, quick, feed, routes, theme, pbx, DATA_DIR: pbx.dataDir, readBody, send });
+const installQueue = require('./installqueue')({ asSuper: (m, p, b) => pbx.asSuper(m, p, b) });   // new JoolzApps App Updater should install
+const appapi = makeAppApi({ qrlogin, quick, feed, routes, theme, installQueue, pbx, DATA_DIR: pbx.dataDir, readBody, send });
 const notices = require('./notices')({ pbx, forgetTouch: appapi.forgetTouch });
 const storeLayout = require('./storelayout')(pbx);
-const changes = makeChanges({ pbx, installedApps, APPS_DIR, DATA_DIR: pbx.dataDir, appKeys: appapi.keys });
+const changes = makeChanges({ pbx, installQueue, installedApps, APPS_DIR, DATA_DIR: pbx.dataDir, appKeys: appapi.keys });
 const handle = async (req, res) => {
   try {
     const { pathname, search } = new URL(req.url, 'http://x');

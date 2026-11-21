@@ -14,5 +14,5 @@ Files are read from `main` by Portal Admin 0.28.0 or newer. They are data only (
 }
 ```
 
-Operations: `setting` (set a global, non-secret setting) and `delete-setting`. Keys starting with `secret.` are refused. `portal.url` must have no trailing slash and no `#`.
+Operations: `setting` (set a global, non-secret setting), `delete-setting`, and `install-app` (`{ "op": "install-app", "id": "joolay-name" }`: queue a new JoolzApp for App Updater to install automatically once umbrelOS lists it; Portal Admin 0.38.0 or newer). Keys starting with `secret.` are refused. `portal.url` must have no trailing slash and no `#`.
 Use a new `id` for each change; applied changes disappear from the Changes page. Anything else (new collections, fields, files) still ships as a built-in change in `src/portal-admin/changes/`.

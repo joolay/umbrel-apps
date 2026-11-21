@@ -58,12 +58,14 @@ const DEFAULTS = {
   groupOpen: {},               // { storeId: true | false } expanded/collapsed state of each store group
   seen: {},                    // { appId: lastAnnouncedVersion }
   selfUpdate: { enabled: true }, // update App Updater itself, but only once every other auto-update has cleared
+  autoInstall: { enabled: true }, // install new JoolzApps Portal Admin has queued, as soon as umbrelOS lists them (on from the start)
   selfFailedAt: 0,             // when a self-update last failed (no new attempt for SELF_FAIL_BACKOFF_MS)
 };
 const settings = Object.assign({}, DEFAULTS, readJson(SETTINGS_FILE, {}));
 settings.quiet = Object.assign({}, DEFAULTS.quiet, settings.quiet);
 settings.ticker = Object.assign({}, DEFAULTS.ticker, settings.ticker);
 settings.selfUpdate = Object.assign({}, DEFAULTS.selfUpdate, settings.selfUpdate);
+settings.autoInstall = Object.assign({}, DEFAULTS.autoInstall, settings.autoInstall);
 settings.hidden = Object.assign({}, settings.hidden);
 const saveSettings = () => writeJson(SETTINGS_FILE, settings);
 
@@ -323,6 +325,7 @@ const status = {
   self: { latest: null, update: false, phase: 'idle', result: null }, // phase: idle | updating (checking is paused while updating)
 };
 let installedCache = [];
+let lastRegistry = null;   // id -> version of every app umbrelOS lists in its stores, from the last check
 
 async function fetchRegistry() {
   for (const proc of ['appStore.registry']) {
@@ -344,6 +347,7 @@ async function check() {
   const list = await umbrelCall('apps.list', 'query');
   const installed = (Array.isArray(list) ? list : []).filter((a) => a && a.id && !a.error && a.id !== SELF_APP_ID); // this app never lists or updates itself
   const registry = await fetchRegistry();
+  lastRegistry = registry;
   { const me = (Array.isArray(list) ? list : []).find((a) => a && a.id === SELF_APP_ID);
     const latest = registry && registry.get(SELF_APP_ID) ? registry.get(SELF_APP_ID) : null;
     status.self.latest = latest;
@@ -519,6 +523,11 @@ function resumeAfterSelfUpdate() {
 }
 
 let ticking = false;
+const installer = require('./installer')({
+  portalCall: (fn, args) => portalCall(fn, args), umbrelCall: (...a) => umbrelCall(...a), registry: () => lastRegistry,
+  enabled: () => !!settings.autoInstall.enabled, log: (lvl, msg, id) => addLog(lvl, msg, id), onChange: () => speedUp(),
+});
+
 async function tick(force) {
   if (ticking || status.self.phase === 'updating') return;   // checking is paused while App Updater updates itself
   ticking = true;
@@ -530,6 +539,7 @@ async function tick(force) {
       const mode = settings.apps[item.id];
       await updateApp(item, mode === 'immediate' ? 'detected, updating straight away' : 'nightly window');
     }
+    await installer.tick().catch((e) => { console.error('install queue:', e.message); });
     await maybeSelfUpdate(await check());
   } catch (err) {
     status.lastError = err.message;
@@ -587,6 +597,7 @@ function snapshot() {
     settings: { nightlyTime: settings.nightlyTime, timezone: settings.timezone, quiet: settings.quiet, paused: settings.paused, pollSeconds: settings.pollSeconds, groupOpen: settings.groupOpen, ticker: { enabled: settings.ticker.enabled, linked: !!portalConfig(), at: status.ticker.at, error: status.ticker.error } },
     self: { version: SELF_VERSION, latest: status.self.latest, update: status.self.update, phase: status.self.phase, enabled: settings.selfUpdate.enabled, result: status.self.result, retryAt: settings.selfFailedAt ? settings.selfFailedAt + SELF_FAIL_BACKOFF_MS : null },
     apps,
+    install: { enabled: settings.autoInstall.enabled, ...installer.state() },
     check: { at: status.lastCheck, error: status.lastError, registryProc: status.registryProc, registryCount: status.registryCount },
     log: log.slice(-60).reverse(),
     time: Date.now(),
@@ -686,6 +697,7 @@ const server = http.createServer(async (req, res) => {
       if (b.paused !== undefined) settings.paused = !!b.paused;
       if (b.ticker && b.ticker.enabled !== undefined) settings.ticker.enabled = !!b.ticker.enabled;
       if (b.selfUpdate && b.selfUpdate.enabled !== undefined) settings.selfUpdate.enabled = !!b.selfUpdate.enabled;
+      if (b.autoInstall && b.autoInstall.enabled !== undefined) settings.autoInstall.enabled = !!b.autoInstall.enabled;
       if (b.groupOpen && typeof b.groupOpen.id === 'string' && b.groupOpen.id.length < 80) {
         settings.groupOpen = Object.assign({}, settings.groupOpen, { [b.groupOpen.id]: !!b.groupOpen.open });
       }
