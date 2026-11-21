@@ -62,14 +62,26 @@ function mdnsResolve(host, timeoutMs = 2500) {
 function resolveLocal(host) {
   return new Promise((resolve) => dns.lookup(host, { family: 4 }, (e, a) => (!e && a ? resolve(a) : mdnsResolve(host).then(resolve))));
 }
-function discover(dir) {
+// Apps that are not ours can't carry TSDProxy labels (Umbrel rewrites their compose files), so Portal Admin publishes them through a TSDProxy list file
+// (joolz-published.yaml: "<name>:" then a target http://host:<port>). Returns [{ name, port }] (tailnet only: lists written by Portal Admin never use Funnel).
+function parseList(text) {
+  const out = []; let name = '';
+  for (const line of String(text || '').split(/\r?\n/)) {
+    const n = /^([a-z0-9-]{1,63}):\s*$/i.exec(line); if (n) { name = n[1].toLowerCase(); continue; }
+    const t = /^\s*-\s*https?:\/\/[^\s:/]+:(\d{2,5})\/?\s*$/.exec(line); if (t && name) out.push({ name, port: Number(t[1]), funnel: false });
+  }
+  return out;
+}
+function discover(dir, listFile) {
   const out = [];
+  let listed = []; try { if (listFile) listed = parseList(fs.readFileSync(listFile, 'utf8')); } catch { /* no list: labels only */ }
   let names = []; try { names = fs.readdirSync(dir); } catch { return out; }
   for (const d of names.sort()) {
     let man; try { man = parseManifest(fs.readFileSync(path.join(dir, d, 'umbrel-app.yml'), 'utf8')); } catch { continue; }
     if (!man.id || !man.port) continue;
     let comp = { tsdproxy: null, hostPorts: [] }; try { comp = parseCompose(fs.readFileSync(path.join(dir, d, 'docker-compose.yml'), 'utf8')); } catch { /* no compose: LAN and Tailscale only */ }
-    out.push({ ...man, joolzapp: /^joolay-/.test(man.id), tsdproxy: comp.tsdproxy, hostPorts: comp.hostPorts });
+    const via = comp.tsdproxy ? null : listed.find((l) => l.port === man.port);
+    out.push({ ...man, joolzapp: /^joolay-/.test(man.id), tsdproxy: comp.tsdproxy || (via ? { name: via.name, funnel: false } : null), hostPorts: comp.hostPorts });
   }
   return out;
 }
@@ -113,11 +125,11 @@ async function probe(url, { timeoutMs = 8000, now = Date.now, resolver = resolve
   });
 }
 // Keeps each route's history so one blip is not reported: a route turns "down" after 2 failed checks in a row and "up" again after one good one.
-function makeMonitor({ dir, getConfig, probeImpl = probe, now = Date.now, concurrency = 6 }) {
+function makeMonitor({ dir, listFile, getConfig, probeImpl = probe, now = Date.now, concurrency = 6 }) {
   const mem = new Map();      // "app:route" -> { state, fails, since }
   let last = null, running = null;
   async function run() {
-    const cfg = getConfig(), apps = discover(dir), jobs = [];
+    const cfg = getConfig(), apps = discover(dir, listFile), jobs = [];
     const out = apps.map((a) => ({ id: a.id, name: a.name, version: a.version, port: a.port, hostPorts: a.hostPorts || [], joolzapp: a.joolzapp, published: a.tsdproxy ? (a.tsdproxy.funnel ? 'public' : 'tailnet') : '', routes: [] }));
     apps.forEach((a, i) => { for (const r of routesFor(a, cfg)) jobs.push({ i, r }); });
     let next = 0;
@@ -138,4 +150,4 @@ function makeMonitor({ dir, getConfig, probeImpl = probe, now = Date.now, concur
   }
   return { run: () => (running = running || run().finally(() => { running = null; })), get last() { return last; } };
 }
-module.exports = { mdnsQuery, mdnsParse, resolveLocal, parseManifest, parseCompose, discover, routesFor, probe, makeMonitor };
+module.exports = { mdnsQuery, mdnsParse, resolveLocal, parseManifest, parseCompose, parseList, discover, routesFor, probe, makeMonitor };

@@ -10,7 +10,7 @@ services:
       PROXY_AUTH_ADD: "true"
 
   web:
-    image: ghcr.io/joolay/portal-admin:0.35.3
+    image: ghcr.io/joolay/portal-admin:0.35.4
     restart: on-failure
     stop_grace_period: 10s
     # Lets the container reach the PocketBase app (port 5400) published on this Umbrel.
@@ -27,6 +27,8 @@ services:
       # Umbrel's installed-app folders: umbrel-app.yml and docker-compose.yml are read to detect new apps, and the "Connect" button
       # writes one file, <app>/data/pocketbase.env, for your own joolay-* apps (after checking a PocketBase superuser login).
       - ${UMBREL_ROOT}/app-data:/umbrel-app-data
+      # TSDProxy's settings folder (~/tsdproxy/config, next to the Umbrel folder). Only the Changes page writes here, to publish third-party apps such as OpenClaw on the tailnet.
+      - ${UMBREL_ROOT}/../tsdproxy/config:/tsdproxy-config
     environment:
       # Optional: override the built-in PocketBase address (default http://host.docker.internal:5400 = the Umbrel PocketBase app).
       - PB_URL=${PB_URL:-}

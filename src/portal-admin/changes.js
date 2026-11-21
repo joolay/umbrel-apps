@@ -57,6 +57,8 @@ module.exports = function makeChanges({ pbx, installedApps, APPS_DIR, DATA_DIR, 
     },
     password: () => crypto.randomBytes(24).toString('base64url'),
     appKeys,
+    installedApps,
+    tsdDir: process.env.TSDPROXY_CONFIG_DIR || '/tsdproxy-config',
     portalApiUrl: process.env.PORTAL_API_HOST_URL || 'http://host.docker.internal:3899',
     esc: (s) => String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'"),
   };
