@@ -1,6 +1,6 @@
 {
   "name": "diner-bell",
-  "version": "2.0.13",
+  "version": "2.0.14",
   "private": true,
   "description": "Diner Bell: read a restaurant menu, order from several restaurants, add a tip and split the bill, then tap to call.",
   "main": "server.js",

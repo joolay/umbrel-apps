@@ -1,1 +1,1 @@
-{"name": "app-updater", "version": "1.5.1", "private": true, "main": "server.js", "scripts": {"test": "node test-status-feed.js"}}
+{"name": "app-updater", "version": "1.6.0", "private": true, "main": "server.js", "scripts": {"test": "node test-status-feed.js"}}

@@ -1,6 +1,6 @@
 {
   "name": "cctv",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "private": true,
   "description": "JoolzCCTV: live multi-site CCTV wall (Hikvision, Dahua, RTSP) with per-viewer camera access.",
   "main": "server.js",

@@ -21,7 +21,7 @@ const assert = require('assert'), makeFeed = require('./statusfeed');
   const fetchImpl = async (u, i = {}) => {
     calls.push([i.method || 'GET', u, i.headers && i.headers.authorization]);
     const key = u.split('/contents/')[1].split('?')[0];
-    if (!i.method) return { status: files[key] ? 200 : 404, json: async () => ({ sha: files[key] && files[key].sha }) };
+    if (!i.method) return { status: files[key] ? 200 : 404, json: async () => ({ sha: files[key] && files[key].sha, content: files[key] && Buffer.from(files[key].text).toString('base64') }) };
     if (conflict-- > 0) return { ok: false, status: 409 };
     const b = JSON.parse(i.body); files[key] = { sha: 's' + calls.length, text: Buffer.from(b.content, 'base64').toString(), branch: b.branch }; return { ok: true, status: 201 };
   };
@@ -35,7 +35,7 @@ const assert = require('assert'), makeFeed = require('./statusfeed');
   v = await feed.adminSave({ repo: 'joolay/tracking-data', dir: 'status', token: '' }); assert.strictEqual(v.hasToken, true, 'blank token keeps the saved one');
 
   conflict = 1;
-  assert.deepStrictEqual(await feed.publish('app-updater', { apps: [{ name: 'A', password: 'p' }] }), { ok: true });
+  { const r0 = await feed.publish('app-updater', { apps: [{ name: 'A', password: 'p' }] }); assert.strictEqual(r0.ok, true); assert.strictEqual(r0.link.state, 'device', 'the app wrote, Claude has not read it'); }
   const f = files['status/app-updater.json']; assert.ok(f, 'file written under the app slug'); const j = JSON.parse(f.text); assert.strictEqual(j.app, 'app-updater'); assert.strictEqual(j.data.apps[0].password, '[hidden]'); assert.ok(calls.some((c) => c[2] === 'Bearer ghp_' + 'z'.repeat(30)));
   t += 5e3; assert.strictEqual((await feed.publish('app-updater', { apps: [] })).skipped, 'too_soon');
   t += 40e3; assert.strictEqual((await feed.publish('app-updater', { apps: [{ name: 'A', password: 'p' }] })).ok, true);      // different from the last one? same body: unchanged
@@ -43,10 +43,16 @@ const assert = require('assert'), makeFeed = require('./statusfeed');
   { let mode = 'rate'; const f2 = makeFeed({ asSuper, now: () => (t += 60e3), fetchImpl: async (u, i = {}) => i.method ? { ok: false, status: 403, headers: { get: () => null }, json: async () => ({ message: mode === 'rate' ? 'You have exceeded a secondary rate limit.' : 'Push cannot contain secrets' }) } : { status: 404, json: async () => ({}) } });
     await assert.rejects(() => f2.publish('zz-app', { x: 1 }), (e) => e.status === 502 && /limiting/.test(e.message) && !/token/.test(e.message));
     mode = 'secret'; await assert.rejects(() => f2.publish('zz-app', { x: 2 }), (e) => e.status === 400 && /refused the save \(403\): Push cannot contain secrets/.test(e.message)); }
-  const n = calls.length; t += 40e3; assert.strictEqual((await feed.publish('app-updater', { apps: [{ name: 'A', password: 'p' }] })).skipped, 'unchanged'); assert.strictEqual(calls.length, n, 'no GitHub call when nothing changed');
-  { t += 40e3; assert.strictEqual((await feed.publish('app-updater', { apps: [{ name: 'A', password: 'p' }], check: { at: t } })).ok, true); const m2 = calls.length;
-    t += 40e3; assert.strictEqual((await feed.publish('app-updater', { apps: [{ name: 'A', password: 'p' }], check: { at: t } })).skipped, 'unchanged'); assert.strictEqual(calls.length, m2, 'a moving timestamp alone is not a change'); }
+  const n = calls.filter((x) => x[0] === 'PUT').length; t += 40e3; assert.strictEqual((await feed.publish('app-updater', { apps: [{ name: 'A', password: 'p' }] })).skipped, 'unchanged'); assert.strictEqual(calls.filter((x) => x[0] === 'PUT').length, n, 'no GitHub save when nothing changed');
+  { t += 40e3; assert.strictEqual((await feed.publish('app-updater', { apps: [{ name: 'A', password: 'p' }], check: { at: t } })).ok, true); const m2 = calls.filter((x) => x[0] === 'PUT').length;
+    t += 40e3; assert.strictEqual((await feed.publish('app-updater', { apps: [{ name: 'A', password: 'p' }], check: { at: t } })).skipped, 'unchanged'); assert.strictEqual(calls.filter((x) => x[0] === 'PUT').length, m2, 'a moving timestamp alone is not a change'); }
   t += 31 * 60e3; assert.strictEqual((await feed.publish('app-updater', { apps: [{ name: 'A', password: 'p' }] })).ok, true, 'refreshed after the heartbeat gap');
+  // handshake bookkeeping: rev counts real changes, a heartbeat does not; Claude's message is marked read by the next report
+  { const g = () => JSON.parse(files['status/app-updater.json'].text); const r1 = g().rev;
+    t += 31 * 60e3; await feed.publish('app-updater', { apps: [{ name: 'A', password: 'p' }] }); assert.strictEqual(g().rev, r1, 'heartbeat is not a change');
+    t += 40e3; await feed.publish('app-updater', { apps: [{ name: 'B' }] }); assert.strictEqual(g().rev, r1 + 1, 'a real change bumps rev');
+    files['status/claude-app-updater.json'] = { sha: 'c1', text: JSON.stringify({ toApp: { rev: 2, at: new Date(t + 1000).toISOString() } }) };
+    t += 40e3; const r2 = await feed.publish('app-updater', { apps: [{ name: 'B' }] }); assert.strictEqual(g().seenClaude, 2, 'the app has now read Claude message 2'); assert.strictEqual(r2.link.state, 'both'); }
   await assert.rejects(() => feed.publish('../etc', {}), /Unknown app/); await assert.rejects(() => feed.publish('x', { big: 'y'.repeat(100) }.big && { a: Array(300).fill('z'.repeat(590)) }), /too large/);
   assert.match((await feed.test()).message, /status\/_portal-admin\.json/);
   assert.ok((await feed.adminView()).feeds.some((x) => x.app === 'app-updater' && x.ok));

@@ -2,7 +2,7 @@ manifestVersion: 1
 id: joolay-cctv
 category: networking
 name: JoolzCCTV
-version: "1.0.1"
+version: "1.0.2"
 tagline: Live cameras from every recorder on one wall
 description: >-
   JoolzCCTV shows live video from your Hikvision and Dahua recorders (and any camera with an RTSP address) on a single wall, in the
@@ -19,7 +19,7 @@ gallery: []
 path: ""
 defaultUsername: ""
 defaultPassword: ""
-releaseNotes: "Fix: the sign-in screen is much bigger on the TV and easier to use on a phone, with larger text, fields and buttons and a clear highlight for the remote."
+releaseNotes: "Changes: Top bar shows a connected icon: green when the server answers, red when it does not or this device is offline. Before: Fix: the sign-in screen is much bigger on the TV and easier to use on a phone, with larger text, fields and buttons and a clear highlight for the remote."
 submitter: joolay
 submission: https://github.com/joolay/umbrel-apps
 icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-cctv/icon.svg

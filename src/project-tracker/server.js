@@ -383,6 +383,7 @@ const server = http.createServer(async (req, res) => {
     }
     if (p === "/api/app-config") return send(res, 200, { accounts: pb.enabled, ...(pb.enabled ? { portalUrl: await pb.portalUrl().catch(() => "") } : {}) });
     if (await accountRoutes(req, res, p)) return;
+    if (p === "/api/link" && req.method === "GET") return send(res, 200, feedHandle ? feedHandle.link() : { state: "broken", shaking: false, note: "Not reporting yet." });
     if (p === "/api/ai/status" && req.method === "GET") { const c = makeAi.resolve(user); return send(res, 200, { ready: !!c, key: makeAi.pub(c) }); }
     if (p === "/api/ai/chat" && req.method === "POST") return aiChat(req, res, user);
     if (p === "/api/prefs" && req.method === "PUT") {
@@ -413,4 +414,17 @@ const server = http.createServer(async (req, res) => {
     if (!res.headersSent) send(res, 500, { code: "server_error", message: e.message }); else res.end();
   }
 });
+// Status feed (read by the owner and Claude through GitHub): project and note counts only, nothing private. See status-feed.js.
+// A change in these numbers is a "change" for the top bar's handshake (Claude sets a note to "review" -> the counts move).
+async function feedPayload() {
+  const out = { app: "project-tracker", version: require("./package.json").version, accounts: !!pb.enabled };
+  try {
+    const f = await gh.read(false), l = f.data && L.cleanList(f.data), notes = { open: 0, review: 0 };
+    if (l) { out.projects = l.projects.filter(x => x.state === "live").length; for (const x of (f.data.projects || [])) for (const n of (x.notes || [])) { if (n && n.state === "review") notes.review++; else if (n && n.state !== "done") notes.open++; } out.notes = notes; }
+  } catch (e) { out.listError = String(e.code || e.message || "error").slice(0, 60); }
+  return out;
+}
+let feedHandle = null;
+try { fs.mkdirSync(process.env.DATA_DIR || path.join(__dirname, "data"), { recursive: true }); } catch { /* Portal Admin links an app once its data folder exists */ }
+if (require.main === module) feedHandle = require("./status-feed")({ dataDir: process.env.DATA_DIR || path.join(__dirname, "data"), getPayload: feedPayload, log: m => console.error(m) });
 server.listen(PORT, () => console.log(`Project Pilot running on http://0.0.0.0:${PORT}`));

@@ -24,3 +24,7 @@ summary{cursor:pointer}
 .code{font-size:44px;letter-spacing:6px;font-variant-numeric:tabular-nums}
 dialog .kv b{font-size:20px}
 @media (max-width:420px){.code{font-size:38px}}
+
+/* top bar: keep the title on one line; the bar scrolls nothing, so small screens drop the least important pieces */
+.topbar h1{white-space:nowrap;font-size:17px}
+.topbar .brand{flex:none;min-width:0}

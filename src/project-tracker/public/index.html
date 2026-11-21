@@ -454,5 +454,6 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
   api("api/account/me").then(function (j) { S.user = j.user; return loadLists(); }).then(function () { return poll(true); }).then(function () { QA.offer(); }).catch(function (e) { if (e.status === 401 || e.status === 403) location.reload(); else { $("#main").innerHTML = '<p class="empty">' + esc(e.message) + "</p>"; } });
 })();
 </script>
+<script src="linkstatus.js" data-claude></script>
 </body>
 </html>

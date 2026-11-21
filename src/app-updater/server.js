@@ -641,6 +641,7 @@ const validZone = (z) => { try { new Intl.DateTimeFormat('en', { timeZone: z });
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x');
   try {
+    if (url.pathname === '/api/link' && req.method === 'GET') return send(res, 200, feed ? feed.link() : { state: 'broken', shaking: false, note: 'Not reporting yet.' });
     if (url.pathname === '/api/state' && req.method === 'GET') return send(res, 200, snapshot());
 
     if (url.pathname === '/api/umbrel/login' && req.method === 'POST') {

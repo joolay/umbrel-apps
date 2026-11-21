@@ -75,6 +75,7 @@ const body = (req) => new Promise((ok, bad) => { let s = ''; req.on('data', (c) 
 const server = http.createServer(async (req, res) => {
   try {
     const p = decodeURIComponent(new URL(req.url, 'http://x').pathname);
+    if (p === '/api/link' && req.method === 'GET') return send(res, 200, feedHandle ? feedHandle.link() : { state: 'broken', shaking: false, note: 'Not reporting yet.' });
     if (p === '/api/state' && req.method === 'GET') return send(res, 200, { report: mark(monitor.last), clashes: clashes(), official: officialInfo(), config, portal: { linked: !!portalLink(), ...reportState }, checking: false });
     if (p === '/api/check' && req.method === 'POST') { const rep = await checkNow(); refreshOfficial(); return send(res, 200, { report: rep, clashes: clashes(), official: officialInfo(), portal: { linked: !!portalLink(), ...reportState } }); }
     if (p === '/api/ignore' && req.method === 'POST') {
@@ -94,9 +95,10 @@ const server = http.createServer(async (req, res) => {
   } catch (e) { console.error(e); send(res, 500, { message: 'Something went wrong.' }); }
 });
 module.exports = { clean, feedPayload, _monitor: monitor, _registry: registry };
+let feedHandle = null;   // status feed handle: its link() feeds the top bar's handshake icon (GET /api/link)
 if (require.main === module) {
   fs.mkdirSync(DATA_DIR, { recursive: true });        // Portal Admin links an app once its data folder exists
-  require('./status-feed')({ dataDir: DATA_DIR, getPayload: feedPayload, log: (m) => console.error(m) });
+  feedHandle = require('./status-feed')({ dataDir: DATA_DIR, getPayload: feedPayload, log: (m) => console.error(m) });
   server.listen(PORT, '0.0.0.0', () => console.log('Port Master listening on :' + PORT));
   setTimeout(() => { checkNow().catch((e) => console.error('Check failed:', e.message)); schedule(); }, 5000);
   setTimeout(refreshOfficial, 15000); const weekly = setInterval(refreshOfficial, 6 * 3600e3); if (weekly.unref) weekly.unref();

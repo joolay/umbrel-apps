@@ -5,6 +5,7 @@
 // <dir>/<app>.json in a GitHub repo the admin chose, using a GitHub token that is stored here once (portal_settings row, secret, admin only, never sent back).
 // The feed is one-way: nothing reads it back into the apps and nothing in it can change anything.
 const crypto = require('crypto');
+const { linkState } = require('./claudelink');
 
 const SET = '/api/collections/portal_settings/records', APP = 'status-feed', KEY = 'secret.config';
 const MIN_GAP = 30e3, HEARTBEAT = 30 * 60e3, MAX_BYTES = 150 * 1024;
@@ -89,14 +90,25 @@ module.exports = function makeFeed({ asSuper, fetchImpl = fetch, now = () => Dat
     for (let i = 0; i < 3; i++) {
       const g = await fetchImpl(u + ref, { headers: hdr(c), signal: AbortSignal.timeout(15000) });
       if (g.status !== 200 && g.status !== 404) throw await why(g);
-      const sha = g.status === 200 ? (await g.json()).sha : undefined;
-      const body = { message, content: Buffer.from(JSON.stringify(obj, null, 2) + '\n').toString('base64'), ...(sha ? { sha } : {}), ...(c.branch ? { branch: c.branch } : {}) };
+      const gj = g.status === 200 ? await g.json() : null, sha = gj ? gj.sha : undefined;
+      let old = null; try { old = gj && gj.content ? JSON.parse(Buffer.from(gj.content, 'base64').toString('utf8')) : null; } catch { old = null; }
+      const out = typeof obj === 'function' ? obj(old) : obj;
+      const body = { message, content: Buffer.from(JSON.stringify(out, null, 2) + '\n').toString('base64'), ...(sha ? { sha } : {}), ...(c.branch ? { branch: c.branch } : {}) };
       const r = await fetchImpl(u, { method: 'PUT', headers: hdr(c), body: JSON.stringify(body), signal: AbortSignal.timeout(15000) });
       if (r.ok) return;
       if (r.status === 409 || r.status === 422) continue;     // changed under us: read the new version and try again
       throw await why(r);
     }
     throw new FeedError(502, 'GitHub kept changing the file. Try again in a moment.');
+  }
+
+  // Claude's side of the handshake: status/claude-<app>.json (written only by Claude). Missing or unreadable = nothing from Claude yet.
+  async function readClaude(c, app) {
+    try {
+      const r = await fetchImpl(url(c, 'claude-' + app) + (c.branch ? '?ref=' + q(c.branch) : ''), { headers: hdr(c), signal: AbortSignal.timeout(10000) });
+      if (r.status !== 200) return null;
+      return JSON.parse(Buffer.from((await r.json()).content, 'base64').toString('utf8'));
+    } catch { return null; }
   }
 
   // Called through Portal API by an app (app = the slug its key belongs to).
@@ -109,11 +121,19 @@ module.exports = function makeFeed({ asSuper, fetchImpl = fetch, now = () => Dat
     // "Has anything changed?" ignores timestamp fields (an app's own "last checked" time moves every minute), otherwise every poll would be a GitHub commit.
     const h = crypto.createHash('sha256').update(JSON.stringify(data, (k, v) => (k === 'at' || k === 't' || k === 'checkedAt') && typeof v === 'number' ? undefined : v)).digest('hex');
     if (body.length > MAX_BYTES) throw new FeedError(413, 'Status is too large to publish.');
-    if (!opts.force && p && p.ok && t - p.at < MIN_GAP) return { ok: true, skipped: 'too_soon' };
-    if (!opts.force && p && p.ok && p.hash === h && t - p.at < HEARTBEAT) return { ok: true, skipped: 'unchanged' };
-    const job = chain.then(() => put(c, app, { app, at: new Date(t).toISOString(), data }, 'status: ' + app));
+    if (!opts.force && p && p.ok && t - p.at < MIN_GAP) return { ok: true, skipped: 'too_soon', link: p.link };
+    const claude = await readClaude(c, app), seen = claude && claude.toApp ? Number(claude.toApp.rev) || 0 : 0;
+    // nothing new to write: same status, heartbeat not due, and no new message from Claude to mark as read
+    if (!opts.force && p && p.ok && p.hash === h && t - p.at < HEARTBEAT && p.seen === seen) return { ok: true, skipped: 'unchanged', link: p.link };
+    let doc = null;
+    const job = chain.then(() => put(c, app, (old) => {
+      // rev counts real changes only (a heartbeat moves "at", never rev/changedAt); both survive a restart because they are read back from the file
+      const changed = !(old && old.sig === h) && !(p && p.hash === h), prevRev = old && Number(old.rev) || 0;
+      doc = { app, at: new Date(t).toISOString(), changedAt: changed || !(old && old.changedAt) ? new Date(t).toISOString() : old.changedAt, rev: changed ? prevRev + 1 : prevRev || 1, sig: h, seenClaude: seen, data };
+      return doc;
+    }, 'status: ' + app));
     chain = job.catch(() => {});
-    try { await job; last.set(app, { at: t, hash: h, ok: true }); return { ok: true }; }
+    try { await job; last.set(app, { at: t, hash: h, seen, ok: true, link: linkState({ device: doc, claude, now: t }) }); return { ok: true, link: last.get(app).link }; }
     catch (e) { last.set(app, { at: t, hash: '', ok: false, error: String(e.message || e).slice(0, 200) }); throw e; }
   }
   async function test() {

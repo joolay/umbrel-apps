@@ -105,3 +105,7 @@ dialog label.check{display:flex;gap:8px;align-items:center}
 .storelink{flex:none;display:inline-flex;align-items:center;justify-content:center;width:48px;color:var(--accent);background:var(--glass);border:1px solid var(--glass-line);border-radius:var(--r);-webkit-backdrop-filter:blur(18px) saturate(160%);backdrop-filter:blur(18px) saturate(160%)}
 .storelink:hover{border-color:var(--accent)}
 .ghead .sub,.app .sub{margin:0}
+
+/* top bar: keep the title on one line; the bar scrolls nothing, so small screens drop the least important pieces */
+.topbar h1{white-space:nowrap;font-size:17px}
+.topbar .brand{flex:none;min-width:0}

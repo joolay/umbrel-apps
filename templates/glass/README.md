@@ -76,6 +76,9 @@ Copy `install-help.js` (from `src/portal-admin/public/`) and `installbtn.js` nex
 and load both scripts at the end of `<body>` (`install-help.js` first). The icon shows in any normal browser tab, never inside the installed app. On an http address (home network, Tailscale IP) it opens a note saying installing needs the https address. Chromium browsers install in one tap;
 iPhone, iPad, Safari and Firefox get a sheet with the steps for that device. Project Pilot is the first app to use it.
 
+## Connected and handshake icons (top bar)
+Copy `linkstatus.js` next to `index.html` and load it last in `<body>`: `<script src="linkstatus.js"></script>` (connected icon only) or `<script src="linkstatus.js" data-claude></script>` (adds the Claude handshake; the app must serve `GET /api/link`, see `src/app-updater/status-feed.js`). Rules and protocol: CLAUDE.md, "Connected icon and Claude handshake".
+
 ## Quick Access in an app (PIN or pattern)
 One shared piece, copied into every app that signs people in: `quick-server.js` (next to `pocketbase.js`, add it to the Dockerfile COPY line) and `quick-ui.js` (in `public/`, loaded by the sign-in page and the main page).
 Server: `require("./quick-server")({ pb, dataDir })`; a `quick` body on the login route signs in with `quick.login()` and `quick.mint()`; the session check accepts `quick.parse()` tokens (and refuses them

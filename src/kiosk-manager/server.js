@@ -147,6 +147,7 @@ function send(res, code, obj) {
 http.createServer(async (req, res) => {
   const key = `${req.method} ${req.url.split('?')[0]}`;
   try {
+    if (key === 'GET /api/link') return send(res, 200, feedHandle.link());
     if (key === 'GET /api/status') return send(res, 200, await status());
     if (key === 'POST /api/config') {
       const b = await body(req);
@@ -171,7 +172,7 @@ http.createServer(async (req, res) => {
 }).listen(PORT, () => console.log('Kiosk Manager on ' + PORT));
 
 // Status feed (read by the owner and Claude through GitHub): kiosk state, no secrets. See status-feed.js.
-require('./status-feed')({
+const feedHandle = require('./status-feed')({
   dataDir: DATA,
   getPayload: async () => {
     const s = await status();

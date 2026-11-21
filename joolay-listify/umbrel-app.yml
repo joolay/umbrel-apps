@@ -2,7 +2,7 @@ manifestVersion: 1
 id: joolay-listify
 category: files
 name: Listify
-version: "1.0.16"
+version: "1.0.17"
 tagline: Checklists that follow your JoolzApp account
 description: >-
   Listify keeps simple checklists: several lists, dates, progress, swipe to delete, reorder, and a one-tap copy of the
@@ -17,7 +17,7 @@ gallery: []
 path: ""
 defaultUsername: ""
 defaultPassword: ""
-releaseNotes: "Sharper icon: a larger glass square with no outer border. Fix: Listify could fail to start because its port clashed with App Updater."
+releaseNotes: "Changes: Top bar shows a connected icon: green when the server answers, red when it does not or this device is offline. Before: Sharper icon: a larger glass square with no outer border. Fix: Listify could fail to start because its port clashed with App Updater."
 submitter: joolay
 submission: https://github.com/joolay/umbrel-apps
 icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-listify/icon.svg

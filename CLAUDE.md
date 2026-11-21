@@ -97,6 +97,19 @@ Same rules as any push: show the owner what it will do and wait for his confirma
 ## Paid apps
 Admin > Paid apps (Yoco) locks an app behind payment using the existing `portal.access` rows, so apps need no changes. Details: `src/portal-admin/README.md`, "Paid apps (Yoco)".
 
+## Connected icon and Claude handshake (top bar, every app)
+`templates/glass/linkstatus.js` (copy into `public/`, load last in `<body>`) adds two icons to the top bar (`.topbar`, else the first `<header>`/`#bar`), just before the Install/theme buttons:
+- **Connected icon** (every app): green = the app's server answered a moment ago (HEAD every 15 s, plus online/offline events), red = it did not.
+- **Handshake icon** (only apps that talk to Claude, add `data-claude` to the script tag: App Updater, Services Manager, Kiosk Manager, Port Master, Project Pilot): device on the left, "AI" on the right, two hands between them.
+  Green hand = who made the last change (left = the app, right = Claude); both green = the other side has read it; hands stop shaking (grey, struck through) = broken: a report the app should have made has not come through (nothing for 35 minutes).
+  It reads `GET /api/link` on the app's own server, which returns `feed.link()` from `status-feed.js` (the state Portal Admin sent back with the last report).
+- Protocol (state logic and tests: `src/portal-admin/claudelink.js`, `test-claudelink.js`): `status/<app>.json` now carries `rev` (counts real changes, a heartbeat does not), `changedAt`, `sig` and `seenClaude` (the newest Claude message rev the app has read).
+  Claude's side is `status/claude-<app>.json`, written ONLY by Claude when it changes something for that app: `{ "toApp": { "rev": <n+1>, "at": "<ISO>", "note": "<what changed>" }, "seen": { "deviceRev": <the app's rev just read>, "at": "<ISO>" } }`.
+  After reading `status/<app>.json`, set `seen.deviceRev` to its `rev` (that turns the app's hand into "read"); after a change, bump `toApp.rev` (the app marks it read on its next report, normally within a minute or two).
+  Fresh read before every write, change only that file.
+- New apps that talk to Claude: copy `status-feed.js`, keep the handle (`feedHandle = require('./status-feed')(...)`), serve `/api/link`, add `data-claude`.
+- JoolzTV (TV UI) has no top bar and is left out on purpose; see the TV rules.
+
 ## Look for an existing community add-on or service first
 Before building a feature from scratch (skip intro/credits, subtitles, metadata, ...), search for a community Stremio add-on or public community database that already provides it, and say what was found. Build our own only when nothing usable exists, and keep it as the fallback.
 

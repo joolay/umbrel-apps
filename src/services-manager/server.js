@@ -433,6 +433,7 @@ function readBody(req) {
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x');
   try {
+    if (url.pathname === '/api/link' && req.method === 'GET') return send(res, 200, feedHandle ? feedHandle.link() : { state: 'broken', shaking: false, note: 'Not reporting yet.' });
     if (url.pathname === '/api/state' && req.method === 'GET') return send(res, 200, await snapshot());
 
     if (url.pathname === '/api/umbrel/login' && req.method === 'POST') {
@@ -467,9 +468,10 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
+let feedHandle = null;   // status feed handle: its link() feeds the top bar's handshake icon (GET /api/link)
 if (require.main === module) {
   try { fs.mkdirSync(DATA_DIR, { recursive: true }); } catch { /* the app's data folder must exist so Portal Admin can link this app */ }
-  require('./status-feed')({ dataDir: DATA_DIR, getPayload: feedPayload, log: (m) => console.error(m) });
+  feedHandle = require('./status-feed')({ dataDir: DATA_DIR, getPayload: feedPayload, log: (m) => console.error(m) });
   server.listen(PORT, '0.0.0.0', () => console.log('Services Manager listening on :' + PORT));
   setInterval(reconcile, 30000).unref();
   // Portal Admin asks for a TSDProxy restart (30 s after its Tailnet change is applied) by writing a marker file in TSDProxy's settings folder.

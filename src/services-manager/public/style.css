@@ -89,3 +89,9 @@ dialog input{display:block;width:100%;margin-top:5px}
   .ctl { width: 100%; justify-content: space-between; }
 }
 
+
+/* top bar: keep the title on one line; the bar scrolls nothing, so small screens drop the least important pieces */
+.topbar h1{white-space:nowrap;font-size:17px}
+.topbar .brand{flex:none;min-width:0}
+@media (max-width:560px){.topbar .conn #connPill{display:none}.topbar .conn .btn{padding:6px 10px}}
+@media (max-width:480px){.topbar .brand svg{display:none}.topbar h1{font-size:16px}}
