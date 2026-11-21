@@ -69,7 +69,7 @@ const call = (method, p, body, tok = "admin") => new Promise((ok, bad) => { cons
   assert.strictEqual((await call("GET", "/api/lists")).body.lists.length, 2);
   assert.strictEqual((await call("GET", "/api/list/" + k, null, "user")).status, 404, "someone else's private list is invisible");
   await call("DELETE", "/api/list/" + k); assert.strictEqual((await call("GET", "/api/lists")).body.lists.length, 1);
-  await call("PUT", "/api/prefs", { view: "closed", list: "appdev" }); assert.strictEqual(prefs[0][1].view, "closed");
+  await call("PUT", "/api/prefs", { view: "abandoned", list: "appdev" }); assert.strictEqual(prefs[0][1].view, "abandoned");
   // the shared list belongs to its owner: another admin sees none of it and cannot reach its connection
   r = await call("GET", "/api/lists", null, "admin2"); assert.strictEqual(r.status, 200); assert.strictEqual(r.body.lists.length, 0); assert.strictEqual(r.body.owner, false);
   assert.strictEqual((await call("GET", "/api/list/appdev", null, "admin2")).status, 403);

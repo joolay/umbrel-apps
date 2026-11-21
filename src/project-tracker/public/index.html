@@ -30,8 +30,18 @@
 .st .n{opacity:.7;margin-left:4px}
 .cat{margin:16px 2px 8px;font-size:.78rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);display:flex;justify-content:space-between;cursor:pointer;user-select:none}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:10px;align-items:stretch}
-.p{display:grid;grid-template-columns:auto 1fr;align-content:start;gap:0 2px;padding:10px 12px 10px 4px;margin:0;border-left:4px solid var(--c,var(--line));-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;cursor:pointer}
-.p.nolead{grid-template-columns:1fr;padding-left:12px}
+.p{position:relative;overflow:hidden;margin:0;padding:0;border-left:4px solid var(--c,var(--line));-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;cursor:pointer}
+.p>.swc{position:relative;z-index:1;display:grid;grid-template-columns:auto 1fr;align-content:start;gap:0 2px;padding:10px 12px 10px 4px;touch-action:pan-y;transform:translateX(var(--sx,0px));transition:transform .2s ease}
+.p.nolead>.swc{grid-template-columns:1fr;padding-left:12px}
+/* swipe a tile to the left: Complete, Abandon (or Reopen) and Delete sit behind it */
+.swa{position:absolute;right:0;top:0;bottom:0;display:flex;visibility:hidden;z-index:0}
+.p.swiping>.swa,.p.sw-open>.swa{visibility:visible}
+.p.swiping>.swc,.p.sw-open>.swc{background:var(--tile-open,var(--solid))}.p.swiping>.swc{transition:none}
+.swb{width:76px;border:0;border-radius:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font:inherit;font-size:.74rem;font-weight:650;color:#fff;cursor:pointer}
+.swb span{font-size:1.25rem;line-height:1}
+.swb.ok{background:#1f9d63}.swb.warn{background:#d99a00}.swb.bad{background:#d64545}.swb.re{background:#64748b}
+.p.done{--tile-open:color-mix(in srgb,#1f9d63 16%,var(--solid));background:color-mix(in srgb,#1f9d63 18%,var(--glass))}
+.p.abn{--tile-open:color-mix(in srgb,#e0a100 18%,var(--solid));background:color-mix(in srgb,#e0a100 20%,var(--glass))}
 .pb{display:grid;gap:7px;min-width:0}
 .p .top{display:flex;gap:8px;align-items:center}
 .p .nm{font-weight:650;flex:1;min-width:0;line-height:1.25}
@@ -39,7 +49,7 @@
 .p .desc.open{-webkit-line-clamp:unset}
 .p .meta{display:flex;gap:4px 6px;flex-wrap:wrap;align-items:center;font-size:.76rem;color:var(--muted)}
 .tbx{margin-left:auto;display:flex;gap:6px;flex:0 0 auto}
-.p.compact{display:flex;align-items:center;gap:6px;padding:0 8px 0 0;cursor:pointer}
+.p.compact>.swc{display:flex;align-items:center;gap:6px;padding:0 8px 0 0}
 .p.compact .nm{padding:12px 0}
 .p.compact .chev{font-size:1.1rem;padding:10px 4px}
 .chev{min-width:34px;min-height:34px}
@@ -50,7 +60,7 @@
 .pn{color:var(--muted);font-size:.8rem;min-width:1.6em}
 .chev{background:none;border:0;color:var(--muted);font-size:.9rem;padding:0 4px;cursor:pointer;line-height:1}
 .list{display:grid;gap:6px}
-.p.row{padding:8px 12px 8px 4px}
+.p.row>.swc{padding:8px 12px 8px 4px}
 .p.row .top{min-height:30px}
 .arrows{display:flex;flex-direction:column;justify-content:center;gap:6px}
 .arrows button{padding:0;width:34px;height:38px;line-height:1;font-size:.8rem}
@@ -119,7 +129,7 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
   "use strict";
   var TOKEN = "gd.token", ST = { active: ["Active", "#2563eb"], maintenance: ["Queued", "#d97706"], hiatus: ["Hiatus", "#7c3aed"], closed: ["Closed", "#6b7280"] };
   var $ = function (s) { return document.querySelector(s); };
-  var S = { lists: [], key: "", sha: "", list: null, worked: {}, readOnly: false, view: "all", collapsed: {}, layout: "grid", details: false, open: {}, user: null, busy: 0, lastOk: 0, err: "", auto: true, days: 3, owner: false, home: "", chat: "claude", tabs: ["all", "priority", "active", "maintenance", "hiatus", "closed", "archive", "bin"] };
+  var S = { lists: [], key: "", sha: "", list: null, worked: {}, readOnly: false, view: "all", collapsed: {}, layout: "grid", details: false, open: {}, user: null, busy: 0, lastOk: 0, err: "", auto: true, days: 3, owner: false, home: "", chat: "claude", tabs: ["all", "priority", "active", "maintenance", "hiatus", "complete", "abandoned", "archive", "bin"] };
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); };
   function tok() { try { return sessionStorage.getItem(TOKEN) || localStorage.getItem(TOKEN) || ""; } catch (e) { return ""; } }
   function api(path, method, body) {
@@ -140,15 +150,23 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
     var auto = on && recent && later && (p.status === "maintenance" || p.status === "hiatus");
     return { status: auto ? "active" : p.status, auto: auto, last: last };
   }
-  var dueReview = function (p) { return p.state === "live" && p.status === "closed" && p.closedAt && Date.now() - Date.parse(p.closedAt) > 30 * DAY; };
-  var daysLeft = function (p) { return Math.max(0, 30 - Math.floor((Date.now() - Date.parse(p.binnedAt || new Date().toISOString())) / DAY)); };
+  // An abandoned project is reviewed every month (Keep or Delete); the bin never empties itself, you are asked to empty it every month.
+  var dueReview = function (p) { return p.state === "live" && p.status === "closed" && p.closedAs === "abandoned" && Date.now() - Date.parse(p.reviewedAt || p.closedAt) > 30 * DAY; };
+  var daysIn = function (p) { return Math.max(0, Math.floor((Date.now() - Date.parse(p.binnedAt || new Date().toISOString())) / DAY)); };
+  var binDue = function () { return S.list.projects.filter(function (p) { return p.state === "bin" && p.binnedAt && Date.now() - Date.parse(p.binnedAt) > 30 * DAY; }).length; };
+  var CLR = { complete: "#1f9d63", abandoned: "#e0a100" };
+  function viewOf(p) { return p.status === "closed" ? (p.closedAs === "abandoned" ? "abandoned" : "complete") : effective(p).status; }
+  function look(p, s) {   // label, colour and tile class of a project
+    if (p.status === "closed") { var ab = p.closedAs === "abandoned"; return { t: ab ? "Abandoned" : "Complete", c: ab ? CLR.abandoned : CLR.complete, cls: ab ? " abn" : " done" }; }
+    return { t: ST[s][0], c: ST[s][1], cls: "" };
+  }
 
   /* ---------- loading and live polling ---------- */
   function savePrefs() { clearTimeout(savePrefs.h); savePrefs.h = setTimeout(function () { api("api/prefs", "PUT", { list: S.key, view: S.view, auto: S.auto, days: S.days, chat: S.chat, layout: S.layout, details: S.details, tabs: S.tabs, collapsed: Object.keys(S.collapsed).filter(function (k) { return S.collapsed[k]; }) }).catch(function () {}); }, 600); }
   function loadLists(keep) {
     return api("api/lists").then(function (j) {
       S.lists = j.lists; S.owner = !!j.owner; var pr = (S.user.prefs || {})["project-tracker"] || {}; if (window.JZTheme && !S.themeSet) { S.themeSet = 1; var th = pr.theme || (S.user.prefs || {}).theme; if (th === "light" || th === "dark") JZTheme.set(th, true); }
-      if (!S.key) { S.key = pr.list && j.lists.some(function (l) { return l.key === pr.list; }) ? pr.list : j.lists[0].key; if (pr.view) S.view = pr.view; if (typeof pr.auto === "boolean") S.auto = pr.auto; if (pr.days >= 1 && pr.days <= 30) S.days = pr.days; if (pr.chat === "builtin") S.chat = "builtin"; if (pr.layout === "list") S.layout = "list"; if (pr.details === true) S.details = true; if (Array.isArray(pr.tabs)) { var tk = pr.tabs.filter(function (x) { return TABS.some(function (t) { return t[0] === x; }); }); if (tk.length) S.tabs = tk; } (pr.collapsed || []).forEach(function (c) { S.collapsed[c] = true; }); }
+      if (!S.key) { S.key = pr.list && j.lists.some(function (l) { return l.key === pr.list; }) ? pr.list : j.lists[0].key; if (pr.view) S.view = pr.view === "closed" ? "complete" : pr.view; if (typeof pr.auto === "boolean") S.auto = pr.auto; if (pr.days >= 1 && pr.days <= 30) S.days = pr.days; if (pr.chat === "builtin") S.chat = "builtin"; if (pr.layout === "list") S.layout = "list"; if (pr.details === true) S.details = true; if (Array.isArray(pr.tabs)) { var tk = []; pr.tabs.forEach(function (x) { (x === "closed" ? ["complete", "abandoned"] : [x]).forEach(function (y) { if (tk.indexOf(y) < 0 && TABS.some(function (t) { return t[0] === y; })) tk.push(y); }); }); if (tk.length) S.tabs = tk; } (pr.collapsed || []).forEach(function (c) { S.collapsed[c] = true; }); }
       if (!j.lists.some(function (l) { return l.key === S.key; })) S.key = j.lists[0].key;
       $("#lists").innerHTML = j.lists.map(function (l) { return '<option value="' + esc(l.key) + '"' + (l.key === S.key ? " selected" : "") + ">" + esc(l.name) + " (" + l.count + ")" + (l.source === "shared" ? " · from " + esc(l.by || "someone") : "") + "</option>"; }).join("");
     });
@@ -165,6 +183,8 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
   }
   function status() {
     $("#banner").innerHTML = S.err ? '<div class="banner">Can\'t sync right now: ' + esc(S.err) + '. Trying again…</div>' : S.readOnly && S.source === "shared" ? '<div class="banner">Shared with you' + (S.by ? " by <b>" + esc(S.by) + "</b>" : "") + " to view only. You can't change it.</div>" : S.readOnly && S.key === "appdev" ? '<div class="banner">This list is read-only until a GitHub token is added. Open <b>Settings</b> to add one.</div>' : "";
+    if (S.list && !S.err) { var rv = S.list.projects.filter(dueReview).length, bd = binDue(), on = function (id) { return S.tabs.indexOf(id) >= 0; };
+      if (rv || bd) $("#banner").innerHTML += '<div class="banner">Monthly tidy-up: ' + [rv ? rv + " abandoned project(s) to review" + (on("abandoned") ? ' <a href="#" data-go="abandoned">open</a>' : "") : "", bd ? bd + " in the bin to empty" + (on("bin") ? ' <a href="#" data-go="bin">open</a>' : "") : ""].filter(Boolean).join(" · ") + "</div>"; }
   }
   function send(body) {
     S.busy++;
@@ -174,8 +194,8 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
 
   /* ---------- drawing ---------- */
   function counts() {
-    var c = { all: 0, priority: 0, active: 0, maintenance: 0, hiatus: 0, closed: 0, archive: 0, bin: 0 };
-    S.list.projects.forEach(function (p) { if (p.state === "archived") c.archive++; else if (p.state === "bin") c.bin++; else { c.all++; c[effective(p).status]++; if (p.status !== "closed") c.priority++; } });
+    var c = { all: 0, priority: 0, active: 0, maintenance: 0, hiatus: 0, complete: 0, abandoned: 0, archive: 0, bin: 0 };
+    S.list.projects.forEach(function (p) { if (p.state === "archived") c.archive++; else if (p.state === "bin") c.bin++; else { c.all++; c[viewOf(p)]++; if (p.status !== "closed") c.priority++; } });
     return c;
   }
   function gOrder() {
@@ -189,7 +209,7 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
     var ups = []; g.forEach(function (id, n) { var q = byId(id); if (q && q.prank !== (n + 1) * 10) ups.push(Object.assign({}, q, { prank: (n + 1) * 10 })); });
     return ups.length ? send({ ops: { upsert: ups } }) : render();
   }
-  function visibleLive() { return S.list.projects.filter(function (p) { return p.state === "live" && (S.view === "all" || effective(p).status === S.view); }); }
+  function visibleLive() { return S.list.projects.filter(function (p) { return p.state === "live" && (S.view === "all" || viewOf(p) === S.view); }); }
   function visibleCats() { var seen = {}; visibleLive().forEach(function (p) { seen[p.category] = 1; }); return Object.keys(seen); }
   function viewItems() {
     if (S.view === "archive" || S.view === "bin") return S.list.projects.filter(function (p) { return p.state === (S.view === "bin" ? "bin" : "archived"); });
@@ -205,13 +225,13 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
     visibleCats().forEach(function (c) { if (open) delete S.collapsed[c]; else S.collapsed[c] = true; });
     viewItems().forEach(function (p) { if (open) S.open[p.id] = true; else delete S.open[p.id]; }); savePrefs(); render();
   }
-  var TABS = [["all", "All"], ["priority", "Priority"], ["active", "Active"], ["maintenance", "Queued"], ["hiatus", "Hiatus"], ["closed", "Closed"], ["archive", "Archive"], ["bin", "Bin"]];
+  var TABS = [["all", "All"], ["priority", "Priority"], ["active", "Active"], ["maintenance", "Queued"], ["hiatus", "Hiatus"], ["complete", "Complete"], ["abandoned", "Abandoned"], ["archive", "Archive"], ["bin", "Bin"]];
   function shownTabs() { var t = TABS.filter(function (x) { return S.tabs.indexOf(x[0]) >= 0; }); return t.length ? t : TABS; }
   // The tabs shown are the ones picked in Settings; when they don't fit the width they become a drop-down list.
   function drawTabs() {
     var c = counts(), due = S.list.projects.filter(dueReview).length, tabs = shownTabs(), el = $("#tabs");
     if (!tabs.some(function (t) { return t[0] === S.view; })) S.view = tabs[0][0];
-    var more = function (t) { return c[t[0]] + (t[0] === "closed" && due ? " · " + due + " to review" : ""); };
+    var bd = binDue(), more = function (t) { return c[t[0]] + (t[0] === "abandoned" && due ? " · " + due + " to review" : t[0] === "bin" && bd ? " · " + bd + " to empty" : ""); };
     var tbx = '<span class="tbx"><button class="btn tiny" data-tb="layout">' + (S.layout === "list" ? "▦ Grid" : "☰ List") + '</button>' + (S.layout === "list" ? '<button class="btn tiny' + (S.details ? " primary" : "") + '" data-tb="details" aria-pressed="' + S.details + '">Details</button>' : "") + '<button class="btn tiny" data-tb="all">' + (allOpen() ? "Collapse all" : "Expand all") + "</button></span>";
     el.className = "st";
     el.innerHTML = tabs.map(function (t) { return '<button class="btn tiny' + (S.view === t[0] ? " primary" : "") + '" data-v="' + t[0] + '">' + t[1] + '<span class="n">' + more(t) + "</span></button>"; }).join("") + tbx;
@@ -223,12 +243,13 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
   window.addEventListener("resize", function () { clearTimeout(drawTabs.h); drawTabs.h = setTimeout(function () { if (S.list) drawTabs(); }, 120); });
   function render() {
     if (!S.list) return;
+    openSw = null;
     $("#add").hidden = S.readOnly;
     drawTabs();
     var live = S.list.projects.filter(function (p) { return p.state === "live"; }), out = "";
     if (S.view === "archive" || S.view === "bin") {
       var rows = S.list.projects.filter(function (p) { return p.state === (S.view === "bin" ? "bin" : "archived"); }).sort(function (a, b) { return a.name.localeCompare(b.name); });
-      if (S.view === "bin" && rows.length) out += '<p class="muted small">Deleted projects stay here for 30 days, then go for good. <button class="btn tiny danger" data-a="empty">Empty bin now</button></p>';
+      if (S.view === "bin" && rows.length) out += '<p class="muted small">Deleted projects stay here until you empty the bin. You are asked to every month. <button class="btn tiny danger" data-a="empty">Empty bin now</button></p>' + (binDue() ? '<div class="banner">' + binDue() + " project(s) have been in the bin for over a month. Time to empty it?</div>" : "");
       out += rows.length ? '<div class="' + (S.layout === "list" ? "list" : "grid") + '">' + rows.map(function (p) { return card(p, S.view); }).join("") + "</div>" : '<p class="empty">' + (S.view === "bin" ? "The bin is empty." : "Nothing archived.") + "</p>";
     } else if (S.view === "priority") {
       var pl = gOrder().filter(function (p) { return p.status !== "closed"; });
@@ -237,22 +258,37 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
     } else {
       var cats = S.list.categories.slice(); live.forEach(function (p) { if (cats.indexOf(p.category) < 0) cats.push(p.category); });
       cats.forEach(function (cat) {
-        var gi = gOrder(), ps = live.filter(function (p) { return p.category === cat && (S.view === "all" || effective(p).status === S.view); }).sort(function (a, b) { return gi.indexOf(a) - gi.indexOf(b); });
+        var gi = gOrder(), ps = live.filter(function (p) { return p.category === cat && (S.view === "all" ? p.status !== "closed" : viewOf(p) === S.view); }).sort(function (a, b) { return gi.indexOf(a) - gi.indexOf(b); });
         if (!ps.length) return;
         out += '<div class="cat" data-cat="' + esc(cat) + '"><span>' + esc(cat) + "</span><span>" + ps.length + (S.collapsed[cat] ? " ▸" : " ▾") + "</span></div>";
         if (!S.collapsed[cat]) out += '<div class="' + (S.layout === "list" ? "list" : "grid") + '">' + ps.map(function (p) { return card(p, "live"); }).join("") + "</div>";
       });
+      if (S.view === "all") {   // finished projects sit at the very bottom of All: Complete (green) first, then Abandoned (amber)
+        var fin = live.filter(function (p) { return p.status === "closed"; }).sort(function (a, b) { return (a.closedAs === "abandoned") - (b.closedAs === "abandoned") || String(b.closedAt).localeCompare(String(a.closedAt)); });
+        if (fin.length) { out += '<div class="cat" data-cat="Finished"><span>Finished</span><span>' + fin.length + (S.collapsed.Finished ? " ▸" : " ▾") + "</span></div>"; if (!S.collapsed.Finished) out += '<div class="' + (S.layout === "list" ? "list" : "grid") + '">' + fin.map(function (p) { return card(p, "live"); }).join("") + "</div>"; }
+      }
+      if (S.view === "abandoned" && S.list.projects.filter(dueReview).length) out = '<div class="banner">Monthly review: Keep each abandoned project for another month, or Delete it (it goes to the bin).</div>' + out;
       if (!out) out = '<p class="empty">Nothing here yet.</p>';
     }
     var keep = window.scrollY; $("#main").innerHTML = out; window.scrollTo(0, keep);
   }
-  function card(p, mode, n) {
-    var e = effective(p), s = e.status, c = ST[s][1], ro = S.readOnly, live = mode === "live" && !ro, notes = p.notes || [], review = notes.filter(function (n) { return n.state === "review"; }).length;
+  function swipeActs(p) {
+    if (p.state !== "live" || S.readOnly) return "";
+    var cl = p.status === "closed", ab = cl && p.closedAs === "abandoned";
+    var b = function (a, cls, ic, t) { return '<button class="swb ' + cls + '" data-a="' + a + '" aria-label="' + t + '"><span aria-hidden="true">' + ic + "</span>" + t + "</button>"; };
+    return (cl ? b("reopen", "re", "↺", "Reopen") : b("complete", "ok", "✓", "Complete")) + (ab ? b("complete", "ok", "✓", "Complete") : b("abandon", "warn", "⊘", "Abandon")) + b("del", "bad", "✕", "Delete");
+  }
+  function card(p, mode, n) {   // the tile is a sliding layer (.swc) over the three swipe actions (.swa)
+    var h = cardBody(p, mode, n), i = h.indexOf(">") + 1;
+    return h.slice(0, i) + '<div class="swa">' + (mode === "live" ? swipeActs(p) : "") + '</div><div class="swc">' + h.slice(i, -6) + "</div></div>";
+  }
+  function cardBody(p, mode, n) {
+    var e = effective(p), s = e.status, lk = look(p, s), c = lk.c, ro = S.readOnly, live = mode === "live" && !ro, lead = live && p.status !== "closed", notes = p.notes || [], review = notes.filter(function (n) { return n.state === "review"; }).length;
     var HANDLE = '<span class="jz-handle" data-drag role="button" aria-label="Drag to reorder" title="Drag to reorder">⋮⋮</span>', lst = S.layout === "list", opn = true, pr = n ? '<span class="pn">' + n + "</span>" : "", cc = n ? '<span class="chip">' + esc(p.category) + "</span>" : "";
-    if (lst && !S.details && !S.open[p.id]) return '<div class="card p compact' + (n ? " prio" : "") + '" style="--c:' + c + '" data-id="' + esc(p.id) + '">' + (live && n ? '<div class="arrows h"><button class="btn tiny" data-a="up" aria-label="Higher priority">▲</button><button class="btn tiny" data-a="down" aria-label="Lower priority">▼</button></div>' : "") + (live ? HANDLE : '<span class="jz-handle" aria-hidden="true" style="visibility:hidden"></span>') + '<div class="nm">' + pr + esc(p.name) + "</div>" + cc + (n || !live ? '<span class="chip" style="background:' + c + ';color:#fff">' + ST[s][0] + "</span>" : "") + '<button class="chev" data-a="tog" aria-label="Expand details" aria-expanded="false">▸</button></div>';
-    var h = '<div class="card p' + (live ? "" : " nolead") + (lst ? " row" : "") + '" style="--c:' + c + '" data-id="' + esc(p.id) + '">';
-    if (live) h += HANDLE;
-    h += '<div class="pb"><div class="top">' + (lst && !S.details ? '<button class="chev" data-a="tog" aria-label="Collapse details" aria-expanded="true">▾</button>' : "") + '<div class="nm">' + pr + esc(p.name) + "</div>" + cc + (live ? "" : '<span class="chip" style="background:' + c + ';color:#fff">' + ST[s][0] + "</span>") + (e.auto ? '<span class="chip auto" title="Shown as Active: worked on in the last 3 days">auto</span>' : "");
+    if (lst && !S.details && !S.open[p.id]) return '<div class="card p compact' + (n ? " prio" : "") + lk.cls + '" style="--c:' + c + '" data-id="' + esc(p.id) + '">' + (live && n ? '<div class="arrows h"><button class="btn tiny" data-a="up" aria-label="Higher priority">▲</button><button class="btn tiny" data-a="down" aria-label="Lower priority">▼</button></div>' : "") + (lead ? HANDLE : '<span class="jz-handle" aria-hidden="true" style="visibility:hidden"></span>') + '<div class="nm">' + pr + esc(p.name) + "</div>" + cc + (n || !live || p.status === "closed" ? '<span class="chip" style="background:' + c + ';color:#fff">' + lk.t + "</span>" : "") + '<button class="chev" data-a="tog" aria-label="Expand details" aria-expanded="false">▸</button></div>';
+    var h = '<div class="card p' + (lead ? "" : " nolead") + (lst ? " row" : "") + lk.cls + '" style="--c:' + c + '" data-id="' + esc(p.id) + '">';
+    if (lead) h += HANDLE;
+    h += '<div class="pb"><div class="top">' + (lst && !S.details ? '<button class="chev" data-a="tog" aria-label="Collapse details" aria-expanded="true">▾</button>' : "") + '<div class="nm">' + pr + esc(p.name) + "</div>" + cc + (live && p.status !== "closed" ? "" : '<span class="chip" style="background:' + c + ';color:#fff">' + lk.t + "</span>") + (e.auto ? '<span class="chip auto" title="Shown as Active: worked on in the last 3 days">auto</span>' : "");
     if (live && p.status !== "closed") h += '<button class="btn tiny" data-a="worked" title="Mark as worked on today">✓ Today</button>';
     h += "</div>";
     if (!opn) return h + "</div></div>";
@@ -260,18 +296,19 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
     var m = [];
     if (review) m.push('<span class="chip warn">' + review + " to confirm</span>");
     if (e.last) m.push("Last worked " + fmt(e.last)); if (p.status === "closed") m.push((p.closedAs === "completed" ? "Completed" : p.closedAs === "abandoned" ? "Abandoned" : "Closed") + " " + fmt(p.closedAt));
-    if (mode === "bin") m.push("Gone for good in " + daysLeft(p) + " days"); if (p.statusAt && p.status !== "closed" && mode === "live" && !e.auto && p.status !== "active") m.push("Set by hand");
+    if (mode === "bin") m.push("In the bin for " + daysIn(p) + " days"); if (p.statusAt && p.status !== "closed" && mode === "live" && !e.auto && p.status !== "active") m.push("Set by hand");
     if (dueReview(p)) m.push('<span class="chip warn">due for review</span>');
     if (m.length) h += '<div class="meta">' + m.join(" · ") + "</div>";
     if (ro) return h + "</div></div>";
-    if (live) h += '<div class="acts"><button class="btn tiny" data-a="notes">Notes</button></div>';
-    if (mode === "live") h += '<div class="seg">' + Object.keys(ST).map(function (k) { return '<button class="btn tiny' + (p.status === k ? " on" : "") + '" style="--c:' + ST[k][1] + '" data-a="status" data-s="' + k + '" title="' + ST[k][0] + '">' + ST[k][0] + "</button>"; }).join("") + "</div>";
+    if (live) h += '<div class="acts"><button class="btn tiny" data-a="notes">Notes</button>' + (dueReview(p) ? '<button class="btn tiny" data-a="keep">Keep</button><button class="btn tiny danger" data-a="del">Delete</button>' : "") + "</div>";
+    if (mode === "live") h += '<div class="seg">' + ["active", "maintenance", "hiatus"].map(function (k) { return '<button class="btn tiny' + (p.status === k ? " on" : "") + '" style="--c:' + ST[k][1] + '" data-a="status" data-s="' + k + '" title="' + ST[k][0] + '">' + ST[k][0] + "</button>"; }).join("") + "</div>";
     else h += '<div class="acts"><button class="btn tiny" data-a="restore">Restore</button><button class="btn tiny danger" data-a="' + (mode === "bin" ? "purge" : "remove") + '">' + (mode === "bin" ? "Delete forever" : "Delete") + "</button></div>";
     return h + "</div></div>";
   }
 
   /* ---------- actions ---------- */
   function byId(id) { return S.list.projects.filter(function (p) { return p.id === id; })[0]; }
+  function finish(p, as) { var now = new Date().toISOString(); toast(as === "completed" ? "Moved to Complete" : "Moved to Abandoned"); return upsert(p, { status: "closed", closedAs: as, closedAt: now, statusAt: now, reviewedAt: "" }); }
   function setStatus(p, s) {
     var ch = { status: s, statusAt: new Date().toISOString() }; if (s === "closed") { ch.closedAs = p.closedAs || "completed"; ch.closedAt = new Date().toISOString(); } else { ch.closedAs = ""; ch.closedAt = ""; }
     return upsert(p, ch);
@@ -279,7 +316,7 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
   function dialog(html, wire) { var d = $("#dlg"); d.innerHTML = html; d.showModal(); d.querySelectorAll("[data-close]").forEach(function (b) { b.onclick = function () { d.close(); }; }); if (wire) wire(d); }
   function removeDlg(p) {
     var comp = p.status === "closed" && p.closedAs === "completed", ab = p.status === "closed" && p.closedAs === "abandoned";
-    dialog("<h2>Remove “" + esc(p.name) + "”?</h2><p class='muted small'><b>Archive</b> keeps all its details out of the way, and you can restore it. <b>Delete</b> moves it to the bin for 30 days first.</p>" + (comp ? "<p class='small'>It's completed, so Archive suits it.</p>" : ab ? "<p class='small'>It's abandoned, so Delete may suit it.</p>" : "") +
+    dialog("<h2>Remove “" + esc(p.name) + "”?</h2><p class='muted small'><b>Archive</b> keeps all its details out of the way, and you can restore it. <b>Delete</b> moves it to the bin, which you are asked to empty every month.</p>" + (comp ? "<p class='small'>It's completed, so Archive suits it.</p>" : ab ? "<p class='small'>It's abandoned, so Delete may suit it.</p>" : "") +
       "<div class='row'><button class='btn' data-close>Cancel</button><button class='btn" + (comp ? " primary" : "") + "' id='ar'>Archive</button><button class='btn danger" + (ab ? " primary" : "") + "' id='de'>Delete</button></div>", function (d) {
       d.querySelector("#ar").onclick = function () { d.close(); upsert(p, { state: "archived" }); };
       d.querySelector("#de").onclick = function () { d.close(); upsert(p, { state: "bin" }); };
@@ -360,10 +397,11 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
     });
   }
   function sheetDlg(p) {
-    dialog("<h2>" + esc(p.name) + "</h2><div class='sheet'><button class='btn' id='ed'>Edit</button>" + (dueReview(p) ? "<button class='btn' id='kp'>Keep closed</button>" : "") + "<button class='btn danger' id='rm'>Remove…</button><button class='btn' data-close>Cancel</button></div>", function (d) {
+    dialog("<h2>" + esc(p.name) + "</h2><div class='sheet'><button class='btn' id='ed'>Edit</button>" + (p.state === "live" ? (p.status === "closed" ? "<button class='btn' id='s-re'>Reopen</button>" : "") + (p.status === "closed" && p.closedAs !== "abandoned" ? "" : "<button class='btn' id='s-ok'>Complete</button>") + (p.status === "closed" && p.closedAs === "abandoned" ? "" : "<button class='btn' id='s-ab'>Abandon</button>") : "") + (dueReview(p) ? "<button class='btn' id='kp'>Keep for another month</button>" : "") + "<button class='btn danger' id='rm'>Remove…</button><button class='btn' data-close>Cancel</button></div>", function (d) {
       d.querySelector("#ed").onclick = function () { d.close(); editDlg(p); };
       d.querySelector("#rm").onclick = function () { d.close(); if (p.state === "archived") upsert(p, { state: "bin" }); else removeDlg(p); };
-      var kp = d.querySelector("#kp"); if (kp) kp.onclick = function () { d.close(); upsert(p, { closedAt: new Date().toISOString() }); };
+      var kp = d.querySelector("#kp"); if (kp) kp.onclick = function () { d.close(); upsert(p, { reviewedAt: new Date().toISOString() }); };
+      [["#s-re", function () { toast("Reopened"); setStatus(p, "active"); }], ["#s-ok", function () { finish(p, "completed"); }], ["#s-ab", function () { finish(p, "abandoned"); }]].forEach(function (x) { var el = d.querySelector(x[0]); if (el) el.onclick = function () { d.close(); x[1](); }; });
     });
   }
   function settingsDlg() {
@@ -413,7 +451,9 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
     }).catch(function (e) { toast(e.message); });
   }
   $("#main").onclick = function (ev) {
-    if (Date.now() < holdUntil) return;   // the press-and-hold just opened a menu
+    if (Date.now() < holdUntil || Date.now() < swipeUntil) return;   // the press-and-hold just opened a menu / a swipe just ended
+    var go = ev.target.closest("[data-go]"); if (go) { S.view = go.dataset.go; savePrefs(); return render(); }
+    var ot = ev.target.closest(".p"); if (openSw && ot === openSw && !ev.target.closest(".swa")) return closeSw(); if (openSw && ot !== openSw) closeSw();
     var cat = ev.target.closest(".cat"); if (cat) { S.collapsed[cat.dataset.cat] = !S.collapsed[cat.dataset.cat]; savePrefs(); return render(); }
     var b = ev.target.closest("[data-a]");
     if (!b) { var tile = ev.target.closest(".p"); if (tile && S.layout === "list" && !S.details && !ev.target.closest(".seg,.arrows,.jz-handle,.acts")) { S.open[tile.dataset.id] = !S.open[tile.dataset.id]; return render(); } if (tile && tile.classList.contains("compact")) return; if (tile && !ev.target.closest(".seg,.arrows,.jz-handle")) { var tp = byId(tile.dataset.id); if (tp) notesDlg(tp); } return; }
@@ -423,6 +463,11 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
     if (a === "empty") { var ids = S.list.projects.filter(function (x) { return x.state === "bin"; }).map(function (x) { return x.id; }); return dialog("<h2>Empty the bin?</h2><p class='small'>" + ids.length + " project(s) will be deleted for good.</p><div class='row'><button class='btn' data-close>Cancel</button><button class='btn danger' id='go'>Delete for good</button></div>", function (d) { d.querySelector("#go").onclick = function () { d.close(); send({ ops: { remove: ids } }); }; }); }
     if (!p) return;
     if (a === "up" || a === "down") { var sib = Array.prototype.map.call(card.parentNode.children, function (x) { return x.dataset.id; }), i = sib.indexOf(p.id), j = i + (a === "up" ? -1 : 1); if (j < 0 || j >= sib.length) return; var t = sib[i]; sib[i] = sib[j]; sib[j] = t; return applyOrder(sib); }
+    if (a === "complete") return finish(p, "completed");
+    if (a === "abandon") return finish(p, "abandoned");
+    if (a === "reopen") { toast("Reopened"); return setStatus(p, "active"); }
+    if (a === "del") { toast("Moved to the bin"); return upsert(p, { state: "bin" }); }
+    if (a === "keep") { toast("Kept for another month"); return upsert(p, { reviewedAt: new Date().toISOString() }); }
     if (a === "status") return setStatus(p, b.dataset.s);
     if (a === "worked") return upsert(p, { lastWorked: today(), statusAt: "" });
     if (a === "remove") return p.state === "archived" ? upsert(p, { state: "bin" }) : removeDlg(p);
@@ -447,6 +492,33 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
   ["pointerup", "pointercancel", "pointerleave", "scroll"].forEach(function (n) { $("#main").addEventListener(n, holdStop, true); });
   window.addEventListener("scroll", holdStop, { passive: true });
   $("#main").addEventListener("contextmenu", function (ev) { var tile = ev.target.closest(".p"); if (!tile) return; ev.preventDefault(); if (S.readOnly) return; var p = byId(tile.dataset.id); if (p) { holdStop(); holdUntil = Date.now() + 700; sheetDlg(p); } });
+  // Swipe a tile to the left to reveal Complete / Abandon / Delete (Reopen for finished tiles). Vertical movement still scrolls the page.
+  var sw = null, openSw = null, swipeUntil = 0;
+  $("#banner").onclick = function (ev) { var go = ev.target.closest("[data-go]"); if (go) { ev.preventDefault(); S.view = go.dataset.go; savePrefs(); render(); } };
+  function closeSw() { if (openSw) { openSw.classList.remove("sw-open"); openSw.style.removeProperty("--sx"); openSw = null; } }
+  $("#main").addEventListener("pointerdown", function (ev) {
+    var t = ev.target.closest(".p"); if (openSw && t !== openSw) closeSw();
+    if (!t || S.readOnly || ev.button > 0 || ev.target.closest("button,.jz-handle,select,textarea,input,a")) return;
+    var sa = t.querySelector(".swa"); if (!sa || !sa.children.length) return;
+    sw = { t: t, w: sa.offsetWidth || 228, x0: ev.clientX, y0: ev.clientY, base: t === openSw ? -(sa.offsetWidth || 228) : 0, on: false, x: 0 };
+  });
+  $("#main").addEventListener("pointermove", function (ev) {
+    if (!sw) return; var dx = ev.clientX - sw.x0, dy = ev.clientY - sw.y0;
+    if (!sw.on) {
+      if (Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx)) { sw = null; return; }
+      if (Math.abs(dx) < 10) return;
+      sw.on = true; sw.t.classList.add("swiping"); holdStop(); try { sw.t.setPointerCapture(ev.pointerId); } catch (e) {}
+    }
+    sw.x = Math.max(-sw.w - 16, Math.min(0, sw.base + dx)); sw.t.style.setProperty("--sx", sw.x + "px");
+  });
+  function endSwipe(cancel) {
+    if (!sw) return; var d = sw; sw = null; if (!d.on) return;
+    d.t.classList.remove("swiping"); swipeUntil = Date.now() + 350;
+    if (!cancel && d.x < -d.w / 2) { if (openSw && openSw !== d.t) closeSw(); d.t.classList.add("sw-open"); d.t.style.setProperty("--sx", -d.w + "px"); openSw = d.t; }
+    else { d.t.classList.remove("sw-open"); d.t.style.removeProperty("--sx"); if (openSw === d.t) openSw = null; }
+  }
+  ["pointerup"].forEach(function (n) { $("#main").addEventListener(n, function () { endSwipe(false); }); });
+  $("#main").addEventListener("pointercancel", function () { endSwipe(true); });
   $("#lists").onchange = function () { S.key = this.value; S.sha = ""; S.list = null; $("#main").innerHTML = '<p class="empty">Loading…</p>'; savePrefs(); poll(true); };
   function newListDlg() {
     dialog("<h2>New list</h2><p class='muted small'>Kept privately on your account until you share it (Settings > Share this list).</p><form id='f'><label>Name<input name='name' required maxlength='80'></label><div class='row'><button type='button' class='btn' data-close>Cancel</button><button class='btn primary'>Create</button></div></form>", function (d) {
