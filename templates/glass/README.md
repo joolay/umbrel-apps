@@ -71,6 +71,9 @@ Every app uses the same floating, frosted bar: the app's title on the left, the 
 - The choice is kept on the device. Apps that keep preferences on the person's JoolzApp account listen for the `jz-theme` event and save it as `pref.theme`, and call `JZTheme.set(value, true)` on load with the saved value.
 - Adopted so far: the JoolzApp Store and Project Pilot. Other apps move over one at a time, like the Glass theme itself.
 
+## Sticky bars under the top bar
+`position:sticky` needs `html` and `body` to use `overflow-x:clip` (as `glass.css` does), because `overflow-x:hidden` turns `body` into a scroll container and the bar silently scrolls away. Pin a bar below the top bar with `top:calc(var(--safe-t,0px) + 56px)` and a solid-ish background (Project Pilot's list picker and tabs do this).
+
 ## Install icon (top bar)
 Copy `install-help.js` (from `src/portal-admin/public/`) and `installbtn.js` next to the app's `index.html`, add `<button class="ic" data-pwa-install hidden aria-label="Install app">` to the bar
 and load both scripts at the end of `<body>` (`install-help.js` first). The icon shows in any normal browser tab, never inside the installed app. On an http address (home network, Tailscale IP) it opens a note saying installing needs the https address. Chromium browsers install in one tap;

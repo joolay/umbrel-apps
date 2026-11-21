@@ -396,6 +396,7 @@ const server = http.createServer(async (req, res) => {
       if (b.theme === "light" || b.theme === "dark" || b.theme === "") next.theme = b.theme;   // light / dark, or "" for the device setting
       if (typeof b.details === "boolean") next.details = b.details;   // List view: title-only rows (off) or expandable rows (on)
       if (b.layout === "grid" || b.layout === "list") next.layout = b.layout;   // grid cards or compact expandable list
+      if (Array.isArray(b.tabs)) { const t = [...new Set(b.tabs.filter(x => ["all", "priority", "active", "maintenance", "hiatus", "closed", "archive", "bin"].includes(x)))]; if (t.length) next.tabs = t; }   // which tabs show (Settings > Tabs shown)
       if (Array.isArray(b.collapsed)) next.collapsed = b.collapsed.map(x => L.str(x, 60)).slice(0, 60);
       await pb.setAppPref(user.id, next); tokenCache.clear(); return send(res, 200, { ok: true });
     }

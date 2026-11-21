@@ -77,6 +77,8 @@ const call = (method, p, body, tok = "admin") => new Promise((ok, bad) => { cons
   assert.strictEqual((await call("GET", "/api/config/github", null, "admin2")).status, 403);
   assert.strictEqual((await call("PUT", "/api/config/github", { token: "x" }, "admin2")).status, 403);
   assert.strictEqual((await call("GET", "/api/lists")).body.owner, true);
+  await call("PUT", "/api/prefs", { tabs: ["all", "bin", "nope", "all"] }); assert.deepStrictEqual(prefs[prefs.length - 1][1].tabs, ["all", "bin"]);
+  await call("PUT", "/api/prefs", { tabs: ["nope"] }); assert.strictEqual(prefs[prefs.length - 1][1].tabs, undefined);   // an empty or unknown list is ignored, never saved as no tabs
   await call("PUT", "/api/prefs", { auto: false }); assert.strictEqual(prefs[prefs.length - 1][1].auto, false);
   // built-in chat: needs a key, only the owner can reach the shared list, and answers from the person's own provider
   r = await call("GET", "/api/ai/status"); assert.deepStrictEqual(r.body, { ready: false, key: null });
