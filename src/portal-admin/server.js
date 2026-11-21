@@ -361,6 +361,11 @@ async function accountRoutes(req, res, pathname) {
       if (!user.isAdmin) return send(res, 403, { message: 'Only an admin can change the App Store.' });
       try { return send(res, 200, { layout: await storeLayout.set(b.layout), admin: true }); } catch (e) { return send(res, e.status || 500, { message: String(e.message || e) }); }
     }
+    if (pathname === '/admin/apps') {   // owner-only tools (JOOLZAPP_DASHBOARD=hidden) for the Admin folder: admins only, checked here, never trusted from the browser
+      if (req.method !== 'GET') return send(res, 405, { message: 'Method not allowed' });
+      if (!user.isAdmin) return send(res, 403, { message: 'Only an admin can see these.' });
+      return send(res, 200, { apps: installedApps().apps.filter((a) => a.noDash).map((a) => ({ slug: a.slug || a.id.replace(/^joolay-/, ''), id: a.id, name: a.pbName || a.name, tagline: a.tagline, port: a.port, funnel: a.funnel })) });
+    }
     if (pathname === '/paywall' && req.method === 'GET') return send(res, 200, await paywall.forPerson(user));
     if (pathname === '/pay' && req.method === 'POST') { try { return send(res, 200, await paywall.startPayment(user, b.slug, b.scope)); } catch (e) { return send(res, e.status || 500, { message: String(e.message || e) }); } }
     if (pathname === '/pay/status' && req.method === 'GET') return send(res, 200, await paywall.status(user, new URL(req.url, 'http://x').searchParams.get('slug')));
@@ -489,7 +494,8 @@ async function signup(req, res) {
 
 const feed = require('./statusfeed')({ asSuper: (m, p, b) => pbx.asSuper(m, p, b) });
 const routes = require('./routes')({ dataDir: pbx.dataDir, feed });
-const appapi = makeAppApi({ qrlogin, quick, feed, routes, pbx, DATA_DIR: pbx.dataDir, readBody, send });
+const theme = require('./theme')(pbx);
+const appapi = makeAppApi({ qrlogin, quick, feed, routes, theme, pbx, DATA_DIR: pbx.dataDir, readBody, send });
 const notices = require('./notices')({ pbx, forgetTouch: appapi.forgetTouch });
 const storeLayout = require('./storelayout')(pbx);
 const changes = makeChanges({ pbx, installedApps, APPS_DIR, DATA_DIR: pbx.dataDir, appKeys: appapi.keys });
@@ -498,11 +504,15 @@ const handle = async (req, res) => {
     const { pathname, search } = new URL(req.url, 'http://x');
     if (pathname === '/healthz') return send(res, 200, { ok: true });
 
+    if (pathname === '/theme.css') {   // the global Glass theme as CSS: public on purpose (colours, sizes and a font name only), so every app can load it
+      if (req.method !== 'GET' && req.method !== 'HEAD') return send(res, 405, { message: 'Method not allowed' });
+      try { return send(res, 200, await theme.css(await theme.get()), { 'Content-Type': 'text/css; charset=utf-8', 'Cache-Control': 'public, max-age=60', 'Access-Control-Allow-Origin': '*' }); } catch { return send(res, 200, '/* no theme */', { 'Content-Type': 'text/css; charset=utf-8', 'Cache-Control': 'no-store' }); }
+    }
     if (pathname === '/signup-config') { if (req.method !== 'GET') return send(res, 405, { message: 'Method not allowed' }); return signupConfig(req, res); }
     if (pathname === '/guardians') return guardiansRoute(req, res);
     if (pathname === '/qr') return qrRoute(req, res);
     if (pathname === '/quick') return quickRoute(req, res);
-    if (pathname === '/family' || pathname === '/events' || pathname === '/paywall' || pathname === '/pay' || pathname === '/pay/status' || pathname === '/family/users' || pathname === '/account/ai' || pathname === '/account/dob' || pathname === '/account/username' || pathname === '/account/guardian' || pathname === '/store/layout') return accountRoutes(req, res, pathname);
+    if (pathname === '/family' || pathname === '/events' || pathname === '/paywall' || pathname === '/pay' || pathname === '/pay/status' || pathname === '/family/users' || pathname === '/account/ai' || pathname === '/account/dob' || pathname === '/account/username' || pathname === '/account/guardian' || pathname === '/store/layout' || pathname === '/admin/apps') return accountRoutes(req, res, pathname);
     if (pathname === '/yoco/webhook') {
       if (req.method !== 'POST') return send(res, 405, { message: 'Method not allowed' });
       const raw = await readBody(req); const r = await paywall.handleWebhook(req.headers, raw);
@@ -659,7 +669,7 @@ const handle = async (req, res) => {
 
 // JoolzApp Store (the separate, internet-facing home screen app) passes these on for people: /user/<route> on the apps-only port,
 // with its own Portal API key. They are ALWAYS handled as public, user-only requests, and only the routes listed here exist.
-const PORTAL_ROUTES = new Set(['/signup-config', '/signup', '/forgot', '/guardians', '/family', '/family/users', '/events', '/paywall', '/pay', '/pay/status', '/account/ai', '/account/dob', '/account/username', '/account/guardian', '/store/layout', '/qr', '/quick', '/api/active', '/yoco/webhook']);
+const PORTAL_ROUTES = new Set(['/signup-config', '/signup', '/forgot', '/guardians', '/family', '/family/users', '/events', '/paywall', '/pay', '/pay/status', '/account/ai', '/account/dob', '/account/username', '/account/guardian', '/store/layout', '/admin/apps', '/theme.css', '/qr', '/quick', '/api/active', '/yoco/webhook']);
 const portalBad = new Map();
 function fromPortal(req, res) {
   const ip = String(req.socket.remoteAddress || ''), now = Date.now(), fails = (portalBad.get(ip) || []).filter((t) => now - t < 600e3);

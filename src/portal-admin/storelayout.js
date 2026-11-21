@@ -14,7 +14,7 @@ function clean(raw) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
   const folders = {};
   for (const [fid, f] of Object.entries(raw.folders && typeof raw.folders === 'object' ? raw.folders : {}).slice(0, 40)) {
-    if (!/^[a-z0-9]{1,24}$/.test(fid) || !f || typeof f !== 'object') continue;
+    if (fid === 'admin' || !/^[a-z0-9]{1,24}$/.test(fid) || !f || typeof f !== 'object') continue;
     folders[fid] = { name: txt(f.name, 30) || 'Folder', desc: txt(f.desc, 200), items: ids(f.items, 24).filter((x) => !x.startsWith('folder:')) };
   }
   const names = {};

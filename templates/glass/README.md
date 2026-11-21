@@ -40,6 +40,9 @@ One look for every JoolzApp: soft gradient backdrop, frosted panels, rounded cor
 | JoolzTV (own TV glass styling in `src/joolztv/ui/css/app.css`; icon uses these) | #0a63c9 / #64d2ff | #0a84ff / #64d2ff |
 | New apps | pick one accent, then an `--accent-2` 20-30° hue away | a lighter pair |
 
+## Global theme (Theme Editor)
+Add `theme-global.js` (copy from this folder) as the last tag in `<head>`: it loads the admin's global theme (`/theme.css`, edited in the Theme Editor app) after glass.css and the app's CSS. Use `data-portal="."` in the Store/Portal Admin. Apps keep their brand `--accent` unless the admin turns on a single global accent. The admin can also give mobile, tablet, desktop and TV their own settings (TV browsers are marked `<html data-view="tv">` by this script).
+
 ## Changing the template
 Edit `templates/glass/glass.css`, bump the version in its header comment, then copy it into every app's `public/` and bump each app's version.
 

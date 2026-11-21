@@ -56,6 +56,15 @@ Copy `glass.css` into `src/<app>/public/`, link it before the app's own CSS, and
 existing apps move onto it one at a time. Every `index.html` head also carries: `viewport` with `viewport-fit=cover`, `theme-color`, `manifest.webmanifest`,
 `apple-touch-icon` (180px PNG), `apple-mobile-web-app-capable`, `apple-mobile-web-app-status-bar-style=black-translucent` and a short `apple-mobile-web-app-title`.
 
+## Global theme and the Admin folder (Theme Editor)
+`src/theme-editor` (store app `joolay-theme-editor`, port 3908, owner-only, `JOOLZAPP_DASHBOARD=hidden`) edits ONE global theme on top of `glass.css`: colours, status colours, radius, glass opacity, font and an optional single accent
+(`accent.mode: 'global'`; default `'app'` keeps every app's brand accent). It saves through the Portal API (`theme.get`/`theme.set`/`theme.reset`; only the `theme-editor` key may write). Portal Admin cleans it (`src/portal-admin/theme.js`: #rrggbb colours,
+clamped numbers, font from a fixed list), stores it as the global `theme.global` row in `portal_settings` and serves it publicly as `/theme.css` (also through the Store, `/theme.css` is in both route lists).
+An app follows the global theme by adding `<script src="theme-global.js"></script>` last in `<head>` (copy `templates/glass/theme-global.js`; `data-portal="."` when the app IS the portal, `data-portal="https://..."` otherwise; default is the same host on port 3886).
+The theme has a base plus one override set per view (mobile under 600px, tablet 600-1023px, desktop 1024px and up, TV = `<html data-view="tv">`, which `theme-global.js` sets on TV browsers or `?view=tv`); a view with no settings of its own uses the base. It also styles the floating top bar (height, background, blur, line, shadow, title, buttons, icons) but never its position, full width or square corners.
+The Store and Portal Admin already load it; other apps move over one at a time, like the Glass theme itself.
+Admins also get an **Admin folder** in their JoolzApp Store listing every owner-only app (`JOOLZAPP_DASHBOARD=hidden`): `GET /admin/apps` (admin-checked on the server, in both route lists) feeds a virtual folder that is built per admin and never saved in `store.layout`.
+
 ## Floating top bar (standard for every app)
 Title on the left, light/dark theme icon on the right, a full-width frosted bar fixed to the top edge (square, not pill-shaped). Files and markup are in `templates/glass/README.md` ("Floating top bar"): copy `floatbar.css` + `floatbar.js`.
 The JoolzApp Store has it; other apps move over one at a time, like the Glass theme.

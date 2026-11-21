@@ -1,0 +1,22 @@
+# Theme Editor: owner-only editor for the global Glass theme (published to Portal Admin as /theme.css).
+# Source: src/theme-editor in this repo (built by .github/workflows/build-images.yml).
+# Keep the image tag equal to `version` in umbrel-app.yml.
+services:
+  app_proxy:
+    environment:
+      APP_HOST: joolay-theme-editor_web_1
+      APP_PORT: 3000
+      # Umbrel's login stays ON: an owner-only tool that can restyle every app.
+      PROXY_AUTH_ADD: "true"
+
+  web:
+    image: ghcr.io/joolay/theme-editor:1.0.0
+    restart: on-failure
+    stop_grace_period: 10s
+    volumes:
+      - ${APP_DATA_DIR}/data:/data
+    environment:
+      # Signs this app in to Portal Admin (it writes data/pocketbase.env) so the theme can be saved; only this app may change the theme.
+      - POCKETBASE_APP_ID=theme-editor
+      # Owner-only tool, opened from Umbrel or the Admin folder of the JoolzApp Store: no icon on the normal home screen.
+      - JOOLZAPP_DASHBOARD=hidden

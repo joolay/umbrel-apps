@@ -1578,7 +1578,8 @@ const ADMIN_TOOLS = [
 ];
 const VIEW_TITLES = { joolzapps: 'JoolzApp apps', overview: 'Overview', global: 'Global settings', apps: 'Apps', users: 'Users', requests: 'Access requests', cleanup: 'Cleanup', audit: 'Audit log', changes: 'PocketBase changes', setup: 'Setup & integration', me: 'My settings', family: 'Family', paywall: 'Paid apps', keys: 'App keys', names: 'App names', paid: 'Payment' };
 const PROTECTED = new Set(['sys:me', 'sys:admin']);
-const canFolder = (id) => !PROTECTED.has(id) && !String(id).startsWith('folder:');   // folders hold apps and Family, never nest, never hide the way back to Settings/Admin   // can't be hidden, so nobody loses the way back to their settings
+const ADMIN_FID = 'admin';   // the Admin folder (owner-only tools) exists only on an admin's own screen: built per admin, never saved in the shared layout
+const canFolder = (id) => !PROTECTED.has(id) && !String(id).startsWith('folder:') && !String(id).startsWith('adm:');   // folders hold apps and Family, never nest, never hide the way back to Settings/Admin   // can't be hidden, so nobody loses the way back to their settings
 
 const cleanName = (s) => String(s == null ? '' : s).replace(/[\u0000-\u001f\u007f<>]/g, '').trim().slice(0, 30);
 let HM = null, editing = false, saveChain = Promise.resolve();
@@ -1601,7 +1602,7 @@ async function homeModel() {
     isAdmin ? count('portal_requests', 'status = "pending"').catch(() => 0) : Promise.resolve(0),
   ]);
   ssoSlugs = new Set(ssoRows.filter((r) => r.value === true).map((r) => r.app));
-  // The Store holds apps only: no Admin folder or Admin link here (an admin uses the Portal Admin app).
+  // An admin's Store also has an Admin folder listing the owner-only apps (JOOLZAPP_DASHBOARD=hidden). Everyone else never gets it (the server refuses them too).
   // On the Portal the layout is ONE shared App Store layout that an admin edits and everyone sees (GET /store/layout; saving is admin-only on the server).
   const sl = !onlyTools && selfId() ? await acctFetch('/store/layout').catch(() => null) : null, canEdit = onlyTools ? true : !!(sl && sl.admin), viaStore = !onlyTools;
   const rank = (r) => r.scope === 'global' ? 0 : r.scope === 'app' ? 1 : (r.app ? 3 : 2);
@@ -1621,6 +1622,13 @@ async function homeModel() {
     items['sys:family'] = { id: 'sys:family', kind: 'sys', name: 'Family', glyph: 'family', img: 'icons/family.svg', grad: ['#fb7185', '#f59e0b'], href: '#/family' };
     items['sys:me'] = { id: 'sys:me', kind: 'sys', name: 'Settings', glyph: 'me', img: 'icons/settings.svg', grad: ['#94a3b8', '#475569'], href: '#/me' };
   }
+  let adminApps = [];
+  if (!onlyTools && sl && sl.admin) { const aa = await acctFetch('/admin/apps').catch(() => null); adminApps = aa && Array.isArray(aa.apps) ? aa.apps : []; }
+  if (adminApps.length) {
+    const urlFor = appUrlFinder([]);
+    for (const a of adminApps) items['adm:' + a.slug] = { id: 'adm:' + a.slug, kind: 'sys', ext: true, name: a.name, app: { slug: a.slug, name: a.name, enabled: true }, grad: GRADS[hashN(a.slug) % GRADS.length], letter: (a.name || '?').trim().charAt(0).toUpperCase(), href: urlFor(a) || '#', desc: a.tagline || '' };
+    items['folder:' + ADMIN_FID] = { id: 'folder:' + ADMIN_FID, kind: 'ufolder', fid: ADMIN_FID, name: 'Admin', grad: ['#475569', '#1e293b'] };
+  }
   let pw = null; if (selfId()) { try { pw = await acctFetch('/paywall'); } catch { pw = null; } }
   let saved = lrows[0] && lrows[0].value && typeof lrows[0].value === 'object' ? lrows[0].value : null;
   if (!saved) { try { saved = JSON.parse(store.lget((onlyTools ? 'pa.adminlayout.' : 'pa.layout.') + uid) || 'null'); } catch { saved = null; } }
@@ -1636,15 +1644,18 @@ async function homeModel() {
     items['folder:' + fid] = { id: 'folder:' + fid, kind: 'ufolder', fid, name: folders[fid].name, grad: ['#64748b', '#334155'] };
   }
   for (const fid of Object.keys(folders)) folders[fid].items = keep((saved.folders[fid] || {}).items, (id) => canFolder(id));
+  if (adminApps.length) { folders[ADMIN_FID] = { name: 'Admin', desc: 'Owner-only apps', items: adminApps.map((a) => 'adm:' + a.slug), fixed: true }; adminApps.forEach((a) => seen.add('adm:' + a.slug)); }
   const dock = keep(saved.dock).slice(0, 4);
   const hidden = keep(saved.hidden, (id) => !PROTECTED.has(id));
   const order = keep(saved.order);
-  Object.keys(items).forEach((id) => { if (!seen.has(id)) { order.push(id); seen.add(id); } });   // new apps appear at the end
+  Object.keys(items).forEach((id) => { if (!seen.has(id)) { order.push(id); seen.add(id); } });
+  if (adminApps.length && !order.includes('folder:' + ADMIN_FID) && !dock.includes('folder:' + ADMIN_FID)) order.push('folder:' + ADMIN_FID);   // new apps appear at the end
   return { apps, reqs, items, ssoSlugs, isAdmin, uid, layout: { order, dock, hidden, folders, names, descs: saved.descs && typeof saved.descs === 'object' ? saved.descs : {}, view: saved.view === 'icons' || saved.view === 'tiles' ? saved.view : '' }, canEdit, viaStore, lrow: lrows[0] || null, fresh, pend, pw };
 }
 
+const withoutAdmin = (l) => { const f = { ...l.folders }; delete f[ADMIN_FID]; const ok = (id) => id !== 'folder:' + ADMIN_FID && !String(id).startsWith('adm:'); return { ...l, order: l.order.filter(ok), dock: l.dock.filter(ok), hidden: l.hidden.filter(ok), folders: f }; };
 function saveLayout() {
-  const l = HM.layout, uid = HM.uid;
+  const l = withoutAdmin(HM.layout), uid = HM.uid;
   if (HM.viaStore) {   // the shared App Store layout: only an admin gets here (the buttons are hidden for everyone else, and the server refuses anyone else)
     if (!HM.canEdit) return;
     saveChain = saveChain.then(async () => { try { await acctFetch('/store/layout', { layout: l }); } catch (e) { toast('Could not save the App Store: ' + e.message, true); } });
@@ -1689,6 +1700,7 @@ function tileText(it) {
     st = !a.enabled ? 'Off' : a.maintenance ? 'Maintenance' : !it.ok ? (pcfg ? priceText(pcfg) : 'Request access') : 'Open';
   } else if (it.kind === 'ufolder') { const n = ((HM && HM.layout.folders[it.fid]) || { items: [] }).items.length; d = ((HM && HM.layout.folders[it.fid]) || {}).desc || (n ? n + (n === 1 ? ' app' : ' apps') : 'Empty folder'); st = 'Open'; }
   else if (it.kind === 'folder') { d = 'Users, apps, requests and settings'; st = it.badge ? it.badge + ' waiting' : 'Open'; }
+  else if (it.ext) { d = it.desc || 'Owner-only app'; st = 'Open'; }
   else d = it.id === 'sys:family' ? 'Your household and relatives' : it.id === 'sys:adminlink' ? 'Portal Admin (home network or tailnet)' : 'Your preferences and account';
   return `<span class="ic-desc">${esc(d)}</span><span class="ic-state">${esc(st || 'Open')}</span>`;
 }
@@ -1703,7 +1715,7 @@ function iconHTML(it, o = {}) {
   let tile, st = '';
   if (it.kind === 'folder') tile = `<button class="ic-tile folder" data-folder="1" aria-label="Admin tools">${folderMini()}</button>`;
   else if (it.kind === 'ufolder') tile = `<button class="ic-tile folder" data-ufolder="${esc(it.fid)}" aria-label="Folder ${esc(it.name)}">${ufMini(it)}</button>`;
-  else if (it.kind === 'sys') tile = `<a class="ic-tile" href="${esc(it.href)}" draggable="false" aria-label="${esc(it.name)}">${tileInner(it)}</a>`;
+  else if (it.kind === 'sys') tile = `<a class="ic-tile"${it.ext ? ' target="_blank" rel="noopener"' : ''} href="${esc(it.href)}" draggable="false" aria-label="${esc(it.name)}">${tileInner(it)}</a>`;
   else tile = `<button class="ic-tile" data-info="${esc(a.slug)}" aria-label="${esc(a.name)}">${tileInner(it)}</button>`;
   if (it.kind === 'app') {
     if (!a.enabled) st = '';
@@ -1711,7 +1723,7 @@ function iconHTML(it, o = {}) {
     else if (!it.ok) st = `<span class="ic-st" title="Request access">${ICON_LOCK}</span>`;
   }
   const badge = it.badge ? `<span class="ic-badge">${it.badge > 9 ? '9+' : it.badge}</span>` : '';
-  const x = !o.tray && it.kind === 'ufolder' ? `<button class="ic-x" data-delfolder="${esc(it.fid)}" aria-label="Remove folder ${esc(it.name)}">${ICON_X}</button>` : !o.tray && !PROTECTED.has(it.id) ? `<button class="ic-x" data-hide="${esc(it.id)}" aria-label="Hide ${esc(it.name)}">${ICON_X}</button>` : '';
+  const x = !o.tray && (it.fid === ADMIN_FID || String(it.id).startsWith('adm:')) ? '' : !o.tray && it.kind === 'ufolder' ? `<button class="ic-x" data-delfolder="${esc(it.fid)}" aria-label="Remove folder ${esc(it.name)}">${ICON_X}</button>` : !o.tray && !PROTECTED.has(it.id) ? `<button class="ic-x" data-hide="${esc(it.id)}" aria-label="Hide ${esc(it.name)}">${ICON_X}</button>` : '';
   const ed = !o.tray && HM && HM.canEdit && it.kind === 'app' ? `<button class="ic-ed" data-edit-app="${esc(a.slug)}" aria-label="Edit ${esc(a.name)}">${ICON_PEN}</button>` : '';
   const rn = !o.tray && HM && HM.canEdit && it.kind === 'app' ? `<button class="ic-rn" data-rename="${esc(a.slug)}" aria-label="Rename ${esc(it.name)}">${ICON_PEN}</button>` : '';
   const add = o.tray ? `<button class="ic-add" data-show="${esc(it.id)}" aria-label="Add ${esc(it.name)} back">${ICON_ADD}</button>` : '';
@@ -1844,7 +1856,7 @@ function takeOut(id) { const l = HM.layout; l.order = l.order.filter((x) => x !=
 function registerFolder(fid) { const f = HM.layout.folders[fid]; HM.items['folder:' + fid] = { id: 'folder:' + fid, kind: 'ufolder', fid, name: f.name, grad: ['#64748b', '#334155'] }; }
 function mergeInto(dragId, targetId) {   // an icon dropped on another: onto a folder it joins it, onto an app they become a new folder
   const l = HM.layout; if (!canFolder(dragId)) return;
-  if (targetId.startsWith('folder:')) { const f = l.folders[targetId.slice(7)]; if (!f || f.items.length >= 12) return; takeOut(dragId); f.items.push(dragId); return; }
+  if (targetId.startsWith('folder:')) { const f = l.folders[targetId.slice(7)]; if (!f || f.fixed || f.items.length >= 12) return; takeOut(dragId); f.items.push(dragId); return; }
   if (!canFolder(targetId) || !HM.items[targetId]) return;
   const fid = newFid(), at = spotOf(targetId);
   l.folders[fid] = { name: 'Folder', items: [targetId, dragId] }; registerFolder(fid);
@@ -1862,8 +1874,8 @@ function removeFolder(fid) {   // its apps go back to the grid
 }
 function ufolderSheet(fid) {
   const f = HM.layout.folders[fid]; if (!f) return;
-  const kids = f.items.map((id) => HM.items[id]).filter(Boolean).map((it) => iconHTML(it, { tray: true, plain: true }).replace(/<button class="ic-add"[^>]*>.*?<\/button>/, '').replace(/<\/div><\/div>$/, `<button class="ic-out" data-out="${esc(it.id)}">Move out</button></div></div>`));
-  const ce = !!HM.canEdit;
+  const kids = f.items.map((id) => HM.items[id]).filter(Boolean).map((it) => iconHTML(it, { tray: true, plain: true }).replace(/<button class="ic-add"[^>]*>.*?<\/button>/, '').replace(/<\/div><\/div>$/, f.fixed ? '</div></div>' : `<button class="ic-out" data-out="${esc(it.id)}">Move out</button></div></div>`));
+  const ce = !!HM.canEdit && !f.fixed;
   const d = openSheet(`<input class="folder-name" data-fname="${esc(fid)}" value="${esc(f.name)}" maxlength="30" aria-label="Folder name"${ce ? '' : ' readonly'}>${ce ? `<textarea class="folder-desc-in" data-fdesc="${esc(fid)}" rows="2" maxlength="200" placeholder="What is in this folder?" aria-label="Folder description">${esc(f.desc || '')}</textarea>` : (f.desc ? `<p class="muted folder-desc">${esc(f.desc)}</p>` : '')}<div class="folder-grid">${kids.join('') || (ce ? '<p class="muted">Empty. Drag an icon onto this folder while rearranging.</p>' : '<p class="muted">Empty.</p>')}</div>${ce ? `<p style="margin-top:14px"><button class="btn small danger" data-delfolder="${esc(fid)}">Remove folder</button></p>` : ''}`);
   d.dataset.fid = fid;
   d.querySelectorAll('a.ic-tile').forEach((a) => a.addEventListener('click', () => d.close()));

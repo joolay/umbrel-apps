@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#7c3aed">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" sizes="180x180" href="icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Themes">
+<title>Theme Editor</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<script src="floatbar.js"></script>
+<link rel="stylesheet" href="glass.css">
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="floatbar.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand"><img src="icon.svg" alt="" width="28" height="28"><span>Theme Editor</span></div>
+  <span class="tb-gap"></span>
+  <button class="tb-btn" data-pwa-install hidden aria-label="Install app" title="Install app"><svg viewBox="0 0 24 24"><path d="M12 4v10"/><path d="m8 10.5 4 4 4-4"/><path d="M5 17v2.5h14V17"/></svg></button>
+  <button class="tb-btn" data-theme-toggle aria-label="Switch theme"><svg class="i-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z"/></svg><svg class="i-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6 7 7M17 17l1.4 1.4M5.6 18.4 7 17M17 7l1.4-1.4"/></svg></button>
+</header>
+<main>
+  <section class="card" id="status"><b>Global Glass theme</b><p class="muted small">Changes here apply to every JoolzApp that loads the global theme. Save to publish; nothing changes for anyone until you do.</p><div id="msg" class="small"></div></section>
+  <div class="cols">
+    <section class="card" id="controls">
+      <h2>Editing</h2><div class="chips" id="views"></div><p class="muted small" id="viewNote"></p>
+      <div id="presetBox"><h2>Start from</h2><div class="chips" id="presets"></div></div>
+      <h2>Preview mode</h2>
+      <div class="seg" id="mode"><button data-m="light" class="on">Light</button><button data-m="dark">Dark</button></div>
+      <h2>Colours <span class="muted small" id="modeName">(light)</span></h2><div id="colours" class="items"></div>
+      <h2>Status colours</h2><div id="semantic" class="items"></div>
+      <h2>Shape and font</h2><div id="shape" class="items"></div>
+      <h2>Top bar</h2><p class="muted small">Fixed to the top, full width and square on every app: that is the JoolzApp standard and cannot be changed here.</p><div id="bar" class="items"></div>
+      <h2>Accent</h2><div id="accent" class="items"></div>
+      <div class="row actions"><button class="btn" id="clearView" hidden>Clear this view's settings</button><button class="btn primary" id="save">Save for all apps</button><button class="btn" id="revert">Undo changes</button><button class="btn danger" id="reset">Reset to Glass defaults</button></div>
+    </section>
+    <section class="card pv-wrap"><h2>Live preview</h2><div id="pv" class="pv"><div class="pv-bar"><div class="pb-brand"><img src="icon.svg" alt="" width="24" height="24"><span>App title</span></div><span class="tb-gap"></span><span class="pb-btn"><svg viewBox="0 0 24 24"><path d="M12 4v10"/><path d="m8 10.5 4 4 4-4"/><path d="M5 17v2.5h14V17"/></svg></span><span class="pb-btn"><svg viewBox="0 0 24 24"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z"/></svg></span></div><div class="pv-in">
+      <div class="card"><b>Card title</b><p class="muted">Frosted panel with muted text, a <span class="chip ok">ok</span> <span class="chip warn">warn</span> <span class="chip bad">problem</span> chip.</p><div class="row"><button class="btn primary">Primary</button><button class="btn">Secondary</button><button class="btn danger">Danger</button></div></div>
+      <div class="tiles"><div class="tile"><span class="tile-ic">A</span><b>Tile</b></div><div class="tile"><span class="tile-ic">B</span><b>Tile</b></div></div>
+      <input class="pv-input" placeholder="A text field" aria-label="Sample field">
+    </div></div></section>
+  </div>
+</main>
+<div id="toast" class="toast" role="status" hidden></div>
+<script src="app.js"></script>
+<script src="install-help.js"></script>
+<script src="installbtn.js"></script>
+<script src="theme-global.js"></script>
+</body>
+</html>
