@@ -4,7 +4,7 @@
 //   id, name, category, desc, status (active|maintenance|hiatus|closed), closedAs (completed|abandoned|""), closedAt,
 //   statusAt (when someone last set the status by hand; the 3-day rule then waits for work done on a LATER day), auto ("" follow the global
 //   switch | "on" | "off"), lastWorked (YYYY-MM-DD), paths ([{repo, path}] used to read the last commit),
-//   notes ([{id, text, at, state: open|review}]: Claude reads them before working on the project, marks them "review" when done and asks before clearing),
+//   notes ([{id, text, at, state: open|review, by?: "claude", editedAt?}]: Claude reads them before working on the project, marks them "review" when done and asks before clearing),
 //   rank (lower is higher in its category), prank (optional global priority, lower is first, 0/absent = unranked), state (live|archived|bin), binnedAt, updatedAt.
 const STATUSES = ["active", "maintenance", "hiatus", "closed"];
 const STATES = ["live", "archived", "bin"];
@@ -23,7 +23,10 @@ function cleanNotes(p, now) {
     if (!n || typeof n !== "object") return;
     const text = str(n.text, 600); if (!text) return;
     let id = str(n.id, 40).replace(/[^A-Za-z0-9_-]/g, "") || "n" + (i + 1); while (seen.has(id)) id += "x"; seen.add(id);
-    out.push({ id, text, at: iso(n.at) || now, state: NOTE_STATES.includes(n.state) ? n.state : "open" });
+    const note = { id, text, at: iso(n.at) || now, state: NOTE_STATES.includes(n.state) ? n.state : "open" };
+    if (n.by === "claude") note.by = "claude";          // left by Claude (shown with a badge)
+    if (iso(n.editedAt)) note.editedAt = iso(n.editedAt);   // set when the owner edits a note
+    out.push(note);
   });
   return out;
 }

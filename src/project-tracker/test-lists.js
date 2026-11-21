@@ -45,4 +45,8 @@ assert.strictEqual(L.dueForReview(base().projects.find(p => p.id === "d"), T), t
 assert.strictEqual(L.dueForReview({ state: "live", status: "closed", closedAt: "2026-11-10T00:00:00Z" }, T), false);
 // paths are checked
 assert.strictEqual(L.cleanProject({ id: "p", name: "P", paths: [{ repo: "joolay/umbrel-apps", path: "src/x" }, { repo: "bad", path: "x" }, { repo: "a/b", path: "../etc" }] }, NOW).paths.length, 1);
+// notes: who left them and when they were edited survive cleaning; anything else is dropped
+const nn = L.cleanProject({ id: "p", name: "P", notes: [{ id: "n1", text: "a", by: "claude", editedAt: "2026-11-21T10:00:00Z", extra: 1 }, { id: "n2", text: "b", by: "someone" }] }, NOW).notes;
+assert.strictEqual(nn[0].by, "claude"); assert.strictEqual(nn[0].editedAt, "2026-11-21T10:00:00.000Z"); assert.strictEqual(nn[0].extra, undefined);
+assert.strictEqual(nn[1].by, undefined); assert.strictEqual(nn[1].editedAt, undefined);
 console.log("lists ok");

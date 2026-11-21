@@ -79,6 +79,15 @@ iPhone, iPad, Safari and Firefox get a sheet with the steps for that device. Pro
 ## Connected and handshake icons (top bar)
 Copy `linkstatus.js` next to `index.html` and load it last in `<body>`: `<script src="linkstatus.js"></script>` (connected icon only) or `<script src="linkstatus.js" data-claude></script>` (adds the Claude handshake; the app must serve `GET /api/link`, see `src/app-updater/status-feed.js`). Rules and protocol: CLAUDE.md, "Connected icon and Claude handshake".
 
+## Drag handle (reordering tiles and rows)
+Reordering uses a grip, never ▲▼ buttons on tiles. Copy `draghandle.js` next to `index.html` (the handle's look, `.jz-handle` and `.jz-dragging`, is already in `glass.css`), load it before the app's script, and put
+`<span class="jz-handle" data-drag role="button" aria-label="Drag to reorder" title="Drag to reorder">⋮⋮</span>` as the first thing in each tile or row. Then call `JZDrag.init(root, { item, box, enabled, onStart, onDrop })` once (the options are listed at the top of `draghandle.js`).
+- Works in lists (vertical) and grids (any direction); the tile follows the finger, the others make room, and the page scrolls near the top and bottom edges. Tiles never leave their `box`.
+- `onDrop(ids, box)` gets every item's `data-id` in the new order and is only called when the order changed. Save it the way the app already saves order.
+- The grip is the only drag target, so tapping a tile (open, notes) and press-and-hold (edit) keep working. Call your hold-timer's cancel from `onStart`.
+- Keep ▲▼ only on a compact one-line row where a grip would be the only control and a precise one-step move is useful (Project Pilot's Priority tab).
+- Project Pilot is the first app to use it.
+
 ## Quick Access in an app (PIN or pattern)
 One shared piece, copied into every app that signs people in: `quick-server.js` (next to `pocketbase.js`, add it to the Dockerfile COPY line) and `quick-ui.js` (in `public/`, loaded by the sign-in page and the main page).
 Server: `require("./quick-server")({ pb, dataDir })`; a `quick` body on the login route signs in with `quick.login()` and `quick.mint()`; the session check accepts `quick.parse()` tokens (and refuses them
