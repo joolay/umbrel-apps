@@ -33,7 +33,10 @@
     return '<tr class="det"><td colspan="' + n + '"><div class="meta muted small">' + esc(meta) + "</div>" + a.routes.map(function (x) {
       var st = x.ignored ? "ign" : x.state === "up" ? "up" : x.state === "down" ? "down" : "checking";
       var btn = x.ignored ? '<button class="lnk" data-i="0" data-a="' + esc(a.id) + '" data-r="' + x.key + '">Unignore</button>' : x.state === "down" ? '<button class="lnk" data-i="1" data-a="' + esc(a.id) + '" data-r="' + x.key + '">Ignore</button>' : "";
-      return '<div class="dr">' + ico(st) + "<b>" + esc(x.label) + "</b><span class=\"u\">" + esc(x.url) + "</span><span class=\"small\">" + (x.state === "up" ? (x.ms || 0) + " ms" : x.state === "down" ? esc(x.error) + " · since " + esc(when(x.since)) : "Checking") + "</span>" + btn + "</div>";
+      var open = x.openUrl ? '<a class="lnk op" target="_blank" rel="noopener" href="' + esc(x.openUrl) + '">Open</a>' : "";
+      var fix = x.state === "down" && !x.ignored ? '<button class="lnk fx" data-a="' + esc(a.id) + '" data-r="' + x.key + '">Fix</button>' : "";
+      var help = S.fix === a.id + "|" + x.key && x.fix ? '<div class="fixbox"><b>How to fix ' + esc(x.label) + "</b><ol>" + x.fix.map(function (t) { return "<li>" + esc(t) + "</li>"; }).join("") + '</ol><button class="btn primary rc" data-a="' + esc(a.id) + '" data-r="' + x.key + '">Recheck now</button></div>' : "";
+      return '<div class="dr">' + ico(st) + "<b>" + esc(x.label) + "</b><span class=\"u\">" + esc(x.url) + "</span><span class=\"small\">" + (x.state === "up" ? (x.ms || 0) + " ms" : x.state === "down" ? esc(x.error) + " · since " + esc(when(x.since)) : "Checking") + "</span>" + open + fix + btn + "</div>" + help;
     }).join("") + "</td></tr>";
   }
   // On a tablet or wider the list is split into two cards side by side (same columns in both), so it fills the screen instead of leaving big gaps.
@@ -76,7 +79,9 @@
     var j = r.apps.filter(function (a) { return a.joolzapp; }), o = r.apps.filter(function (a) { return !a.joolzapp; });
     $("#list").innerHTML = (j.length ? '<div class="group"><h2>JoolzApp apps</h2>' + listHtml(j) + "</div>" : "") + (o.length ? '<div class="group"><h2>Other apps</h2>' + listHtml(o) + "</div>" : "");
     $("#list").querySelectorAll(".ar").forEach(function (tr) { var t = function () { S.open[tr.dataset.id] = !S.open[tr.dataset.id]; render(); }; tr.onclick = t; tr.onkeydown = function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); t(); } }; });
-    $("#list").querySelectorAll(".lnk").forEach(function (b) { b.onclick = function () { call("POST", "api/ignore", { appId: b.dataset.a, route: b.dataset.r, ignore: b.dataset.i === "1" }).then(function (j) { take(j); render(); toast(b.dataset.i === "1" ? "Ignored" : "Back on"); }).catch(function (e) { toast(e.message); }); }; });
+    $("#list").querySelectorAll(".lnk.fx").forEach(function (b) { b.onclick = function () { var k = b.dataset.a + "|" + b.dataset.r; S.fix = S.fix === k ? "" : k; render(); }; });
+    $("#list").querySelectorAll(".rc").forEach(function (b) { b.onclick = function () { b.disabled = true; b.textContent = "Checking…"; call("POST", "api/recheck", { appId: b.dataset.a, route: b.dataset.r }).then(function (j) { take(j); var a = S.report.apps.filter(function (x) { return x.id === b.dataset.a; })[0], r = a && a.routes.filter(function (x) { return x.key === b.dataset.r; })[0]; if (r && r.state === "up") S.fix = ""; render(); toast(r && r.state === "up" ? "Fixed: answering again" : "Still down"); }).catch(function (e) { toast(e.message); render(); }); }; });
+    $("#list").querySelectorAll(".lnk[data-i]").forEach(function (b) { b.onclick = function () { call("POST", "api/ignore", { appId: b.dataset.a, route: b.dataset.r, ignore: b.dataset.i === "1" }).then(function (j) { take(j); render(); toast(b.dataset.i === "1" ? "Ignored" : "Back on"); }).catch(function (e) { toast(e.message); }); }; });
   }
   function take(j) { if (j.report) S.report = j.report; if (j.config) S.config = j.config; if (j.portal) S.portal = j.portal; if (j.clashes) S.clashes = j.clashes; if (j.official) S.official = j.official; }
   function load() { return call("GET", "api/state").then(function (j) { take(j); render(); }); }
