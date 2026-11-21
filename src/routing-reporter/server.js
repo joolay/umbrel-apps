@@ -84,6 +84,11 @@ const server = http.createServer(async (req, res) => {
       if (b.ignore) ignored.add(k); else ignored.delete(k);
       saveConfig(); const rep = mark(monitor.last); await sendToPortal(rep); return send(res, 200, { report: rep, portal: { linked: !!portalLink(), ...reportState } });
     }
+    if (p === '/api/recheck' && req.method === 'POST') {       // Fix helper: probe one route now, then tell Portal Admin
+      let b; try { b = JSON.parse((await body(req)) || '{}'); } catch { return send(res, 400, { message: 'Bad request.' }); }
+      try { await monitor.recheck(String(b.appId || ''), String(b.route || '')); } catch (e) { return send(res, e.status || 500, { message: e.message }); }
+      const rep = mark(monitor.last); await sendToPortal(rep); return send(res, 200, { report: rep, portal: { linked: !!portalLink(), ...reportState } });
+    }
     if (p === '/api/config' && req.method === 'PUT') {
       try { config = clean(JSON.parse((await body(req)) || '{}'), config); } catch (e) { return send(res, e.status || 400, { message: e.message }); }
       saveConfig(); schedule(); const rep = await checkNow(); return send(res, 200, { config, report: rep, portal: { linked: !!portalLink(), ...reportState } });
