@@ -29,8 +29,6 @@ services:
       - ${UMBREL_ROOT}/app-data:/umbrel-app-data
       # TSDProxy's settings folder (~/tsdproxy/config, next to the Umbrel folder). Only the Changes page writes here, to publish third-party apps such as OpenClaw on the tailnet.
       - ${UMBREL_ROOT}/../tsdproxy/config:/tsdproxy-config
-      # Docker socket: used for ONE thing, restarting the TSDProxy container 30 seconds after the TSDProxy change is applied (changes/014-tsdproxy-published.js).
-      - /var/run/docker.sock:/var/run/docker.sock
     environment:
       # Optional: override the built-in PocketBase address (default http://host.docker.internal:5400 = the Umbrel PocketBase app).
       - PB_URL=${PB_URL:-}

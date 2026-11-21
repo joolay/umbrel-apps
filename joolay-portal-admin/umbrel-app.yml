@@ -21,7 +21,7 @@ gallery: []
 path: ""
 defaultUsername: ""
 defaultPassword: ""
-releaseNotes: "New change in Portal Admin > Changes: gives OpenClaw a private tailnet address (https://openclaw.<your tailnet>) through TSDProxy; TSDProxy restarts by itself 30 seconds after you apply it. The Store no longer shows an Admin folder or Admin link; it holds apps only (admins use the Portal Admin app). The top bar now stays at the top of the screen when you scroll. JoolzApp apps page skips routes you ignored in Port Master."
+releaseNotes: "New change in Portal Admin > Changes: gives OpenClaw a private tailnet address (https://openclaw.<your tailnet>) through TSDProxy; Services Manager (1.1.1 or newer) then restarts TSDProxy by itself 30 seconds later. The Store no longer shows an Admin folder or Admin link; it holds apps only (admins use the Portal Admin app). The top bar now stays at the top of the screen when you scroll. JoolzApp apps page skips routes you ignored in Port Master."
 submitter: joolay
 submission: https://github.com/joolay/umbrel-apps
 icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-portal-admin/icon.svg

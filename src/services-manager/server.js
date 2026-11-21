@@ -472,6 +472,9 @@ if (require.main === module) {
   require('./status-feed')({ dataDir: DATA_DIR, getPayload: feedPayload, log: (m) => console.error(m) });
   server.listen(PORT, '0.0.0.0', () => console.log('Services Manager listening on :' + PORT));
   setInterval(reconcile, 30000).unref();
+  // Portal Admin asks for a TSDProxy restart (30 s after its Tailnet change is applied) by writing a marker file in TSDProxy's settings folder.
+  const watch = require('./restart-request').makeWatcher({ dir: process.env.TSDPROXY_CONFIG_DIR || '/tsdproxy-config', docker, log: (m) => console.error(m) });
+  setInterval(watch, 5000).unref();
   setTimeout(reconcile, 3000).unref();
 }
 

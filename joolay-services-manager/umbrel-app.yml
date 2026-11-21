@@ -2,7 +2,7 @@ manifestVersion: 1
 id: joolay-services-manager
 category: developer
 name: Services Manager
-version: "1.1.0"
+version: "1.1.1"
 tagline: Enable, disable and set restart policy for every service on your Umbrel
 description: >-
   Lists every Umbrel app and every custom Docker container or stack on this server in one dashboard.
@@ -21,7 +21,7 @@ gallery: []
 path: ""
 defaultUsername: ""
 defaultPassword: ""
-releaseNotes: "Changes: Sends container health, restarts, exit codes and the last log lines of failing containers to the Portal Admin status feed once it is switched on, so problems can be diagnosed without opening anything to the internet. The app gets no icon on the JoolzApp home screen. Needs Portal Admin 0.33.0."
+releaseNotes: "Restarts TSDProxy by itself 30 seconds after Portal Admin asks for it (used when a new tailnet address is published). Changes: Sends container health, restarts, exit codes and the last log lines of failing containers to the Portal Admin status feed once it is switched on, so problems can be diagnosed without opening anything to the internet. The app gets no icon on the JoolzApp home screen. Needs Portal Admin 0.33.0."
 submitter: joolay
 submission: https://github.com/joolay/umbrel-apps
 icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-services-manager/icon.svg

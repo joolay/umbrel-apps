@@ -10,7 +10,7 @@ services:
       PROXY_AUTH_ADD: "true"
 
   web:
-    image: ghcr.io/joolay/services-manager:1.1.0
+    image: ghcr.io/joolay/services-manager:1.1.1
     restart: on-failure
     user: "0:0"
     stop_grace_period: 10s
@@ -20,6 +20,8 @@ services:
     volumes:
       - ${APP_DATA_DIR}/data:/data
       - /var/run/docker.sock:/var/run/docker.sock
+      # TSDProxy's settings folder: Portal Admin leaves a small request file here, and this app then restarts TSDProxy (only) 30 seconds later.
+      - ${UMBREL_ROOT}/../tsdproxy/config:/tsdproxy-config
     environment:
       # Signs this app in to Portal Admin's status feed (Portal Admin writes data/pocketbase.env after you sign in there). Nothing else changes.
       - POCKETBASE_APP_ID=services-manager

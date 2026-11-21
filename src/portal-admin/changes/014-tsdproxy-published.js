@@ -2,9 +2,8 @@
 // Publishes apps that are NOT ours (and so can't carry TSDProxy labels: Umbrel rewrites their compose files on every update) on the tailnet,
 // through a TSDProxy "list" file. Today: OpenClaw (the gateway). Tailnet only, never Funnel, so it works on every device that has Tailscale.
 // Needs TSDProxy's config folder mounted at /tsdproxy-config (joolay-portal-admin compose). TSDProxy reloads the list file by itself; only the one-time
-// "lists:" line in tsdproxy.yaml needs a TSDProxy restart.
-const fs = require('fs'), path = require('path'), http = require('http');
-const SOCK = process.env.DOCKER_SOCKET || '/var/run/docker.sock', DELAY_MS = 30000;
+// "lists:" line in tsdproxy.yaml needs a TSDProxy restart: Apply leaves a request file and Services Manager restarts TSDProxy 30 s later.
+const fs = require('fs'), path = require('path');
 const PUBLISH = [{ id: 'openclaw', name: 'openclaw', title: 'OpenClaw' }];   // add more third-party apps here (tailnet only)
 const LIST = 'joolz-published.yaml', DECL = '  joolz:\n    filename: /config/' + LIST + '\n';
 
@@ -17,17 +16,6 @@ const withList = (txt) => {
 const listFile = (apps) => '# Written by Portal Admin (Changes). Tailnet-only addresses for apps that are not ours. TSDProxy reloads this file by itself.\n' +
   apps.map((a) => `${a.name}:\n  ports:\n    443/https:\n      targets:\n        - http://host.docker.internal:${a.port}\n`).join('');
 const targets = (c) => PUBLISH.map((p) => { const a = c.installedApps().apps.find((x) => x.id === p.id && x.port); return a ? { ...p, port: a.port } : null; }).filter(Boolean);
-// Restarts ONLY the TSDProxy container (found by its compose service name and image), never anything else. Needs the Docker socket (joolay-portal-admin compose).
-const dockerCall = (method, p) => new Promise((resolve, reject) => {
-  const req = http.request({ socketPath: SOCK, path: p, method, timeout: 20000 }, (res) => { let b = ''; res.on('data', (d) => { b += d; }); res.on('end', () => (res.statusCode < 300 ? resolve(b) : reject(new Error('Docker answered ' + res.statusCode)))); });
-  req.on('error', reject); req.on('timeout', () => req.destroy(new Error('Docker did not answer'))); req.end();
-});
-async function restartTsdproxy(call = dockerCall) {
-  const list = JSON.parse(await call('GET', '/containers/json?filters=' + encodeURIComponent(JSON.stringify({ label: ['com.docker.compose.service=tsdproxy'] }))));
-  const ids = list.filter((c) => /tsdproxy/i.test(c.Image || '')).map((c) => c.Id);
-  if (ids.length !== 1) throw new Error(ids.length ? 'More than one TSDProxy container found, not restarting' : 'TSDProxy container not found');
-  await call('POST', '/containers/' + ids[0] + '/restart?t=10');
-}
 const read = (f) => { try { return fs.readFileSync(f, 'utf8'); } catch { return null; } };
 
 module.exports = {
@@ -39,7 +27,7 @@ module.exports = {
     const cfg = read(path.join(c.tsdDir, 'tsdproxy.yaml'));
     if (cfg == null) return ["Can't see TSDProxy's settings folder yet: update Portal Admin, then reopen this page"];
     const out = [];
-    if (withList(cfg) !== cfg) out.push('Add a proxy list to TSDProxy\'s settings (TSDProxy restarts by itself 30 seconds after you apply)');
+    if (withList(cfg) !== cfg) out.push('Add a proxy list to TSDProxy\'s settings (Services Manager restarts TSDProxy by itself 30 seconds after you apply)');
     if (read(path.join(c.tsdDir, LIST)) !== listFile(apps)) out.push(...apps.map((a) => `Publish ${a.title} (port ${a.port}) at https://${a.name}.<your tailnet>, tailnet only`));
     return out;
   },
@@ -51,12 +39,11 @@ module.exports = {
     if (next !== cfg) {
       try { fs.writeFileSync(f + '.bak', cfg, { mode: 0o600 }); } catch {}
       const tmp = f + '.tmp'; fs.writeFileSync(tmp, next, { mode: 0o600 }); fs.renameSync(tmp, f);
-      if (fs.existsSync(SOCK)) {
-        setTimeout(() => restartTsdproxy().then(() => console.log('[changes] TSDProxy restarted'), (e) => console.warn('[changes] TSDProxy restart failed: ' + e.message)), DELAY_MS);
-        notes.push('TSDProxy restarts by itself in 30 seconds so it reads the new list. The address then appears within a minute, and Port Master will show it.');
-      } else notes.push("Portal Admin can't reach Docker here, so restart TSDProxy once (Services Manager > tsdproxy > Restart). The address then appears within a minute.");
+      // Portal Admin has no Docker access: Services Manager sees this file and restarts TSDProxy (only) 30 seconds later.
+      try { fs.writeFileSync(path.join(c.tsdDir, 'restart-tsdproxy'), new Date().toISOString() + '\n'); notes.push('Services Manager restarts TSDProxy by itself in about 30 seconds so it reads the new list. The address then appears within a minute, and Port Master will show it. (If Services Manager is not running, restart TSDProxy yourself.)'); }
+      catch { notes.push('Restart TSDProxy once (Services Manager > tsdproxy > Restart) so it reads the new list.'); }
     }
     return notes;
   },
-  withList, listFile, restartTsdproxy,
+  withList, listFile,
 };
