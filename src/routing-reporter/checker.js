@@ -97,6 +97,37 @@ function routesFor(app, cfg) {
   }
   return r;
 }
+// The address a person can OPEN in a browser for a route. Probes run from inside the container, where the LAN address may be host.docker.internal (not reachable from a phone): no Open link then.
+const openable = (host) => !!host && !/^(host\.docker\.internal|localhost|127\.|0\.0\.0\.0)/i.test(host);
+function openUrl(route, cfg) { const u = (() => { try { return new URL(route.url); } catch { return null; } })(); if (!u) return ''; return (route.key === 'lan' && !openable(cfg.lanHost)) ? '' : route.url; }
+// Plain-language help for a broken route. Port Master only watches the server (its folders are read-only), so the steps are for the person to do; Recheck confirms the fix.
+function fixHint(app, route, siblings, cfg) {
+  const up = (k) => siblings.some((x) => x.key === k && x.state === 'up'), err = route.error || '', behind = /not answering \(50[234]\)/.test(err);
+  const anyUp = siblings.some((x) => x.key !== route.key && x.state === 'up');
+  const steps = [];
+  if (route.key === 'lan') {
+    steps.push(`Nothing answers on port ${app.port}. Open Umbrel, find ${app.name || app.id} and choose Restart (or Stop then Start).`);
+    if (/refused/.test(err)) steps.push('"Connection refused" means the app is not running. If it keeps stopping, look at its logs in Umbrel (app menu, Logs).');
+    if (/timed out/.test(err)) steps.push('A timeout often means the app is still starting or the Umbrel is overloaded; wait a minute and Recheck.');
+  } else if (route.key === 'local') {
+    if (up('lan')) steps.push(`The app is fine on the LAN address, so only the ${cfg.localHost || 'umbrel.local'} name is broken (mDNS). Use the LAN address meanwhile.`);
+    steps.push('Restart the Umbrel (the avahi service that publishes umbrel.local starts with it), and check no other device on the network is using the same .local name.');
+    steps.push('If you renamed the Umbrel, change the .local name in Port Master Settings.');
+  } else if (route.key === 'tailscale') {
+    if (!cfg.tailscaleIp) steps.push('Add the Tailscale address (100.x.y.z) of the Umbrel in Settings.');
+    else if (up('lan')) steps.push(`The app is fine on the LAN, so check Tailscale itself: is Tailscale running on the Umbrel and is ${cfg.tailscaleIp} still its address? (Umbrel's Tailscale app, or the Tailscale admin page.) If the address changed, update it in Settings.`);
+    else steps.push('The app itself is down (LAN fails too). Restart it first, then Recheck.');
+  } else {
+    const what = route.key === 'public' ? 'public (Funnel)' : 'Tailscale name';
+    if (!cfg.tailnet) steps.push('Add your tailnet name (…ts.net) in Settings.');
+    else if (behind) steps.push(`The ${what} address answers but the app behind it does not. Restart ${app.name || app.id} in Umbrel.`);
+    else if (up('lan')) steps.push(`The app is fine on the LAN, so the ${what} address is the problem: restart the TSDProxy app in Umbrel (it re-registers every name), wait a minute and Recheck.`);
+    else steps.push('The app itself is down (LAN fails too). Restart it first, then Recheck.');
+    if (route.key === 'public' && !behind) steps.push('Public also needs Funnel allowed for this device in your Tailscale admin page (Access controls, funnel attribute).');
+  }
+  if (!anyUp && route.key !== 'lan') steps.push('Every route of this app is failing, so the app is most likely stopped.');
+  return steps;
+}
 const FRIENDLY = { ECONNREFUSED: 'connection refused (nothing listening)', ETIMEDOUT: 'timed out', UND_ERR_CONNECT_TIMEOUT: 'timed out', EHOSTUNREACH: 'host unreachable', ENETUNREACH: 'network unreachable', ENOTFOUND: 'name not found (DNS)', LOCALNAME: 'the .local name did not resolve (mDNS/Avahi), the IP address may still work', ECONNRESET: 'connection reset', CERT_HAS_EXPIRED: 'certificate expired', DEPTH_ZERO_SELF_SIGNED_CERT: 'certificate not trusted', UNABLE_TO_VERIFY_LEAF_SIGNATURE: 'certificate not trusted' };
 // A fresh connection every time (agent: false), so a pooled keep-alive connection can never make a dead app look alive.
 async function probe(url, { timeoutMs = 8000, now = Date.now, resolver = resolveLocal } = {}) {
@@ -140,14 +171,25 @@ function makeMonitor({ dir, listFile, getConfig, probeImpl = probe, now = Date.n
         if (res.ok) { m.fails = 0; if (m.state !== 'up') { m.state = 'up'; m.since = t; } }
         else { m.fails++; if (m.fails >= 2 && m.state !== 'down') { m.state = 'down'; m.since = t; } }
         mem.set(k, m);
-        out[j.i].routes.push({ key: j.r.key, label: j.r.label, url: j.r.url, state: m.state === 'unknown' ? (res.ok ? 'up' : 'checking') : m.state === 'up' && !res.ok ? 'up' : m.state, status: res.status, ms: res.ms, error: res.ok ? '' : res.error, since: m.since, checkedAt: t });
+        out[j.i].routes.push({ key: j.r.key, label: j.r.label, url: j.r.url, openUrl: openUrl(j.r, cfg), state: m.state === 'unknown' ? (res.ok ? 'up' : 'checking') : m.state === 'up' && !res.ok ? 'up' : m.state, status: res.status, ms: res.ms, error: res.ok ? '' : res.error, since: m.since, checkedAt: t });
       }
     }));
     const ORDER = { lan: 0, local: 1, tailscale: 2, name: 3, public: 4 };
-    for (const a of out) a.routes.sort((x, y) => ORDER[x.key] - ORDER[y.key]);
+    for (const a of out) { a.routes.sort((x, y) => ORDER[x.key] - ORDER[y.key]); for (const x of a.routes) if (x.state === 'down') x.fix = fixHint(a, x, a.routes, cfg); }
     last = { v: 1, at: now(), config: { lanHost: cfg.lanHost || '', localHost: cfg.localHost || '', tailscaleIp: cfg.tailscaleIp || '', tailnet: cfg.tailnet || '' }, intervalMin: cfg.intervalMin, apps: out };
     return last;
   }
-  return { run: () => (running = running || run().finally(() => { running = null; })), get last() { return last; } };
+  // Probe ONE route right now (the Fix helper's Recheck): no waiting for two failures, so a fixed route turns green and a still-broken one stays red.
+  async function recheck(appId, key) {
+    if (!last) throw Object.assign(new Error('No check has run yet.'), { status: 409 });
+    const cfg = getConfig(), a = last.apps.find((x) => x.id === appId), x = a && a.routes.find((r) => r.key === key);
+    if (!x) throw Object.assign(new Error('That route is not in the latest check.'), { status: 404 });
+    const res = await probeImpl(x.url, { now }), t = now(), k = appId + ':' + key, m = mem.get(k) || { state: 'unknown', fails: 0, since: t };
+    if (res.ok) { m.fails = 0; if (m.state !== 'up') { m.state = 'up'; m.since = t; } } else { m.fails = Math.max(2, m.fails + 1); if (m.state !== 'down') { m.state = 'down'; m.since = t; } }
+    mem.set(k, m); Object.assign(x, { state: m.state, status: res.status, ms: res.ms, error: res.ok ? '' : res.error, since: m.since, checkedAt: t }); delete x.fix;
+    for (const r of a.routes) { delete r.fix; if (r.state === 'down') r.fix = fixHint(a, r, a.routes, cfg); }
+    return { app: a, route: x };
+  }
+  return { recheck, run: () => (running = running || run().finally(() => { running = null; })), get last() { return last; } };
 }
-module.exports = { mdnsQuery, mdnsParse, resolveLocal, parseManifest, parseCompose, parseList, discover, routesFor, probe, makeMonitor };
+module.exports = { fixHint, openUrl, mdnsQuery, mdnsParse, resolveLocal, parseManifest, parseCompose, parseList, discover, routesFor, probe, makeMonitor };

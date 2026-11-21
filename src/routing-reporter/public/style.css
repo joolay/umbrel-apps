@@ -48,3 +48,9 @@ dialog .actions{display:flex;gap:10px;justify-content:flex-end;margin-top:14px}
   .sum b{font-size:1.25rem}.clash{padding:16px 20px}.cl{font-size:.92rem}
 }
 @media (min-width:700px) and (max-width:1000px){thead th:first-child,tbody th{width:34%}}
+
+/* Open and Fix on each route */
+.dr .lnk.op{padding:3px 12px;border-radius:999px;background:var(--accent);color:var(--accent-t);text-decoration:none;font-weight:700}
+.dr .lnk.fx{padding:3px 12px;border-radius:999px;border:1px solid #dc2626;color:#dc2626;text-decoration:none;font-weight:700}
+.fixbox{margin:4px 0 8px 30px;padding:10px 12px;border-radius:12px;border:1px solid var(--glass-line);background:var(--glass-strong);font-size:.8rem}
+.fixbox ol{margin:6px 0 10px;padding-left:18px;display:grid;gap:4px}

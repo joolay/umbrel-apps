@@ -67,4 +67,9 @@ const C = require('./checker'), { clean } = require('./server');
   assert2.deepStrictEqual(C2.discover(d, lf)[0].tsdproxy, { name: 'openclaw', funnel: false });
   assert2.strictEqual(C2.discover(d)[0].tsdproxy, null);
   console.log('list-file test ok');
-}
+}  // Open links and the Fix helper
+  const fx = (key, err, up) => C.fixHint({ id: 'a', name: 'A', port: 1 }, { key, error: err }, [{ key: 'lan', state: up ? 'up' : 'down' }, { key, state: 'down' }], { tailscaleIp: '100.1.1.1', tailnet: 't.ts.net', localHost: 'umbrel.local' });
+  assert.ok(/mDNS/.test(fx('local', '', true)[0]) && /Tailscale/.test(fx('tailscale', '', true)[0]) && /TSDProxy/.test(fx('name', '', true)[0]) && /Restart/.test(fx('lan', 'connection refused (nothing listening)', false)[0]));
+  assert.strictEqual(C.openUrl({ key: 'lan', url: 'http://host.docker.internal:1/' }, { lanHost: 'host.docker.internal' }), '');
+  assert.strictEqual(C.openUrl({ key: 'tailscale', url: 'http://100.1.1.1:1/' }, { lanHost: 'host.docker.internal' }), 'http://100.1.1.1:1/');
+
