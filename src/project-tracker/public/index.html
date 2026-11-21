@@ -91,7 +91,7 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
 </head>
 <body>
 <header class="topbar">
-  <button class="tb-btn" id="home" aria-label="Home" title="Home" hidden><svg viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10.5V20h13v-9.5"/><path d="M10 20v-5.5h4V20"/></svg></button>
+  <button class="tb-btn" data-home aria-label="Home" title="Home" hidden><svg viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10.5V20h13v-9.5"/><path d="M10 20v-5.5h4V20"/></svg></button>
   <div class="brand"><img src="icon.svg" alt="" width="28" height="28"><span>Project Pilot</span></div>
   <span class="tb-gap"></span>
   <button class="tb-btn" data-pwa-install hidden aria-label="Install app" title="Install app"><svg viewBox="0 0 24 24"><path d="M12 4v10"/><path d="m8 10.5 4 4 4-4"/><path d="M5 17v2.5h14V17"/></svg></button>
@@ -433,7 +433,6 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
   $("#tabs").onclick = function (ev) { var t = ev.target.closest("[data-tb]"); if (t) { if (t.dataset.tb === "details") { S.details = !S.details; savePrefs(); return render(); } if (t.dataset.tb === "layout") { S.layout = S.layout === "list" ? "grid" : "list"; savePrefs(); return render(); } return setAll(!allOpen()); } var b = ev.target.closest("[data-v]"); if (b) { S.view = b.dataset.v; savePrefs(); render(); } };
   $("#add").onclick = function () { editDlg(null); };
   $("#settings").onclick = settingsDlg;
-  $("#home").onclick = function () { if (S.home) location.href = S.home; };
   // Press and hold a project (or right-click it) for Edit / Remove.
   // Drag by the ⋮⋮ handle (shared Glass template script draghandle.js): lists and grids, any direction.
   JZDrag.init($("#main"), { item: ".p", box: ".grid,.list", enabled: function () { return !S.readOnly; }, onStart: function () { holdStop(); }, onDrop: function (ids) { applyOrder(ids); } });
@@ -457,7 +456,7 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
   document.addEventListener("visibilitychange", function () { if (!document.hidden) poll(false); });
   setInterval(function () { poll(false); }, 4000); setInterval(status, 1000);
 
-  fetch("api/app-config").then(function (r) { return r.json(); }).then(function (c) { if (c && c.portalUrl) { S.home = c.portalUrl; $("#home").hidden = false; } }).catch(function () {});
+  fetch("api/app-config").then(function (r) { return r.json(); }).then(function (c) { if (c && c.portalUrl) { S.home = c.portalUrl; } }).catch(function () {});
   window.addEventListener("jz-theme", function (e) { api("api/prefs", "PUT", { theme: e.detail }).catch(function () {}); });   // the theme follows the person's account
   var QA = JZQuick({ app: "project-tracker", name: "Project Pilot", request: function (m, p, b) { return api(p, m, b); } });
   api("api/account/me").then(function (j) { S.user = j.user; return loadLists(); }).then(function () { return poll(true); }).then(function () { QA.offer(); }).catch(function (e) { if (e.status === 401 || e.status === 403) location.reload(); else { $("#main").innerHTML = '<p class="empty">' + esc(e.message) + "</p>"; } });
