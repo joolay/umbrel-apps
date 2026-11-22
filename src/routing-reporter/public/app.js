@@ -1,7 +1,9 @@
 (function () {
   "use strict";
-  var $ = function (s) { return document.querySelector(s); }, S = { report: null, config: {}, portal: {}, open: {}, clashes: [], official: {} };
+  var $ = function (s) { return document.querySelector(s); }, S = { tab: lsGet("pm.tab", "all"), sort: lsGet("pm.sort", "name"), report: null, config: {}, portal: {}, open: {}, clashes: [], official: {} };
   function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+  function lsGet(k, d) { try { return localStorage.getItem(k) || d; } catch (e) { return d; } }
+  function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
   function p2(n) { return n < 10 ? "0" + n : "" + n; }
   // Dates follow the South African default: DD/MM/YYYY and 24 hour time.
   function when(t) { if (!t) return ""; var d = new Date(t); return p2(d.getDate()) + "/" + p2(d.getMonth() + 1) + "/" + d.getFullYear() + " " + p2(d.getHours()) + ":" + p2(d.getMinutes()); }
@@ -73,8 +75,14 @@
     $("#clash").innerHTML = r ? clashHtml() : "";
     $("#warn").hidden = !miss.length; $("#warn").innerHTML = miss.length ? "Add " + miss.join(" and ") + " in Settings to test those routes." : "";
     if (!r) { $("#list").innerHTML = ""; return; }
-    var j = r.apps.filter(function (a) { return a.joolzapp; }), o = r.apps.filter(function (a) { return !a.joolzapp; });
-    $("#list").innerHTML = (j.length ? '<div class="group"><h2>JoolzApp apps</h2>' + listHtml(j) + "</div>" : "") + (o.length ? '<div class="group"><h2>Other apps</h2>' + listHtml(o) + "</div>" : "");
+    var srt = function (l) { return l.slice().sort(function (a, b) { return S.sort === "port" ? (+a.port || 0) - (+b.port || 0) : String(a.name || a.id).localeCompare(String(b.name || b.id)); }); };
+    var isDown = function (a) { return a.routes.some(function (x) { return x.state === "down" && !x.ignored; }); };
+    var j = srt(r.apps.filter(function (a) { return a.joolzapp; })), o = srt(r.apps.filter(function (a) { return !a.joolzapp; })), t = S.tab;
+    if (t === "down") { j = j.filter(isDown); o = o.filter(isDown); } else if (t === "joolz") o = []; else if (t === "other") j = [];
+    $("#list").innerHTML = (j.length ? '<div class="group"><h2>JoolzApp apps</h2>' + listHtml(j) + "</div>" : "") + (o.length ? '<div class="group"><h2>Other apps</h2>' + listHtml(o) + "</div>" : "") + (!j.length && !o.length ? '<div class="card muted">' + (t === "down" ? "No routes are down." : "Nothing to show.") + "</div>" : "");
+    document.querySelectorAll("[data-tab]").forEach(function (b) { b.setAttribute("aria-selected", b.dataset.tab === t ? "true" : "false"); });
+    document.querySelectorAll("[data-sort]").forEach(function (b) { b.setAttribute("aria-selected", b.dataset.sort === S.sort ? "true" : "false"); });
+    $("#sortlabel").textContent = "Sort: " + (S.sort === "port" ? "Port" : "Name");
     $("#list").querySelectorAll(".ar").forEach(function (tr) { var t = function () { S.open[tr.dataset.id] = !S.open[tr.dataset.id]; render(); }; tr.onclick = t; tr.onkeydown = function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); t(); } }; });
     $("#list").querySelectorAll(".lnk.fx").forEach(function (b) { b.onclick = function () { var k = b.dataset.a + "|" + b.dataset.r; S.fix = S.fix === k ? "" : k; render(); }; });
     $("#list").querySelectorAll(".rc").forEach(function (b) { b.onclick = function () { b.disabled = true; b.textContent = "Checking…"; call("POST", "api/recheck", { appId: b.dataset.a, route: b.dataset.r }).then(function (j) { take(j); var a = S.report.apps.filter(function (x) { return x.id === b.dataset.a; })[0], r = a && a.routes.filter(function (x) { return x.key === b.dataset.r; })[0]; if (r && r.state === "up") S.fix = ""; render(); toast(r && r.state === "up" ? "Fixed: answering again" : "Still down"); }).catch(function (e) { toast(e.message); render(); }); }; });
@@ -84,6 +92,8 @@
   function load() { return call("GET", "api/state").then(function (j) { take(j); render(); }); }
   function runCheck() { var b = $("#check"); b.classList.add("spin"); return call("POST", "api/check").then(function (j) { take(j); render(); }).catch(function (e) { toast(e.message); }).then(function () { b.classList.remove("spin"); }); }
   $("#check").onclick = runCheck;
+  document.querySelectorAll("[data-tab]").forEach(function (b) { b.onclick = function () { S.tab = b.dataset.tab; lsSet("pm.tab", S.tab); render(); }; });
+  document.querySelectorAll("[data-sort]").forEach(function (b) { b.onclick = function () { S.sort = b.dataset.sort; lsSet("pm.sort", S.sort); render(); }; });
   $("[data-settings]").onclick = function () {
     var d = $("#dlg"), c = S.config;
     d.innerHTML = "<h2>Settings</h2><form id='f'><label>LAN address of this Umbrel<input name='lanHost' value='" + esc(c.lanHost) + "' placeholder='192.168.1.50 or umbrel.local' required></label>" +
