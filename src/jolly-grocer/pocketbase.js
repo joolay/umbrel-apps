@@ -442,7 +442,18 @@ async function portalUrl() {
   })) || "";
 }
 async function setDob(id, dob) { await ensureSchema(); await asSuper("PATCH", rec("/" + encodeURIComponent(id)), { dob }); }
-module.exports = { setDob, portalUrl, requestPasswordReset, trialUsed, trialBump, setUserPrefs, portalAvailable, setPortalAccess, signupsOpen, get enabled() { return isEnabled(); }, reload, PBError, login, verifyToken, createUser, listUsers, getUser, updateUser, updateAccess, deleteUser, countAdmins, findByEmail, firstAdmin, asSuper, serviceCan, appFetch, asApp, superFetch, ensureSchema, collection: COLL, app: APP };
+// This app's own settings (theme) are kept on the person's account as one "pref.cctv" row, so they follow the person across
+// devices and are never reset by an update or a reinstall.
+const PREF_KEY = "pref.jolly-grocer";
+async function setAppPref(userId, value) {
+  const f = `scope = 'user' && user = '${esc(userId)}' && app = '${esc(APP)}' && key = '${PREF_KEY}'`;
+  const ex = ((await asSuper("GET", `/api/collections/portal_settings/records?page=1&perPage=1&filter=${q(f)}`)).items || [])[0];
+  if (ex) await asSuper("PATCH", `/api/collections/portal_settings/records/${ex.id}`, { value });
+  else await asSuper("POST", "/api/collections/portal_settings/records", { scope: "user", user: userId, app: APP, key: PREF_KEY, value, secret: false });
+  portalCache.delete("u:" + userId);
+}
+
+module.exports = { setAppPref, setDob, portalUrl, requestPasswordReset, trialUsed, trialBump, setUserPrefs, portalAvailable, setPortalAccess, signupsOpen, get enabled() { return isEnabled(); }, reload, PBError, login, verifyToken, createUser, listUsers, getUser, updateUser, updateAccess, deleteUser, countAdmins, findByEmail, firstAdmin, asSuper, serviceCan, appFetch, asApp, superFetch, ensureSchema, collection: COLL, app: APP };
 
 // Portal API: when Portal Admin has given this app a key (Portal Admin > Changes), account, access and settings calls go through it and need
 // no PocketBase login here. Until then the functions above run as before. If Portal Admin can't be reached, refuses the key or is an older

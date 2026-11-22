@@ -298,7 +298,7 @@ const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, "http://x");
     const p = decodeURIComponent(url.pathname);
     const isPage = p === "/" || p === "/index.html";
-    const isData = p === "/api/state" || p === "/api/extract" || p === "/api/ai/status" || p === "/api/receipt";
+    const isData = p === "/api/state" || p === "/api/prefs" || p === "/api/extract" || p === "/api/ai/status" || p === "/api/receipt";
 
     // Only signed-in people the admin has let in can open the app (Umbrel's own login is off, so this is the lock).
     let user = null;
@@ -324,11 +324,17 @@ const server = http.createServer(async (req, res) => {
     if (p === "/api/app-config") return send(res, 200, { accounts: pb.enabled, ...(pb.enabled ? { signups: await pb.signupsOpen().catch(() => true), portalUrl: await pb.portalUrl().catch(() => "") } : {}) });
     if (await accountRoutes(req, res, p)) return;
 
-    if (p === "/api/state" && req.method === "GET") return send(res, 200, { state: await store().getState(user || { id: "local" }), user: user ? { name: user.name || "", email: user.email || "" } : null });
+    if (p === "/api/state" && req.method === "GET") return send(res, 200, { state: await store().getState(user || { id: "local" }), user: user ? { name: user.name || "", email: user.email || "", prefs: (user.portal && user.portal.prefs && user.portal.prefs["jolly-grocer"]) || {} } : null });
     if (p === "/api/state" && req.method === "PUT") {
       const s = cleanState(JSON.parse((await readBody(req)).toString() || "{}"));
       if (!s) return send(res, 400, { code: "bad_state", message: "That isn't a Jolly Grocer save." });
       await store().putState(user || { id: "local" }, s); return send(res, 200, { ok: true, at: s.at });
+    }
+    if (p === "/api/prefs" && req.method === "PUT") {
+      if (!user || !user.id || user.id === "local") return send(res, 200, { ok: true });
+      const b = JSON.parse((await readBody(req)).toString() || "{}"), prev = (user.portal && user.portal.prefs && user.portal.prefs["jolly-grocer"]) || {}, next = { ...prev };
+      if (b.theme === "light" || b.theme === "dark" || b.theme === "") next.theme = b.theme;   // light / dark, or "" for the device setting
+      await pb.setAppPref(user.id, next); return send(res, 200, { ok: true, prefs: next });
     }
     if (p === "/api/receipt") {
       const id = url.searchParams.get("id") || "", owner = user || { id: "local" };
