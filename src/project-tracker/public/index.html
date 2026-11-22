@@ -59,6 +59,7 @@
 .arrows.h button{width:34px;height:34px}
 .p.prio .nm{display:flex;gap:8px;align-items:center;min-width:0}
 .pn{color:var(--muted);font-size:.8rem;min-width:1.6em}
+.p .nm[data-a=tog]{cursor:pointer}
 .chev{background:none;border:0;color:var(--muted);font-size:.9rem;padding:0 4px;cursor:pointer;line-height:1}
 .list{display:grid;gap:6px}
 .p.row>.swc{padding:8px 12px 8px 4px}
@@ -171,7 +172,7 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
   function loadLists(keep) {
     return api("api/lists").then(function (j) {
       S.lists = j.lists; S.owner = !!j.owner; var pr = (S.user.prefs || {})["project-tracker"] || {}; if (window.JZTheme && !S.themeSet) { S.themeSet = 1; var th = pr.theme || (S.user.prefs || {}).theme; if (th === "light" || th === "dark") JZTheme.set(th, true); }
-      if (!S.key) { S.key = pr.list && j.lists.some(function (l) { return l.key === pr.list; }) ? pr.list : j.lists[0].key; if (pr.view) S.view = pr.view === "closed" ? "complete" : pr.view; if (typeof pr.auto === "boolean") S.auto = pr.auto; if (pr.days >= 1 && pr.days <= 30) S.days = pr.days; if (pr.chat === "builtin") S.chat = "builtin"; if (pr.layout === "list") S.layout = "list"; if (pr.details === true) S.details = true; if (Array.isArray(pr.groups)) S.groups = pr.groups; if (Array.isArray(pr.tabs)) { var tk = []; pr.tabs.forEach(function (x) { (x === "closed" ? ["complete", "abandoned"] : [x]).forEach(function (y) { if (tk.indexOf(y) < 0 && TABS.some(function (t) { return t[0] === y; })) tk.push(y); }); }); if (tk.length) S.tabs = tk; } (pr.collapsed || []).forEach(function (c) { S.collapsed[c] = true; }); }
+      if (!S.key) { S.key = pr.list && j.lists.some(function (l) { return l.key === pr.list; }) ? pr.list : j.lists[0].key; if (pr.view) S.view = pr.view === "closed" ? "complete" : pr.view === "priority" ? "all" : pr.view; if (typeof pr.auto === "boolean") S.auto = pr.auto; if (pr.days >= 1 && pr.days <= 30) S.days = pr.days; if (pr.chat === "builtin") S.chat = "builtin"; if (pr.layout === "list") S.layout = "list"; if (pr.details === true) S.details = true; if (Array.isArray(pr.groups)) S.groups = pr.groups; if (Array.isArray(pr.tabs)) { var tk = []; pr.tabs.forEach(function (x) { (x === "closed" ? ["complete", "abandoned"] : [x]).forEach(function (y) { if (tk.indexOf(y) < 0 && TABS.some(function (t) { return t[0] === y; })) tk.push(y); }); }); if (tk.length) S.tabs = tk; } (pr.collapsed || []).forEach(function (c) { S.collapsed[c] = true; }); }
       if (!j.lists.some(function (l) { return l.key === S.key; })) S.key = j.lists[0].key;
       $("#lists").innerHTML = j.lists.map(function (l) { return '<option value="' + esc(l.key) + '"' + (l.key === S.key ? " selected" : "") + ">" + esc(l.name) + " (" + l.count + ")" + (l.source === "shared" ? " · from " + esc(l.by || "someone") : "") + "</option>"; }).join("");
     });
@@ -199,8 +200,8 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
 
   /* ---------- drawing ---------- */
   function counts() {
-    var c = { all: 0, priority: 0, active: 0, maintenance: 0, hiatus: 0, complete: 0, abandoned: 0, archive: 0, bin: 0 };
-    S.list.projects.forEach(function (p) { if (p.state === "archived") c.archive++; else if (p.state === "bin") c.bin++; else { c.all++; c[viewOf(p)]++; if (p.status !== "closed") c.priority++; } });
+    var c = { all: 0, active: 0, maintenance: 0, hiatus: 0, complete: 0, abandoned: 0, archive: 0, bin: 0 };
+    S.list.projects.forEach(function (p) { if (p.state === "archived") c.archive++; else if (p.state === "bin") c.bin++; else { c.all++; c[viewOf(p)]++; } });
     return c;
   }
   function gOrder() {
@@ -216,21 +217,21 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
   }
   function visibleLive() { return S.list.projects.filter(function (p) { return p.state === "live" && (S.view === "all" || viewOf(p) === S.view); }); }
   function visibleCats() { var seen = {}; visibleLive().forEach(function (p) { seen[S.view === "all" ? "g:" + viewOf(p) : p.category] = 1; }); if (S.view === "all" && S.list.projects.some(function (p) { return p.state === "bin"; })) seen["g:bin"] = 1; return Object.keys(seen); }
+  var isOpen = function (p) { return S.open[p.id] === undefined ? (S.layout !== "list" || S.details) : !!S.open[p.id]; };   // tap the name to expand or collapse one tile
   function viewItems() {
     if (S.view === "archive" || S.view === "bin") return S.list.projects.filter(function (p) { return p.state === (S.view === "bin" ? "bin" : "archived"); });
-    if (S.view === "priority") return gOrder().filter(function (p) { return p.status !== "closed"; });
     return visibleLive();
   }
   function allOpen() {
-    var cs = (S.view === "archive" || S.view === "bin" || S.view === "priority") ? [] : visibleCats(), its = viewItems(); if (!cs.length && !its.length) return false;
+    var cs = (S.view === "archive" || S.view === "bin") ? [] : visibleCats(), its = viewItems(); if (!cs.length && !its.length) return false;
     if (cs.some(function (c) { return S.collapsed[c]; })) return false;
-    return S.layout !== "list" || S.details || its.every(function (p) { return S.open[p.id]; });
+    return its.every(isOpen);
   }
   function setAll(open) {
     visibleCats().forEach(function (c) { if (open) delete S.collapsed[c]; else S.collapsed[c] = true; });
-    viewItems().forEach(function (p) { if (open) S.open[p.id] = true; else delete S.open[p.id]; }); savePrefs(); render();
+    viewItems().forEach(function (p) { S.open[p.id] = open; }); savePrefs(); render();
   }
-  var TABS = [["all", "All"], ["priority", "Priority"], ["active", "Active"], ["maintenance", "Queued"], ["hiatus", "Hiatus"], ["complete", "Complete"], ["abandoned", "Abandoned"], ["archive", "Archive"], ["bin", "Bin"]];
+  var TABS = [["all", "All"], ["active", "Active"], ["maintenance", "Queued"], ["hiatus", "Hiatus"], ["complete", "Complete"], ["abandoned", "Abandoned"], ["archive", "Archive"], ["bin", "Bin"]];
   function shownTabs() { var c = counts(), t = TABS.filter(function (x) { return S.tabs.indexOf(x[0]) >= 0 && (x[0] === "all" || c[x[0]] > 0); }); return t.length ? t : [TABS[0]]; }   // a tab with nothing in it stays hidden
   // The tabs shown are the ones picked in Settings; when they don't fit the width they become a drop-down list.
   function drawTabs() {
@@ -256,10 +257,6 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
       var rows = S.list.projects.filter(function (p) { return p.state === (S.view === "bin" ? "bin" : "archived"); }).sort(function (a, b) { return a.name.localeCompare(b.name); });
       if (S.view === "bin" && rows.length) out += '<p class="muted small">Deleted projects stay here until you empty the bin. You are asked to every month. <button class="btn tiny danger" data-a="empty">Empty bin now</button></p>' + (binDue() ? '<div class="banner">' + binDue() + " project(s) have been in the bin for over a month. Time to empty it?</div>" : "");
       out += rows.length ? '<div class="' + (S.layout === "list" ? "list" : "grid") + '">' + rows.map(function (p) { return card(p, S.view); }).join("") + "</div>" : '<p class="empty">' + (S.view === "bin" ? "The bin is empty." : "Nothing archived.") + "</p>";
-    } else if (S.view === "priority") {
-      var pl = gOrder().filter(function (p) { return p.status !== "closed"; });
-      out += '<p class="muted small">One list across every category. ' + (S.readOnly ? "" : "Drag ⋮⋮ to set what matters most; the top is first.") + "</p>";
-      out += pl.length ? '<div class="' + (S.layout === "list" ? "list" : "grid") + '" data-prio>' + pl.map(function (p, n) { return card(p, "live", n + 1); }).join("") + "</div>" : '<p class="empty">Nothing to prioritise yet.</p>';
     } else {
       var gb = function (key, label, ps, mode) { if (!ps.length) return ""; var k = "g:" + key, h = '<div class="cat" data-cat="' + k + '"><span>' + label + "</span><span>" + ps.length + (S.collapsed[k] ? " ▸" : " ▾") + "</span></div>"; return h + (S.collapsed[k] ? "" : '<div class="' + (S.layout === "list" ? "list" : "grid") + '">' + ps.map(function (p) { return card(p, mode); }).join("") + "</div>"); };
       var gi = gOrder();
@@ -289,11 +286,11 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
   }
   function cardBody(p, mode, n) {
     var e = effective(p), s = e.status, lk = look(p, s), c = lk.c, ro = S.readOnly, live = mode === "live" && !ro, lead = live && p.status !== "closed", notes = p.notes || [], review = notes.filter(function (n) { return n.state === "review"; }).length;
-    var HANDLE = '<span class="jz-handle" data-drag role="button" aria-label="Drag to reorder" title="Drag to reorder">⋮⋮</span>', lst = S.layout === "list", opn = true, pr = n ? '<span class="pn">' + n + "</span>" : "", cc = n ? '<span class="chip">' + esc(p.category) + "</span>" : "";
-    if (lst && !S.details && !S.open[p.id]) return '<div class="card p compact' + (n ? " prio" : "") + lk.cls + '" style="--c:' + c + '" data-id="' + esc(p.id) + '">' + (live && n ? '<div class="arrows h"><button class="btn tiny" data-a="up" aria-label="Higher priority">▲</button><button class="btn tiny" data-a="down" aria-label="Lower priority">▼</button></div>' : "") + (lead ? HANDLE : '<span class="jz-handle" aria-hidden="true" style="visibility:hidden"></span>') + '<div class="nm">' + pr + esc(p.name) + "</div>" + cc + (n || !live || p.status === "closed" ? '<span class="chip" style="background:' + c + ';color:#fff">' + lk.t + "</span>" : "") + '<button class="chev" data-a="tog" aria-label="Expand details" aria-expanded="false">▸</button></div>';
+    var HANDLE = '<span class="jz-handle" data-drag role="button" aria-label="Drag to reorder" title="Drag to reorder">⋮⋮</span>', lst = S.layout === "list", opn = true, shut = !isOpen(p), pr = n ? '<span class="pn">' + n + "</span>" : "", cc = n ? '<span class="chip">' + esc(p.category) + "</span>" : "";
+    if (shut) return '<div class="card p compact' + (n ? " prio" : "") + lk.cls + '" style="--c:' + c + '" data-id="' + esc(p.id) + '">' + (live && n ? '<div class="arrows h"><button class="btn tiny" data-a="up" aria-label="Higher priority">▲</button><button class="btn tiny" data-a="down" aria-label="Lower priority">▼</button></div>' : "") + (lead ? HANDLE : '<span class="jz-handle" aria-hidden="true" style="visibility:hidden"></span>') + '<div class="nm" data-a="tog" title="Tap the name to expand or collapse">' + pr + esc(p.name) + "</div>" + cc + (n || !live || p.status === "closed" ? '<span class="chip" style="background:' + c + ';color:#fff">' + lk.t + "</span>" : "") + '<button class="chev" data-a="tog" aria-label="Expand details" aria-expanded="false">▸</button></div>';
     var h = '<div class="card p' + (lead ? "" : " nolead") + (lst ? " row" : "") + lk.cls + '" style="--c:' + c + '" data-id="' + esc(p.id) + '">';
     if (lead) h += HANDLE;
-    h += '<div class="pb"><div class="top">' + (lst && !S.details ? '<button class="chev" data-a="tog" aria-label="Collapse details" aria-expanded="true">▾</button>' : "") + '<div class="nm">' + pr + esc(p.name) + "</div>" + cc + (live && p.status !== "closed" ? "" : '<span class="chip" style="background:' + c + ';color:#fff">' + lk.t + "</span>") + (e.auto ? '<span class="chip auto" title="Shown as Active: worked on in the last 3 days">auto</span>' : "");
+    h += '<div class="pb"><div class="top">' + '<button class="chev" data-a="tog" aria-label="Collapse details" aria-expanded="true">▾</button><div class="nm" data-a="tog" title="Tap the name to expand or collapse">' + pr + esc(p.name) + "</div>" + cc + (live && p.status !== "closed" ? "" : '<span class="chip" style="background:' + c + ';color:#fff">' + lk.t + "</span>") + (e.auto ? '<span class="chip auto" title="Shown as Active: worked on in the last 3 days">auto</span>' : "");
     if (live && p.status !== "closed") h += '<button class="btn tiny" data-a="worked" title="Mark as worked on today">✓ Today</button>';
     h += "</div>";
     if (!opn) return h + "</div></div>";
@@ -305,7 +302,7 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
     if (dueReview(p)) m.push('<span class="chip warn">' + (p.closedAs === "abandoned" ? "due for review" : "move to Archive?") + "</span>");
     if (m.length) h += '<div class="meta">' + m.join(" · ") + "</div>";
     if (ro) return h + "</div></div>";
-    if (live) h += '<div class="acts"><button class="btn tiny" data-a="notes">Notes</button>' + (dueReview(p) ? '<button class="btn tiny" data-a="archive">Archive</button><button class="btn tiny" data-a="keep">Keep</button>' + (p.closedAs === "abandoned" ? '<button class="btn tiny danger" data-a="del">Delete</button>' : "") : "") + "</div>";
+    if (live) h += (dueReview(p) ? '<div class="acts">' + '<button class="btn tiny" data-a="archive">Archive</button><button class="btn tiny" data-a="keep">Keep</button>' + (p.closedAs === "abandoned" ? '<button class="btn tiny danger" data-a="del">Delete</button>' : "") + "</div>" : "");
     if (mode === "live") h += '<div class="seg">' + ["active", "maintenance", "hiatus"].map(function (k) { return '<button class="btn tiny' + (p.status === k ? " on" : "") + '" style="--c:' + ST[k][1] + '" data-a="status" data-s="' + k + '" title="' + ST[k][0] + '">' + ST[k][0] + "</button>"; }).join("") + "</div>";
     else h += '<div class="acts"><button class="btn tiny" data-a="restore">Restore</button><button class="btn tiny danger" data-a="' + (mode === "bin" ? "purge" : "remove") + '">' + (mode === "bin" ? "Delete forever" : "Delete") + "</button></div>";
     return h + "</div></div>";
@@ -463,10 +460,9 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
     var ot = ev.target.closest(".p"); if (openSw && ot === openSw && !ev.target.closest(".swa")) return closeSw(); if (openSw && ot !== openSw) closeSw();
     var cat = ev.target.closest(".cat"); if (cat) { S.collapsed[cat.dataset.cat] = !S.collapsed[cat.dataset.cat]; savePrefs(); return render(); }
     var b = ev.target.closest("[data-a]");
-    if (!b) { var tile = ev.target.closest(".p"); if (tile && S.layout === "list" && !S.details && !ev.target.closest(".seg,.arrows,.jz-handle,.acts")) { S.open[tile.dataset.id] = !S.open[tile.dataset.id]; return render(); } if (tile && tile.classList.contains("compact")) return; if (tile && !ev.target.closest(".seg,.arrows,.jz-handle")) { var tp = byId(tile.dataset.id); if (tp) notesDlg(tp); } return; }
+    if (!b) { var tile = ev.target.closest(".p"); if (tile && !ev.target.closest(".seg,.arrows,.jz-handle,.acts,.swa")) { var tp = byId(tile.dataset.id); if (tp) notesDlg(tp); } return; }
     var a = b.dataset.a, card = b.closest(".p"), p = card && byId(card.dataset.id);
-    if (a === "tog" && p) { S.open[p.id] = !S.open[p.id]; return render(); }
-    if (a === "notes" && p) return notesDlg(p);
+    if (a === "tog" && p) { S.open[p.id] = !isOpen(p); return render(); }
     if (a === "empty") { var ids = S.list.projects.filter(function (x) { return x.state === "bin"; }).map(function (x) { return x.id; }); return dialog("<h2>Empty the bin?</h2><p class='small'>" + ids.length + " project(s) will be deleted for good.</p><div class='row'><button class='btn' data-close>Cancel</button><button class='btn danger' id='go'>Delete for good</button></div>", function (d) { d.querySelector("#go").onclick = function () { d.close(); send({ ops: { remove: ids } }); }; }); }
     if (!p) return;
     if (a === "up" || a === "down") { var sib = Array.prototype.map.call(card.parentNode.children, function (x) { return x.dataset.id; }), i = sib.indexOf(p.id), j = i + (a === "up" ? -1 : 1); if (j < 0 || j >= sib.length) return; var t = sib[i]; sib[i] = sib[j]; sib[j] = t; return applyOrder(sib); }
