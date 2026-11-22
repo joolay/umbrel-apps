@@ -84,7 +84,7 @@
   function load() { return call("GET", "api/state").then(function (j) { take(j); render(); }); }
   function runCheck() { var b = $("#check"); b.classList.add("spin"); return call("POST", "api/check").then(function (j) { take(j); render(); }).catch(function (e) { toast(e.message); }).then(function () { b.classList.remove("spin"); }); }
   $("#check").onclick = runCheck;
-  $("#settings").onclick = function () {
+  $("[data-settings]").onclick = function () {
     var d = $("#dlg"), c = S.config;
     d.innerHTML = "<h2>Settings</h2><form id='f'><label>LAN address of this Umbrel<input name='lanHost' value='" + esc(c.lanHost) + "' placeholder='192.168.1.50 or umbrel.local' required></label>" +
       "<label>.local name of this Umbrel (empty to skip)<input name='localHost' value='" + esc(c.localHost) + "' placeholder='umbrel.local'></label>" +

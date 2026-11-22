@@ -75,6 +75,7 @@ const body = (req) => new Promise((ok, bad) => { let s = ''; req.on('data', (c) 
 const server = http.createServer(async (req, res) => {
   try {
     const p = decodeURIComponent(new URL(req.url, 'http://x').pathname);
+    if (p === '/api/app-config' && req.method === 'GET') { const pl = portalLink(); return send(res, 200, { portalUrl: pl ? pl.url : '' }); }
     if (p === '/api/link' && req.method === 'GET') return send(res, 200, feedHandle ? feedHandle.link() : { state: 'broken', shaking: false, note: 'Not reporting yet.' });
     if (p === '/api/state' && req.method === 'GET') return send(res, 200, { report: mark(monitor.last), clashes: clashes(), official: officialInfo(), config, portal: { linked: !!portalLink(), ...reportState }, checking: false });
     if (p === '/api/check' && req.method === 'POST') { const rep = await checkNow(); refreshOfficial(); return send(res, 200, { report: rep, clashes: clashes(), official: officialInfo(), portal: { linked: !!portalLink(), ...reportState } }); }
