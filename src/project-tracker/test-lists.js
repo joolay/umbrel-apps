@@ -41,14 +41,14 @@ l = L.applyOps(l, { upsert: [{ ...l.projects.find(p => p.id === "a"), state: "bi
 assert.deepStrictEqual(L.binDue(l, T), ["a"]);   // listed for the monthly "empty the bin?" prompt, never deleted by itself
 l = L.applyOps(l, { remove: ["a"] }, NOW); assert.ok(!l.projects.find(p => p.id === "a"));
 // closed review
-assert.strictEqual(L.dueForReview(base().projects.find(p => p.id === "d"), T), false, "completed projects are never reviewed");
+assert.strictEqual(L.dueForReview(base().projects.find(p => p.id === "d"), T), true, "completed projects are offered the Archive after a month");
 const ab = { state: "live", status: "closed", closedAs: "abandoned", closedAt: "2026-10-01T00:00:00Z" };
 assert.strictEqual(L.dueForReview(ab, T), true); assert.strictEqual(L.dueForReview({ ...ab, reviewedAt: "2026-11-10T00:00:00Z" }, T), false, "Keep restarts the month");
 assert.strictEqual(L.dueForReview({ ...ab, closedAt: "2026-11-10T00:00:00Z" }, T), false);
 // closed projects are Complete unless Abandoned; reviewedAt only lives on abandoned ones
 const cc = L.cleanProject({ id: "x", name: "X", status: "closed" }, NOW); assert.strictEqual(cc.closedAs, "completed");
 assert.strictEqual(L.cleanProject({ id: "x", name: "X", status: "closed", closedAs: "abandoned", reviewedAt: "2026-11-01T00:00:00Z" }, NOW).reviewedAt, "2026-11-01T00:00:00.000Z");
-assert.strictEqual(L.cleanProject({ id: "x", name: "X", status: "closed", closedAs: "completed", reviewedAt: "2026-11-01T00:00:00Z" }, NOW).reviewedAt, "");
+assert.strictEqual(L.cleanProject({ id: "x", name: "X", status: "closed", closedAs: "completed", reviewedAt: "2026-11-01T00:00:00Z" }, NOW).reviewedAt, "2026-11-01T00:00:00.000Z");
 assert.strictEqual(L.cleanProject({ id: "x", name: "X", status: "active", reviewedAt: "2026-11-01T00:00:00Z" }, NOW).reviewedAt, "");
 // paths are checked
 assert.strictEqual(L.cleanProject({ id: "p", name: "P", paths: [{ repo: "joolay/umbrel-apps", path: "src/x" }, { repo: "bad", path: "x" }, { repo: "a/b", path: "../etc" }] }, NOW).paths.length, 1);

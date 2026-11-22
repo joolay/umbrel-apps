@@ -39,7 +39,8 @@
 .p.swiping>.swc,.p.sw-open>.swc{background:var(--tile-open,var(--solid))}.p.swiping>.swc{transition:none}
 .swb{width:76px;border:0;border-radius:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font:inherit;font-size:.74rem;font-weight:650;color:#fff;cursor:pointer}
 .swb span{font-size:1.25rem;line-height:1}
-.swb.ok{background:#1f9d63}.swb.warn{background:#d99a00}.swb.bad{background:#d64545}.swb.re{background:#64748b}
+.glist .gi{display:flex;align-items:center;gap:6px;padding:8px 10px;margin:4px 0;border-radius:12px;background:var(--glass);border:1px solid var(--line)}
+.swb.arc{background:#3b6fd4}.swb.ok{background:#1f9d63}.swb.warn{background:#d99a00}.swb.bad{background:#d64545}.swb.re{background:#64748b}
 .p.done{--tile-open:color-mix(in srgb,#1f9d63 16%,var(--solid));background:color-mix(in srgb,#1f9d63 18%,var(--glass))}
 .p.abn{--tile-open:color-mix(in srgb,#e0a100 18%,var(--solid));background:color-mix(in srgb,#e0a100 20%,var(--glass))}
 .pb{display:grid;gap:7px;min-width:0}
@@ -151,7 +152,11 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
     return { status: auto ? "active" : p.status, auto: auto, last: last };
   }
   // An abandoned project is reviewed every month (Keep or Delete); the bin never empties itself, you are asked to empty it every month.
-  var dueReview = function (p) { return p.state === "live" && p.status === "closed" && p.closedAs === "abandoned" && Date.now() - Date.parse(p.reviewedAt || p.closedAt) > 30 * DAY; };
+  // A month after a project is finished it is reviewed: completed ones are offered the Archive, abandoned ones Keep / Archive / Delete. The bin never empties itself, you are asked monthly.
+  var dueReview = function (p) { return p.state === "live" && p.status === "closed" && Date.now() - Date.parse(p.reviewedAt || p.closedAt) > 30 * DAY; };
+  var dueOf = function (v) { return S.list.projects.filter(function (p) { return dueReview(p) && viewOf(p) === v; }).length; };
+  var GROUPS = [["active", "Active"], ["maintenance", "Queued"], ["hiatus", "Hiatus"], ["complete", "Completed"], ["abandoned", "Abandoned"]];
+  function groupList() { var o = (S.groups || []).filter(function (g) { return GROUPS.some(function (x) { return x[0] === g; }); }); GROUPS.forEach(function (x) { if (o.indexOf(x[0]) < 0) o.push(x[0]); }); return o.map(function (g) { return GROUPS.filter(function (x) { return x[0] === g; })[0]; }); }
   var daysIn = function (p) { return Math.max(0, Math.floor((Date.now() - Date.parse(p.binnedAt || new Date().toISOString())) / DAY)); };
   var binDue = function () { return S.list.projects.filter(function (p) { return p.state === "bin" && p.binnedAt && Date.now() - Date.parse(p.binnedAt) > 30 * DAY; }).length; };
   var CLR = { complete: "#1f9d63", abandoned: "#e0a100" };
@@ -162,11 +167,11 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
   }
 
   /* ---------- loading and live polling ---------- */
-  function savePrefs() { clearTimeout(savePrefs.h); savePrefs.h = setTimeout(function () { api("api/prefs", "PUT", { list: S.key, view: S.view, auto: S.auto, days: S.days, chat: S.chat, layout: S.layout, details: S.details, tabs: S.tabs, collapsed: Object.keys(S.collapsed).filter(function (k) { return S.collapsed[k]; }) }).catch(function () {}); }, 600); }
+  function savePrefs() { clearTimeout(savePrefs.h); savePrefs.h = setTimeout(function () { api("api/prefs", "PUT", { list: S.key, view: S.view, auto: S.auto, days: S.days, chat: S.chat, layout: S.layout, details: S.details, tabs: S.tabs, groups: S.groups, collapsed: Object.keys(S.collapsed).filter(function (k) { return S.collapsed[k]; }) }).catch(function () {}); }, 600); }
   function loadLists(keep) {
     return api("api/lists").then(function (j) {
       S.lists = j.lists; S.owner = !!j.owner; var pr = (S.user.prefs || {})["project-tracker"] || {}; if (window.JZTheme && !S.themeSet) { S.themeSet = 1; var th = pr.theme || (S.user.prefs || {}).theme; if (th === "light" || th === "dark") JZTheme.set(th, true); }
-      if (!S.key) { S.key = pr.list && j.lists.some(function (l) { return l.key === pr.list; }) ? pr.list : j.lists[0].key; if (pr.view) S.view = pr.view === "closed" ? "complete" : pr.view; if (typeof pr.auto === "boolean") S.auto = pr.auto; if (pr.days >= 1 && pr.days <= 30) S.days = pr.days; if (pr.chat === "builtin") S.chat = "builtin"; if (pr.layout === "list") S.layout = "list"; if (pr.details === true) S.details = true; if (Array.isArray(pr.tabs)) { var tk = []; pr.tabs.forEach(function (x) { (x === "closed" ? ["complete", "abandoned"] : [x]).forEach(function (y) { if (tk.indexOf(y) < 0 && TABS.some(function (t) { return t[0] === y; })) tk.push(y); }); }); if (tk.length) S.tabs = tk; } (pr.collapsed || []).forEach(function (c) { S.collapsed[c] = true; }); }
+      if (!S.key) { S.key = pr.list && j.lists.some(function (l) { return l.key === pr.list; }) ? pr.list : j.lists[0].key; if (pr.view) S.view = pr.view === "closed" ? "complete" : pr.view; if (typeof pr.auto === "boolean") S.auto = pr.auto; if (pr.days >= 1 && pr.days <= 30) S.days = pr.days; if (pr.chat === "builtin") S.chat = "builtin"; if (pr.layout === "list") S.layout = "list"; if (pr.details === true) S.details = true; if (Array.isArray(pr.groups)) S.groups = pr.groups; if (Array.isArray(pr.tabs)) { var tk = []; pr.tabs.forEach(function (x) { (x === "closed" ? ["complete", "abandoned"] : [x]).forEach(function (y) { if (tk.indexOf(y) < 0 && TABS.some(function (t) { return t[0] === y; })) tk.push(y); }); }); if (tk.length) S.tabs = tk; } (pr.collapsed || []).forEach(function (c) { S.collapsed[c] = true; }); }
       if (!j.lists.some(function (l) { return l.key === S.key; })) S.key = j.lists[0].key;
       $("#lists").innerHTML = j.lists.map(function (l) { return '<option value="' + esc(l.key) + '"' + (l.key === S.key ? " selected" : "") + ">" + esc(l.name) + " (" + l.count + ")" + (l.source === "shared" ? " · from " + esc(l.by || "someone") : "") + "</option>"; }).join("");
     });
@@ -183,8 +188,8 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
   }
   function status() {
     $("#banner").innerHTML = S.err ? '<div class="banner">Can\'t sync right now: ' + esc(S.err) + '. Trying again…</div>' : S.readOnly && S.source === "shared" ? '<div class="banner">Shared with you' + (S.by ? " by <b>" + esc(S.by) + "</b>" : "") + " to view only. You can't change it.</div>" : S.readOnly && S.key === "appdev" ? '<div class="banner">This list is read-only until a GitHub token is added. Open <b>Settings</b> to add one.</div>' : "";
-    if (S.list && !S.err) { var rv = S.list.projects.filter(dueReview).length, bd = binDue(), on = function (id) { return S.tabs.indexOf(id) >= 0; };
-      if (rv || bd) $("#banner").innerHTML += '<div class="banner">Monthly tidy-up: ' + [rv ? rv + " abandoned project(s) to review" + (on("abandoned") ? ' <a href="#" data-go="abandoned">open</a>' : "") : "", bd ? bd + " in the bin to empty" + (on("bin") ? ' <a href="#" data-go="bin">open</a>' : "") : ""].filter(Boolean).join(" · ") + "</div>"; }
+    if (S.list && !S.err) { var rc = dueOf("complete"), ra = dueOf("abandoned"), bd = binDue(), on = function (id) { return S.tabs.indexOf(id) >= 0; }, lk = function (id) { return on(id) ? ' <a href="#" data-go="' + id + '">open</a>' : ""; };
+      if (rc || ra || bd) $("#banner").innerHTML += '<div class="banner">Monthly tidy-up: ' + [rc ? rc + " completed to move to the Archive" + lk("complete") : "", ra ? ra + " abandoned to review" + lk("abandoned") : "", bd ? bd + " in the bin to empty" + lk("bin") : ""].filter(Boolean).join(" · ") + "</div>"; }
   }
   function send(body) {
     S.busy++;
@@ -210,7 +215,7 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
     return ups.length ? send({ ops: { upsert: ups } }) : render();
   }
   function visibleLive() { return S.list.projects.filter(function (p) { return p.state === "live" && (S.view === "all" || viewOf(p) === S.view); }); }
-  function visibleCats() { var seen = {}; visibleLive().forEach(function (p) { seen[p.category] = 1; }); return Object.keys(seen); }
+  function visibleCats() { var seen = {}; visibleLive().forEach(function (p) { seen[S.view === "all" ? "g:" + viewOf(p) : p.category] = 1; }); if (S.view === "all" && S.list.projects.some(function (p) { return p.state === "bin"; })) seen["g:bin"] = 1; return Object.keys(seen); }
   function viewItems() {
     if (S.view === "archive" || S.view === "bin") return S.list.projects.filter(function (p) { return p.state === (S.view === "bin" ? "bin" : "archived"); });
     if (S.view === "priority") return gOrder().filter(function (p) { return p.status !== "closed"; });
@@ -226,12 +231,12 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
     viewItems().forEach(function (p) { if (open) S.open[p.id] = true; else delete S.open[p.id]; }); savePrefs(); render();
   }
   var TABS = [["all", "All"], ["priority", "Priority"], ["active", "Active"], ["maintenance", "Queued"], ["hiatus", "Hiatus"], ["complete", "Complete"], ["abandoned", "Abandoned"], ["archive", "Archive"], ["bin", "Bin"]];
-  function shownTabs() { var t = TABS.filter(function (x) { return S.tabs.indexOf(x[0]) >= 0; }); return t.length ? t : TABS; }
+  function shownTabs() { var c = counts(), t = TABS.filter(function (x) { return S.tabs.indexOf(x[0]) >= 0 && (x[0] === "all" || c[x[0]] > 0); }); return t.length ? t : [TABS[0]]; }   // a tab with nothing in it stays hidden
   // The tabs shown are the ones picked in Settings; when they don't fit the width they become a drop-down list.
   function drawTabs() {
-    var c = counts(), due = S.list.projects.filter(dueReview).length, tabs = shownTabs(), el = $("#tabs");
+    var c = counts(), tabs = shownTabs(), el = $("#tabs");
     if (!tabs.some(function (t) { return t[0] === S.view; })) S.view = tabs[0][0];
-    var bd = binDue(), more = function (t) { return c[t[0]] + (t[0] === "abandoned" && due ? " · " + due + " to review" : t[0] === "bin" && bd ? " · " + bd + " to empty" : ""); };
+    var bd = binDue(), more = function (t) { return c[t[0]] + ((t[0] === "abandoned" || t[0] === "complete") && dueOf(t[0]) ? " · " + dueOf(t[0]) + (t[0] === "complete" ? " to archive" : " to review") : t[0] === "bin" && bd ? " · " + bd + " to empty" : ""); };
     var tbx = '<span class="tbx"><button class="btn tiny" data-tb="layout">' + (S.layout === "list" ? "▦ Grid" : "☰ List") + '</button>' + (S.layout === "list" ? '<button class="btn tiny' + (S.details ? " primary" : "") + '" data-tb="details" aria-pressed="' + S.details + '">Details</button>' : "") + '<button class="btn tiny" data-tb="all">' + (allOpen() ? "Collapse all" : "Expand all") + "</button></span>";
     el.className = "st";
     el.innerHTML = tabs.map(function (t) { return '<button class="btn tiny' + (S.view === t[0] ? " primary" : "") + '" data-v="' + t[0] + '">' + t[1] + '<span class="n">' + more(t) + "</span></button>"; }).join("") + tbx;
@@ -256,18 +261,17 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
       out += '<p class="muted small">One list across every category. ' + (S.readOnly ? "" : "Drag ⋮⋮ to set what matters most; the top is first.") + "</p>";
       out += pl.length ? '<div class="' + (S.layout === "list" ? "list" : "grid") + '" data-prio>' + pl.map(function (p, n) { return card(p, "live", n + 1); }).join("") + "</div>" : '<p class="empty">Nothing to prioritise yet.</p>';
     } else {
-      var cats = S.list.categories.slice(); live.forEach(function (p) { if (cats.indexOf(p.category) < 0) cats.push(p.category); });
-      cats.forEach(function (cat) {
-        var gi = gOrder(), ps = live.filter(function (p) { return p.category === cat && (S.view === "all" ? p.status !== "closed" : viewOf(p) === S.view); }).sort(function (a, b) { return gi.indexOf(a) - gi.indexOf(b); });
-        if (!ps.length) return;
-        out += '<div class="cat" data-cat="' + esc(cat) + '"><span>' + esc(cat) + "</span><span>" + ps.length + (S.collapsed[cat] ? " ▸" : " ▾") + "</span></div>";
-        if (!S.collapsed[cat]) out += '<div class="' + (S.layout === "list" ? "list" : "grid") + '">' + ps.map(function (p) { return card(p, "live"); }).join("") + "</div>";
-      });
-      if (S.view === "all") {   // finished projects sit at the very bottom of All: Complete (green) first, then Abandoned (amber)
-        var fin = live.filter(function (p) { return p.status === "closed"; }).sort(function (a, b) { return (a.closedAs === "abandoned") - (b.closedAs === "abandoned") || String(b.closedAt).localeCompare(String(a.closedAt)); });
-        if (fin.length) { out += '<div class="cat" data-cat="Finished"><span>Finished</span><span>' + fin.length + (S.collapsed.Finished ? " ▸" : " ▾") + "</span></div>"; if (!S.collapsed.Finished) out += '<div class="' + (S.layout === "list" ? "list" : "grid") + '">' + fin.map(function (p) { return card(p, "live"); }).join("") + "</div>"; }
+      var gb = function (key, label, ps, mode) { if (!ps.length) return ""; var k = "g:" + key, h = '<div class="cat" data-cat="' + k + '"><span>' + label + "</span><span>" + ps.length + (S.collapsed[k] ? " ▸" : " ▾") + "</span></div>"; return h + (S.collapsed[k] ? "" : '<div class="' + (S.layout === "list" ? "list" : "grid") + '">' + ps.map(function (p) { return card(p, mode); }).join("") + "</div>"); };
+      var gi = gOrder();
+      if (S.view === "all") {   // every tab is a group, in the order set in Settings; the Deleted group always stays at the bottom
+        groupList().forEach(function (g) { out += gb(g[0], g[1], live.filter(function (p) { return viewOf(p) === g[0]; }).sort(function (a, b) { return gi.indexOf(a) - gi.indexOf(b); }), "live"); });
+        out += gb("bin", "Deleted", S.list.projects.filter(function (p) { return p.state === "bin"; }).sort(function (a, b) { return String(b.binnedAt).localeCompare(String(a.binnedAt)); }), "bin");
+      } else {
+        var cats = S.list.categories.slice(); live.forEach(function (p) { if (cats.indexOf(p.category) < 0) cats.push(p.category); });
+        cats.forEach(function (cat) { out += gb(cat, esc(cat), live.filter(function (p) { return p.category === cat && viewOf(p) === S.view; }).sort(function (a, b) { return gi.indexOf(a) - gi.indexOf(b); }), "live"); });
       }
-      if (S.view === "abandoned" && S.list.projects.filter(dueReview).length) out = '<div class="banner">Monthly review: Keep each abandoned project for another month, or Delete it (it goes to the bin).</div>' + out;
+      if (S.view === "complete" && dueOf("complete")) out = '<div class="banner">Finished over a month ago: move these to the Archive? (Keep leaves them here for another month.)</div>' + out;
+      if (S.view === "abandoned" && dueOf("abandoned")) out = '<div class="banner">Monthly review: Keep each abandoned project for another month, move it to the Archive, or Delete it (it goes to the bin).</div>' + out;
       if (!out) out = '<p class="empty">Nothing here yet.</p>';
     }
     var keep = window.scrollY; $("#main").innerHTML = out; window.scrollTo(0, keep);
@@ -276,7 +280,8 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
     if (p.state !== "live" || S.readOnly) return "";
     var cl = p.status === "closed", ab = cl && p.closedAs === "abandoned";
     var b = function (a, cls, ic, t) { return '<button class="swb ' + cls + '" data-a="' + a + '" aria-label="' + t + '"><span aria-hidden="true">' + ic + "</span>" + t + "</button>"; };
-    return (cl ? b("reopen", "re", "↺", "Reopen") : b("complete", "ok", "✓", "Complete")) + (ab ? b("complete", "ok", "✓", "Complete") : b("abandon", "warn", "⊘", "Abandon")) + b("del", "bad", "✕", "Delete");
+    if (!cl) return b("complete", "ok", "✓", "Complete") + b("abandon", "warn", "⊘", "Abandon") + b("del", "bad", "✕", "Delete");
+    return b("reopen", "re", "↺", "Reopen") + b("archive", "arc", "▤", "Archive") + (ab ? b("del", "bad", "✕", "Delete") : "");   // finished work is never deleted from a completed tile
   }
   function card(p, mode, n) {   // the tile is a sliding layer (.swc) over the three swipe actions (.swa)
     var h = cardBody(p, mode, n), i = h.indexOf(">") + 1;
@@ -297,10 +302,10 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
     if (review) m.push('<span class="chip warn">' + review + " to confirm</span>");
     if (e.last) m.push("Last worked " + fmt(e.last)); if (p.status === "closed") m.push((p.closedAs === "completed" ? "Completed" : p.closedAs === "abandoned" ? "Abandoned" : "Closed") + " " + fmt(p.closedAt));
     if (mode === "bin") m.push("In the bin for " + daysIn(p) + " days"); if (p.statusAt && p.status !== "closed" && mode === "live" && !e.auto && p.status !== "active") m.push("Set by hand");
-    if (dueReview(p)) m.push('<span class="chip warn">due for review</span>');
+    if (dueReview(p)) m.push('<span class="chip warn">' + (p.closedAs === "abandoned" ? "due for review" : "move to Archive?") + "</span>");
     if (m.length) h += '<div class="meta">' + m.join(" · ") + "</div>";
     if (ro) return h + "</div></div>";
-    if (live) h += '<div class="acts"><button class="btn tiny" data-a="notes">Notes</button>' + (dueReview(p) ? '<button class="btn tiny" data-a="keep">Keep</button><button class="btn tiny danger" data-a="del">Delete</button>' : "") + "</div>";
+    if (live) h += '<div class="acts"><button class="btn tiny" data-a="notes">Notes</button>' + (dueReview(p) ? '<button class="btn tiny" data-a="archive">Archive</button><button class="btn tiny" data-a="keep">Keep</button>' + (p.closedAs === "abandoned" ? '<button class="btn tiny danger" data-a="del">Delete</button>' : "") : "") + "</div>";
     if (mode === "live") h += '<div class="seg">' + ["active", "maintenance", "hiatus"].map(function (k) { return '<button class="btn tiny' + (p.status === k ? " on" : "") + '" style="--c:' + ST[k][1] + '" data-a="status" data-s="' + k + '" title="' + ST[k][0] + '">' + ST[k][0] + "</button>"; }).join("") + "</div>";
     else h += '<div class="acts"><button class="btn tiny" data-a="restore">Restore</button><button class="btn tiny danger" data-a="' + (mode === "bin" ? "purge" : "remove") + '">' + (mode === "bin" ? "Delete forever" : "Delete") + "</button></div>";
     return h + "</div></div>";
@@ -397,22 +402,24 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
     });
   }
   function sheetDlg(p) {
-    dialog("<h2>" + esc(p.name) + "</h2><div class='sheet'><button class='btn' id='ed'>Edit</button>" + (p.state === "live" ? (p.status === "closed" ? "<button class='btn' id='s-re'>Reopen</button>" : "") + (p.status === "closed" && p.closedAs !== "abandoned" ? "" : "<button class='btn' id='s-ok'>Complete</button>") + (p.status === "closed" && p.closedAs === "abandoned" ? "" : "<button class='btn' id='s-ab'>Abandon</button>") : "") + (dueReview(p) ? "<button class='btn' id='kp'>Keep for another month</button>" : "") + "<button class='btn danger' id='rm'>Remove…</button><button class='btn' data-close>Cancel</button></div>", function (d) {
+    dialog("<h2>" + esc(p.name) + "</h2><div class='sheet'><button class='btn' id='ed'>Edit</button>" + (p.state === "live" ? (p.status === "closed" ? "<button class='btn' id='s-re'>Reopen</button><button class='btn' id='s-ar'>Archive</button>" : "<button class='btn' id='s-ok'>Complete</button><button class='btn' id='s-ab'>Abandon</button>") : "") + (dueReview(p) ? "<button class='btn' id='kp'>Keep for another month</button>" : "") + "<button class='btn danger' id='rm'>Remove…</button><button class='btn' data-close>Cancel</button></div>", function (d) {
       d.querySelector("#ed").onclick = function () { d.close(); editDlg(p); };
       d.querySelector("#rm").onclick = function () { d.close(); if (p.state === "archived") upsert(p, { state: "bin" }); else removeDlg(p); };
       var kp = d.querySelector("#kp"); if (kp) kp.onclick = function () { d.close(); upsert(p, { reviewedAt: new Date().toISOString() }); };
-      [["#s-re", function () { toast("Reopened"); setStatus(p, "active"); }], ["#s-ok", function () { finish(p, "completed"); }], ["#s-ab", function () { finish(p, "abandoned"); }]].forEach(function (x) { var el = d.querySelector(x[0]); if (el) el.onclick = function () { d.close(); x[1](); }; });
+      [["#s-re", function () { toast("Reopened"); setStatus(p, "active"); }], ["#s-ok", function () { finish(p, "completed"); }], ["#s-ab", function () { finish(p, "abandoned"); }], ["#s-ar", function () { toast("Moved to Archive"); upsert(p, { state: "archived" }); }]].forEach(function (x) { var el = d.querySelector(x[0]); if (el) el.onclick = function () { d.close(); x[1](); }; });
     });
   }
   function settingsDlg() {
     dialog("<h2>Settings</h2><label class='switch'><input type='checkbox' id='au'" + (S.auto !== false ? " checked" : "") + "><span><b>Auto-Active rule for all projects</b><br><span class='muted small'>A Queued or Hiatus project worked on within the window below shows as Active. You can turn it off for a single project in its Edit dialog. A status you set by hand stays until you work on the project on a later day.</span></span></label><label>Days of work that count<input type='number' id='dy' min='1' max='30' step='1' value='" + S.days + "'></label>" +
-      "<div class='sect'><b>Tabs shown</b><p class='muted small'>Pick the tabs you want. When they don't fit the screen they turn into a drop-down list.</p><div class='tabpick'>" + TABS.map(function (t) { return "<label><input type='checkbox' data-tab='" + t[0] + "'" + (S.tabs.indexOf(t[0]) >= 0 ? " checked" : "") + ">" + t[1] + "</label>"; }).join("") + "</div></div>" +
+      "<div class='sect'><b>Tabs shown</b><p class='muted small'>Pick the tabs you want (a tab with nothing in it hides itself). When they don't fit the screen they turn into a drop-down list.</p><div class='tabpick'>" + TABS.map(function (t) { return "<label><input type='checkbox' data-tab='" + t[0] + "'" + (S.tabs.indexOf(t[0]) >= 0 ? " checked" : "") + ">" + t[1] + "</label>"; }).join("") + "</div></div>" +
+      "<div class='sect'><b>Order of the groups in All</b><p class='muted small'>Drag ⋮⋮ to reorder. A group only shows when it has something in it. Deleted always stays at the bottom.</p><div class='glist'>" + groupList().map(function (g) { return "<div class='gi' data-id='" + g[0] + "'><span class='jz-handle' data-drag role='button' aria-label='Drag to reorder'>⋮⋮</span>" + g[1] + "</div>"; }).join("") + "</div></div>" +
       "<div class='sect'><b>Chat button on a project</b>" +
       "<label class='switch'><input type='radio' name='chat' value='claude'" + (S.chat !== "builtin" ? " checked" : "") + "><span><b>Claude app</b><br><span class='muted small'>Opens a new chat in Claude with the project and its notes filled in. Uses your Claude subscription.</span></span></label>" +
       "<label class='switch'><input type='radio' name='chat' value='builtin'" + (S.chat === "builtin" ? " checked" : "") + "><span><b>Built-in chat</b><br><span class='muted small'>Chats here with the AI key saved on your JoolzApp account. It can read the project's repo folders and suggest changes; nothing is saved until you press Apply.</span></span></label><p class='muted small' id='aik'>Checking your AI key…</p></div>" +
       "<div class='sheet'><button class='btn' id='nl'>New private list</button><button class='btn' id='qa'>Quick Access (PIN or pattern)</button>" + (S.role === "owner" && S.key !== "appdev" && S.list ? "<button class='btn' id='sh'>Share this list</button>" : "") + (S.source === "shared" ? "<button class='btn' id='lv'>Leave this shared list</button>" : "") + (S.owner ? "<button class='btn' id='cn'>GitHub connection</button>" : "") + "</div><p class='muted small'>Tip: tap a project for its notes. Press and hold it to edit or remove.</p><div class='row'><button class='btn primary' data-close>Done</button></div>", function (d) {
       d.querySelector("#dy").onchange = function () { var v = Math.round(+this.value); if (!(v >= 1 && v <= 30)) { this.value = S.days; return; } S.days = v; this.value = v; savePrefs(); render(); };
       d.querySelectorAll("input[data-tab]").forEach(function (b) { b.onchange = function () { var on = TABS.map(function (t) { return t[0]; }).filter(function (id) { return d.querySelector("input[data-tab=" + id + "]").checked; }); if (!on.length) { b.checked = true; toast("Keep at least one tab"); return; } S.tabs = on; savePrefs(); render(); }; });
+      if (window.JZDrag) JZDrag.init(d.querySelector(".glist").parentNode, { item: ".gi", box: ".glist", onDrop: function (ids) { S.groups = ids; savePrefs(); render(); } });
       d.querySelector("#au").onchange = function () { S.auto = this.checked; savePrefs(); render(); };
       d.querySelectorAll("input[name=chat]").forEach(function (r) { r.onchange = function () { S.chat = r.value; savePrefs(); }; });
       api("api/ai/status").then(function (j) { var al = S.home ? " <a href='" + esc(S.home) + "#/me' target='_blank' rel='noopener'>Manage AI keys</a>" : ""; d.querySelector("#aik").innerHTML = j.ready ? "Built-in chat uses <b>" + esc(j.key.provider) + " · " + esc(j.key.model) + "</b> (key ends …" + esc(j.key.last4) + "). " + al : "No AI key is set for Project Pilot yet. Add one in Portal Admin > My settings > AI." + al; }).catch(function () { d.querySelector("#aik").textContent = ""; });
@@ -467,6 +474,7 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
     if (a === "abandon") return finish(p, "abandoned");
     if (a === "reopen") { toast("Reopened"); return setStatus(p, "active"); }
     if (a === "del") { toast("Moved to the bin"); return upsert(p, { state: "bin" }); }
+    if (a === "archive") { toast("Moved to Archive"); return upsert(p, { state: "archived" }); }
     if (a === "keep") { toast("Kept for another month"); return upsert(p, { reviewedAt: new Date().toISOString() }); }
     if (a === "status") return setStatus(p, b.dataset.s);
     if (a === "worked") return upsert(p, { lastWorked: today(), statusAt: "" });

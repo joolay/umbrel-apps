@@ -396,6 +396,7 @@ const server = http.createServer(async (req, res) => {
       if (typeof b.details === "boolean") next.details = b.details;   // List view: title-only rows (off) or expandable rows (on)
       if (b.layout === "grid" || b.layout === "list") next.layout = b.layout;   // grid cards or compact expandable list
       if (Array.isArray(b.tabs)) { const t = [...new Set(b.tabs.filter(x => ["all", "priority", "active", "maintenance", "hiatus", "complete", "abandoned", "archive", "bin"].includes(x)))]; if (t.length) next.tabs = t; }   // which tabs show (Settings > Tabs shown)
+      if (Array.isArray(b.groups)) { const g = [...new Set(b.groups.filter(x => ["active", "maintenance", "hiatus", "complete", "abandoned"].includes(x)))]; if (g.length) next.groups = g; }   // order of the groups in the All tab (Settings, drag)
       if (Array.isArray(b.collapsed)) next.collapsed = b.collapsed.map(x => L.str(x, 60)).slice(0, 60);
       await pb.setAppPref(user.id, next); tokenCache.clear(); return send(res, 200, { ok: true });
     }
