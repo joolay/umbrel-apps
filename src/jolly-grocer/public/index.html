@@ -136,9 +136,16 @@ input,select,textarea{background:var(--glass-strong);border:1px solid var(--glas
 <nav class="menubar" id="menubar" role="tablist" aria-label="Sections">
   <button type="button" class="mb-btn" role="tab" id="tb-lists" aria-selected="true">Lists</button>
   <button type="button" class="mb-btn" role="tab" id="tb-spend" aria-selected="false">Spend</button>
+  <button type="button" class="mb-btn" role="tab" id="tb-analyse" aria-selected="false">Analyse</button>
 </nav>
 <div class="toolbar" id="toolbar" role="toolbar" aria-label="Lists and period">
   <button type="button" class="mb-btn mb-select" id="mb-list" data-menu="list" aria-haspopup="listbox" aria-expanded="false" aria-label="Choose a list"><span class="mb-label" id="mb-list-label">My list</span></button>
+  <button type="button" class="mb-btn mb-select" id="mb-item" data-menu="item" aria-haspopup="listbox" aria-expanded="false" aria-label="Choose an item to analyse" hidden><span class="mb-label" id="mb-item-label">All items</span></button>
+  <div class="tool-group" id="an-range" role="group" aria-label="Time span" hidden>
+    <button type="button" class="tool" id="an-3" aria-pressed="false">3 months</button>
+    <button type="button" class="tool" id="an-6" aria-pressed="true">6 months</button>
+    <button type="button" class="tool" id="an-12" aria-pressed="false">12 months</button>
+  </div>
   <button type="button" class="tool" id="mb-prev" aria-label="Earlier" title="Earlier" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button>
   <div class="tool-group" id="mb-per" role="group" aria-label="Period" hidden>
     <button type="button" class="tool" id="per-week" aria-pressed="false">Weekly</button>
@@ -147,6 +154,7 @@ input,select,textarea{background:var(--glass-strong);border:1px solid var(--glas
   </div>
   <button type="button" class="tool" id="mb-next" aria-label="Later" title="Later" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
   <div class="mb-menu" data-menu-for="list" id="mn-list" role="listbox" hidden></div>
+  <div class="mb-menu" data-menu-for="item" id="mn-item" role="listbox" hidden></div>
 </div>
 <div class="wrap">
   <main id="view"></main>
@@ -350,7 +358,7 @@ input,select,textarea{background:var(--glass-strong);border:1px solid var(--glas
     if (sync.on) { clearTimeout(sync.timer); sync.timer = setTimeout(pushNow, 600); }
   }
   window.addEventListener('pagehide', function () { if (sync.on && sync.timer) pushNow(); });
-  const ui = { pidx: null, rcUrl: '', rcFor: '', rolloverSkip: false, confirmRoll: false, tab: 'lists', menu: false, edit: '', co: null, rv: null, confirm: '', per: { mode: 'month', off: 0 }, openPur: '', exportText: '', focusAdd: false, newList: false };
+  const ui = { pidx: null, rcUrl: '', rcFor: '', rolloverSkip: false, confirmRoll: false, tab: 'lists', menu: false, edit: '', co: null, rv: null, confirm: '', per: { mode: 'month', off: 0 }, an: { item: '', months: 6 }, openPur: '', exportText: '', focusAdd: false, newList: false };
   const active = () => S.lists.find((l) => l.id === S.activeId) || S.lists[0];
   const QTYS = Array.from({ length: 20 }, (_, n) => [String(n + 1), 'Qty ' + (n + 1)]);
   const shopById = (id) => S.shops.find((s) => s.id === id);
@@ -572,7 +580,7 @@ input,select,textarea{background:var(--glass-strong);border:1px solid var(--glas
     const gb = $('settings-btn'); if (gb) gb.setAttribute('aria-pressed', ui.tab === 'settings' ? 'true' : 'false');
     $('foot').textContent = footText();
     const v = $('view'); v.textContent = '';
-    if (ui.tab === 'lists') viewLists(v); else if (ui.tab === 'spend') viewSpend(v); else viewSettings(v);
+    if (ui.tab === 'lists') viewLists(v); else if (ui.tab === 'spend') viewSpend(v); else if (ui.tab === 'analyse') viewAnalyse(v); else viewSettings(v);
     if (ui.focusAdd) { ui.focusAdd = false; const a = $('add-input'); if (a) a.focus(); }
   }
   const mutate = (fn) => { fn(); save(); render(); };
@@ -585,11 +593,13 @@ input,select,textarea{background:var(--glass-strong);border:1px solid var(--glas
   // Menu bar = the Lists | Spend tabs; toolbar = drop-downs (which list on Lists, which period on Spend). The toolbar is hidden on Settings and during checkout.
   const mbItem = (text, fn, o) => { o = o || {}; return h('button', { type: 'button', class: 'mb-item', role: o.sel == null ? 'menuitem' : 'option', 'aria-selected': o.sel == null ? null : (o.sel ? 'true' : 'false'), disabled: o.disabled, text: text, onclick: fn }); };
   function paintBars() {
-    const lists = ui.tab === 'lists' && !ui.co, spend = ui.tab === 'spend';
-    [['tb-lists', ui.tab === 'lists'], ['tb-spend', spend]].forEach((t) => $(t[0]).setAttribute('aria-selected', t[1] ? 'true' : 'false'));
-    $('toolbar').hidden = !(lists || spend);
+    const lists = ui.tab === 'lists' && !ui.co, spend = ui.tab === 'spend', an = ui.tab === 'analyse';
+    [['tb-lists', ui.tab === 'lists'], ['tb-spend', spend], ['tb-analyse', an]].forEach((t) => $(t[0]).setAttribute('aria-selected', t[1] ? 'true' : 'false'));
+    $('toolbar').hidden = !(lists || spend || an);
     ['mb-list'].forEach((id) => { $(id).hidden = !lists; });
     ['mb-per', 'mb-prev', 'mb-next'].forEach((id) => { $(id).hidden = !spend; });
+    ['mb-item', 'an-range'].forEach((id) => { $(id).hidden = !an; });
+    if (an) paintAnalyseBar();
     if (lists) {
       const l = active(), open = l.items.filter((i) => !i.pid).length;
       $('mb-list-label').textContent = l.name;
@@ -820,6 +830,91 @@ input,select,textarea{background:var(--glass-strong);border:1px solid var(--glas
     keys.forEach((k) => box.appendChild(h('div', { class: 'bar' }, h('span', { text: k }), h('span', { class: 't' }, h('i', { style: 'width:' + Math.max(2, Math.round(map[k] / (total || 1) * 100)) + '%' })), h('span', { class: 'mono', text: money(map[k]) }))));
     return box;
   }
+
+  /* ---------- Analyse: one item's cost and your shopping trends ---------- */
+  const nkey = (n) => String(n || '').trim().toLowerCase();
+  const monLabel = (d) => d.toLocaleDateString(undefined, { month: 'short', year: '2-digit' });
+  function anWindow() {
+    const m = ui.an.months, now = new Date();
+    const s = new Date(now.getFullYear(), now.getMonth() - m + 1, 1), e = new Date(now.getFullYear(), now.getMonth() + 1, 1), ps = new Date(now.getFullYear(), now.getMonth() - 2 * m + 1, 1);
+    const by = (x, y) => new Date(x.at) - new Date(y.at);
+    return { s: s, e: e, months: m, cur: S.purchases.filter((p) => within(p, s, e)).sort(by), prev: S.purchases.filter((p) => within(p, ps, s)).sort(by) };
+  }
+  // Every priced family-grocery line, grouped by item name (personal / not-groceries lines are left out).
+  function anItems(ps) {
+    const it = {};
+    ps.forEach((p) => p.lines.forEach((x) => {
+      const v = +x.price || 0; if (x.tag || !v || !nkey(x.name)) return;
+      const k = nkey(x.name), e = it[k] || (it[k] = { key: k, name: x.name.trim(), cat: x.cat, rows: [], total: 0 });
+      e.rows.push({ at: p.at, price: v, shop: p.shopName, est: !!x.est }); e.total += v;
+    }));
+    return it;
+  }
+  function paintAnalyseBar() {
+    const w = anWindow(), it = anItems(w.cur), cur = ui.an.item, m = $('mn-item'); m.textContent = '';
+    const found = it[cur]; $('mb-item-label').textContent = cur ? (found ? found.name : cur) : 'All items';
+    [3, 6, 12].forEach((n) => $('an-' + n).setAttribute('aria-pressed', ui.an.months === n ? 'true' : 'false'));
+    m.appendChild(mbItem('All items', () => { ui.an.item = ''; render(); }, { sel: !cur }));
+    m.appendChild(h('div', { class: 'mb-sep' }));
+    Object.keys(it).sort((a, b) => it[b].total - it[a].total).slice(0, 60).forEach((k) => m.appendChild(mbItem(it[k].name, () => { ui.an.item = k; render(); }, { sel: k === cur })));
+  }
+  function tbars(entries, note) {
+    const mx = Math.max.apply(null, entries.map((x) => x[1]).concat([0.01])), box = h('div', { style: 'display:grid;gap:8px' });
+    if (!entries.length) box.appendChild(h('p', { class: 'muted', text: 'Nothing yet.' }));
+    entries.forEach((x) => box.appendChild(h('div', { class: 'bar' }, h('span', { text: x[0] }), h('span', { class: 't' }, h('i', { style: 'width:' + (x[1] ? Math.max(2, Math.round(x[1] / mx * 100)) : 0) + '%' })), h('span', { class: 'mono', text: (note ? note(x[1]) : money(x[1])) }))));
+    return box;
+  }
+  const pctTxt = (a, b) => b ? (a >= b ? 'up ' : 'down ') + Math.round(Math.abs(a - b) / b * 100) + '%' : '';
+  const monthsOf = (w, fn) => { const out = []; for (let i = 0; i < w.months; i++) { const s = new Date(w.s.getFullYear(), w.s.getMonth() + i, 1), e = new Date(s.getFullYear(), s.getMonth() + 1, 1); out.push([monLabel(s), fn(s, e)]); } return out; };
+  function viewAnalyse(v) {
+    const w = anWindow(), items = anItems(w.cur), span = w.months + ' months';
+    if (ui.an.item) return viewAnalyseItem(v, w, items[ui.an.item], span);
+    const a = agg(w.cur), pa = agg(w.prev);
+    if (!w.cur.length) { v.appendChild(h('div', { class: 'card' }, h('h3', { text: 'Analyse' }), h('p', { class: 'muted', text: 'No purchases in the last ' + span + '. Check out a shop on your list and the trends build up here.' }))); return; }
+    const c = h('div', { class: 'card' }, h('b', { text: 'Last ' + span }), h('p', { class: 'big', text: money(a.fam) }));
+    c.appendChild(h('span', { class: 'delta', text: w.cur.length + (w.cur.length === 1 ? ' shop' : ' shops') + ' · about ' + money(a.fam / w.cur.length) + ' each' + (pa.fam ? ' · ' + pctTxt(a.fam, pa.fam) + ' on the previous ' + span : '') }));
+    if (w.cur.length > 1) { const first = new Date(w.cur[0].at), last = new Date(w.cur[w.cur.length - 1].at); c.appendChild(h('span', { class: 'delta', text: 'A shop about every ' + Math.max(1, Math.round((last - first) / 864e5 / (w.cur.length - 1))) + ' days' })); }
+    v.appendChild(c);
+    v.appendChild(h('div', { class: 'card' }, h('h3', { text: 'Spend by month' }), tbars(monthsOf(w, (s, e) => agg(w.cur.filter((p) => within(p, s, e))).fam))));
+    const keys = Object.keys(items), pick = (k) => () => { ui.an.item = k; render(); };
+    const list = (title, hint, arr, right) => { const cd = h('div', { class: 'card' }, h('h3', { text: title }), h('p', { class: 'muted', text: hint })); if (!arr.length) cd.appendChild(h('p', { class: 'muted', text: 'Not enough purchases yet.' })); arr.forEach((e) => cd.appendChild(h('button', { type: 'button', class: 'bar', style: 'grid-template-columns:1fr auto;width:100%;text-align:left;background:none;border:0;padding:6px 0;font:inherit;color:inherit;cursor:pointer;min-height:40px', onclick: pick(e.key) }, h('span', { text: e.name }), h('span', { class: 'mono', text: right(e) })))); v.appendChild(cd); };
+    list('Costs you most', 'Tap an item to analyse it.', keys.map((k) => items[k]).sort((x, y) => y.total - x.total).slice(0, 10), (e) => money(e.total) + ' · ×' + e.rows.length);
+    list('Bought most often', 'How many times each item was on a receipt.', keys.map((k) => items[k]).filter((e) => e.rows.length > 1).sort((x, y) => y.rows.length - x.rows.length).slice(0, 8), (e) => '×' + e.rows.length + ' · avg ' + money(e.total / e.rows.length));
+    // price movement: first vs latest price of items bought at least twice (same item, later price)
+    const mv = keys.map((k) => items[k]).filter((e) => e.rows.length > 1).map((e) => { const f = e.rows[0].price, l = e.rows[e.rows.length - 1].price; return { key: e.key, name: e.name, f: f, l: l, d: f ? (l - f) / f : 0 }; }).filter((e) => Math.abs(e.d) >= 0.03);
+    list('Prices going up', 'First price compared with the latest.', mv.filter((e) => e.d > 0).sort((x, y) => y.d - x.d).slice(0, 6), (e) => money(e.f) + ' → ' + money(e.l) + ' (+' + Math.round(e.d * 100) + '%)');
+    list('Prices coming down', 'First price compared with the latest.', mv.filter((e) => e.d < 0).sort((x, y) => x.d - y.d).slice(0, 6), (e) => money(e.f) + ' → ' + money(e.l) + ' (' + Math.round(e.d * 100) + '%)');
+    // categories against the previous span
+    const cats = Object.keys(a.cat).sort((x, y) => a.cat[y] - a.cat[x]), cc = h('div', { class: 'card' }, h('h3', { text: 'Categories against the previous ' + span }));
+    cats.forEach((k) => cc.appendChild(h('div', { class: 'bar', style: 'grid-template-columns:1fr auto auto' }, h('span', { text: k }), h('span', { class: 'mono', text: money(a.cat[k]) }), h('span', { class: 'pill', text: pa.cat[k] ? pctTxt(a.cat[k], pa.cat[k]) : 'new' }))));
+    v.appendChild(cc);
+    const days = [0, 0, 0, 0, 0, 0, 0]; w.cur.forEach((p) => { days[(new Date(p.at).getDay() + 6) % 7]++; });
+    const names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    v.appendChild(h('div', { class: 'card' }, h('h3', { text: 'Which days you shop' }), tbars(names.map((n, i) => [n, days[i]]), (n) => String(n))));
+  }
+  function viewAnalyseItem(v, w, e, span) {
+    const back = btn('quiet sm', 'x', 'All items', () => { ui.an.item = ''; render(); }, 'All items');
+    if (!e) { v.appendChild(h('div', { class: 'card' }, h('h3', { text: nkey(ui.an.item) }), h('p', { class: 'muted', text: 'No purchases of this item in the last ' + span + '. Try a longer span.' }), back)); return; }
+    const rows = e.rows, prices = rows.map((x) => x.price), lo = Math.min.apply(null, prices), hi = Math.max.apply(null, prices), avg = e.total / rows.length, last = rows[rows.length - 1], first = rows[0];
+    const c = h('div', { class: 'card' }, h('div', { class: 'row' }, h('b', { text: e.name }), h('span', { class: 'pill', text: e.cat }), h('span', { class: 'tb-gap' }), back), h('p', { class: 'big', text: money(e.total) }));
+    c.appendChild(h('span', { class: 'delta', text: 'spent over the last ' + span + ' · bought ' + rows.length + (rows.length === 1 ? ' time' : ' times') }));
+    c.appendChild(h('span', { class: 'delta', text: 'Average ' + money(avg) + ' · lowest ' + money(lo) + ' · highest ' + money(hi) }));
+    c.appendChild(h('span', { class: 'delta', text: 'Last ' + money(last.price) + ' at ' + last.shop + ' on ' + new Date(last.at).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) + (rows.length > 1 && first.price ? ' · ' + pctTxt(last.price, first.price) + ' since the first purchase' : '') }));
+    if (rows.length > 1) c.appendChild(h('span', { class: 'delta', text: 'Bought about every ' + Math.max(1, Math.round((new Date(last.at) - new Date(first.at)) / 864e5 / (rows.length - 1))) + ' days' }));
+    if (rows.some((x) => x.est)) c.appendChild(h('span', { class: 'delta', text: 'Some prices are estimates from earlier receipts.' }));
+    v.appendChild(c);
+    const mo = (fn) => monthsOf(w, (s, en) => fn(rows.filter((x) => { const t = new Date(x.at); return t >= s && t < en; })));
+    const pm = mo((r) => r.length ? r.reduce((a, x) => a + x.price, 0) / r.length : 0);
+    v.appendChild(h('div', { class: 'card' }, h('h3', { text: 'Price over time' }), h('p', { class: 'muted', text: 'Average price paid each month.' }), tbars(pm)));
+    v.appendChild(h('div', { class: 'card' }, h('h3', { text: 'Spend per month' }), tbars(mo((r) => r.reduce((a, x) => a + x.price, 0)))));
+    const sh = {}; rows.forEach((x) => { const o = sh[x.shop] || (sh[x.shop] = { n: 0, t: 0 }); o.n++; o.t += x.price; });
+    const sk = Object.keys(sh).sort((x, y) => sh[x].t / sh[x].n - sh[y].t / sh[y].n), shc = h('div', { class: 'card' }, h('h3', { text: 'Where it costs least' }), h('p', { class: 'muted', text: 'Average price at each shop.' }));
+    sk.forEach((k, i) => shc.appendChild(h('div', { class: 'bar', style: 'grid-template-columns:1fr auto auto' }, h('span', { text: k + ' ×' + sh[k].n }), h('span', { class: 'mono', text: money(sh[k].t / sh[k].n) }), sk.length > 1 && i === 0 ? h('span', { class: 'pill', text: 'Cheapest' }) : h('span'))));
+    v.appendChild(shc);
+    const hc = h('div', { class: 'card' }, h('h3', { text: 'Every purchase' }));
+    rows.slice().reverse().slice(0, 30).forEach((x) => hc.appendChild(h('div', { class: 'bar', style: 'grid-template-columns:1fr auto' }, h('span', { text: new Date(x.at).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: '2-digit' }) + ' · ' + x.shop }), h('span', { class: 'mono', text: money(x.price) + (x.est ? ' ≈' : '') }))));
+    v.appendChild(hc);
+  }
   function viewSpend(v) {
     const r = range(), mine = S.purchases.filter((p) => within(p, r.s, r.e)).sort((a, b) => new Date(b.at) - new Date(a.at)), a = agg(mine);
     const pr = ui.per.mode === 'year' ? agg(S.purchases.filter((p) => within(p, new Date(r.s.getFullYear(), r.s.getMonth() - 12, 1), r.s))) : ui.per.mode === 'month' ? agg(S.purchases.filter((p) => within(p, new Date(r.s.getFullYear(), r.s.getMonth() - 1, 1), r.s))) : agg(S.purchases.filter((p) => within(p, new Date(r.s.getFullYear(), r.s.getMonth(), r.s.getDate() - 7), r.s)));
@@ -948,6 +1043,8 @@ input,select,textarea{background:var(--glass-strong);border:1px solid var(--glas
 
   $('tb-lists').addEventListener('click', () => goTab('lists'));
   $('tb-spend').addEventListener('click', () => goTab('spend'));
+  $('tb-analyse').addEventListener('click', () => goTab('analyse'));
+  [3, 6, 12].forEach((n) => $('an-' + n).addEventListener('click', () => { ui.an.months = n; render(); }));
   ['week', 'month', 'year'].forEach((k) => $('per-' + k).addEventListener('click', () => { ui.per = { mode: k, off: 0 }; render(); }));
   $('mb-prev').addEventListener('click', () => { ui.per.off--; render(); });
   $('mb-next').addEventListener('click', () => { ui.per.off++; render(); });
