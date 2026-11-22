@@ -72,7 +72,32 @@ function showBanner(text, bad) {
 
 const MODE_LABEL = { off: 'Off', nightly: 'Nightly', immediate: 'Instant' };
 
+/* TSDProxy: not an Umbrel app, so it is looked after by Services Manager; this card shows what it reports and offers automatic update, its time and Update now. */
+function renderTsd() {
+  const c = $('#tsdCard'), t = view.data && view.data.tsdproxy;
+  if (!t) { c.hidden = true; return; }
+  c.hidden = false;
+  const st = t.status, ct = (st && st.container) || {}, up = (st && st.update) || {}, api = (st && st.api) || {};
+  const ver = api.version || ct.version || '', stale = !st ? 'No report from Services Manager yet. Update Services Manager to 1.3.0 or newer.' : !t.fresh ? 'Services Manager has not reported for over 90 seconds.' : '';
+  const state = stale ? h('span', { class: 'chip bad' }, 'No report') : up.error ? h('span', { class: 'chip bad' }, 'Check failed') : up.available ? h('span', { class: 'chip warn' }, 'Update ready') : h('span', { class: 'chip ok' }, 'Up to date');
+  c.replaceChildren(
+    h('div', { class: 'row spread' }, h('div', {}, h('b', {}, 'TSDProxy'), h('div', { class: 'sub' }, (ver ? 'Version ' + ver : 'Version not reported') + (ct.image ? ' \u00b7 ' + ct.image + (ct.imageId ? ' (' + ct.imageId + ')' : '') : ''))), state),
+    stale ? h('p', { class: 'note' }, stale) : null,
+    up.error ? h('p', { class: 'note' }, up.error) : null,
+    up.available ? h('p', { class: 'note' }, 'A newer image' + (up.latestVersion ? ' (' + up.latestVersion + ')' : '') + ' is ready' + (t.settings.autoUpdate ? ' and installs in the nightly window.' : '.')) : null,
+    up.last ? h('p', { class: 'note' }, 'Last update: ' + up.last.message + ' (' + when(up.last.at) + ')') : null,
+    h('div', { class: 'row spread' },
+      h('div', {}, h('b', {}, 'Update TSDProxy automatically'), h('div', { class: 'sub' }, 'Checks about every 12 hours and installs the new image at the time on the right. The old container is put back if the new one does not stay up.')),
+      h('label', { class: 'switch' }, h('input', { type: 'checkbox', checked: t.settings.autoUpdate, onchange: (e) => tsdSave({ autoUpdate: e.target.checked }) }), h('span', {}))),
+    h('div', { class: 'row spread' }, h('label', {}, 'Update time ', h('input', { type: 'time', step: 60, value: t.settings.time, onchange: (e) => tsdSave({ time: e.target.value }) })), h('button', { class: 'btn small', disabled: !t.fresh, onclick: () => tsdSave({ updateNow: true }) }, 'Update now')),
+  );
+}
+async function tsdSave(body) {
+  try { await api('/api/tsdproxy', body); toast(body.updateNow ? 'Update requested, TSDProxy is checked within 15 seconds' : 'Saved'); refresh(); } catch (e) { toast(e.message, true); }
+}
+
 function render() {
+  renderTsd();
   const d = view.data;
   const pill = $('#connPill'), btn = $('#connBtn');
   if (d.umbrel.connected) {

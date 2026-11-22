@@ -629,6 +629,7 @@ function snapshot() {
     install: { enabled: settings.autoInstall.enabled, ...installer.state() },
     check: { at: status.lastCheck, error: status.lastError, registryProc: status.registryProc, registryCount: status.registryCount },
     repo: { at: repoWatch.state.at || null, error: repoWatch.state.error, pending: repoPending },
+    tsdproxy: tsdInfo(),
     log: log.slice(-60).reverse(),
     time: Date.now(),
   };
@@ -677,6 +678,16 @@ function readBody(req) {
 }
 
 const validTime = (s) => /^([01]?\d|2[0-3]):[0-5]\d$/.test(String(s));
+
+/* ------------------------------ TSDProxy ------------------------------- */
+// TSDProxy (the service behind the Public and Tailscale-name addresses) is not an Umbrel app. Services Manager looks after it (version, update check, update) and reports in
+// tsdproxy-status.json in TSDProxy's settings folder; this app shows that and writes the two things you can choose: automatic update on/off + time, and Update now.
+const TSD_DIR = process.env.TSDPROXY_DIR || '/tsdproxy-config';
+const tsdFile = (n) => path.join(TSD_DIR, n);
+function tsdInfo() {
+  const st = readJson(tsdFile('tsdproxy-status.json'), null), set = Object.assign({ autoUpdate: true, time: '03:30' }, readJson(tsdFile('tsdproxy-settings.json'), {}));
+  return { status: st, fresh: !!(st && st.at && Date.now() - st.at < 90e3), settings: { autoUpdate: !!set.autoUpdate, time: String(set.time || '03:30') } };
+}
 const validZone = (z) => { try { new Intl.DateTimeFormat('en', { timeZone: z }); return true; } catch { return false; } };
 
 const server = http.createServer(async (req, res) => {
@@ -706,6 +717,17 @@ const server = http.createServer(async (req, res) => {
       installedCache = [];
       addLog('info', 'Disconnected from umbrelOS');
       return send(res, 200, { ok: true });
+    }
+    if (url.pathname === '/api/tsdproxy' && req.method === 'POST') {
+      const b = await readBody(req), cur = tsdInfo().settings, next = { ...cur };
+      if (b.autoUpdate !== undefined) next.autoUpdate = !!b.autoUpdate;
+      if (b.time !== undefined) { if (!validTime(b.time)) throw Object.assign(new Error('Use a time like 03:30'), { status: 400 }); next.time = String(b.time).padStart(5, '0'); }
+      try {
+        if (b.autoUpdate !== undefined || b.time !== undefined) { fs.writeFileSync(tsdFile('tsdproxy-settings.json') + '.tmp', JSON.stringify(next, null, 2)); fs.renameSync(tsdFile('tsdproxy-settings.json') + '.tmp', tsdFile('tsdproxy-settings.json')); }
+        if (b.updateNow) fs.writeFileSync(tsdFile('tsdproxy-update-request'), new Date().toISOString());
+      } catch (e) { throw Object.assign(new Error("TSDProxy's settings folder is not writable from App Updater (" + (e.code || e.message) + ')'), { status: 500 }); }
+      if (b.updateNow) addLog('info', 'TSDProxy: update requested');
+      return send(res, 200, { ok: true, tsdproxy: tsdInfo() });
     }
     if (url.pathname === '/api/mode' && req.method === 'POST') {
       const { appId, mode } = await readBody(req);

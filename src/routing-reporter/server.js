@@ -3,7 +3,7 @@
 // (Portal API `publishRoutes`, which feeds Portal Admin's "JoolzApp apps" page) and to the status feed (so a problem can be diagnosed without opening anything).
 // Node built-ins only. Owner-only: Umbrel's login stays in front of it.
 const http = require('http'), fs = require('fs'), path = require('path');
-const { makeMonitor } = require('./checker'), { makeRegistry } = require('./official'), { findPortClashes } = require('./clashes');
+const { applyControl, cleanPaused } = require('./control'), { makeMonitor } = require('./checker'), { makeRegistry } = require('./official'), { findPortClashes } = require('./clashes');
 
 const PORT = Number(process.env.PORT) || 3000, DATA_DIR = process.env.DATA_DIR || '/data', PUBLIC_DIR = path.join(__dirname, 'public');
 const APP_DIR = process.env.UMBREL_APP_DATA || '/umbrel-app-data', CONFIG_FILE = path.join(DATA_DIR, 'config.json');
@@ -17,8 +17,21 @@ let config = { ...DEFAULTS, ...readJson(CONFIG_FILE, {}) };
 // Routes you chose to ignore ("<app id>|<route key>", e.g. an app that is not meant to be on Tailscale). They are still checked, but never count as a problem.
 let ignored = new Set(Array.isArray(config.ignored) ? config.ignored.filter((k) => /^[A-Za-z0-9._-]{1,80}\|(lan|local|tailscale|name|public)$/.test(k)).slice(0, 400) : []);
 delete config.ignored;
-const saveConfig = () => writeJson(CONFIG_FILE, { ...config, ignored: [...ignored] });
-const mark = (r) => r && { ...r, apps: r.apps.map((a) => ({ ...a, routes: a.routes.map((x) => ({ ...x, ignored: ignored.has(a.id + '|' + x.key) })) })) };
+const saveConfig = () => writeJson(CONFIG_FILE, { ...config, ignored: [...ignored], pausedProxies: [...paused].sort() });
+// TSDProxy control (see control.js): the proxies we want paused are kept in our own settings and mirrored to joolz-paused.json in TSDProxy's folder; Services Manager's keeper
+// applies them and reports back in tsdproxy-status.json (version, update state, every proxy and whether the API can be reached).
+const TSD_DIR = process.env.TSDPROXY_DIR || '/tsdproxy-config', TSD_STATUS = path.join(TSD_DIR, 'tsdproxy-status.json'), TSD_PAUSED = path.join(TSD_DIR, 'joolz-paused.json');
+let paused = new Set(cleanPaused(config.pausedProxies || readJson(TSD_PAUSED, {}).paused)); delete config.pausedProxies;
+let pausedWrite = { ok: null, error: '' };
+const tsdStatus = () => readJson(TSD_STATUS, null);
+const knownProxies = () => new Set([...(monitor.last ? monitor.last.apps.map((a) => a.tsdName).filter(Boolean) : []), ...(((tsdStatus() || {}).proxies || []).map((p) => p.name))]);
+const mark = (r) => applyControl(r, { ignored, paused, tsd: tsdStatus() });
+function savePaused() {
+  saveConfig();
+  try { fs.writeFileSync(TSD_PAUSED + '.tmp', JSON.stringify({ paused: [...paused].sort(), at: new Date().toISOString(), by: 'port-master' }, null, 2)); fs.renameSync(TSD_PAUSED + '.tmp', TSD_PAUSED); pausedWrite = { ok: true, error: '' }; }
+  catch (e) { pausedWrite = { ok: false, error: 'TSDProxy\'s folder is not writable from Port Master (' + String(e.code || e.message).slice(0, 60) + ')' }; }
+}
+const tsdInfo = () => { const t = tsdStatus(), now = Date.now(); return { status: t, fresh: !!(t && t.at && now - t.at < 90e3), paused: [...paused].sort(), write: pausedWrite }; };
 const clean = (b, old) => {
   const o = { ...old }, bad = (m) => Object.assign(new Error(m), { status: 400 });
   if (b.lanHost !== undefined) { const v = String(b.lanHost).trim(); if (!/^[A-Za-z0-9.-]{1,100}$/.test(v)) throw bad('The LAN address should look like 192.168.1.50 or umbrel.local.'); o.lanHost = v; }
@@ -63,7 +76,9 @@ const feedPayload = async () => {
     [[a.port, 'app'], ...(a.hostPorts || []).filter((p) => p !== a.port).map((p) => [p, 'published'])].forEach(([p, kind]) => { ports.push({ port: p, app: a.id, name: a.name, kind, state: st }); (by[p] = by[p] || new Set()).add(a.id); }); });
   ports.sort((x, y) => x.port - y.port);
   const conflicts = Object.keys(by).filter((p) => by[p].size > 1).map((p) => ({ port: Number(p), apps: [...by[p]] }));
-  return { intervalMin: r.intervalMin, config: r.config, reportedToPortalAdmin: reportState.ok, reportError: reportState.error, routesDown: down, portConflicts: conflicts,
+  const t = tsdInfo(), ts = t.status || {};
+  return { tsdproxy: { fresh: t.fresh, apiReachable: !!(ts.api && ts.api.reachable), apiError: ts.api && ts.api.error || '', version: ts.api && ts.api.version || ts.container && ts.container.version || '', image: ts.container && ts.container.image || '', updateAvailable: !!(ts.update && ts.update.available), lastUpdate: ts.update && ts.update.last || null, pausedByPortMaster: t.paused, writeError: t.write.error, proxies: (ts.proxies || []).map((p) => ({ name: p.name, status: p.status })) },
+    intervalMin: r.intervalMin, config: r.config, reportedToPortalAdmin: reportState.ok, reportError: reportState.error, routesDown: down, portConflicts: conflicts,
     // Clashes with official Umbrel apps (installed or not): the official app keeps the port, the app listed under change should move (suggestedPort is free). The official list itself is not included, only its size.
     portClashes: clashes().map((c) => ({ port: c.port, keep: c.keep.map((p) => ({ id: p.id, source: p.source, installed: p.installed })), change: c.change.map((p) => ({ id: p.id, source: p.source, kind: p.kind, suggestedPort: p.suggestedPort || null })) })), officialPorts: officialInfo(), ports,
     apps: r.apps.map((a) => ({ id: a.id, name: a.name, version: a.version, joolzapp: a.joolzapp, port: a.port, hostPorts: a.hostPorts || [], published: a.published, routes: a.routes.map((x) => ({ key: x.key, url: x.url, state: x.state, ignored: x.ignored, status: x.status, error: x.error, since: x.since })) })) };
@@ -77,8 +92,23 @@ const server = http.createServer(async (req, res) => {
     const p = decodeURIComponent(new URL(req.url, 'http://x').pathname);
     if (p === '/api/app-config' && req.method === 'GET') { const pl = portalLink(); return send(res, 200, { portalUrl: pl ? pl.url : '' }); }
     if (p === '/api/link' && req.method === 'GET') return send(res, 200, feedHandle ? feedHandle.link() : { state: 'broken', shaking: false, note: 'Not reporting yet.' });
-    if (p === '/api/state' && req.method === 'GET') return send(res, 200, { report: mark(monitor.last), clashes: clashes(), official: officialInfo(), config, portal: { linked: !!portalLink(), ...reportState }, checking: false });
+    if (p === '/api/state' && req.method === 'GET') return send(res, 200, { report: mark(monitor.last), tsd: tsdInfo(), clashes: clashes(), official: officialInfo(), config, portal: { linked: !!portalLink(), ...reportState }, checking: false });
     if (p === '/api/check' && req.method === 'POST') { const rep = await checkNow(); refreshOfficial(); return send(res, 200, { report: rep, clashes: clashes(), official: officialInfo(), portal: { linked: !!portalLink(), ...reportState } }); }
+    if (p === '/api/tsdproxy' && req.method === 'GET') return send(res, 200, tsdInfo());
+    if ((p === '/api/route' || p === '/api/proxy') && req.method === 'POST') {       // a tick (route) or a proxy button: turn a route on or off for real where it can be, else just stop counting it
+      let b; try { b = JSON.parse((await body(req)) || '{}'); } catch { return send(res, 400, { message: 'Bad request.' }); }
+      const proxyName = p === '/api/proxy' ? String(b.name || '').toLowerCase() : (() => { const a = monitor.last && monitor.last.apps.find((x) => x.id === b.appId && x.routes.some((r) => r.key === b.route)); return a && (b.route === 'name' || b.route === 'public') ? a.tsdName : ''; })();
+      if (proxyName) {
+        if (!knownProxies().has(proxyName)) return send(res, 404, { message: 'TSDProxy has no proxy called ' + proxyName + '.' });
+        if (b.enabled === false || b.paused === true) paused.add(proxyName); else paused.delete(proxyName);
+        savePaused(); const rep = mark(monitor.last); await sendToPortal(rep); return send(res, 200, { report: rep, tsd: tsdInfo(), portal: { linked: !!portalLink(), ...reportState } });
+      }
+      if (p === '/api/proxy') return send(res, 404, { message: 'Unknown proxy.' });
+      const k = String(b.appId || '') + '|' + String(b.route || '');
+      if (!monitor.last || !monitor.last.apps.some((a) => a.id === b.appId && a.routes.some((x) => x.key === b.route))) return send(res, 404, { message: 'That route is not in the latest check.' });
+      if (b.enabled === false) ignored.add(k); else ignored.delete(k);
+      saveConfig(); const rep = mark(monitor.last); await sendToPortal(rep); return send(res, 200, { report: rep, tsd: tsdInfo(), portal: { linked: !!portalLink(), ...reportState } });
+    }
     if (p === '/api/ignore' && req.method === 'POST') {
       let b; try { b = JSON.parse((await body(req)) || '{}'); } catch { return send(res, 400, { message: 'Bad request.' }); }
       const k = String(b.appId || '') + '|' + String(b.route || '');

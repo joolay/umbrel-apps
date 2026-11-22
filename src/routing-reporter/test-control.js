@@ -1,0 +1,13 @@
+'use strict';
+const assert = require('assert'), { applyControl, cleanPaused } = require('./control');
+const rep = { apps: [{ id: 'joolay-a', tsdName: 'a', routes: [{ key: 'lan' }, { key: 'name' }, { key: 'public' }] }, { id: 'x', tsdName: '', routes: [{ key: 'lan' }] }] };
+const now = 1e6, tsd = (o) => ({ at: now - 1000, api: { reachable: true }, proxies: [{ name: 'a', paused: !!o }] });
+let m = applyControl(rep, { ignored: new Set(), paused: new Set(), tsd: tsd(false), now });
+assert.deepStrictEqual(m.apps[0].routes.map((r) => [r.ignored, r.switch, r.control]), [[false, 'monitor', undefined], [false, 'proxy', 'on'], [false, 'proxy', 'on']]);
+m = applyControl(rep, { ignored: new Set(), paused: new Set(['a']), tsd: tsd(false), now }); assert.deepStrictEqual(m.apps[0].routes.map((r) => [r.ignored, r.control]).slice(1), [[true, 'pending'], [true, 'pending']]);
+m = applyControl(rep, { ignored: new Set(), paused: new Set(['a']), tsd: tsd(true), now }); assert.strictEqual(m.apps[0].routes[2].control, 'paused');
+m = applyControl(rep, { ignored: new Set(), paused: new Set(['a']), tsd: { at: now - 200000, api: { reachable: true }, proxies: [] }, now }); assert.strictEqual(m.apps[0].routes[1].control, 'waiting'); assert.strictEqual(m.apps[0].routes[1].ignored, true);
+m = applyControl(rep, { ignored: new Set(['joolay-a|lan']), paused: new Set(), tsd: null, now }); assert.strictEqual(m.apps[0].routes[0].ignored, true); assert.strictEqual(m.apps[0].routes[1].control, 'on');
+m = applyControl(rep, { ignored: new Set(), paused: new Set(), tsd: tsd(true), now }); assert.strictEqual(m.apps[0].routes[1].control, 'resuming');
+assert.deepStrictEqual(cleanPaused(['B', 'a', 'a', '../x', 'zz'], new Set(['a', 'b'])), ['a', 'b']);
+console.log('control ok');
