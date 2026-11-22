@@ -75,7 +75,7 @@ Admins also get an **Admin folder** in their JoolzApp Store listing every owner-
 Every app's `gate.html` is the shared gate (`templates/glass/gate/`: `gate.css`, `gate.js`, `gate.html`, `sso.html`, `pwtoggle.js`; rules in `templates/glass/README.md`, "Login and welcome screens (gate)"): first-run welcome slides, JoolzApp sign-in with PIN / pattern first on known devices, the "Almost there" and "Can't reach the account server" screens. Do not copy-paste a new login page per app; copy the template files and set the `JZGate({...})` options. A change every app should get goes into `templates/glass/gate/` first. Existing apps move onto it one at a time as they are edited.
 
 ## Floating top bar (standard for every app)
-Home button first (`data-home`, hidden until the Store's address is known; `floatbar.js` handles it), title next, light/dark theme icon on the right, a full-width frosted bar fixed to the top edge (square, not pill-shaped). Files and markup are in `templates/glass/README.md` ("Floating top bar"): copy `floatbar.css` + `floatbar.js`.
+Home button first (`data-home`, hidden until the Store's address is known; `floatbar.js` handles it), title next (just the app's name: the app icon is NOT shown in the top bar), light/dark theme icon on the right, a full-width frosted bar fixed to the top edge (square, not pill-shaped). Files and markup are in `templates/glass/README.md` ("Floating top bar"): copy `floatbar.css` + `floatbar.js`.
 The JoolzApp Store has it; other apps move over one at a time, like the Glass theme.
 The bar is persistent: fixed to the top of the screen while the page scrolls (done in `floatbar.css`/`floatbar.js`; copy both, never make it sticky or scroll away). This is the standard for every app.
 Every app's top bar also carries the **Settings gear** (`data-settings` button, markup in `templates/glass/README.md`, "Floating top bar"): it opens that app's own Settings screen (its preferences, the things it manages such as shops or categories, data export, and account actions like Sign out). No loose account rows under the bar. Order: Home, title, Install, Settings, theme. Add it to every app as it is edited; Jolly Grocer has it.
@@ -120,6 +120,7 @@ Admin > Paid apps (Yoco) locks an app behind payment using the existing `portal.
   Claude's side is `status/claude-<app>.json`, written ONLY by Claude when it changes something for that app: `{ "toApp": { "rev": <n+1>, "at": "<ISO>", "note": "<what changed>" }, "seen": { "deviceRev": <the app's rev just read>, "at": "<ISO>" } }`.
   After reading `status/<app>.json`, set `seen.deviceRev` to its `rev` (that turns the app's hand into "read"); after a change, bump `toApp.rev` (the app marks it read on its next report, normally within a minute or two).
   Fresh read before every write, change only that file.
+- **AI sparkle** (every app with AI features, e.g. ones that call a model): `JZLink.aiWhile(promise)` (or `JZLink.ai(true|false)`) shows a breathing sparkle beside the ticks while the AI is working and hides it afterwards. Part of `jz.js`; see `templates/glass/README.md`, "AI sparkle".
 - New apps that talk to Claude: copy `status-feed.js`, keep the handle (`feedHandle = require('./status-feed')(...)`), serve `/api/link`, add `data-claude`.
 - JoolzTV (TV UI) has no top bar and is left out on purpose; see the TV rules.
 

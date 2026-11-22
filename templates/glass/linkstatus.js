@@ -14,6 +14,9 @@
 //       second tick amber  = Claude wrote something this app has not read yet
 //       red cross          = broken: a report the app should have made has not come through
 //     It reads GET api/link on the app's own server (see src/app-updater/status-feed.js: link()). An app that reports its own state with JZLink.sync() keeps that, except that a broken Claude link always shows the red cross.
+//  3. AI sparkle (any app with AI features): a spark that breathes and tilts, shown beside the ticks ONLY while the AI is working, gone when it finishes.
+//       JZLink.ai(true) / JZLink.ai(false)   or   JZLink.aiWhile(promise)  (shows while the promise is pending; several at once are counted)
+//     Respects "reduce motion" (then it just glows, no movement).
 // The ticks go into the bar (.topbar, else the first <header>) just before the Install / theme buttons.
 (function () {
   "use strict";
@@ -25,6 +28,7 @@
     ".jz-conn[data-s=off] .jz-t1{opacity:0}.jz-conn[data-s=off] .jz-cut{opacity:1;stroke:#ef4444}.jz-conn[data-s=rec] .jz-t2{opacity:.22;stroke:#22c55e}.jz-conn[data-s=pend] .jz-t1{animation:jzp 1.2s ease-in-out infinite}@keyframes jzp{50%{opacity:.35}}.jz-conn[data-s=pend] .jz-t1,.jz-conn[data-s=local] .jz-t1{stroke:#9aa3b2}" +
 
     "@media (max-width:480px){.topbar{gap:4px!important;padding-left:10px!important;padding-right:10px!important}.topbar .jz-ind{margin:0;padding:0 1px;min-width:26px}.topbar .tb-btn{width:34px;height:34px}.topbar .iconbtn{width:34px;height:34px}}" +
+    ".jz-ai{color:#7F77DD;cursor:default}.jz-ai[hidden]{display:none}.jz-ai svg{width:20px;height:20px;fill:currentColor;animation:jzspark 1.6s ease-in-out infinite}@keyframes jzspark{0%,100%{transform:scale(1) rotate(0);opacity:.7}50%{transform:scale(1.25) rotate(20deg);opacity:1}}@media (prefers-reduced-motion:reduce){.jz-ai svg{animation:none;opacity:1}}" +
     ".jz-tip{position:fixed;z-index:2147483000;max-width:260px;padding:8px 10px;border-radius:10px;font:500 12px/1.35 system-ui,sans-serif;color:#fff;background:rgba(15,20,35,.92);box-shadow:0 6px 20px rgba(0,0,0,.3);pointer-events:none}";
   var st = document.createElement("style"); st.textContent = css; document.head.appendChild(st);
 
@@ -43,12 +47,20 @@
   // two overlapping ticks (the second one only shows once the data has been read) and a slash for "not connected"
   var WIFI = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path class="jz-t1" d="M2 13l4 4 8-9"/><path class="jz-t2" d="M7 13l4 4 8-9"/><path class="jz-cut" d="M7 7l10 10M17 7L7 17"/></svg>';
 
+  var AI = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l2.2 6.3L20.5 10l-6.3 1.7L12 18l-2.2-6.3L3.5 10l6.3-1.7z"/><path d="M19 15l.9 2.1L22 18l-2.1.9L19 21l-.9-2.1L16 18l2.1-.9z"/></svg>';
+  var aiEl = null, aiN = 0;
+  function aiPaint() {
+    if (!aiEl) { if (!bar() || !conn) return; aiEl = make("jz-ai", "AI is working", AI); aiEl.title = "AI is working"; aiEl.setAttribute("role", "status"); aiEl.hidden = true; conn.parentNode.insertBefore(aiEl, conn); }
+    aiEl.hidden = aiN <= 0;
+  }
+  function ai(on) { aiN = on === false ? 0 : Math.max(1, aiN); aiPaint(); }
+  function aiWhile(p) { aiN++; aiPaint(); var done = function () { aiN = Math.max(0, aiN - 1); aiPaint(); }; Promise.resolve(p).then(done, done); return p; }
   var conn = null, cl = null;   // cl: the Claude link state from api/link
   function mount() {
     var b = bar(); if (!b || b.querySelector(".jz-ind")) return !!(b && b.querySelector(".jz-ind"));
     var ref = slot(b);
     function put(el) { if (ref) ref.parentNode.insertBefore(el, ref); else b.appendChild(el); }
-    conn = make("jz-conn", "Sync status", WIFI); conn.setAttribute("data-s", "wait"); put(conn); paint();
+    conn = make("jz-conn", "Sync status", WIFI); conn.setAttribute("data-s", "wait"); put(conn); paint(); if (aiN > 0) aiPaint();
     conn.addEventListener("click", function () { tip(conn, conn._label || ""); check(); });
     return true;
   }
@@ -94,5 +106,5 @@
   function start() { if (!mount()) { var n = 0, t = setInterval(function () { if (mount() || ++n > 40) { clearInterval(t); if (conn) go(); } }, 250); return; } go(); }
   function go() { check(); link(); setInterval(check, 15000); setInterval(link, 30000); addEventListener("online", check); addEventListener("offline", check); document.addEventListener("visibilitychange", function () { if (!document.hidden) { check(); link(); } }); }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start); else start();
-  window.JZLink = { check: check, link: link, sync: sync };
+  window.JZLink = { check: check, link: link, sync: sync, ai: ai, aiWhile: aiWhile };
 })();

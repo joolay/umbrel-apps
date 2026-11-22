@@ -82,10 +82,12 @@ artwork gets a tinted glass tile with its first letter, so give every new app an
 
 ## Floating top bar
 
+The app icon is NOT shown in the top bar: just the app's title (`floatbar.css` hides any `.topbar .brand img`, so an old bar loses it as soon as it loads the template).
+
 The bar is `position:fixed` (a sticky bar quietly stops working inside any overflow container) and `floatbar.js` adds a `.topbar-spacer` below it so the page is not covered. Always copy both files; never restyle the bar back to sticky. (the standard for every JoolzApp)
 Every app uses the same floating, frosted bar: the app's title on the left, the light/dark theme icon on the right (app buttons, if any, sit between).
 - Copy `floatbar.css` and `floatbar.js` into `src/<app>/public/`. Load `floatbar.js` in `<head>` (no flash) and `floatbar.css` after `glass.css` and the app's own CSS.
-- Markup: `<header class="topbar">` + the Home button (below) + `<div class="brand"><img src="icon.svg" alt="" width="28" height="28"><span>App name</span></div><span class="tb-gap"></span>` + the theme button + `</header>`.
+- Markup: `<header class="topbar">` + the Home button (below) + `<div class="brand"><span>App name</span></div><span class="tb-gap"></span>` + the theme button + `</header>`.
 - Home button (first in the bar, on every app): `<button class="tb-btn" data-home hidden aria-label="Home" title="Home"><svg viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10.5V20h13v-9.5"/><path d="M10 20v-5.5h4V20"/></svg></button>`. It stays hidden until the JoolzApp Store's address is known and then opens it; `floatbar.js` reads it from the app's `GET api/app-config` (`{ portalUrl }`) by itself, or call `JZBar.setHome(url)`. Do not write your own click or show/hide code for it.
 - Theme button: `<button class="tb-btn" data-theme-toggle><svg class="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z"/></svg><svg class="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6 7 7M17 17l1.4 1.4M5.6 18.4 7 17M17 7l1.4-1.4"/></svg></button>`
 - The choice is kept on the device. Apps that keep preferences on the person's JoolzApp account listen for the `jz-theme` event and save it as `pref.theme`, and call `JZTheme.set(value, true)` on load with the saved value.
@@ -117,6 +119,10 @@ The connected icon is a pair of **sync ticks** (WhatsApp style): one green tick 
 **Claude link = the same ticks, no separate chain-link icon.** An app with `data-claude` (on the `jz.js` tag) reads `GET api/link` and shows it on the ticks: two green = Claude has read the last change, one green = this app wrote something Claude has not read yet, amber second tick = Claude wrote something the app has not read yet, red cross = the link is broken (a report has not come through).
 
 Copy `linkstatus.js` next to `index.html` and load it last in `<body>`: `<script src="linkstatus.js"></script>` (connected icon only) or `<script src="linkstatus.js" data-claude></script>` (adds the Claude handshake; the app must serve `GET /api/link`, see `src/app-updater/status-feed.js`). Rules and protocol: CLAUDE.md, "Connected icon and Claude handshake".
+
+## AI sparkle (top bar, apps with AI features)
+A sparkle that breathes and tilts, shown beside the sync ticks only while the AI is working. It is in `jz.js` already; an app with AI features just calls `JZLink.aiWhile(promise)` around the AI request
+(several at once are counted) or `JZLink.ai(true)` / `JZLink.ai(false)`. Nothing to add to the markup. It follows "reduce motion" (then it glows without moving).
 
 ## Drag handle (reordering tiles and rows)
 Reordering uses a grip, never ▲▼ buttons on tiles. Copy `draghandle.js` next to `index.html` (the handle's look, `.jz-handle` and `.jz-dragging`, is already in `glass.css`), load it before the app's script, and put
