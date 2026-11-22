@@ -140,7 +140,7 @@ input,select,textarea{background:var(--glass-strong);border:1px solid var(--glas
 </nav>
 <div class="toolbar" id="toolbar" role="toolbar" aria-label="Lists and period">
   <button type="button" class="mb-btn mb-select" id="mb-list" data-menu="list" aria-haspopup="listbox" aria-expanded="false" aria-label="Choose a list"><span class="mb-label" id="mb-list-label">My list</span></button>
-  <button type="button" class="tool" id="mb-search" aria-label="Search lists by tag" title="Search lists by tag" aria-pressed="false" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="m16 16 4 4"/></svg></button>
+  <button type="button" class="tool" id="mb-search" aria-label="Search lists by tag or date" title="Search lists by tag or date" aria-pressed="false" style="margin-left:auto" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="m16 16 4 4"/></svg></button>
   <button type="button" class="mb-btn mb-select" id="mb-item" data-menu="item" aria-haspopup="listbox" aria-expanded="false" aria-label="Choose an item to analyse" hidden><span class="mb-label" id="mb-item-label">All items</span></button>
   <div class="tool-group" id="an-range" role="group" aria-label="Time span" hidden>
     <button type="button" class="tool" id="an-3" aria-pressed="false">3 months</button>
@@ -640,12 +640,10 @@ input,select,textarea{background:var(--glass-strong);border:1px solid var(--glas
       if (l.tag) return h('span', { class: 'row' }, h('button', { type: 'button', class: 'pill', title: 'Change tag', onclick: () => { ui.tagEdit = true; render(); }, text: l.tag }), btn('quiet sm', 'x', 'Remove tag', () => { mutate(() => { l.tag = ''; }); }));
       return btn('quiet sm', 'plus', 'Add tag (optional)', () => { ui.tagEdit = true; render(); }, 'Add tag');
     })();
-    const title = h('b', { class: 'title-in', style: 'flex:0 1 auto;border:0;background:transparent;padding:0', text: listLabel(l) });
     const del = ui.confirm === 'list' ? h('span', { class: 'row' }, btn('danger sm', 'trash', 'Confirm delete list', () => { ui.confirm = ''; mutate(() => { S.lists = S.lists.filter((x) => x.id !== l.id); if (!S.lists.length) S.lists.push({ id: uid(), name: '', tag: '', date: dayKey(new Date()), items: [] }); S.activeId = S.lists[0].id; }); }, 'Delete?'), btn('sm', 'x', 'Keep list', () => { ui.confirm = ''; render(); }, 'Keep'))
       : null;
-    head.appendChild(h('div', { class: 'row' }, title, del));
     if (ui.find) v.appendChild(findCard());
-    v.appendChild(head);
+    if (del) { head.appendChild(h('div', { class: 'row' }, h('span', { class: 'muted', text: 'Delete ' + listLabel(l) + '?' }), del)); v.appendChild(head); }
 
     const form = h('form', { class: 'row grow', onsubmit: (e) => { e.preventDefault(); const i = $('add-input'), t = i.value.trim(); if (!t) return; ui.focusAdd = true; if (parseCode(t).unk) { startReview([t]); return; } mutate(() => { addItem(l, t); }); } });
     form.appendChild(h('input', { type: 'text', id: 'add-input', maxlength: '300', placeholder: 'Add an item (2-letter shop code first, e.g. PP milk)', 'aria-label': 'Add an item', autocomplete: 'off', enterkeyhint: 'done' }));
@@ -679,13 +677,14 @@ input,select,textarea{background:var(--glass-strong);border:1px solid var(--glas
   // Search icon in the toolbar: find lists by their tag.
   function findCard() {
     const c = h('div', { class: 'card' }), tags = Array.from(new Set(S.lists.map((x) => x.tag).filter(Boolean))).sort((a, b) => a.localeCompare(b));
-    const qi = h('input', { type: 'search', placeholder: 'Search lists by tag', 'aria-label': 'Search lists by tag', value: ui.find.q, maxlength: '30' });
+    const qi = h('input', { type: 'search', placeholder: 'Search by tag or date, e.g. Braai or 22 Nov', 'aria-label': 'Search lists by tag or date', value: ui.find.q, maxlength: '30' });
     const res = h('div', { style: 'display:grid;gap:6px;margin-top:8px' });
     const paint = () => {
       res.textContent = ''; const q = ui.find.q.trim().toLowerCase();
-      const hits = S.lists.filter((x) => x.tag && (!q || x.tag.toLowerCase().indexOf(q) >= 0)).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-      if (!hits.length) res.appendChild(h('p', { class: 'muted', text: tags.length ? 'No list has a tag like that.' : 'No lists are tagged yet. Add a tag at the bottom of a list.' }));
-      hits.forEach((x) => res.appendChild(h('button', { type: 'button', class: 'btn', style: 'justify-content:space-between;width:100%', onclick: () => { S.activeId = x.id; ui.find = null; ui.edit = ''; ui.rv = null; save(); render(); } }, h('span', { text: listLabel(x) }), h('span', { class: 'pill', text: x.tag + ' \u00b7 ' + x.items.length + (x.items.length === 1 ? ' item' : ' items') }))));
+      const hay = (x) => { const d = new Date((x.date || '') + 'T12:00:00'); return [x.tag || '', x.date || '', listLabel(x), isNaN(d) ? '' : d.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) + ' ' + d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })].join(' ').toLowerCase(); };
+      const hits = S.lists.filter((x) => !q || hay(x).indexOf(q) >= 0).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+      if (!hits.length) res.appendChild(h('p', { class: 'muted', text: 'No list matches that tag or date.' }));
+      hits.forEach((x) => res.appendChild(h('button', { type: 'button', class: 'btn', style: 'justify-content:space-between;width:100%', onclick: () => { S.activeId = x.id; ui.find = null; ui.edit = ''; ui.rv = null; save(); render(); } }, h('span', { text: listLabel(x) }), h('span', { class: 'pill', text: (x.tag ? x.tag + ' \u00b7 ' : '') + x.items.length + (x.items.length === 1 ? ' item' : ' items') }))));
     };
     qi.addEventListener('input', () => { ui.find.q = qi.value; paint(); });
     c.appendChild(h('div', { class: 'row' }, qi, btn('quiet sm', 'x', 'Close search', () => { ui.find = null; render(); })));
