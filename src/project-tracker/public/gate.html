@@ -7,124 +7,32 @@
 <meta name="theme-color" content="#b45309">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Project Pilot">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="glass.css">
+<link rel="stylesheet" href="gate.css">
 <style>
+/* Brand tokens only (see templates/glass/README.md) */
 :root{--accent:#b45309;--accent-2:#f59e0b;--accent-t:#fff}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--accent:#f59e0b;--accent-2:#fbbf24;--accent-t:#2a1500}}
 :root[data-theme="dark"]{--accent:#f59e0b;--accent-2:#fbbf24;--accent-t:#2a1500}
-*{box-sizing:border-box}
-body{display:flex;align-items:center;justify-content:center;padding:24px 16px}
-main{width:100%;max-width:380px;text-align:center;background:var(--glass);-webkit-backdrop-filter:blur(26px) saturate(170%);backdrop-filter:blur(26px) saturate(170%);border:1px solid var(--glass-line);border-radius:var(--r);padding:28px 22px 24px;box-shadow:var(--shadow)}
-.logo{width:84px;height:84px;border-radius:22px;box-shadow:var(--shadow)}
-h1{margin:14px 0 4px;font-size:1.6rem;letter-spacing:-.01em}
-.sub{margin:0 0 20px;color:var(--muted)}
-form{display:grid;gap:10px;text-align:left}
-label{display:grid;gap:4px;margin:0;font-size:.85rem;color:var(--muted)}
-input{width:100%}
-.opts{display:flex;justify-content:space-between;align-items:center;margin:8px 0;font-size:.9rem}.opts a{color:var(--accent)}.opts label.inline{display:flex;gap:6px;align-items:center;margin:0;color:var(--text)}.opts input{width:auto;margin:0}
-.go{font:inherit;font-weight:700;border:0;border-radius:var(--r-pill);padding:13px;margin-top:4px;color:var(--accent-t);background:linear-gradient(145deg,var(--accent),var(--accent-2));box-shadow:0 6px 16px color-mix(in srgb,var(--accent) 35%,transparent);cursor:pointer;transition:transform .12s ease}
-.go:active{transform:scale(.97)}.go:disabled{opacity:.6}
-.alt{font:inherit;background:none;border:0;color:var(--accent);text-decoration:underline;margin-top:14px;cursor:pointer;padding:6px}
-.e{min-height:1.3em;margin:2px 0 0;color:var(--danger);font-size:.9rem}
-.ok{min-height:1.3em;margin:2px 0 0;color:var(--ok);font-size:.9rem}
-.note{background:var(--glass-strong);border:1px solid var(--glass-line);border-radius:var(--r-sm);padding:14px 16px;margin:0 0 16px}
-.row{display:flex;gap:10px;justify-content:center}
-.row button{font:inherit;font-weight:600;border:1px solid var(--glass-line);background:var(--glass-strong);color:var(--text);border-radius:var(--r-pill);padding:9px 16px;cursor:pointer}
-details.ai{margin:10px 0;font-size:14px}details.ai summary{cursor:pointer;color:var(--accent)}details.ai label{margin-top:8px;display:block}details.ai select,details.ai input{width:100%;box-sizing:border-box;margin-top:4px}
 </style>
+<script src="theme-global.js"></script>
 </head>
 <body>
-<main>
-  <img class="logo" src="icon.svg" alt="">
+<main class="jz-card" id="card">
+  <img class="jz-logo" src="icon.svg" alt="">
   <h1>Project Pilot</h1>
-  <p class="sub" id="sub">Sign in with your JoolzApp account</p>
+  <p class="jz-sub" id="sub">Sign in with your JoolzApp account</p>
   <div id="view"></div>
 </main>
 <script src="pwtoggle.js"></script>
 <script src="quick-ui.js"></script>
+<script src="gate.js"></script>
 <script>
-(function () {
-  "use strict";
-  var TOKEN = "gd.token", mode = "in", cfg = {}, view = document.getElementById("view"), sub = document.getElementById("sub");
-  function tok() { try { return sessionStorage.getItem(TOKEN) || localStorage.getItem(TOKEN) || ""; } catch (e) { return ""; } }
-  function setTok(t, remember) { try { localStorage.removeItem(TOKEN); sessionStorage.removeItem(TOKEN); if (t) (remember ? localStorage : sessionStorage).setItem(TOKEN, t); } catch (e) {} }
-  function api(path, opts) {
-    opts = opts || {}; var h = { "content-type": "application/json" }; if (tok()) h["x-gd-token"] = tok();
-    return fetch(path, { method: opts.method || "GET", headers: h, body: opts.body, cache: "no-store" }).then(function (r) {
-      return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok) { var e = new Error(j.message || "Something went wrong (" + r.status + ")"); e.status = r.status; throw e; } return j; });
-    });
-  }
-  var QA = JZQuick({ app: "project-tracker", name: "Project Pilot", request: function (m, p, b) { return api(p, { method: m, body: b === undefined ? undefined : JSON.stringify(b) }); } });
-  // PIN or pattern first, on a device that has it; "Use my password instead" falls back to the form.
-  function quickFirst() {
-    QA.signIn().then(function (j) { if (j) { setTok(j.token, true); if (j.user.canOpen) location.reload(); else waiting(j.user); } else form(); });
-  }
-  function el(tag, cls, text) { var n = document.createElement(tag); if (cls) n.className = cls; if (text) n.textContent = text; return n; }
-  function field(label, type, auto) { var l = el("label", "", label), i = el("input"); i.type = type; i.autocomplete = auto; l.appendChild(i); return { l: l, i: i }; }
-
-  function form() {
-    var reg = false; view.textContent = "";
-    sub.textContent = reg ? "Create your JoolzApp account. One account works in all JoolzApp apps." : "Sign in with your JoolzApp account";
-    var f = el("form"), name = field("Name", "text", "name"), email = field("Email", "email", "email"), pass = field("Password", "password", reg ? "new-password" : "current-password");
-    email.i.required = true; pass.i.required = true; if (reg) pass.i.minLength = 8;
-    f.append(email.l, pass.l);
-    var remember, forgot, ok = el("p", "ok");
-    if (!reg) {
-      var opts = el("div", "opts"), rl = el("label", "inline"); remember = el("input"); remember.type = "checkbox";
-      try { remember.checked = localStorage.getItem("gd.remember") === "1"; if (remember.checked) email.i.value = localStorage.getItem("gd.email") || ""; } catch (e) {}
-      rl.append(remember, document.createTextNode(" Remember me")); forgot = el("a", "", "Forgot password?"); forgot.href = "#";
-      forgot.onclick = function (ev) {
-        ev.preventDefault(); err.textContent = ""; ok.textContent = "";
-        if (!email.i.value.trim()) { err.textContent = "Enter your email above first."; email.i.focus(); return; }
-        api("api/account/forgot", { method: "POST", body: JSON.stringify({ email: email.i.value.trim() }) }).then(function (j) { ok.textContent = j.message; }).catch(function (e) { err.textContent = e.message; });
-      };
-      opts.append(rl, forgot); f.appendChild(opts);
-    }
-    var err = el("p", "e"); err.setAttribute("role", "alert");
-    var go = el("button", "go", reg ? "Create account" : "Sign in"); go.type = "submit";
-    f.append(err, ok, go);
-    f.onsubmit = function (ev) {
-      ev.preventDefault(); err.textContent = ""; go.disabled = true;
-      api(reg ? "api/account/register" : "api/account/login", { method: "POST", body: JSON.stringify({ email: email.i.value, password: pass.i.value, name: name.i.value, remember: !reg && remember.checked }) })
-        .then(function (j) { var rem = !reg && remember.checked; setTok(j.token, rem); try { if (rem) { localStorage.setItem("gd.remember", "1"); localStorage.setItem("gd.email", email.i.value); } else if (!reg) { localStorage.removeItem("gd.remember"); localStorage.removeItem("gd.email"); } } catch (e) {} j.user.canOpen ? location.reload() : waiting(j.user); })
-        .catch(function (e) { err.textContent = e.message; go.disabled = false; });
-    };
-    view.appendChild(f);
-    if (QA.has()) { var qb = el("button", "alt", "Use my PIN or pattern"); qb.type = "button"; qb.onclick = quickFirst; view.appendChild(qb); }
-    if (cfg.signups !== false) {
-      // There is one JoolzApp sign-up page, in Portal Admin. It sends you back here when the account is made.
-      var alt = el("button", "alt", "Create a JoolzApp account"); alt.type = "button";
-      alt.onclick = function () { if (cfg.portalUrl) location.href = cfg.portalUrl.replace(/\/+$/, "") + "/?signup=1&app=project-tracker"; else err.textContent = "Sign-up lives in Portal Admin, but its address isn't set yet. Ask the admin."; }; view.appendChild(alt);
-    }
-  }
-  function waiting(u) {
-    view.textContent = ""; sub.textContent = "Almost there";
-    view.appendChild(el("p", "note", "You're signed in as " + (u.name || u.email) + ". " + ((u.gate && u.gate.message) || "The admin hasn't opened Project Pilot to you yet. Ask them to give you access, then check again.")));
-    var row = el("div", "row"), again = el("button", "", "Check again"), out = el("button", "", "Sign out");
-    again.onclick = function () { start(); }; out.onclick = signOut; row.append(again, out); view.appendChild(row);
-    if (u.gate && u.gate.reason === "guardian_pending") {
-      // Parents are approved, added or changed in Portal Admin (the one place for account settings).
-      var dash = el("button", "alt", "Open the JoolzApp dashboard (add a parent, see who has been asked)"); dash.type = "button"; dash.style.marginTop = "14px";
-      dash.onclick = function () { var t = ""; try { t = sessionStorage.getItem(TOKEN) || localStorage.getItem(TOKEN) || ""; } catch (e) {} if (cfg.portalUrl) location.href = cfg.portalUrl.replace(/\/+$/, "") + "/" + (t ? "#sso=" + encodeURIComponent(t) : ""); };
-      view.appendChild(dash);
-    }
-  }
-  function signOut() { setTok("", false); try { localStorage.removeItem("gd_prefs"); } catch (e) {} fetch("api/account/logout", { method: "POST" }).catch(function () {}).then(function () { location.reload(); }); }
-  function problem(msg) {
-    view.textContent = ""; sub.textContent = "Can't reach the account server";
-    view.appendChild(el("p", "note", msg));
-    var row = el("div", "row"), b = el("button", "", "Try again"); b.onclick = start; row.appendChild(b); view.appendChild(row);
-  }
-  function start() {
-    api("api/app-config").then(function (c) { cfg = c; })
-      .catch(function () {})
-      .then(function () { return api("api/account/me"); })
-      .then(function (j) { if (j.user.canOpen) location.reload(); else waiting(j.user); })
-      .catch(function (e) { if (e.status === 401 || e.status === 404) { setTok(""); if (QA.has()) quickFirst(); else form(); } else problem(e.message); });
-  }
-  start();
-})();
+JZGate({ app: "project-tracker", name: "Project Pilot", tokenKey: "gd.token", tokenHeader: "x-gd-token", clear: ["gd_prefs"], tagline: "Every project, note and next step in one place" });
 </script>
 </body>
 </html>
