@@ -50,6 +50,7 @@ input:focus-visible,select:focus-visible,button:focus-visible{outline:2px solid 
 .chip{min-height:44px;padding:0 13px;border-radius:22px;border:1px solid var(--line-strong);background:var(--surface);font-weight:600;font-size:14px;cursor:pointer}
 .chip[aria-pressed=true]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
 .chip.sug{background:var(--accent-soft);border-color:transparent;color:var(--accent-text)}
+.shop-tagbtn svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .title-in{flex:1 1 180px;font-size:19px;font-weight:700;border-color:transparent;background:transparent;padding-left:2px}
 .title-in:hover,.title-in:focus{border-color:var(--line-strong);background:var(--surface)}
 .group{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--surface)}
@@ -140,8 +141,9 @@ input,select,textarea{background:var(--glass-strong);border:1px solid var(--glas
 </nav>
 <div class="toolbar" id="toolbar" role="toolbar" aria-label="Lists and period">
   <button type="button" class="mb-btn mb-select" id="mb-list" data-menu="list" aria-haspopup="listbox" aria-expanded="false" aria-label="Choose a list"><span class="mb-label" id="mb-list-label">My list</span></button>
-  <button type="button" class="tool" id="mb-tag" aria-label="List tag" title="List tag" hidden style="min-width:0;max-width:46vw;padding:0 8px"><span id="mb-tag-label" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px"></span></button>
-  <button type="button" class="tool" id="mb-search" aria-label="Search lists by tag or date" title="Search lists by tag or date" aria-pressed="false" style="margin-left:auto" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="m16 16 4 4"/></svg></button>
+  <button type="button" class="tool" id="mb-tags" aria-label="List tags" title="Edit tags" hidden style="flex:1 1 0;min-width:0;justify-content:flex-start;border:0;background:none;padding:0 6px;font-size:13px;font-weight:700;color:var(--accent-text);overflow:hidden;white-space:nowrap;text-overflow:ellipsis;display:block;text-align:left"></button>
+  <button type="button" class="tool" id="mb-tag" aria-label="Add or edit tags" title="Add or edit tags" aria-pressed="false" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h7l9 9-7 7-9-9z"/><circle cx="8.5" cy="8.5" r="1.2"/></svg></button>
+  <button type="button" class="tool" id="mb-search" aria-label="Search lists by tag or date" title="Search lists by tag or date" aria-pressed="false" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="m16 16 4 4"/></svg></button>
   <button type="button" class="mb-btn mb-select" id="mb-item" data-menu="item" aria-haspopup="listbox" aria-expanded="false" aria-label="Choose an item to analyse" hidden><span class="mb-label" id="mb-item-label">All items</span></button>
   <div class="tool-group" id="an-range" role="group" aria-label="Time span" hidden>
     <button type="button" class="tool" id="an-3" aria-pressed="false">3 months</button>
@@ -202,7 +204,27 @@ input,select,textarea{background:var(--glass-strong);border:1px solid var(--glas
     return base + (same.length > 1 ? ' (' + n + ')' : '');
   };
   const listTitle = (l) => listLabel(l);
-  const newList = (items) => { const nl = { id: uid(), name: '', tag: '', date: dayKey(new Date()), items: items || [] }; S.lists.push(nl); S.activeId = nl.id; ui.edit = ''; ui.rv = null; return nl; };
+  // A list (and each shop section on it) can carry several short tags.
+  const MAXTAGS = 8;
+  const cleanTags = (v) => { const a = Array.isArray(v) ? v : (v ? [v] : []), out = []; a.forEach((t) => { t = String(t || '').trim().slice(0, 30); if (t && out.length < MAXTAGS && !out.some((x) => x.toLowerCase() === t.toLowerCase())) out.push(t); }); return out; };
+  const tagText = (arr) => (arr || []).map((t) => '# ' + t).join('  ');
+  const allTags = (l) => (l.tags || []).concat(...Object.keys(l.shopTags || {}).map((k) => l.shopTags[k]));
+  const plainBtn = 'border:0;background:none;padding:0;margin:0;font:inherit;font-size:13px;min-height:0;min-width:0;cursor:pointer;';
+  // Inline editor: current tags (tap one to remove it), a box to add another, Done.
+  function tagEditor(get, set, ph, close) {
+    const wrap = h('div', { style: 'padding:0 4px' });
+    const draw = () => {
+      wrap.textContent = ''; const arr = get(), row = h('div', { class: 'row', style: 'gap:8px;align-items:center' });
+      arr.forEach((t) => row.appendChild(h('button', { type: 'button', title: 'Remove ' + t, 'aria-label': 'Remove tag ' + t, style: plainBtn + 'color:var(--accent-text);font-weight:700', onclick: () => { set(arr.filter((x) => x !== t)); draw(); }, text: '# ' + t + ' \u00d7' })));
+      const ti = h('input', { type: 'text', maxlength: '30', placeholder: arr.length >= MAXTAGS ? 'Tag limit reached' : ph, 'aria-label': ph, disabled: arr.length >= MAXTAGS, style: 'flex:1 1 110px;min-height:30px;padding:2px 8px;font-size:13px' });
+      const add = () => { const t = ti.value.trim(); if (!t) return; set(cleanTags(get().concat([t]))); draw(); };
+      ti.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); add(); } if (e.key === 'Escape') close(); });
+      row.appendChild(ti); row.appendChild(h('button', { type: 'button', style: plainBtn + 'color:var(--accent-text);font-weight:700', onclick: add, text: 'Add' })); row.appendChild(h('button', { type: 'button', style: plainBtn + 'color:var(--muted)', onclick: () => { add(); close(); }, text: 'Done' }));
+      wrap.appendChild(row); setTimeout(() => ti.focus(), 0);
+    };
+    draw(); return wrap;
+  }
+  const newList = (items) => { const nl = { id: uid(), name: '', tags: [], date: dayKey(new Date()), items: items || [] }; S.lists.push(nl); S.activeId = nl.id; ui.edit = ''; ui.rv = null; return nl; };
   const toLocalInput = (d) => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
   const fmtAt = (d) => new Date(d).toLocaleString(undefined, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
   const $ = (id) => document.getElementById(id);
@@ -314,7 +336,7 @@ input,select,textarea{background:var(--glass-strong);border:1px solid var(--glas
   function seed() {
     const shops = [mkShop('Checkers', ['C']), mkShop('Pick n Pay', ['PP']), mkShop('Woolworths', ['W']), mkShop('Dis-Chem', ['DC'])];
     const S0 = { shops: shops, defaultShop: shops[0].id, lists: [], activeId: '', prefs: {}, cats: BASE_CATS.slice(), purchases: [], receipts: [], settings: { retentionYears: 5 } };
-    const l = { id: uid(), name: '', tag: '', date: dayKey(new Date()), items: [] };
+    const l = { id: uid(), name: '', tags: [], date: dayKey(new Date()), items: [] };
     S0.lists.push(l); S0.activeId = l.id;
     [['Milk, 2 L', 0], ['Eggs, 18', 0], ['Brown bread', 0], ['Chicken thighs', 1], ['Bananas', 1], ['Panado', 3]].forEach((p) => {
       l.items.push({ id: uid(), text: p[0], done: false, shop: shops[p[1]].id, cat: guessCat(p[0]), tag: '', pid: '' });
@@ -325,13 +347,13 @@ input,select,textarea{background:var(--glass-strong);border:1px solid var(--glas
     const seen = {}; d.cats = (Array.isArray(d.cats) ? d.cats : BASE_CATS).map((c) => String(c).trim().slice(0, 30)).filter((c) => { const k = c.toLowerCase(); if (!c || k === 'other' || seen[k]) return false; seen[k] = 1; return true; }).slice(0, 60);
     setCats(d.cats);
     d.shops = Array.isArray(d.shops) ? d.shops.filter((s) => s && s.id && typeof s.name === 'string').map((s) => ({ id: String(s.id), name: s.name.slice(0, 40), codes: (s.codes || []).map(String).slice(0, 6) })) : [];
-    d.lists = d.lists.filter((l) => l && l.id && Array.isArray(l.items)).map((l) => ({ id: String(l.id), name: '', tag: String(l.tag || '').slice(0, 30), shopTags: (() => { const o = {}; Object.keys(l.shopTags || {}).forEach((k) => { const t = String(l.shopTags[k] || '').slice(0, 30); if (t) o[String(k)] = t; }); return o; })(), date: l.date || dayKey(new Date()), items: l.items.filter((i) => i && typeof i.text === 'string').map((i) => ({ id: String(i.id || uid()), text: i.text.slice(0, 300), done: !!i.done, shop: i.shop || '', cat: CATS.indexOf(i.cat) >= 0 ? i.cat : 'Other', tag: i.tag === 'personal' || i.tag === 'other' ? i.tag : '', qty: Math.min(99, Math.max(1, Math.round(+i.qty) || 1)), pid: i.pid || '' })) }));
+    d.lists = d.lists.filter((l) => l && l.id && Array.isArray(l.items)).map((l) => ({ id: String(l.id), name: '', tags: cleanTags(l.tags != null ? l.tags : l.tag), shopTags: (() => { const o = {}; Object.keys(l.shopTags || {}).forEach((k) => { const t = cleanTags(l.shopTags[k]); if (t.length) o[String(k)] = t; }); return o; })(), date: l.date || dayKey(new Date()), items: l.items.filter((i) => i && typeof i.text === 'string').map((i) => ({ id: String(i.id || uid()), text: i.text.slice(0, 300), done: !!i.done, shop: i.shop || '', cat: CATS.indexOf(i.cat) >= 0 ? i.cat : 'Other', tag: i.tag === 'personal' || i.tag === 'other' ? i.tag : '', qty: Math.min(99, Math.max(1, Math.round(+i.qty) || 1)), pid: i.pid || '' })) }));
     if (!d.shops.some((s) => s.id === d.defaultShop)) d.defaultShop = d.shops.length ? d.shops[0].id : '';
     d.prefs = d.prefs && typeof d.prefs === 'object' ? d.prefs : {};
     d.receipts = Array.isArray(d.receipts) ? d.receipts.filter((r) => r && r.id && r.at).map((r) => ({ id: String(r.id), pid: String(r.pid || ''), at: r.at, size: +r.size || 0 })) : [];
     const ry = Math.round(+(d.settings && d.settings.retentionYears)); d.settings = { retentionYears: ry >= 1 && ry <= 10 ? ry : 5 };
     d.purchases = Array.isArray(d.purchases) ? d.purchases.filter((p) => p && p.id && p.at && Array.isArray(p.lines)).map((p) => { p.lines.forEach((x) => { if (x.tag !== 'personal' && x.tag !== 'other') x.tag = ''; }); return p; }) : [];
-    if (!d.lists.length) { const l = { id: uid(), name: '', tag: '', date: dayKey(new Date()), items: [] }; d.lists.push(l); }
+    if (!d.lists.length) { const l = { id: uid(), name: '', tags: [], date: dayKey(new Date()), items: [] }; d.lists.push(l); }
     if (!d.lists.some((l) => l.id === d.activeId)) d.activeId = d.lists[0].id;
     return d;
   }
@@ -606,7 +628,8 @@ input,select,textarea{background:var(--glass-strong);border:1px solid var(--glas
     const lists = ui.tab === 'lists' && !ui.co, spend = ui.tab === 'spend', an = ui.tab === 'analyse';
     [['tb-lists', ui.tab === 'lists'], ['tb-spend', spend], ['tb-analyse', an]].forEach((t) => $(t[0]).setAttribute('aria-selected', t[1] ? 'true' : 'false'));
     $('toolbar').hidden = !(lists || spend || an);
-    ['mb-list', 'mb-tag', 'mb-search'].forEach((id) => { $(id).hidden = !lists; });
+    ['mb-list', 'mb-tags', 'mb-tag', 'mb-search'].forEach((id) => { $(id).hidden = !lists; });
+    $('mb-tag').setAttribute('aria-pressed', ui.tagEdit ? 'true' : 'false');
     $('mb-search').setAttribute('aria-pressed', ui.find ? 'true' : 'false');
     ['mb-per', 'mb-prev', 'mb-next'].forEach((id) => { $(id).hidden = !spend; });
     ['mb-item', 'an-range'].forEach((id) => { $(id).hidden = !an; });
@@ -614,13 +637,13 @@ input,select,textarea{background:var(--glass-strong);border:1px solid var(--glas
     if (lists) {
       const l = active(), open = l.items.filter((i) => !i.pid).length;
       $('mb-list-label').textContent = listTitle(l);
-      $('mb-tag-label').textContent = l.tag ? '# ' + l.tag : '+ Add tag'; $('mb-tag').title = l.tag ? 'Change tag' : 'Add a tag to this list';
+      $('mb-tags').textContent = tagText(l.tags);
       const m = $('mn-list'); m.textContent = '';
       S.lists.forEach((x) => m.appendChild(mbItem(listTitle(x), () => { S.activeId = x.id; ui.edit = ''; ui.rv = null; save(); render(); }, { sel: x.id === l.id })));
       m.appendChild(h('div', { class: 'mb-sep' }));
       m.appendChild(mbItem('+ New list (today)', () => { mutate(() => { newList(); }); }));
       m.appendChild(mbItem('New list from unbought items', carryOver, { disabled: !open }));
-      m.appendChild(mbItem(l.tag ? 'Change tag' : 'Add tag', () => { ui.tagEdit = true; render(); }));
+      m.appendChild(mbItem('Tags', () => { ui.tagEdit = true; render(); }));
       m.appendChild(mbItem('Delete list', () => { ui.confirm = 'list'; render(); }));
     } else if (spend) {
       ['week', 'month', 'year'].forEach((k) => $('per-' + k).setAttribute('aria-pressed', ui.per.mode === k ? 'true' : 'false'));
@@ -631,19 +654,9 @@ input,select,textarea{background:var(--glass-strong);border:1px solid var(--glas
     if (ui.co) return viewCheckout(v);
     const l = active();
     const head = h('div', { class: 'card' });
-    // Tag: shown and tapped in the toolbar next to the date; this plain line only appears while editing it.
-    const plain = 'border:0;background:none;padding:0;margin:0;font:inherit;font-size:13px;min-height:0;min-width:0;cursor:pointer;';
-    const tagPart = (() => {
-      if (ui.tagEdit) {
-        const ti = h('input', { type: 'text', maxlength: '30', placeholder: 'Tag, e.g. Braai', 'aria-label': 'List tag', value: l.tag || '', style: 'flex:1 1 120px;min-height:30px;padding:2px 8px;font-size:13px' });
-        const done = () => { const t = ti.value.trim().slice(0, 30); ui.tagEdit = false; mutate(() => { l.tag = t; }); };
-        ti.addEventListener('keydown', (e) => { if (e.key === 'Enter') done(); if (e.key === 'Escape') { ui.tagEdit = false; render(); } });
-        setTimeout(() => { ti.focus(); ti.select(); }, 0);
-        return h('div', { class: 'row', style: 'gap:10px;padding:0 4px' }, ti, l.tag ? h('button', { type: 'button', style: plain + 'color:var(--muted)', onclick: () => { ui.tagEdit = false; mutate(() => { l.tag = ''; }); }, text: 'Remove' }) : null, h('button', { type: 'button', style: plain + 'color:var(--accent-text);font-weight:700', onclick: done, text: 'Save' }), h('button', { type: 'button', style: plain + 'color:var(--muted)', onclick: () => { ui.tagEdit = false; render(); }, text: 'Cancel' }));
-      }
-      return null;
-    })();
-    const del = ui.confirm === 'list' ? h('span', { class: 'row' }, btn('danger sm', 'trash', 'Confirm delete list', () => { ui.confirm = ''; mutate(() => { S.lists = S.lists.filter((x) => x.id !== l.id); if (!S.lists.length) S.lists.push({ id: uid(), name: '', tag: '', date: dayKey(new Date()), items: [] }); S.activeId = S.lists[0].id; }); }, 'Delete?'), btn('sm', 'x', 'Keep list', () => { ui.confirm = ''; render(); }, 'Keep'))
+    // Tags: shown in the toolbar next to the date (icon at the right opens this editor).
+    const tagPart = ui.tagEdit ? tagEditor(() => l.tags || [], (n) => { l.tags = n; save(); }, 'Add a tag, e.g. Braai', () => { ui.tagEdit = false; render(); }) : null;
+    const del = ui.confirm === 'list' ? h('span', { class: 'row' }, btn('danger sm', 'trash', 'Confirm delete list', () => { ui.confirm = ''; mutate(() => { S.lists = S.lists.filter((x) => x.id !== l.id); if (!S.lists.length) S.lists.push({ id: uid(), name: '', tags: [], date: dayKey(new Date()), items: [] }); S.activeId = S.lists[0].id; }); }, 'Delete?'), btn('sm', 'x', 'Keep list', () => { ui.confirm = ''; render(); }, 'Keep'))
       : null;
     if (tagPart) v.appendChild(h('div', { style: 'margin:-6px 0 -4px' }, tagPart));
     if (ui.find) v.appendChild(findCard());
@@ -679,15 +692,15 @@ input,select,textarea{background:var(--glass-strong);border:1px solid var(--glas
   }
   // Search icon in the toolbar: find lists by their tag.
   function findCard() {
-    const c = h('div', { class: 'card' }), tags = Array.from(new Set(S.lists.map((x) => x.tag).filter(Boolean))).sort((a, b) => a.localeCompare(b));
+    const c = h('div', { class: 'card' }), tags = Array.from(new Set([].concat(...S.lists.map(allTags)))).sort((a, b) => a.localeCompare(b));
     const qi = h('input', { type: 'search', placeholder: 'Search by tag or date, e.g. Braai or 22 Nov', 'aria-label': 'Search lists by tag or date', value: ui.find.q, maxlength: '30' });
     const res = h('div', { style: 'display:grid;gap:6px;margin-top:8px' });
     const paint = () => {
       res.textContent = ''; const q = ui.find.q.trim().toLowerCase();
-      const hay = (x) => { const d = new Date((x.date || '') + 'T12:00:00'); return [x.tag || '', Object.keys(x.shopTags || {}).map((k) => x.shopTags[k]).join(' '), x.date || '', listLabel(x), isNaN(d) ? '' : d.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) + ' ' + d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })].join(' ').toLowerCase(); };
+      const hay = (x) => { const d = new Date((x.date || '') + 'T12:00:00'); return [allTags(x).join(' '), x.date || '', listLabel(x), isNaN(d) ? '' : d.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) + ' ' + d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })].join(' ').toLowerCase(); };
       const hits = S.lists.filter((x) => !q || hay(x).indexOf(q) >= 0).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
       if (!hits.length) res.appendChild(h('p', { class: 'muted', text: 'No list matches that tag or date.' }));
-      hits.forEach((x) => res.appendChild(h('button', { type: 'button', class: 'btn', style: 'justify-content:space-between;width:100%', onclick: () => { S.activeId = x.id; ui.find = null; ui.edit = ''; ui.rv = null; save(); render(); } }, h('span', { text: listLabel(x) }), h('span', { class: 'pill', text: (x.tag ? x.tag + ' \u00b7 ' : '') + x.items.length + (x.items.length === 1 ? ' item' : ' items') }))));
+      hits.forEach((x) => res.appendChild(h('button', { type: 'button', class: 'btn', style: 'justify-content:space-between;width:100%', onclick: () => { S.activeId = x.id; ui.find = null; ui.edit = ''; ui.rv = null; save(); render(); } }, h('span', { text: listLabel(x) }), h('span', { class: 'pill', text: (allTags(x).length ? allTags(x).join(', ') + ' \u00b7 ' : '') + x.items.length + (x.items.length === 1 ? ' item' : ' items') }))));
     };
     qi.addEventListener('input', () => { ui.find.q = qi.value; paint(); });
     c.appendChild(h('div', { class: 'row' }, qi, btn('quiet sm', 'x', 'Close search', () => { ui.find = null; render(); })));
@@ -703,15 +716,10 @@ input,select,textarea{background:var(--glass-strong);border:1px solid var(--glas
     const head = h('div', { class: 'ghead' }, h('span', null, h('b', { text: g.shop ? g.shop.name : 'No shop yet' }), h('span', { class: 'n', text: '  ' + g.items.length + (g.items.length === 1 ? ' item' : ' items') + (g.shop ? ' · ' + inBasket + ' in basket' + (estSum(g) ? ' · ≈ ' + money(estSum(g)) : '') : ' · tap an item to choose its shop') })));
     if (g.shop) head.appendChild(btn('primary sm', 'cart', 'Checkout at ' + g.shop.name, () => openCheckout(g.shop.id), 'Checkout'));
     box.appendChild(head);
-    if (g.shop) {   // each shop section has its own optional tag, separate from the list's tag in the toolbar
-      const sid = g.shop.id, cur = (l.shopTags && l.shopTags[sid]) || '', plain = 'border:0;background:none;padding:0;margin:0;font:inherit;font-size:13px;min-height:0;min-width:0;cursor:pointer;';
-      if (ui.shopTagEdit === sid) {
-        const ti = h('input', { type: 'text', maxlength: '30', placeholder: 'Tag for ' + g.shop.name, 'aria-label': 'Tag for ' + g.shop.name, value: cur, style: 'flex:1 1 120px;min-height:30px;padding:2px 8px;font-size:13px' });
-        const done = () => { const t = ti.value.trim().slice(0, 30); ui.shopTagEdit = ''; mutate(() => { l.shopTags = l.shopTags || {}; if (t) l.shopTags[sid] = t; else delete l.shopTags[sid]; }); };
-        ti.addEventListener('keydown', (e) => { if (e.key === 'Enter') done(); if (e.key === 'Escape') { ui.shopTagEdit = ''; render(); } });
-        setTimeout(() => { ti.focus(); ti.select(); }, 0);
-        box.appendChild(h('div', { class: 'row', style: 'gap:10px;padding:6px 12px 2px' }, ti, cur ? h('button', { type: 'button', style: plain + 'color:var(--muted)', onclick: () => { ui.shopTagEdit = ''; mutate(() => { delete l.shopTags[sid]; }); }, text: 'Remove' }) : null, h('button', { type: 'button', style: plain + 'color:var(--accent-text);font-weight:700', onclick: done, text: 'Save' }), h('button', { type: 'button', style: plain + 'color:var(--muted)', onclick: () => { ui.shopTagEdit = ''; render(); }, text: 'Cancel' })));
-      } else box.appendChild(h('div', { style: 'padding:6px 12px 0' }, h('button', { type: 'button', style: plain + (cur ? 'color:var(--accent-text);font-weight:700' : 'color:var(--muted)'), title: cur ? 'Change tag' : 'Add a tag for ' + g.shop.name, onclick: () => { ui.shopTagEdit = sid; render(); }, text: cur ? '# ' + cur : '+ Add tag' })));
+    if (g.shop) {   // each shop section has its own tags, separate from the list's tags in the toolbar
+      const sid = g.shop.id, get = () => (l.shopTags && l.shopTags[sid]) || [];
+      if (ui.shopTagEdit === sid) box.appendChild(h('div', { style: 'padding:6px 8px 2px' }, tagEditor(get, (n) => { l.shopTags = l.shopTags || {}; if (n.length) l.shopTags[sid] = n; else delete l.shopTags[sid]; save(); }, 'Tag for ' + g.shop.name, () => { ui.shopTagEdit = ''; render(); })));
+      else box.appendChild(h('div', { class: 'row', style: 'padding:4px 8px 0 12px;flex-wrap:nowrap;justify-content:space-between;min-height:0' }, h('span', { style: 'font-size:13px;font-weight:700;color:var(--accent-text);overflow:hidden;white-space:nowrap;text-overflow:ellipsis', text: tagText(get()) }), h('button', { type: 'button', class: 'shop-tagbtn', style: plainBtn + 'color:var(--muted);display:grid;place-items:center;width:28px;height:28px', title: 'Add or edit tags for ' + g.shop.name, 'aria-label': 'Add or edit tags for ' + g.shop.name, onclick: () => { ui.shopTagEdit = sid; render(); } }, icon('tag'))));
     }
     CATS.forEach((c) => {
       const its = g.items.filter((i) => i.cat === c); if (!its.length) return;
@@ -1089,6 +1097,7 @@ input,select,textarea{background:var(--glass-strong);border:1px solid var(--glas
   $('tb-spend').addEventListener('click', () => goTab('spend'));
   $('tb-analyse').addEventListener('click', () => goTab('analyse'));
   $('mb-tag').addEventListener('click', () => { ui.tagEdit = !ui.tagEdit; render(); });
+  $('mb-tags').addEventListener('click', () => { ui.tagEdit = !ui.tagEdit; render(); });
   $('mb-search').addEventListener('click', () => { ui.find = ui.find ? null : { q: '' }; render(); });
   [3, 6, 12].forEach((n) => $('an-' + n).addEventListener('click', () => { ui.an.months = n; render(); }));
   ['week', 'month', 'year'].forEach((k) => $('per-' + k).addEventListener('click', () => { ui.per = { mode: k, off: 0 }; render(); }));
