@@ -133,17 +133,17 @@ input,select,textarea{background:var(--glass-strong);border:1px solid var(--glas
   <button class="tb-btn" data-settings id="settings-btn" aria-label="Settings" title="Settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
   <button class="tb-btn" data-theme-toggle aria-label="Switch theme"><svg class="i-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z"/></svg><svg class="i-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6 7 7M17 17l1.4 1.4M5.6 18.4 7 17M17 7l1.4-1.4"/></svg></button>
 </header>
-<nav class="menubar" id="menubar" aria-label="Lists and period">
+<nav class="menubar" id="menubar" role="tablist" aria-label="Sections">
+  <button type="button" class="mb-btn" role="tab" id="tb-lists" aria-selected="true">Lists</button>
+  <button type="button" class="mb-btn" role="tab" id="tb-spend" aria-selected="false">Spend</button>
+</nav>
+<div class="toolbar" id="toolbar" role="toolbar" aria-label="Lists and period">
   <button type="button" class="mb-btn mb-select" id="mb-list" data-menu="list" aria-haspopup="listbox" aria-expanded="false" aria-label="Choose a list"><span class="mb-label" id="mb-list-label">My list</span></button>
   <button type="button" class="mb-btn mb-select" id="mb-per" data-menu="per" aria-haspopup="listbox" aria-expanded="false" aria-label="Choose a period" hidden><span class="mb-label" id="mb-per-label">Monthly</span></button>
   <button type="button" class="tool" id="mb-prev" aria-label="Earlier" title="Earlier" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button>
   <button type="button" class="tool" id="mb-next" aria-label="Later" title="Later" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
   <div class="mb-menu" data-menu-for="list" id="mn-list" role="listbox" hidden></div>
   <div class="mb-menu" data-menu-for="per" id="mn-per" role="listbox" hidden></div>
-</nav>
-<div class="toolbar" id="toolbar" role="tablist" aria-label="Sections">
-  <button type="button" class="tool" role="tab" id="tb-lists" aria-selected="true">Lists</button>
-  <button type="button" class="tool" role="tab" id="tb-spend" aria-selected="false">Spend</button>
 </div>
 <div class="wrap">
   <main id="view"></main>
@@ -578,12 +578,12 @@ input,select,textarea{background:var(--glass-strong);border:1px solid var(--glas
     const nl = { id: uid(), name: 'Shop ' + new Date().toLocaleDateString(undefined, { day: 'numeric', month: 'short' }), date: dayKey(new Date()), items: open.map((i) => ({ id: uid(), text: i.text, done: false, shop: i.shop, cat: i.cat, tag: i.tag || '', qty: i.qty || 1, pid: '' })) };
     mutate(() => { S.lists.push(nl); S.activeId = nl.id; }); toast('New list started with ' + left + (left === 1 ? ' unbought item.' : ' unbought items.'));
   }
-  // Menu bar = drop-downs (which list on Lists, which period on Spend); toolbar = the Lists | Spend tabs. The menu bar is hidden on Settings and during checkout.
+  // Menu bar = the Lists | Spend tabs; toolbar = drop-downs (which list on Lists, which period on Spend). The toolbar is hidden on Settings and during checkout.
   const mbItem = (text, fn, o) => { o = o || {}; return h('button', { type: 'button', class: 'mb-item', role: o.sel == null ? 'menuitem' : 'option', 'aria-selected': o.sel == null ? null : (o.sel ? 'true' : 'false'), disabled: o.disabled, text: text, onclick: fn }); };
   function paintBars() {
     const lists = ui.tab === 'lists' && !ui.co, spend = ui.tab === 'spend';
     [['tb-lists', ui.tab === 'lists'], ['tb-spend', spend]].forEach((t) => $(t[0]).setAttribute('aria-selected', t[1] ? 'true' : 'false'));
-    $('menubar').hidden = !(lists || spend);
+    $('toolbar').hidden = !(lists || spend);
     ['mb-list'].forEach((id) => { $(id).hidden = !lists; });
     ['mb-per', 'mb-prev', 'mb-next'].forEach((id) => { $(id).hidden = !spend; });
     if (lists) {

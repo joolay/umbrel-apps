@@ -27,7 +27,7 @@
     if (mb && mb.parentNode !== d) d.appendChild(mb);
     if (tb && tb.parentNode !== d) d.appendChild(tb);
     if (mb && tb && mb.nextElementSibling !== tb) d.appendChild(tb);
-    document.querySelectorAll(".menubar .mb-menu").forEach(function (m) { document.body.appendChild(m); });   // menus live in <body>, outside the blurred bar
+    document.querySelectorAll(".jz-dock .mb-menu").forEach(function (m) { document.body.appendChild(m); });   // menus live in <body>, outside the blurred bars
   }
   // Keep the page below the fixed bar (or the whole dock): an in-flow spacer as tall as it, kept right as the bar wraps or the screen turns. --dock-h = that height, for sticky bars under it.
   function spacer() {
