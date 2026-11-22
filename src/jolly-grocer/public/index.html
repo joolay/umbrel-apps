@@ -193,6 +193,14 @@ input,select,textarea{background:var(--glass-strong);border:1px solid var(--glas
   const num = (v) => { const n = parseFloat(String(v).replace(',', '.')); return isFinite(n) && n >= 0 ? n : 0; };
   const pad = (n) => (n < 10 ? '0' : '') + n;
   const dayKey = (d) => { d = new Date(d); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); };
+  // Lists are identified by the day they were made; an optional short tag (e.g. Braai, Month-end) can be added.
+  const listLabel = (l) => {
+    const d = new Date((l.date || dayKey(new Date())) + 'T12:00:00'), base = d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
+    const same = S.lists.filter((x) => (x.date || '') === (l.date || '')), n = same.indexOf(l) + 1;
+    return base + (same.length > 1 ? ' (' + n + ')' : '');
+  };
+  const listTitle = (l) => listLabel(l) + (l.tag ? ' \u00b7 ' + l.tag : '');
+  const newList = (items) => { const nl = { id: uid(), name: '', tag: '', date: dayKey(new Date()), items: items || [] }; S.lists.push(nl); S.activeId = nl.id; ui.edit = ''; ui.rv = null; return nl; };
   const toLocalInput = (d) => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
   const fmtAt = (d) => new Date(d).toLocaleString(undefined, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
   const $ = (id) => document.getElementById(id);
@@ -304,7 +312,7 @@ input,select,textarea{background:var(--glass-strong);border:1px solid var(--glas
   function seed() {
     const shops = [mkShop('Checkers', ['C']), mkShop('Pick n Pay', ['PP']), mkShop('Woolworths', ['W']), mkShop('Dis-Chem', ['DC'])];
     const S0 = { shops: shops, defaultShop: shops[0].id, lists: [], activeId: '', prefs: {}, cats: BASE_CATS.slice(), purchases: [], receipts: [], settings: { retentionYears: 5 } };
-    const l = { id: uid(), name: 'Weekly shop', date: dayKey(new Date()), items: [] };
+    const l = { id: uid(), name: '', tag: '', date: dayKey(new Date()), items: [] };
     S0.lists.push(l); S0.activeId = l.id;
     [['Milk, 2 L', 0], ['Eggs, 18', 0], ['Brown bread', 0], ['Chicken thighs', 1], ['Bananas', 1], ['Panado', 3]].forEach((p) => {
       l.items.push({ id: uid(), text: p[0], done: false, shop: shops[p[1]].id, cat: guessCat(p[0]), tag: '', pid: '' });
@@ -315,13 +323,13 @@ input,select,textarea{background:var(--glass-strong);border:1px solid var(--glas
     const seen = {}; d.cats = (Array.isArray(d.cats) ? d.cats : BASE_CATS).map((c) => String(c).trim().slice(0, 30)).filter((c) => { const k = c.toLowerCase(); if (!c || k === 'other' || seen[k]) return false; seen[k] = 1; return true; }).slice(0, 60);
     setCats(d.cats);
     d.shops = Array.isArray(d.shops) ? d.shops.filter((s) => s && s.id && typeof s.name === 'string').map((s) => ({ id: String(s.id), name: s.name.slice(0, 40), codes: (s.codes || []).map(String).slice(0, 6) })) : [];
-    d.lists = d.lists.filter((l) => l && l.id && Array.isArray(l.items)).map((l) => ({ id: String(l.id), name: String(l.name || 'List').slice(0, 60), date: l.date || '', items: l.items.filter((i) => i && typeof i.text === 'string').map((i) => ({ id: String(i.id || uid()), text: i.text.slice(0, 300), done: !!i.done, shop: i.shop || '', cat: CATS.indexOf(i.cat) >= 0 ? i.cat : 'Other', tag: i.tag === 'personal' || i.tag === 'other' ? i.tag : '', qty: Math.min(99, Math.max(1, Math.round(+i.qty) || 1)), pid: i.pid || '' })) }));
+    d.lists = d.lists.filter((l) => l && l.id && Array.isArray(l.items)).map((l) => ({ id: String(l.id), name: '', tag: String(l.tag || '').slice(0, 30), date: l.date || dayKey(new Date()), items: l.items.filter((i) => i && typeof i.text === 'string').map((i) => ({ id: String(i.id || uid()), text: i.text.slice(0, 300), done: !!i.done, shop: i.shop || '', cat: CATS.indexOf(i.cat) >= 0 ? i.cat : 'Other', tag: i.tag === 'personal' || i.tag === 'other' ? i.tag : '', qty: Math.min(99, Math.max(1, Math.round(+i.qty) || 1)), pid: i.pid || '' })) }));
     if (!d.shops.some((s) => s.id === d.defaultShop)) d.defaultShop = d.shops.length ? d.shops[0].id : '';
     d.prefs = d.prefs && typeof d.prefs === 'object' ? d.prefs : {};
     d.receipts = Array.isArray(d.receipts) ? d.receipts.filter((r) => r && r.id && r.at).map((r) => ({ id: String(r.id), pid: String(r.pid || ''), at: r.at, size: +r.size || 0 })) : [];
     const ry = Math.round(+(d.settings && d.settings.retentionYears)); d.settings = { retentionYears: ry >= 1 && ry <= 10 ? ry : 5 };
     d.purchases = Array.isArray(d.purchases) ? d.purchases.filter((p) => p && p.id && p.at && Array.isArray(p.lines)).map((p) => { p.lines.forEach((x) => { if (x.tag !== 'personal' && x.tag !== 'other') x.tag = ''; }); return p; }) : [];
-    if (!d.lists.length) { const l = { id: uid(), name: 'My list', date: dayKey(new Date()), items: [] }; d.lists.push(l); }
+    if (!d.lists.length) { const l = { id: uid(), name: '', tag: '', date: dayKey(new Date()), items: [] }; d.lists.push(l); }
     if (!d.lists.some((l) => l.id === d.activeId)) d.activeId = d.lists[0].id;
     return d;
   }
@@ -587,8 +595,8 @@ input,select,textarea{background:var(--glass-strong);border:1px solid var(--glas
   const goTab = (t) => { ui.tab = t; ui.edit = ''; ui.confirm = ''; render(); };
   function carryOver() {
     const l = active(), open = l.items.filter((i) => !i.pid), left = open.length; if (!left) return;
-    const nl = { id: uid(), name: 'Shop ' + new Date().toLocaleDateString(undefined, { day: 'numeric', month: 'short' }), date: dayKey(new Date()), items: open.map((i) => ({ id: uid(), text: i.text, done: false, shop: i.shop, cat: i.cat, tag: i.tag || '', qty: i.qty || 1, pid: '' })) };
-    mutate(() => { S.lists.push(nl); S.activeId = nl.id; }); toast('New list started with ' + left + (left === 1 ? ' unbought item.' : ' unbought items.'));
+    const nlItems = (open.map((i) => ({ id: uid(), text: i.text, done: false, shop: i.shop, cat: i.cat, tag: i.tag || '', qty: i.qty || 1, pid: '' })));
+    mutate(() => { newList(nlItems); }); toast('New list started with ' + left + (left === 1 ? ' unbought item.' : ' unbought items.'));
   }
   // Menu bar = the Lists | Spend tabs; toolbar = drop-downs (which list on Lists, which period on Spend). The toolbar is hidden on Settings and during checkout.
   const mbItem = (text, fn, o) => { o = o || {}; return h('button', { type: 'button', class: 'mb-item', role: o.sel == null ? 'menuitem' : 'option', 'aria-selected': o.sel == null ? null : (o.sel ? 'true' : 'false'), disabled: o.disabled, text: text, onclick: fn }); };
@@ -602,13 +610,13 @@ input,select,textarea{background:var(--glass-strong);border:1px solid var(--glas
     if (an) paintAnalyseBar();
     if (lists) {
       const l = active(), open = l.items.filter((i) => !i.pid).length;
-      $('mb-list-label').textContent = l.name;
+      $('mb-list-label').textContent = listTitle(l);
       const m = $('mn-list'); m.textContent = '';
-      S.lists.forEach((x) => m.appendChild(mbItem(x.name, () => { S.activeId = x.id; ui.edit = ''; ui.rv = null; save(); render(); }, { sel: x.id === l.id })));
+      S.lists.forEach((x) => m.appendChild(mbItem(listTitle(x), () => { S.activeId = x.id; ui.edit = ''; ui.rv = null; save(); render(); }, { sel: x.id === l.id })));
       m.appendChild(h('div', { class: 'mb-sep' }));
-      m.appendChild(mbItem('+ New list', () => { ui.newList = true; render(); }));
+      m.appendChild(mbItem('+ New list (today)', () => { mutate(() => { newList(); }); }));
       m.appendChild(mbItem('New list from unbought items', carryOver, { disabled: !open }));
-      m.appendChild(mbItem('Rename list', () => { setTimeout(() => { const t = document.querySelector('.title-in'); if (t) { t.focus(); t.select(); } }, 0); }));
+      m.appendChild(mbItem(l.tag ? 'Change tag' : 'Add tag', () => { ui.tagEdit = true; render(); }));
       m.appendChild(mbItem('Delete list', () => { ui.confirm = 'list'; render(); }));
     } else if (spend) {
       ['week', 'month', 'year'].forEach((k) => $('per-' + k).setAttribute('aria-pressed', ui.per.mode === k ? 'true' : 'false'));
@@ -619,18 +627,21 @@ input,select,textarea{background:var(--glass-strong);border:1px solid var(--glas
     if (ui.co) return viewCheckout(v);
     const l = active();
     const head = h('div', { class: 'card' });
-    if (ui.newList) {
-      const ni = h('input', { type: 'text', maxlength: '60', placeholder: 'Name your list', 'aria-label': 'New list name', value: 'Shop ' + new Date().toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) });
-      const go = () => { const nl = { id: uid(), name: ni.value.trim().slice(0, 60) || 'New list', date: dayKey(new Date()), items: [] }; ui.newList = false; mutate(() => { S.lists.push(nl); S.activeId = nl.id; }); };
-      ni.addEventListener('keydown', (e) => { if (e.key === 'Enter') go(); });
-      head.appendChild(h('div', { class: 'row grow' }, ni, btn('primary sm', 'check', 'Create list', go, 'Create'), btn('sm', 'x', 'Cancel', () => { ui.newList = false; render(); }, 'Cancel')));
-      setTimeout(() => ni.focus(), 0);
-    }
-    const title = h('input', { type: 'text', class: 'title-in', value: l.name, maxlength: '60', 'aria-label': 'List name' });
-    title.addEventListener('change', () => { const t = title.value.trim().slice(0, 60); if (t) mutate(() => { l.name = t; }); else title.value = l.name; });
-    const del = ui.confirm === 'list' ? h('span', { class: 'row' }, btn('danger sm', 'trash', 'Confirm delete list', () => { ui.confirm = ''; mutate(() => { S.lists = S.lists.filter((x) => x.id !== l.id); if (!S.lists.length) S.lists.push({ id: uid(), name: 'My list', date: dayKey(new Date()), items: [] }); S.activeId = S.lists[0].id; }); }, 'Delete?'), btn('sm', 'x', 'Keep list', () => { ui.confirm = ''; render(); }, 'Keep'))
+    const tagPart = (() => {
+      if (ui.tagEdit) {
+        const ti = h('input', { type: 'text', maxlength: '30', placeholder: 'Tag, e.g. Braai', 'aria-label': 'List tag', value: l.tag || '', style: 'flex:1 1 140px' });
+        const done = () => { const t = ti.value.trim().slice(0, 30); ui.tagEdit = false; mutate(() => { l.tag = t; }); };
+        ti.addEventListener('keydown', (e) => { if (e.key === 'Enter') done(); if (e.key === 'Escape') { ui.tagEdit = false; render(); } });
+        setTimeout(() => { ti.focus(); ti.select(); }, 0);
+        return h('span', { class: 'row grow' }, ti, btn('primary sm', 'check', 'Save tag', done, 'Save'), btn('sm', 'x', 'Cancel', () => { ui.tagEdit = false; render(); }, 'Cancel'));
+      }
+      if (l.tag) return h('span', { class: 'row' }, h('button', { type: 'button', class: 'pill', title: 'Change tag', onclick: () => { ui.tagEdit = true; render(); }, text: l.tag }), btn('quiet sm', 'x', 'Remove tag', () => { mutate(() => { l.tag = ''; }); }));
+      return btn('quiet sm', 'plus', 'Add tag (optional)', () => { ui.tagEdit = true; render(); }, 'Add tag');
+    })();
+    const title = h('b', { class: 'title-in', style: 'flex:0 1 auto;border:0;background:transparent;padding:0', text: listLabel(l) });
+    const del = ui.confirm === 'list' ? h('span', { class: 'row' }, btn('danger sm', 'trash', 'Confirm delete list', () => { ui.confirm = ''; mutate(() => { S.lists = S.lists.filter((x) => x.id !== l.id); if (!S.lists.length) S.lists.push({ id: uid(), name: '', tag: '', date: dayKey(new Date()), items: [] }); S.activeId = S.lists[0].id; }); }, 'Delete?'), btn('sm', 'x', 'Keep list', () => { ui.confirm = ''; render(); }, 'Keep'))
       : null;
-    head.appendChild(h('div', { class: 'row' }, title, del));
+    head.appendChild(h('div', { class: 'row' }, title, tagPart, del));
     v.appendChild(head);
 
     const form = h('form', { class: 'row grow', onsubmit: (e) => { e.preventDefault(); const i = $('add-input'), t = i.value.trim(); if (!t) return; ui.focusAdd = true; if (parseCode(t).unk) { startReview([t]); return; } mutate(() => { addItem(l, t); }); } });
