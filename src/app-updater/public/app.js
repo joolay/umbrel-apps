@@ -1,7 +1,7 @@
 'use strict';
 
 const $ = (s) => document.querySelector(s);
-const view = { data: null, lastJson: '', editing: false };
+const view = { data: null, lastJson: '', editing: false, tile: null, checking: false };
 
 function h(tag, attrs, ...kids) {
   const el = document.createElement(tag);
@@ -57,7 +57,6 @@ async function refresh() {
     }
     const json = JSON.stringify(data, (k, v) => (k === 'time' ? undefined : v));
     if (json !== view.lastJson && !view.editing) { view.lastJson = json; render(); }
-    $('#foot').textContent = 'Updated ' + when(data.time);
   } catch (err) {
     showBanner('Cannot reach the updater: ' + err.message, true);
   }
@@ -97,8 +96,11 @@ function render() {
   const shown = d.apps.filter((a) => !a.hidden), hiddenApps = d.apps.filter((a) => a.hidden);
   const updates = shown.filter((a) => a.update).length;
   const auto = shown.filter((a) => a.mode !== 'off').length;
-  const stat = (n, label) => h('div', { class: 'stat' }, h('b', {}, String(n)), h('span', {}, label));
-  $('#stats').replaceChildren(stat(shown.length, 'Installed apps'), stat(updates, 'Updates waiting'), stat(auto, 'On auto-update'), stat(d.check.at ? when(d.check.at).slice(11) : '--:--', 'Last check'));
+  const tiles = [['installed', shown.length, 'Installed apps'], ['updates', updates, 'Updates waiting'], ['auto', auto, 'On auto-update']];
+  const tileBtn = ([key, n, label]) => h('button', { class: 'stat tile-btn' + (view.tile === key ? ' on' : ''), 'aria-pressed': String(view.tile === key), onclick: () => pickTile(key) }, h('b', {}, String(n)), h('span', {}, label));
+  const lastCheck = h('button', { class: 'stat tile-btn check' + (view.checking ? ' spin' : ''), title: 'Check now', 'aria-label': 'Check now', disabled: view.checking, onclick: checkNow },
+    h('b', {}, d.check.at ? when(d.check.at).slice(11) : '--:--'), h('span', {}, 'Last check'), icon('ref', ICON_UPDATE));
+  $('#stats').replaceChildren(...tiles.map(tileBtn), lastCheck);
 
   $('#pauseSw').checked = !d.settings.paused;
   $('#pauseSub').textContent = d.settings.paused ? 'Paused: nothing updates by itself.' : 'On: apps set to Nightly or Instant update by themselves.';
@@ -135,7 +137,14 @@ function render() {
   sn.textContent = sf.phase === 'updating' ? 'Updating App Updater. Checks are paused and resume when it restarts.'
     : sr && sr.ok ? 'Last self-update worked: ' + sr.from + ' to ' + sr.to + '.'
     : sr ? 'Last self-update failed: ' + sr.error + (sf.retryAt ? '. Next try ' + when(sf.retryAt) + '.' : '.') : '';
-  $('#list').replaceChildren(...(shown.length ? renderGroups(d) : [h('div', { class: 'empty' }, d.umbrel.connected ? 'No apps found yet.' : 'Connect to umbrelOS to list your apps.')]));
+  const pick = { installed: () => true, updates: (x) => x.update, auto: (x) => x.mode !== 'off' }[view.tile];
+  const picked = pick ? shown.filter(pick) : [];
+  $('#list').replaceChildren(...(!pick ? [] : picked.length ? renderGroups(picked, d) : [h('div', { class: 'empty' }, !shown.length ? (d.umbrel.connected ? 'No apps found yet.' : 'Connect to umbrelOS to list your apps.') : view.tile === 'updates' ? 'No updates waiting.' : 'Nothing here yet.')]));
+
+  const pend = (d.repo && d.repo.pending) || [], pe = $('#pending');
+  pe.hidden = !pend.length;
+  pe.replaceChildren(...pend.map((p) => h('div', { class: 'warn' }, h('span', { class: 'pdot' }), h('span', {}, (p.kind === 'new' ? 'New app on the repo: ' : 'New version on the repo: ') + p.name + ' ' + p.repo
+    + (p.kind === 'new' ? ', umbrelOS has not seen it yet.' : ', umbrelOS has not seen it yet (it lists ' + p.umbrel + ').')))));
 
   $('#hiddenCount').textContent = hiddenApps.length ? hiddenApps.length + ' hidden' : 'None';
   $('#hiddenList').replaceChildren(...(hiddenApps.length
@@ -148,9 +157,9 @@ function render() {
 }
 
 /* Apps are grouped by the App Store they came from; each group collapses and expands, and the state is saved on the server. */
-function renderGroups(d) {
+function renderGroups(items, d) {
   const groups = new Map();
-  for (const a of d.apps.filter((x) => !x.hidden)) {
+  for (const a of items) {
     const st = a.store || { id: 'other', name: 'Other apps' };
     if (!groups.has(st.id)) groups.set(st.id, { id: st.id, name: st.name, raw: st.raw, apps: [] });
     groups.get(st.id).apps.push(a);
@@ -161,7 +170,7 @@ function renderGroups(d) {
     x.name.localeCompare(y.name));
   return list.map((g) => {
     const saved = d.settings.groupOpen && d.settings.groupOpen[g.id];
-    const open = typeof saved === 'boolean' ? saved : g.apps.some((a) => a.update); // first time: open only if something is waiting
+    const open = typeof saved === 'boolean' ? saved : true;   // a tile was tapped, so show what it lists unless that store was collapsed on purpose
     const updates = g.apps.filter((a) => a.update).length;
     const auto = g.apps.filter((a) => a.mode !== 'off').length;
     const meta = [g.apps.length + (g.apps.length === 1 ? ' app' : ' apps'), auto ? auto + ' on auto-update' : ''].filter(Boolean).join(' · ');
@@ -195,6 +204,14 @@ function renderModeSections(apps) {
     out.push(h('div', { class: 'msec' }, label + ' · ' + items.length), items.map(renderApp));
   }
   return out;
+}
+
+function pickTile(key) { view.tile = view.tile === key ? null : key; render(); }
+async function checkNow() {
+  if (view.checking) return;
+  view.checking = true; render();
+  try { await api('/api/check', {}); toast('Checked'); } catch (err) { toast(err.message, true); }
+  view.checking = false; view.lastJson = ''; refresh();
 }
 
 async function toggleGroup(id, open) {
@@ -295,12 +312,6 @@ for (const id of ['#nightly', '#tz', '#poll', '#qStart', '#qEnd']) {
   $(id).addEventListener('blur', () => setTimeout(() => (view.editing = false), 200));
 }
 
-$('#checkBtn').addEventListener('click', async () => {
-  const b = $('#checkBtn');
-  b.disabled = true;
-  try { await api('/api/check', {}); toast('Checked'); } catch (err) { toast(err.message, true); }
-  b.disabled = false; view.lastJson = ''; refresh();
-});
 $('#clearBtn').addEventListener('click', async () => { await api('/api/log/clear', {}); view.lastJson = ''; refresh(); });
 $('#diagBtn').addEventListener('click', async () => {
   const el = $('#diag');

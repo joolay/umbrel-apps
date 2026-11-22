@@ -19,6 +19,7 @@
 </head>
 <body>
   <header class="topbar">
+    <button class="tb-btn" data-home hidden aria-label="Home" title="Home"><svg viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10.5V20h13v-9.5"/><path d="M10 20v-5.5h4V20"/></svg></button>
     <div class="brand">
       <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 9a8 8 0 0 0-14.5-2.5M4 15a8 8 0 0 0 14.5 2.5"/><path d="M5 3v4h4M19 21v-4h-4"/></svg>
       <h1>App Updater</h1>
@@ -33,13 +34,13 @@
     <div id="banner" class="banner" hidden></div>
     <div id="mainView">
     <section class="stats" id="stats"></section>
-    <div class="row spread listbar"><span class="sub" id="foot"></span><button id="checkBtn" class="btn small">Check now</button></div>
 
     <section id="list" class="list" aria-live="polite"></section>
 
     <section class="card">
       <div class="row spread"><b>Activity</b><span class="row"><button id="diagBtn" class="btn small">Diagnostics</button><button id="clearBtn" class="btn small">Clear</button></span></div>
       <pre id="diag" class="diag" hidden></pre>
+      <div id="pending" class="pending" hidden></div>
       <div id="log" class="log"></div>
     </section>
     </div>
