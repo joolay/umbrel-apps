@@ -2,7 +2,7 @@ manifestVersion: 1
 id: joolay-jolly-grocer
 category: files
 name: Jolly Grocer
-version: "1.2.0"
+version: "1.2.2"
 tagline: Your grocery shopping companion
 description: >-
   Jolly Grocer sorts your shopping list by shop and category, remembers short shop codes, and checks each shop out with a
@@ -19,7 +19,7 @@ gallery: []
 path: ""
 defaultUsername: ""
 defaultPassword: ""
-releaseNotes: "Changes: Photo review lets you correct item names and set a Qty, and remembers the names, shops and categories you change for the next scan. You can add a new shop or category right from any shop or category dropdown (+ New), and rename or delete shops and categories on the Shops tab. Spacing fixed. The top bar no longer shows the app icon, the JoolzApp dashboard and Sign out line is gone (Home is in the top bar, Sign out is on the Data tab), and the monthly grocery spend moved to the Data tab."
+releaseNotes: "Changes: A settings (gear) icon in the top bar opens Settings with your shops, categories, data and Sign out; the tab bar is now Lists and Spend. Also: the photo review list is more compact, with no lines between items and a plain checkbox that shows an empty box when unticked."
 submitter: joolay
 submission: https://github.com/joolay/umbrel-apps
 icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-jolly-grocer/icon.svg
