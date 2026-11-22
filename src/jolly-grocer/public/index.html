@@ -117,6 +117,8 @@ input,select,textarea{background:var(--glass-strong);border:1px solid var(--glas
 .rvhead input[type=text]{width:100%}
 .rvhead select{min-width:0}
 #view{display:grid;gap:12px}
+.wrap,#view,.card{grid-template-columns:minmax(0,1fr)}   /* a wide child can no longer stretch the page past the screen */
+.muted,.delta{overflow-wrap:anywhere}
 .wrap .card{margin:0}
 .rvrow{display:grid;grid-template-columns:26px minmax(0,1fr) 78px;gap:8px;align-items:center}
 .rvrow input[type=checkbox]{-webkit-appearance:none;appearance:none;width:24px;height:24px;min-height:0;margin:0;padding:0;border-radius:7px;border:2px solid var(--box-line);background:var(--glass-strong);cursor:pointer;display:grid;place-items:center}
@@ -323,7 +325,11 @@ input,select,textarea{background:var(--glass-strong);border:1px solid var(--glas
     if (!sync.on) return storageOk ? 'Saved in this browser only.' : 'Saving is switched off in this view, so changes are lost when the page closes.';
     return sync.status === 'saving' ? 'Saving to your JoolzApp account\u2026' : sync.status === 'error' ? 'Could not reach your account. Changes are kept on this device and will save when it is back.' : 'Saved to your JoolzApp account. Your lists follow you to every device.';
   }
-  function setSync(st) { sync.status = st; const f = document.getElementById('foot'); if (f) f.textContent = footText(); }
+  function setSync(st) {
+    sync.status = st; const f = document.getElementById('foot'); if (f) f.textContent = footText();
+    // the top bar ticks: one tick = recorded to your account; this list is not shared with anyone, so it counts as read once recorded
+    if (window.JZLink) JZLink.sync(st === 'saving' ? { saved: 'saving' } : st === 'error' ? { saved: 'error' } : st === 'saved' ? { saved: 'saved', parties: 0, read: 0 } : null);
+  }
   function pushNow() {
     clearTimeout(sync.timer); sync.timer = null;
     if (!sync.on) return Promise.resolve();
@@ -920,7 +926,7 @@ input,select,textarea{background:var(--glass-strong);border:1px solid var(--glas
     fetch('api/account/logout', { method: 'POST' }).catch(function () {}).then(function () { location.reload(); });
   }
   fetch('api/app-config', { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (cfg) {
-    if (!cfg.accounts) return;     // no accounts: data stays in this browser
+    if (!cfg.accounts) { if (window.JZLink) JZLink.sync({ saved: 'local' }); return; }     // no accounts: data stays in this browser
     sync.on = true;
     sync.signOut = signOut;
     setSync('saving');
