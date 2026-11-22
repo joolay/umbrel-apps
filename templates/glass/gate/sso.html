@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="referrer" content="no-referrer"><title>Signing in…</title>
+<link rel="stylesheet" href="glass.css"></head>
+<body style="display:grid;place-items:center;min-height:100dvh;text-align:center">
+<p>Signing you in…</p>
+<noscript><p>JavaScript is needed to sign in.</p></noscript>
+<script>
+// Opened from the JoolzApp dashboard (Portal Admin) with the person's sign-in in the address fragment, which never reaches a server.
+// The token is checked by the app, kept for this browser session only, removed from the address bar, and then the app opens.
+// Per app set only TOKEN_KEY and TOKEN_HEADER (same values as in gate.html).
+(function () {
+  var TOKEN_KEY = "gd.token", TOKEN_HEADER = "x-gd-token";
+  var m = location.hash.match(/[#&]t=([^&]+)/), t = ""; try { t = m ? decodeURIComponent(m[1]) : ""; } catch (e) {}
+  history.replaceState(null, "", location.pathname);
+  function go() { location.replace("./"); }
+  if (!t) return go();
+  var h = {}; h[TOKEN_HEADER] = t;
+  fetch("api/account/me", { headers: h, cache: "no-store" }).then(function (r) {
+    if (r.ok) { try { localStorage.removeItem(TOKEN_KEY); sessionStorage.setItem(TOKEN_KEY, t); } catch (e) {} }
+    go();
+  }).catch(go);
+})();
+</script></body></html>

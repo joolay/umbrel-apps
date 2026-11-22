@@ -65,6 +65,9 @@ The theme has a base plus one override set per view (mobile under 600px, tablet 
 The Store and Portal Admin already load it; other apps move over one at a time, like the Glass theme itself.
 Admins also get an **Admin folder** in their JoolzApp Store listing every owner-only app (`JOOLZAPP_DASHBOARD=hidden`): `GET /admin/apps` (admin-checked on the server, in both route lists) feeds a virtual folder that is built per admin and never saved in `store.layout`.
 
+## Login and welcome screens (standard for every app)
+Every app's `gate.html` is the shared gate (`templates/glass/gate/`: `gate.css`, `gate.js`, `gate.html`, `sso.html`, `pwtoggle.js`; rules in `templates/glass/README.md`, "Login and welcome screens (gate)"): first-run welcome slides, JoolzApp sign-in with PIN / pattern first on known devices, the "Almost there" and "Can't reach the account server" screens. Do not copy-paste a new login page per app; copy the template files and set the `JZGate({...})` options. A change every app should get goes into `templates/glass/gate/` first. Existing apps move onto it one at a time as they are edited.
+
 ## Floating top bar (standard for every app)
 Home button first (`data-home`, hidden until the Store's address is known; `floatbar.js` handles it), title next, light/dark theme icon on the right, a full-width frosted bar fixed to the top edge (square, not pill-shaped). Files and markup are in `templates/glass/README.md` ("Floating top bar"): copy `floatbar.css` + `floatbar.js`.
 The JoolzApp Store has it; other apps move over one at a time, like the Glass theme.
