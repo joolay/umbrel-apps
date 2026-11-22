@@ -69,6 +69,7 @@ Admins also get an **Admin folder** in their JoolzApp Store listing every owner-
 Home button first (`data-home`, hidden until the Store's address is known; `floatbar.js` handles it), title next, light/dark theme icon on the right, a full-width frosted bar fixed to the top edge (square, not pill-shaped). Files and markup are in `templates/glass/README.md` ("Floating top bar"): copy `floatbar.css` + `floatbar.js`.
 The JoolzApp Store has it; other apps move over one at a time, like the Glass theme.
 The bar is persistent: fixed to the top of the screen while the page scrolls (done in `floatbar.css`/`floatbar.js`; copy both, never make it sticky or scroll away). This is the standard for every app.
+Every app's top bar also carries the **Settings gear** (`data-settings` button, markup in `templates/glass/README.md`, "Floating top bar"): it opens that app's own Settings screen (its preferences, the things it manages such as shops or categories, data export, and account actions like Sign out). No loose account rows under the bar. Order: Home, title, Install, Settings, theme. Add it to every app as it is edited; Jolly Grocer has it.
 Every app's top bar also carries the **Install** icon (`data-pwa-install` button, `install-help.js` + `installbtn.js`; see `templates/glass/README.md`, "Install icon"): it shows only in a browser tab and opens the install steps for the person's device. Add it to every app as it is edited; Project Pilot and Port Master have it.
 
 ## Preview before pushing
