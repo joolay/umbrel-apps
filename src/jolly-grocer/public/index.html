@@ -110,15 +110,20 @@ input,select,textarea{background:var(--glass-strong);border:1px solid var(--glas
 .chip[aria-pressed=true]{background:linear-gradient(145deg,var(--accent),var(--accent-2));border-color:transparent;color:var(--accent-t)}
 .top{padding:6px 2px;justify-content:flex-end}
 /* photo review rows: glass.css stacks every label in a column, so the row gets its own layout */
-.line.rv{grid-template-columns:minmax(0,1fr);gap:8px;padding:12px 0}
+/* photo review: compact rows, no lines between items, a plain checkbox that shows an empty box when unticked */
+.line.rv{grid-template-columns:minmax(0,1fr);gap:6px;padding:7px 0;border-top:0}
+.rvlist{display:grid;gap:2px}
 .rvhead{display:grid;grid-template-columns:minmax(0,1fr) 84px;gap:8px;align-items:center}
 .rvhead input[type=text]{width:100%}
 .rvhead select{min-width:0}
 #view{display:grid;gap:12px}
 .wrap .card{margin:0}
-.rvrow{display:grid;grid-template-columns:28px minmax(0,1fr) 84px;gap:10px;align-items:center}
-.rvrow input[type=checkbox]{width:24px;height:24px;min-height:0;margin:0}
-.rvrow input[type=text],.rvrow select{width:100%;min-width:0}
+.rvrow{display:grid;grid-template-columns:26px minmax(0,1fr) 78px;gap:8px;align-items:center}
+.rvrow input[type=checkbox]{-webkit-appearance:none;appearance:none;width:24px;height:24px;min-height:0;margin:0;padding:0;border-radius:7px;border:2px solid var(--line-strong);background:var(--glass-strong);cursor:pointer;display:grid;place-items:center}
+.rvrow input[type=checkbox]:checked{background:var(--accent);border-color:var(--accent)}
+.rvrow input[type=checkbox]:checked::after{content:"";width:6px;height:11px;border:solid var(--accent-t);border-width:0 2.5px 2.5px 0;transform:rotate(45deg) translate(-1px,-1px)}
+.rvrow input[type=text],.rvrow select,.line.rv .row select{width:100%;min-width:0;min-height:40px;padding:5px 10px}
+.line.rv .row.full{gap:6px}
 </style>
 <link rel="stylesheet" href="floatbar.css">
 <script src="theme-global.js"></script></head>
@@ -695,6 +700,7 @@ input,select,textarea{background:var(--glass-strong);border:1px solid var(--glas
     if (!rv.rows.length) { c.appendChild(h('p', { text: 'No list items found in that photo. Try a closer, well-lit shot.' })); c.appendChild(btn('sm', 'x', 'Close', () => { ui.rv = null; render(); }, 'Close')); return c; }
     c.appendChild(h('h3', { text: 'Found ' + rv.rows.length + (rv.rows.length === 1 ? ' item' : ' items') }));
     c.appendChild(h('p', { class: 'muted', text: 'Tap a name to correct it. Items starting with a shop code (two capital letters) are sorted to that shop. For a new code, choose the shop once and it is remembered, and so are the names and categories you change.' }));
+    const rvl = h('div', { class: 'rvlist' }); c.appendChild(rvl);
     rv.rows.forEach((r) => {
       const cb = h('input', { type: 'checkbox', checked: r.on, 'aria-label': 'Add ' + r.text });
       cb.addEventListener('change', () => { r.on = cb.checked; });
@@ -712,7 +718,7 @@ input,select,textarea{background:var(--glass-strong);border:1px solid var(--glas
         r.shop = x;
         if (r.unk) { r.learn = !!x; if (!r.nameSet) r.text = x ? r.rest : r.full; nm.value = r.text; }
       }, 'Shop for ' + r.text, newShop);
-      c.appendChild(h('div', { class: 'line rv' }, h('div', { class: 'rvrow' }, cb, nm, qt), h('div', { class: 'row full' }, shopSel, sel(CATS.map((x) => [x, x]), r.cat, (x) => { r.cat = x; r.catSet = true; }, 'Category', newCat))));
+      rvl.appendChild(h('div', { class: 'line rv' }, h('div', { class: 'rvrow' }, cb, nm, qt), h('div', { class: 'row full' }, shopSel, sel(CATS.map((x) => [x, x]), r.cat, (x) => { r.cat = x; r.catSet = true; }, 'Category', newCat))));
     });
     c.appendChild(h('div', { class: 'row' }, btn('primary sm', 'check', 'Add selected items', () => {
       let n = 0;
