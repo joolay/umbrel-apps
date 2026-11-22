@@ -139,11 +139,14 @@ input,select,textarea{background:var(--glass-strong);border:1px solid var(--glas
 </nav>
 <div class="toolbar" id="toolbar" role="toolbar" aria-label="Lists and period">
   <button type="button" class="mb-btn mb-select" id="mb-list" data-menu="list" aria-haspopup="listbox" aria-expanded="false" aria-label="Choose a list"><span class="mb-label" id="mb-list-label">My list</span></button>
-  <button type="button" class="mb-btn mb-select" id="mb-per" data-menu="per" aria-haspopup="listbox" aria-expanded="false" aria-label="Choose a period" hidden><span class="mb-label" id="mb-per-label">Monthly</span></button>
   <button type="button" class="tool" id="mb-prev" aria-label="Earlier" title="Earlier" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button>
+  <div class="tool-group" id="mb-per" role="group" aria-label="Period" hidden>
+    <button type="button" class="tool" id="per-week" aria-pressed="false">Weekly</button>
+    <button type="button" class="tool" id="per-month" aria-pressed="true">Monthly</button>
+    <button type="button" class="tool" id="per-year" aria-pressed="false">Yearly</button>
+  </div>
   <button type="button" class="tool" id="mb-next" aria-label="Later" title="Later" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
   <div class="mb-menu" data-menu-for="list" id="mn-list" role="listbox" hidden></div>
-  <div class="mb-menu" data-menu-for="per" id="mn-per" role="listbox" hidden></div>
 </div>
 <div class="wrap">
   <main id="view"></main>
@@ -404,7 +407,8 @@ input,select,textarea{background:var(--glass-strong);border:1px solid var(--glas
   }
   function range() {
     const now = new Date(), p = ui.per; let s, e;
-    if (p.mode === 'month') { s = new Date(now.getFullYear(), now.getMonth() + p.off, 1); e = new Date(s.getFullYear(), s.getMonth() + 1, 1); }
+    if (p.mode === 'year') { s = new Date(now.getFullYear() + p.off, 0, 1); e = new Date(s.getFullYear() + 1, 0, 1); }
+    else if (p.mode === 'month') { s = new Date(now.getFullYear(), now.getMonth() + p.off, 1); e = new Date(s.getFullYear(), s.getMonth() + 1, 1); }
     else { const dow = (now.getDay() + 6) % 7; s = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dow + p.off * 7); e = new Date(s.getFullYear(), s.getMonth(), s.getDate() + 7); }
     return { s: s, e: e };
   }
@@ -597,10 +601,7 @@ input,select,textarea{background:var(--glass-strong);border:1px solid var(--glas
       m.appendChild(mbItem('Rename list', () => { setTimeout(() => { const t = document.querySelector('.title-in'); if (t) { t.focus(); t.select(); } }, 0); }));
       m.appendChild(mbItem('Delete list', () => { ui.confirm = 'list'; render(); }));
     } else if (spend) {
-      $('mb-per-label').textContent = ui.per.mode === 'month' ? 'Monthly' : 'Weekly';
-      const m = $('mn-per'); m.textContent = '';
-      m.appendChild(mbItem('Weekly', () => { ui.per = { mode: 'week', off: 0 }; render(); }, { sel: ui.per.mode === 'week' }));
-      m.appendChild(mbItem('Monthly', () => { ui.per = { mode: 'month', off: 0 }; render(); }, { sel: ui.per.mode === 'month' }));
+      ['week', 'month', 'year'].forEach((k) => $('per-' + k).setAttribute('aria-pressed', ui.per.mode === k ? 'true' : 'false'));
     }
   }
 
@@ -821,8 +822,8 @@ input,select,textarea{background:var(--glass-strong);border:1px solid var(--glas
   }
   function viewSpend(v) {
     const r = range(), mine = S.purchases.filter((p) => within(p, r.s, r.e)).sort((a, b) => new Date(b.at) - new Date(a.at)), a = agg(mine);
-    const pr = ui.per.mode === 'month' ? agg(S.purchases.filter((p) => within(p, new Date(r.s.getFullYear(), r.s.getMonth() - 1, 1), r.s))) : agg(S.purchases.filter((p) => within(p, new Date(r.s.getFullYear(), r.s.getMonth(), r.s.getDate() - 7), r.s)));
-    const label = ui.per.mode === 'month' ? r.s.toLocaleDateString(undefined, { month: 'long', year: 'numeric' }) : r.s.toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) + ' – ' + new Date(r.e - 864e5).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+    const pr = ui.per.mode === 'year' ? agg(S.purchases.filter((p) => within(p, new Date(r.s.getFullYear() - 1, 0, 1), r.s))) : ui.per.mode === 'month' ? agg(S.purchases.filter((p) => within(p, new Date(r.s.getFullYear(), r.s.getMonth() - 1, 1), r.s))) : agg(S.purchases.filter((p) => within(p, new Date(r.s.getFullYear(), r.s.getMonth(), r.s.getDate() - 7), r.s)));
+    const label = ui.per.mode === 'year' ? String(r.s.getFullYear()) : ui.per.mode === 'month' ? r.s.toLocaleDateString(undefined, { month: 'long', year: 'numeric' }) : r.s.toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) + ' – ' + new Date(r.e - 864e5).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
     const c = h('div', { class: 'card' });
     c.appendChild(h('b', { text: label }));
     c.appendChild(h('p', { class: 'big', text: money(a.fam) }));
@@ -843,11 +844,11 @@ input,select,textarea{background:var(--glass-strong);border:1px solid var(--glas
       un.appendChild(h('p', { class: 'muted', text: 'Items you buy again and again this way are offered as suggestions on your next list.' }));
     }
     v.appendChild(un);
-    if (ui.per.mode === 'month') {
-      const now = new Date(), m = {}; for (let i = 5; i >= 0; i--) { const s = new Date(now.getFullYear(), now.getMonth() - i, 1), e = new Date(s.getFullYear(), s.getMonth() + 1, 1); m[s.toLocaleDateString(undefined, { month: 'short', year: '2-digit' })] = agg(S.purchases.filter((p) => within(p, s, e))).fam; }
+    if (ui.per.mode === 'month' || ui.per.mode === 'year') {
+      const yr = ui.per.mode === 'year', now = new Date(), m = {}; for (let i = yr ? 11 : 5; i >= 0; i--) { const s = yr ? new Date(r.s.getFullYear(), 11 - i, 1) : new Date(now.getFullYear(), now.getMonth() - i, 1), e = new Date(s.getFullYear(), s.getMonth() + 1, 1); m[s.toLocaleDateString(undefined, { month: 'short', year: '2-digit' })] = agg(S.purchases.filter((p) => within(p, s, e))).fam; }
       const mx = Math.max.apply(null, Object.keys(m).map((k) => m[k]).concat([1])), box = h('div', { style: 'display:grid;gap:8px' });
       Object.keys(m).forEach((k) => box.appendChild(h('div', { class: 'bar' }, h('span', { text: k }), h('span', { class: 't' }, h('i', { style: 'width:' + (m[k] ? Math.max(2, Math.round(m[k] / mx * 100)) : 0) + '%' })), h('span', { class: 'mono', text: money(m[k]) }))));
-      v.appendChild(h('div', { class: 'card' }, h('h3', { text: 'Last 6 months' }), box));
+      v.appendChild(h('div', { class: 'card' }, h('h3', { text: yr ? 'By month' : 'Last 6 months' }), box));
     }
     const pc = h('div', { class: 'card' }, h('h3', { text: 'Purchases' }));
     if (!mine.length) pc.appendChild(h('p', { class: 'muted', text: 'No purchases in this period. Use Checkout on a shop in your list.' }));
@@ -947,6 +948,7 @@ input,select,textarea{background:var(--glass-strong);border:1px solid var(--glas
 
   $('tb-lists').addEventListener('click', () => goTab('lists'));
   $('tb-spend').addEventListener('click', () => goTab('spend'));
+  ['week', 'month', 'year'].forEach((k) => $('per-' + k).addEventListener('click', () => { ui.per = { mode: k, off: 0 }; render(); }));
   $('mb-prev').addEventListener('click', () => { ui.per.off--; render(); });
   $('mb-next').addEventListener('click', () => { ui.per.off++; render(); });
   render();
