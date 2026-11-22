@@ -20,7 +20,7 @@
 /* Settings gear (the standard Settings button, data-settings): lit while the app's Settings screen is open (set aria-pressed="true") */
 .tb-btn[aria-pressed=true]{background:var(--accent);color:var(--accent-t,#fff);border-color:transparent}
 
-/* Dock: the top bar, then an optional menu bar, then an optional toolbar, fixed together as ONE block so they never separate (PWA, notch, rubber-banding).
+/* Dock: the top bar, then an optional menu bar (drop-down selectors, e.g. which list), then an optional toolbar (tabs and quick actions), fixed together as ONE block so they never separate (PWA, notch, rubber-banding).
    An app opts in by adding <nav class="menubar"> and/or <div class="toolbar"> right after the <header class="topbar">; floatbar.js wraps them in .jz-dock and keeps the page below the whole dock.
    An app that has neither keeps the plain top bar. Markup in README.md ("Menu bar and toolbar"). */
 .jz-dock{position:fixed;top:0;left:0;right:0;z-index:20;display:flex;flex-direction:column;box-shadow:0 2px 14px rgba(0,0,0,.12)}
@@ -29,19 +29,28 @@
   background:var(--glass-strong);-webkit-backdrop-filter:blur(22px) saturate(170%);backdrop-filter:blur(22px) saturate(170%);overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}
 .menubar::-webkit-scrollbar,.toolbar::-webkit-scrollbar{display:none}
 .menubar[hidden],.toolbar[hidden]{display:none}
-.menubar{min-height:36px;font-size:14px}.toolbar{min-height:42px}
+.menubar{min-height:44px;font-size:14px}.toolbar{min-height:42px}
 .mb-btn,.tool{flex:none;display:inline-flex;align-items:center;justify-content:center;gap:6px;border:0;border-radius:8px;background:none;color:var(--text);font:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent}
-.mb-btn{height:30px;padding:0 10px;font-weight:600}
-.mb-btn:hover,.mb-btn[aria-expanded=true],.mb-btn[aria-current=page],.tool:hover{background:var(--glass-line)}
+.mb-btn{height:32px;padding:0 10px;font-weight:600}
+/* Drop-down selector in the menu bar (pick a list, project, shop, period...): label + chevron, opens an .mb-menu listbox */
+.mb-select{max-width:min(70vw,360px);min-width:0;gap:8px;padding:0 10px 0 12px;border:1px solid var(--glass-line);background:var(--glass-strong)}
+.mb-select .mb-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mb-select::after{content:"";flex:none;width:7px;height:7px;border:solid currentColor;border-width:0 2px 2px 0;transform:rotate(45deg) translate(-2px,-2px);opacity:.7}
+.mb-select[aria-expanded=true]::after{transform:rotate(225deg) translate(-2px,-2px)}
+.mb-btn:hover,.mb-btn[aria-expanded=true],.tool:hover{background:var(--glass-line)}
 .tool{min-width:36px;height:34px;padding:0 8px;font-size:13px;font-weight:600}
 .tool svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
 .tool:active,.mb-btn:active{transform:scale(.96)}.tool[disabled]{opacity:.4;pointer-events:none}
 .tool[aria-pressed=true]{background:var(--accent);color:var(--accent-t,#fff)}
+/* Tabs in the toolbar (role="tab"): the selected one is lit with an accent underline */
+.tool[role=tab]{height:38px;padding:0 14px;border-radius:10px 10px 0 0;color:var(--muted,var(--text));font-size:14px}
+.tool[role=tab][aria-selected=true]{color:var(--text);background:var(--glass-line);box-shadow:inset 0 -3px 0 var(--accent)}
 .tool-sep{flex:none;width:1px;height:20px;margin:0 4px;background:var(--glass-line)}.tool-gap{flex:1}
 /* Drop-down menus: moved to <body> by floatbar.js (a blurred parent would trap position:fixed) */
 .mb-menu{position:fixed;z-index:30;min-width:190px;max-width:calc(100vw - 16px);max-height:calc(100vh - 120px);overflow:auto;padding:6px;border-radius:12px;border:1px solid var(--glass-line);
   background:var(--glass-strong);-webkit-backdrop-filter:blur(22px) saturate(170%);backdrop-filter:blur(22px) saturate(170%);box-shadow:0 10px 30px rgba(0,0,0,.25)}
 .mb-menu[hidden]{display:none}
 .mb-item{display:flex;width:100%;align-items:center;gap:10px;padding:9px 10px;border:0;border-radius:8px;background:none;color:var(--text);font:inherit;font-size:14px;text-align:left;cursor:pointer}
-.mb-item:hover,.mb-item:focus-visible{background:var(--glass-line);outline:0}.mb-item[disabled]{opacity:.45;pointer-events:none}
+.mb-item:hover,.mb-item:focus-visible{background:var(--glass-line);outline:0}
+.mb-item[aria-selected=true]{font-weight:700}.mb-item[aria-selected=true]::after{content:"";margin-left:auto;flex:none;width:6px;height:11px;border:solid var(--accent);border-width:0 2.5px 2.5px 0;transform:rotate(45deg) translate(-1px,-1px)}.mb-item[disabled]{opacity:.45;pointer-events:none}
 .mb-sep{height:1px;margin:5px 4px;background:var(--glass-line)}
