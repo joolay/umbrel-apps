@@ -629,19 +629,22 @@ input,select,textarea{background:var(--glass-strong);border:1px solid var(--glas
     if (ui.co) return viewCheckout(v);
     const l = active();
     const head = h('div', { class: 'card' });
+    // Tag: a plain, tightly padded line right under the toolbar (no pill, no card).
+    const plain = 'border:0;background:none;padding:0;margin:0;font:inherit;font-size:13px;min-height:0;min-width:0;cursor:pointer;';
     const tagPart = (() => {
       if (ui.tagEdit) {
-        const ti = h('input', { type: 'text', maxlength: '30', placeholder: 'Tag, e.g. Braai', 'aria-label': 'List tag', value: l.tag || '', style: 'flex:1 1 140px' });
+        const ti = h('input', { type: 'text', maxlength: '30', placeholder: 'Tag, e.g. Braai', 'aria-label': 'List tag', value: l.tag || '', style: 'flex:1 1 120px;min-height:30px;padding:2px 8px;font-size:13px' });
         const done = () => { const t = ti.value.trim().slice(0, 30); ui.tagEdit = false; mutate(() => { l.tag = t; }); };
         ti.addEventListener('keydown', (e) => { if (e.key === 'Enter') done(); if (e.key === 'Escape') { ui.tagEdit = false; render(); } });
         setTimeout(() => { ti.focus(); ti.select(); }, 0);
-        return h('span', { class: 'row grow' }, ti, btn('primary sm', 'check', 'Save tag', done, 'Save'), btn('sm', 'x', 'Cancel', () => { ui.tagEdit = false; render(); }, 'Cancel'));
+        return h('div', { class: 'row', style: 'gap:10px;padding:0 4px' }, ti, h('button', { type: 'button', style: plain + 'color:var(--accent-text);font-weight:700', onclick: done, text: 'Save' }), h('button', { type: 'button', style: plain + 'color:var(--muted)', onclick: () => { ui.tagEdit = false; render(); }, text: 'Cancel' }));
       }
-      if (l.tag) return h('span', { class: 'row' }, h('button', { type: 'button', class: 'pill', title: 'Change tag', onclick: () => { ui.tagEdit = true; render(); }, text: l.tag }), btn('quiet sm', 'x', 'Remove tag', () => { mutate(() => { l.tag = ''; }); }));
-      return btn('quiet sm', 'plus', 'Add tag (optional)', () => { ui.tagEdit = true; render(); }, 'Add tag');
+      if (l.tag) return h('div', { class: 'row', style: 'gap:12px;padding:0 4px' }, h('button', { type: 'button', title: 'Change tag', style: plain + 'color:var(--accent-text);font-weight:700', onclick: () => { ui.tagEdit = true; render(); }, text: '# ' + l.tag }), h('button', { type: 'button', 'aria-label': 'Remove tag', title: 'Remove tag', style: plain + 'color:var(--muted)', onclick: () => { mutate(() => { l.tag = ''; }); }, text: '\u00d7' }));
+      return h('div', { style: 'padding:0 4px' }, h('button', { type: 'button', style: plain + 'color:var(--muted)', onclick: () => { ui.tagEdit = true; render(); }, text: '+ Add tag' }));
     })();
     const del = ui.confirm === 'list' ? h('span', { class: 'row' }, btn('danger sm', 'trash', 'Confirm delete list', () => { ui.confirm = ''; mutate(() => { S.lists = S.lists.filter((x) => x.id !== l.id); if (!S.lists.length) S.lists.push({ id: uid(), name: '', tag: '', date: dayKey(new Date()), items: [] }); S.activeId = S.lists[0].id; }); }, 'Delete?'), btn('sm', 'x', 'Keep list', () => { ui.confirm = ''; render(); }, 'Keep'))
       : null;
+    v.appendChild(h('div', { style: 'margin:-6px 0 -4px' }, tagPart));
     if (ui.find) v.appendChild(findCard());
     if (del) { head.appendChild(h('div', { class: 'row' }, h('span', { class: 'muted', text: 'Delete ' + listLabel(l) + '?' }), del)); v.appendChild(head); }
 
@@ -672,7 +675,6 @@ input,select,textarea{background:var(--glass-strong);border:1px solid var(--glas
       bought.forEach((i) => { const p = S.purchases.find((x) => x.id === i.pid); d.appendChild(h('p', { class: 'muted', text: i.text + (p ? ' · ' + p.shopName + ', ' + fmtAt(p.at) : '') })); });
       v.appendChild(d);
     }
-    v.appendChild(h('div', { class: 'card' }, h('div', { class: 'row' }, h('span', { class: 'muted', text: 'Tag' }), tagPart)));
   }
   // Search icon in the toolbar: find lists by their tag.
   function findCard() {
