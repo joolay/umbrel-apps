@@ -2,7 +2,7 @@ FROM node:22-alpine
 LABEL org.opencontainers.image.source=https://github.com/joolay/umbrel-apps
 ENV NODE_ENV=production PORT=3000 DATA_DIR=/data
 WORKDIR /app
-COPY package.json server.js status-feed.js ./
+COPY package.json server.js restart-request.js status-feed.js ./
 COPY public ./public
 VOLUME /data
 EXPOSE 3000
