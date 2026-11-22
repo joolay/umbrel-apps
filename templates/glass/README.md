@@ -111,8 +111,10 @@ Copy `install-help.js` (from `src/portal-admin/public/`) and `installbtn.js` nex
 and load both scripts at the end of `<body>` (`install-help.js` first). The icon shows in any normal browser tab, never inside the installed app. On an http address (home network, Tailscale IP) it opens a note saying installing needs the https address. Chromium browsers install in one tap;
 iPhone, iPad, Safari and Firefox get a sheet with the steps for that device. Project Pilot is the first app to use it.
 
-## Connected and handshake icons (top bar)
+## Connected icon and the Claude link (top bar)
 The connected icon is a pair of **sync ticks** (WhatsApp style): one green tick = recorded to PocketBase, two green ticks = read by all shared parties (second tick amber while only some have read it), grey = saving or on this device only, a red cross = not connected or the save failed (two tightly overlapping ticks, the second one a faint ghost until read; saving pulses grey). Apps that keep data on the account report it with `JZLink.sync({ saved: "saving"|"saved"|"error"|"local", parties, read })`; an app that reports nothing shows one green tick while its server answers. Jolly Grocer is the first app to report.
+
+**Claude link = the same ticks, no separate chain-link icon.** An app with `data-claude` (on the `jz.js` tag) reads `GET api/link` and shows it on the ticks: two green = Claude has read the last change, one green = this app wrote something Claude has not read yet, amber second tick = Claude wrote something the app has not read yet, red cross = the link is broken (a report has not come through).
 
 Copy `linkstatus.js` next to `index.html` and load it last in `<body>`: `<script src="linkstatus.js"></script>` (connected icon only) or `<script src="linkstatus.js" data-claude></script>` (adds the Claude handshake; the app must serve `GET /api/link`, see `src/app-updater/status-feed.js`). Rules and protocol: CLAUDE.md, "Connected icon and Claude handshake".
 
