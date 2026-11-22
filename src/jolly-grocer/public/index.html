@@ -50,6 +50,7 @@ input:focus-visible,select:focus-visible,button:focus-visible{outline:2px solid 
 .chip{min-height:44px;padding:0 13px;border-radius:22px;border:1px solid var(--line-strong);background:var(--surface);font-weight:600;font-size:14px;cursor:pointer}
 .chip[aria-pressed=true]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
 .chip.sug{background:var(--accent-soft);border-color:transparent;color:var(--accent-text)}
+.shop-tagbtn svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .title-in{flex:1 1 180px;font-size:19px;font-weight:700;border-color:transparent;background:transparent;padding-left:2px}
 .title-in:hover,.title-in:focus{border-color:var(--line-strong);background:var(--surface)}
 .group{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--surface)}
@@ -140,6 +141,9 @@ input,select,textarea{background:var(--glass-strong);border:1px solid var(--glas
 </nav>
 <div class="toolbar" id="toolbar" role="toolbar" aria-label="Lists and period">
   <button type="button" class="mb-btn mb-select" id="mb-list" data-menu="list" aria-haspopup="listbox" aria-expanded="false" aria-label="Choose a list"><span class="mb-label" id="mb-list-label">My list</span></button>
+  <button type="button" class="tool" id="mb-tags" aria-label="List tags" title="Edit tags" hidden style="flex:1 1 0;min-width:0;justify-content:flex-start;border:0;background:none;padding:0 6px;font-size:13px;font-weight:700;color:var(--accent-text);overflow:hidden;white-space:nowrap;text-overflow:ellipsis;display:block;text-align:left"></button>
+  <button type="button" class="tool" id="mb-tag" aria-label="Add or edit tags" title="Add or edit tags" aria-pressed="false" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h7l9 9-7 7-9-9z"/><circle cx="8.5" cy="8.5" r="1.2"/></svg></button>
+  <button type="button" class="tool" id="mb-search" aria-label="Search lists by tag or date" title="Search lists by tag or date" aria-pressed="false" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="m16 16 4 4"/></svg></button>
   <button type="button" class="mb-btn mb-select" id="mb-item" data-menu="item" aria-haspopup="listbox" aria-expanded="false" aria-label="Choose an item to analyse" hidden><span class="mb-label" id="mb-item-label">All items</span></button>
   <div class="tool-group" id="an-range" role="group" aria-label="Time span" hidden>
     <button type="button" class="tool" id="an-3" aria-pressed="false">3 months</button>
@@ -193,6 +197,34 @@ input,select,textarea{background:var(--glass-strong);border:1px solid var(--glas
   const num = (v) => { const n = parseFloat(String(v).replace(',', '.')); return isFinite(n) && n >= 0 ? n : 0; };
   const pad = (n) => (n < 10 ? '0' : '') + n;
   const dayKey = (d) => { d = new Date(d); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); };
+  // Lists are identified by the day they were made; an optional short tag (e.g. Braai, Month-end) can be added.
+  const listLabel = (l) => {
+    const d = new Date((l.date || dayKey(new Date())) + 'T12:00:00'), base = d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
+    const same = S.lists.filter((x) => (x.date || '') === (l.date || '')), n = same.indexOf(l) + 1;
+    return base + (same.length > 1 ? ' (' + n + ')' : '');
+  };
+  const listTitle = (l) => listLabel(l);
+  // A list (and each shop section on it) can carry several short tags.
+  const MAXTAGS = 8;
+  const cleanTags = (v) => { const a = Array.isArray(v) ? v : (v ? [v] : []), out = []; a.forEach((t) => { t = String(t || '').trim().slice(0, 30); if (t && out.length < MAXTAGS && !out.some((x) => x.toLowerCase() === t.toLowerCase())) out.push(t); }); return out; };
+  const tagText = (arr) => (arr || []).map((t) => '# ' + t).join('  ');
+  const allTags = (l) => (l.tags || []).concat(...Object.keys(l.shopTags || {}).map((k) => l.shopTags[k]));
+  const plainBtn = 'border:0;background:none;padding:0;margin:0;font:inherit;font-size:13px;min-height:0;min-width:0;cursor:pointer;';
+  // Inline editor: current tags (tap one to remove it), a box to add another, Done.
+  function tagEditor(get, set, ph, close) {
+    const wrap = h('div', { style: 'padding:0 4px' });
+    const draw = () => {
+      wrap.textContent = ''; const arr = get(), row = h('div', { class: 'row', style: 'gap:8px;align-items:center' });
+      arr.forEach((t) => row.appendChild(h('button', { type: 'button', title: 'Remove ' + t, 'aria-label': 'Remove tag ' + t, style: plainBtn + 'color:var(--accent-text);font-weight:700', onclick: () => { set(arr.filter((x) => x !== t)); draw(); }, text: '# ' + t + ' \u00d7' })));
+      const ti = h('input', { type: 'text', maxlength: '30', placeholder: arr.length >= MAXTAGS ? 'Tag limit reached' : ph, 'aria-label': ph, disabled: arr.length >= MAXTAGS, style: 'flex:1 1 110px;min-height:30px;padding:2px 8px;font-size:13px' });
+      const add = () => { const t = ti.value.trim(); if (!t) return; set(cleanTags(get().concat([t]))); draw(); };
+      ti.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); add(); } if (e.key === 'Escape') close(); });
+      row.appendChild(ti); row.appendChild(h('button', { type: 'button', style: plainBtn + 'color:var(--accent-text);font-weight:700', onclick: add, text: 'Add' })); row.appendChild(h('button', { type: 'button', style: plainBtn + 'color:var(--muted)', onclick: () => { add(); close(); }, text: 'Done' }));
+      wrap.appendChild(row); setTimeout(() => ti.focus(), 0);
+    };
+    draw(); return wrap;
+  }
+  const newList = (items) => { const nl = { id: uid(), name: '', tags: [], date: dayKey(new Date()), items: items || [] }; S.lists.push(nl); S.activeId = nl.id; ui.edit = ''; ui.rv = null; return nl; };
   const toLocalInput = (d) => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
   const fmtAt = (d) => new Date(d).toLocaleString(undefined, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
   const $ = (id) => document.getElementById(id);
@@ -214,7 +246,7 @@ input,select,textarea{background:var(--glass-strong);border:1px solid var(--glas
   const NS = 'http://www.w3.org/2000/svg';
   const ICON = {
     plus: '<path d="M12 5v14M5 12h14"/>', camera: '<path d="M4 8h3l1.5-2h7L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.5"/>',
-    tag: '<path d="M4 4h7l9 9-7 7-9-9z"/><circle cx="8.5" cy="8.5" r="1.2"/>', cart: '<path d="M4 5h2l2 10h9l2-7H7"/><circle cx="10" cy="19" r="1.3"/><circle cx="17" cy="19" r="1.3"/>',
+    search: '<circle cx="11" cy="11" r="6"/><path d="m16 16 4 4"/>', tag: '<path d="M4 4h7l9 9-7 7-9-9z"/><circle cx="8.5" cy="8.5" r="1.2"/>', cart: '<path d="M4 5h2l2 10h9l2-7H7"/><circle cx="10" cy="19" r="1.3"/><circle cx="17" cy="19" r="1.3"/>',
     check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>', x: '<path d="M6 6l12 12M18 6L6 18"/>', copy: '<rect x="8" y="8" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/>',
     trash: '<path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12"/>', next: '<path d="M9 6l6 6-6 6"/>', prev: '<path d="M15 6l-6 6 6 6"/>'
   };
@@ -304,7 +336,7 @@ input,select,textarea{background:var(--glass-strong);border:1px solid var(--glas
   function seed() {
     const shops = [mkShop('Checkers', ['C']), mkShop('Pick n Pay', ['PP']), mkShop('Woolworths', ['W']), mkShop('Dis-Chem', ['DC'])];
     const S0 = { shops: shops, defaultShop: shops[0].id, lists: [], activeId: '', prefs: {}, cats: BASE_CATS.slice(), purchases: [], receipts: [], settings: { retentionYears: 5 } };
-    const l = { id: uid(), name: 'Weekly shop', date: dayKey(new Date()), items: [] };
+    const l = { id: uid(), name: '', tags: [], date: dayKey(new Date()), items: [] };
     S0.lists.push(l); S0.activeId = l.id;
     [['Milk, 2 L', 0], ['Eggs, 18', 0], ['Brown bread', 0], ['Chicken thighs', 1], ['Bananas', 1], ['Panado', 3]].forEach((p) => {
       l.items.push({ id: uid(), text: p[0], done: false, shop: shops[p[1]].id, cat: guessCat(p[0]), tag: '', pid: '' });
@@ -315,13 +347,13 @@ input,select,textarea{background:var(--glass-strong);border:1px solid var(--glas
     const seen = {}; d.cats = (Array.isArray(d.cats) ? d.cats : BASE_CATS).map((c) => String(c).trim().slice(0, 30)).filter((c) => { const k = c.toLowerCase(); if (!c || k === 'other' || seen[k]) return false; seen[k] = 1; return true; }).slice(0, 60);
     setCats(d.cats);
     d.shops = Array.isArray(d.shops) ? d.shops.filter((s) => s && s.id && typeof s.name === 'string').map((s) => ({ id: String(s.id), name: s.name.slice(0, 40), codes: (s.codes || []).map(String).slice(0, 6) })) : [];
-    d.lists = d.lists.filter((l) => l && l.id && Array.isArray(l.items)).map((l) => ({ id: String(l.id), name: String(l.name || 'List').slice(0, 60), date: l.date || '', items: l.items.filter((i) => i && typeof i.text === 'string').map((i) => ({ id: String(i.id || uid()), text: i.text.slice(0, 300), done: !!i.done, shop: i.shop || '', cat: CATS.indexOf(i.cat) >= 0 ? i.cat : 'Other', tag: i.tag === 'personal' || i.tag === 'other' ? i.tag : '', qty: Math.min(99, Math.max(1, Math.round(+i.qty) || 1)), pid: i.pid || '' })) }));
+    d.lists = d.lists.filter((l) => l && l.id && Array.isArray(l.items)).map((l) => ({ id: String(l.id), name: '', tags: cleanTags(l.tags != null ? l.tags : l.tag), shopTags: (() => { const o = {}; Object.keys(l.shopTags || {}).forEach((k) => { const t = cleanTags(l.shopTags[k]); if (t.length) o[String(k)] = t; }); return o; })(), date: l.date || dayKey(new Date()), items: l.items.filter((i) => i && typeof i.text === 'string').map((i) => ({ id: String(i.id || uid()), text: i.text.slice(0, 300), done: !!i.done, shop: i.shop || '', cat: CATS.indexOf(i.cat) >= 0 ? i.cat : 'Other', tag: i.tag === 'personal' || i.tag === 'other' ? i.tag : '', qty: Math.min(99, Math.max(1, Math.round(+i.qty) || 1)), pid: i.pid || '' })) }));
     if (!d.shops.some((s) => s.id === d.defaultShop)) d.defaultShop = d.shops.length ? d.shops[0].id : '';
     d.prefs = d.prefs && typeof d.prefs === 'object' ? d.prefs : {};
     d.receipts = Array.isArray(d.receipts) ? d.receipts.filter((r) => r && r.id && r.at).map((r) => ({ id: String(r.id), pid: String(r.pid || ''), at: r.at, size: +r.size || 0 })) : [];
     const ry = Math.round(+(d.settings && d.settings.retentionYears)); d.settings = { retentionYears: ry >= 1 && ry <= 10 ? ry : 5 };
     d.purchases = Array.isArray(d.purchases) ? d.purchases.filter((p) => p && p.id && p.at && Array.isArray(p.lines)).map((p) => { p.lines.forEach((x) => { if (x.tag !== 'personal' && x.tag !== 'other') x.tag = ''; }); return p; }) : [];
-    if (!d.lists.length) { const l = { id: uid(), name: 'My list', date: dayKey(new Date()), items: [] }; d.lists.push(l); }
+    if (!d.lists.length) { const l = { id: uid(), name: '', tags: [], date: dayKey(new Date()), items: [] }; d.lists.push(l); }
     if (!d.lists.some((l) => l.id === d.activeId)) d.activeId = d.lists[0].id;
     return d;
   }
@@ -358,7 +390,7 @@ input,select,textarea{background:var(--glass-strong);border:1px solid var(--glas
     if (sync.on) { clearTimeout(sync.timer); sync.timer = setTimeout(pushNow, 600); }
   }
   window.addEventListener('pagehide', function () { if (sync.on && sync.timer) pushNow(); });
-  const ui = { pidx: null, rcUrl: '', rcFor: '', rolloverSkip: false, confirmRoll: false, tab: 'lists', menu: false, edit: '', co: null, rv: null, confirm: '', per: { mode: 'month', off: 0 }, an: { item: '', months: 6 }, openPur: '', exportText: '', focusAdd: false, newList: false };
+  const ui = { pidx: null, rcUrl: '', rcFor: '', rolloverSkip: false, confirmRoll: false, tab: 'lists', menu: false, edit: '', co: null, rv: null, confirm: '', per: { mode: 'month', off: 0 }, an: { item: '', months: 6 }, find: null, shopTagEdit: '', openPur: '', exportText: '', focusAdd: false, newList: false };
   const active = () => S.lists.find((l) => l.id === S.activeId) || S.lists[0];
   const QTYS = Array.from({ length: 20 }, (_, n) => [String(n + 1), 'Qty ' + (n + 1)]);
   const shopById = (id) => S.shops.find((s) => s.id === id);
@@ -587,8 +619,8 @@ input,select,textarea{background:var(--glass-strong);border:1px solid var(--glas
   const goTab = (t) => { ui.tab = t; ui.edit = ''; ui.confirm = ''; render(); };
   function carryOver() {
     const l = active(), open = l.items.filter((i) => !i.pid), left = open.length; if (!left) return;
-    const nl = { id: uid(), name: 'Shop ' + new Date().toLocaleDateString(undefined, { day: 'numeric', month: 'short' }), date: dayKey(new Date()), items: open.map((i) => ({ id: uid(), text: i.text, done: false, shop: i.shop, cat: i.cat, tag: i.tag || '', qty: i.qty || 1, pid: '' })) };
-    mutate(() => { S.lists.push(nl); S.activeId = nl.id; }); toast('New list started with ' + left + (left === 1 ? ' unbought item.' : ' unbought items.'));
+    const nlItems = (open.map((i) => ({ id: uid(), text: i.text, done: false, shop: i.shop, cat: i.cat, tag: i.tag || '', qty: i.qty || 1, pid: '' })));
+    mutate(() => { newList(nlItems); }); toast('New list started with ' + left + (left === 1 ? ' unbought item.' : ' unbought items.'));
   }
   // Menu bar = the Lists | Spend tabs; toolbar = drop-downs (which list on Lists, which period on Spend). The toolbar is hidden on Settings and during checkout.
   const mbItem = (text, fn, o) => { o = o || {}; return h('button', { type: 'button', class: 'mb-item', role: o.sel == null ? 'menuitem' : 'option', 'aria-selected': o.sel == null ? null : (o.sel ? 'true' : 'false'), disabled: o.disabled, text: text, onclick: fn }); };
@@ -596,19 +628,22 @@ input,select,textarea{background:var(--glass-strong);border:1px solid var(--glas
     const lists = ui.tab === 'lists' && !ui.co, spend = ui.tab === 'spend', an = ui.tab === 'analyse';
     [['tb-lists', ui.tab === 'lists'], ['tb-spend', spend], ['tb-analyse', an]].forEach((t) => $(t[0]).setAttribute('aria-selected', t[1] ? 'true' : 'false'));
     $('toolbar').hidden = !(lists || spend || an);
-    ['mb-list'].forEach((id) => { $(id).hidden = !lists; });
+    ['mb-list', 'mb-tags', 'mb-tag', 'mb-search'].forEach((id) => { $(id).hidden = !lists; });
+    $('mb-tag').setAttribute('aria-pressed', ui.tagEdit ? 'true' : 'false');
+    $('mb-search').setAttribute('aria-pressed', ui.find ? 'true' : 'false');
     ['mb-per', 'mb-prev', 'mb-next'].forEach((id) => { $(id).hidden = !spend; });
     ['mb-item', 'an-range'].forEach((id) => { $(id).hidden = !an; });
     if (an) paintAnalyseBar();
     if (lists) {
       const l = active(), open = l.items.filter((i) => !i.pid).length;
-      $('mb-list-label').textContent = l.name;
+      $('mb-list-label').textContent = listTitle(l);
+      $('mb-tags').textContent = tagText(l.tags);
       const m = $('mn-list'); m.textContent = '';
-      S.lists.forEach((x) => m.appendChild(mbItem(x.name, () => { S.activeId = x.id; ui.edit = ''; ui.rv = null; save(); render(); }, { sel: x.id === l.id })));
+      S.lists.forEach((x) => m.appendChild(mbItem(listTitle(x), () => { S.activeId = x.id; ui.edit = ''; ui.rv = null; save(); render(); }, { sel: x.id === l.id })));
       m.appendChild(h('div', { class: 'mb-sep' }));
-      m.appendChild(mbItem('+ New list', () => { ui.newList = true; render(); }));
+      m.appendChild(mbItem('+ New list (today)', () => { mutate(() => { newList(); }); }));
       m.appendChild(mbItem('New list from unbought items', carryOver, { disabled: !open }));
-      m.appendChild(mbItem('Rename list', () => { setTimeout(() => { const t = document.querySelector('.title-in'); if (t) { t.focus(); t.select(); } }, 0); }));
+      m.appendChild(mbItem('Tags', () => { ui.tagEdit = true; render(); }));
       m.appendChild(mbItem('Delete list', () => { ui.confirm = 'list'; render(); }));
     } else if (spend) {
       ['week', 'month', 'year'].forEach((k) => $('per-' + k).setAttribute('aria-pressed', ui.per.mode === k ? 'true' : 'false'));
@@ -619,19 +654,13 @@ input,select,textarea{background:var(--glass-strong);border:1px solid var(--glas
     if (ui.co) return viewCheckout(v);
     const l = active();
     const head = h('div', { class: 'card' });
-    if (ui.newList) {
-      const ni = h('input', { type: 'text', maxlength: '60', placeholder: 'Name your list', 'aria-label': 'New list name', value: 'Shop ' + new Date().toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) });
-      const go = () => { const nl = { id: uid(), name: ni.value.trim().slice(0, 60) || 'New list', date: dayKey(new Date()), items: [] }; ui.newList = false; mutate(() => { S.lists.push(nl); S.activeId = nl.id; }); };
-      ni.addEventListener('keydown', (e) => { if (e.key === 'Enter') go(); });
-      head.appendChild(h('div', { class: 'row grow' }, ni, btn('primary sm', 'check', 'Create list', go, 'Create'), btn('sm', 'x', 'Cancel', () => { ui.newList = false; render(); }, 'Cancel')));
-      setTimeout(() => ni.focus(), 0);
-    }
-    const title = h('input', { type: 'text', class: 'title-in', value: l.name, maxlength: '60', 'aria-label': 'List name' });
-    title.addEventListener('change', () => { const t = title.value.trim().slice(0, 60); if (t) mutate(() => { l.name = t; }); else title.value = l.name; });
-    const del = ui.confirm === 'list' ? h('span', { class: 'row' }, btn('danger sm', 'trash', 'Confirm delete list', () => { ui.confirm = ''; mutate(() => { S.lists = S.lists.filter((x) => x.id !== l.id); if (!S.lists.length) S.lists.push({ id: uid(), name: 'My list', date: dayKey(new Date()), items: [] }); S.activeId = S.lists[0].id; }); }, 'Delete?'), btn('sm', 'x', 'Keep list', () => { ui.confirm = ''; render(); }, 'Keep'))
+    // Tags: shown in the toolbar next to the date (icon at the right opens this editor).
+    const tagPart = ui.tagEdit ? tagEditor(() => l.tags || [], (n) => { l.tags = n; save(); }, 'Add a tag, e.g. Braai', () => { ui.tagEdit = false; render(); }) : null;
+    const del = ui.confirm === 'list' ? h('span', { class: 'row' }, btn('danger sm', 'trash', 'Confirm delete list', () => { ui.confirm = ''; mutate(() => { S.lists = S.lists.filter((x) => x.id !== l.id); if (!S.lists.length) S.lists.push({ id: uid(), name: '', tags: [], date: dayKey(new Date()), items: [] }); S.activeId = S.lists[0].id; }); }, 'Delete?'), btn('sm', 'x', 'Keep list', () => { ui.confirm = ''; render(); }, 'Keep'))
       : null;
-    head.appendChild(h('div', { class: 'row' }, title, del));
-    v.appendChild(head);
+    if (tagPart) v.appendChild(h('div', { style: 'margin:-6px 0 -4px' }, tagPart));
+    if (ui.find) v.appendChild(findCard());
+    if (del) { head.appendChild(h('div', { class: 'row' }, h('span', { class: 'muted', text: 'Delete ' + listLabel(l) + '?' }), del)); v.appendChild(head); }
 
     const form = h('form', { class: 'row grow', onsubmit: (e) => { e.preventDefault(); const i = $('add-input'), t = i.value.trim(); if (!t) return; ui.focusAdd = true; if (parseCode(t).unk) { startReview([t]); return; } mutate(() => { addItem(l, t); }); } });
     form.appendChild(h('input', { type: 'text', id: 'add-input', maxlength: '300', placeholder: 'Add an item (2-letter shop code first, e.g. PP milk)', 'aria-label': 'Add an item', autocomplete: 'off', enterkeyhint: 'done' }));
@@ -661,6 +690,24 @@ input,select,textarea{background:var(--glass-strong);border:1px solid var(--glas
       v.appendChild(d);
     }
   }
+  // Search icon in the toolbar: find lists by their tag.
+  function findCard() {
+    const c = h('div', { class: 'card' }), tags = Array.from(new Set([].concat(...S.lists.map(allTags)))).sort((a, b) => a.localeCompare(b));
+    const qi = h('input', { type: 'search', placeholder: 'Search by tag or date, e.g. Braai or 22 Nov', 'aria-label': 'Search lists by tag or date', value: ui.find.q, maxlength: '30' });
+    const res = h('div', { style: 'display:grid;gap:6px;margin-top:8px' });
+    const paint = () => {
+      res.textContent = ''; const q = ui.find.q.trim().toLowerCase();
+      const hay = (x) => { const d = new Date((x.date || '') + 'T12:00:00'); return [allTags(x).join(' '), x.date || '', listLabel(x), isNaN(d) ? '' : d.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) + ' ' + d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })].join(' ').toLowerCase(); };
+      const hits = S.lists.filter((x) => !q || hay(x).indexOf(q) >= 0).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+      if (!hits.length) res.appendChild(h('p', { class: 'muted', text: 'No list matches that tag or date.' }));
+      hits.forEach((x) => res.appendChild(h('button', { type: 'button', class: 'btn', style: 'justify-content:space-between;width:100%', onclick: () => { S.activeId = x.id; ui.find = null; ui.edit = ''; ui.rv = null; save(); render(); } }, h('span', { text: listLabel(x) }), h('span', { class: 'pill', text: (allTags(x).length ? allTags(x).join(', ') + ' \u00b7 ' : '') + x.items.length + (x.items.length === 1 ? ' item' : ' items') }))));
+    };
+    qi.addEventListener('input', () => { ui.find.q = qi.value; paint(); });
+    c.appendChild(h('div', { class: 'row' }, qi, btn('quiet sm', 'x', 'Close search', () => { ui.find = null; render(); })));
+    if (tags.length) c.appendChild(h('div', { class: 'row', style: 'margin-top:8px' }, ...tags.map((t) => h('button', { type: 'button', class: 'pill', onclick: () => { ui.find.q = t; qi.value = t; paint(); }, text: t }))));
+    c.appendChild(res); paint(); setTimeout(() => qi.focus(), 0);
+    return c;
+  }
 
   const estSum = (g) => (g.shop ? g.items.reduce((a, i) => { const e = estimate(i.text, g.shop.id); return a + (e ? e.price : 0); }, 0) : 0);
   function viewGroup(l, g) {
@@ -669,6 +716,11 @@ input,select,textarea{background:var(--glass-strong);border:1px solid var(--glas
     const head = h('div', { class: 'ghead' }, h('span', null, h('b', { text: g.shop ? g.shop.name : 'No shop yet' }), h('span', { class: 'n', text: '  ' + g.items.length + (g.items.length === 1 ? ' item' : ' items') + (g.shop ? ' · ' + inBasket + ' in basket' + (estSum(g) ? ' · ≈ ' + money(estSum(g)) : '') : ' · tap an item to choose its shop') })));
     if (g.shop) head.appendChild(btn('primary sm', 'cart', 'Checkout at ' + g.shop.name, () => openCheckout(g.shop.id), 'Checkout'));
     box.appendChild(head);
+    if (g.shop) {   // each shop section has its own tags, separate from the list's tags in the toolbar
+      const sid = g.shop.id, get = () => (l.shopTags && l.shopTags[sid]) || [];
+      if (ui.shopTagEdit === sid) box.appendChild(h('div', { style: 'padding:6px 8px 2px' }, tagEditor(get, (n) => { l.shopTags = l.shopTags || {}; if (n.length) l.shopTags[sid] = n; else delete l.shopTags[sid]; save(); }, 'Tag for ' + g.shop.name, () => { ui.shopTagEdit = ''; render(); })));
+      else box.appendChild(h('div', { class: 'row', style: 'padding:4px 8px 0 12px;flex-wrap:nowrap;justify-content:space-between;min-height:0' }, h('span', { style: 'font-size:13px;font-weight:700;color:var(--accent-text);overflow:hidden;white-space:nowrap;text-overflow:ellipsis', text: tagText(get()) }), h('button', { type: 'button', class: 'shop-tagbtn', style: plainBtn + 'color:var(--muted);display:grid;place-items:center;width:28px;height:28px', title: 'Add or edit tags for ' + g.shop.name, 'aria-label': 'Add or edit tags for ' + g.shop.name, onclick: () => { ui.shopTagEdit = sid; render(); } }, icon('tag'))));
+    }
     CATS.forEach((c) => {
       const its = g.items.filter((i) => i.cat === c); if (!its.length) return;
       box.appendChild(h('div', { class: 'cat', text: c }));
@@ -1044,6 +1096,9 @@ input,select,textarea{background:var(--glass-strong);border:1px solid var(--glas
   $('tb-lists').addEventListener('click', () => goTab('lists'));
   $('tb-spend').addEventListener('click', () => goTab('spend'));
   $('tb-analyse').addEventListener('click', () => goTab('analyse'));
+  $('mb-tag').addEventListener('click', () => { ui.tagEdit = !ui.tagEdit; render(); });
+  $('mb-tags').addEventListener('click', () => { ui.tagEdit = !ui.tagEdit; render(); });
+  $('mb-search').addEventListener('click', () => { ui.find = ui.find ? null : { q: '' }; render(); });
   [3, 6, 12].forEach((n) => $('an-' + n).addEventListener('click', () => { ui.an.months = n; render(); }));
   ['week', 'month', 'year'].forEach((k) => $('per-' + k).addEventListener('click', () => { ui.per = { mode: k, off: 0 }; render(); }));
   $('mb-prev').addEventListener('click', () => { ui.per.off--; render(); });
