@@ -12,10 +12,16 @@ main{max-width:980px;margin:0 auto;padding:12px 14px 60px}
 html,body{overflow-x:clip}
 .attn{flex-basis:100%;font-size:.9rem;color:#dc2626}
 .tw{padding:4px 8px}
-table{width:100%;border-collapse:collapse;display:table;table-layout:fixed;font-size:.78rem}
-th,td{padding:7px 4px;text-align:left;vertical-align:middle;border-bottom:1px solid var(--glass-line)}tr:last-child>*{border-bottom:0}
-thead th{white-space:nowrap;font-size:.56rem;letter-spacing:0;text-transform:uppercase;color:var(--muted);overflow-wrap:normal;word-break:normal}
-thead th:first-child,tbody th{width:28%}
+table{width:100%;min-width:560px;border-collapse:collapse;display:table;table-layout:auto;font-size:.85rem}
+.tw{overflow-x:auto;-webkit-overflow-scrolling:touch}
+th,td{padding:8px 10px;text-align:left;vertical-align:middle;border-bottom:1px solid var(--glass-line)}tr:last-child>*{border-bottom:0}
+thead th{white-space:nowrap;font-size:.66rem;letter-spacing:.03em;text-transform:uppercase;color:var(--muted);overflow-wrap:normal;word-break:normal}
+thead th.app,tbody th.app{min-width:150px;width:30%}
+thead th.pt,td.pt{width:64px}
+thead th.pc{width:64px}
+td.pt{font-variant-numeric:tabular-nums;color:var(--muted)}
+td:not(.pt):not(.na),thead th:not(.app){text-align:center}td.na{text-align:center}
+.ic.portal{background:var(--accent);}.ic.portal svg{width:14px;height:14px;stroke:var(--accent-t);stroke-width:2.2}
 tbody th{font-weight:400;overflow-wrap:anywhere;text-transform:none;letter-spacing:0;color:var(--text)}tbody th b{font-size:.8rem;line-height:1.2;font-weight:600}
 td.na{color:var(--muted)}
 .chip{border-radius:999px;padding:1px 7px;font-size:.66rem;font-weight:700;color:#fff;background:#6b7280;white-space:nowrap}
@@ -41,16 +47,22 @@ dialog .actions{display:flex;gap:10px;justify-content:flex-end;margin-top:14px}
 /* iPad and other wide screens: use the width, two cards side by side, larger text and touch targets */
 @media (min-width:700px){
   main{max-width:1240px;padding:16px 22px 70px}
-  .pair{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start}.pair .card{margin:0}
-  table{font-size:.92rem}thead th{font-size:.68rem;letter-spacing:.03em}tbody th b{font-size:.95rem}
-  th,td{padding:10px 6px}.ic{width:28px;height:28px}.ic svg{width:18px;height:18px}
+  table{font-size:.95rem;min-width:0}thead th{font-size:.7rem}tbody th b{font-size:.98rem}
+  th,td{padding:10px 12px}.ic{width:28px;height:28px}.ic svg{width:18px;height:18px}
   .dr{font-size:.88rem}.dr .u,.dr .small,.det .small{font-size:.8rem}.lnk{font-size:.85rem}
   .sum b{font-size:1.25rem}.clash{padding:16px 20px}.cl{font-size:.92rem}
 }
-@media (min-width:700px) and (max-width:1000px){thead th:first-child,tbody th{width:34%}}
 
 /* Open and Fix on each route */
 .dr .lnk.op{padding:3px 12px;border-radius:999px;background:var(--accent);color:var(--accent-t);text-decoration:none;font-weight:700}
 .dr .lnk.fx{padding:3px 12px;border-radius:999px;border:1px solid #dc2626;color:#dc2626;text-decoration:none;font-weight:700}
 .fixbox{margin:4px 0 8px 30px;padding:10px 12px;border-radius:12px;border:1px solid var(--glass-line);background:var(--glass-strong);font-size:.8rem}
 .fixbox ol{margin:6px 0 10px;padding-left:18px;display:grid;gap:4px}
+
+/* Phone: everything fits without sideways scrolling */
+@media (max-width:699px){
+  table{min-width:0;font-size:.78rem}th,td{padding:8px 3px}thead th{font-size:.54rem;letter-spacing:0}
+  thead th.app,tbody th.app{min-width:0;width:auto}thead th.pt,td.pt,thead th.pc{width:auto}
+  .ic{width:20px;height:20px}.ic svg{width:13px;height:13px}.ic.portal svg{width:12px;height:12px}
+  tbody th b{font-size:.78rem}.tw{padding:4px 6px}
+}

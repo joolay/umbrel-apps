@@ -17,7 +17,9 @@ function parseCompose(text) {
   const enabled = /tsdproxy\.enable:\s*["']?true/i.test(text), name = lab('name'), funnel = /tsdproxy\.port\.\d+:[^\n]*tailscale_funnel/i.test(text);
   // Host ports the app publishes itself ("3916:3915", optionally with an address or /tcp): what could clash with another app's port.
   const hostPorts = []; for (const m of text.matchAll(/^\s*-\s*["']?(?:[\d.]+:)?(\d{2,5}):\d{2,5}(?:\/(?:tcp|udp))?["']?\s*$/gim)) { const n = Number(m[1]); if (n < 65536 && !hostPorts.includes(n)) hostPorts.push(n); }
-  return { tsdproxy: enabled && /^[a-z0-9-]{1,63}$/i.test(name) ? { name: name.toLowerCase(), funnel } : null, hostPorts };
+  // JOOLZAPP_DASHBOARD=hidden keeps an owner-only app off the JoolzApp Store home screen (the Portal).
+  const hidden = /JOOLZAPP_DASHBOARD\s*[=:]\s*["']?hidden/i.test(text);
+  return { tsdproxy: enabled && /^[a-z0-9-]{1,63}$/i.test(name) ? { name: name.toLowerCase(), funnel } : null, hostPorts, hidden };
 }
 
 // ---- .local (mDNS) names ----
@@ -79,9 +81,9 @@ function discover(dir, listFile) {
   for (const d of names.sort()) {
     let man; try { man = parseManifest(fs.readFileSync(path.join(dir, d, 'umbrel-app.yml'), 'utf8')); } catch { continue; }
     if (!man.id || !man.port) continue;
-    let comp = { tsdproxy: null, hostPorts: [] }; try { comp = parseCompose(fs.readFileSync(path.join(dir, d, 'docker-compose.yml'), 'utf8')); } catch { /* no compose: LAN and Tailscale only */ }
+    let comp = { tsdproxy: null, hostPorts: [], hidden: false }; try { comp = parseCompose(fs.readFileSync(path.join(dir, d, 'docker-compose.yml'), 'utf8')); } catch { /* no compose: LAN and Tailscale only */ }
     const via = comp.tsdproxy ? null : listed.find((l) => l.port === man.port);
-    out.push({ ...man, joolzapp: /^joolay-/.test(man.id), tsdproxy: comp.tsdproxy || (via ? { name: via.name, funnel: false } : null), hostPorts: comp.hostPorts });
+    out.push({ ...man, joolzapp: /^joolay-/.test(man.id), tsdproxy: comp.tsdproxy || (via ? { name: via.name, funnel: false } : null), hostPorts: comp.hostPorts, hidden: !!comp.hidden });
   }
   return out;
 }
@@ -161,7 +163,7 @@ function makeMonitor({ dir, listFile, getConfig, probeImpl = probe, now = Date.n
   let last = null, running = null;
   async function run() {
     const cfg = getConfig(), apps = discover(dir, listFile), jobs = [];
-    const out = apps.map((a) => ({ id: a.id, name: a.name, version: a.version, port: a.port, hostPorts: a.hostPorts || [], joolzapp: a.joolzapp, published: a.tsdproxy ? (a.tsdproxy.funnel ? 'public' : 'tailnet') : '', routes: [] }));
+    const out = apps.map((a) => ({ id: a.id, name: a.name, version: a.version, port: a.port, hostPorts: a.hostPorts || [], joolzapp: a.joolzapp, onPortal: !!a.joolzapp && !a.hidden, published: a.tsdproxy ? (a.tsdproxy.funnel ? 'public' : 'tailnet') : '', routes: [] }));
     apps.forEach((a, i) => { for (const r of routesFor(a, cfg)) jobs.push({ i, r }); });
     let next = 0;
     await Promise.all(new Array(Math.min(concurrency, jobs.length || 1)).fill(0).map(async () => {
