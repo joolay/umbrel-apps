@@ -42,6 +42,8 @@
 .tool svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
 .tool:active,.mb-btn:active{transform:scale(.96)}.tool[disabled]{opacity:.4;pointer-events:none}
 .tool[aria-pressed=true]{background:var(--accent);color:var(--accent-t,#fff)}
+/* Menu bar options always spread equally over the bar (the global default): each option takes an equal share of the width, and only scrolls sideways if they cannot fit */
+.menubar>.mb-btn{flex:1 1 0;min-width:max-content;justify-content:center}
 /* Tabs in the menu bar (role="tab"): the selected one is lit with an accent underline */
 .mb-btn[role=tab]{height:38px;padding:0 14px;border-radius:10px 10px 0 0;color:var(--muted,var(--text));font-size:14px}
 .mb-btn[role=tab][aria-selected=true]{color:var(--text);background:var(--glass-line);box-shadow:inset 0 -3px 0 var(--accent)}
