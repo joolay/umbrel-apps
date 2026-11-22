@@ -393,7 +393,6 @@ const server = http.createServer(async (req, res) => {
       if (typeof b.auto === "boolean") next.auto = b.auto;   // global switch for the 3-day rule (default on)
       if (Number.isInteger(b.days) && b.days >= 1 && b.days <= 30) next.days = b.days;   // length of the 3-day rule
       if (b.theme === "light" || b.theme === "dark" || b.theme === "") next.theme = b.theme;   // light / dark, or "" for the device setting
-      if (typeof b.details === "boolean") next.details = b.details;   // List view: title-only rows (off) or expandable rows (on)
       if (b.layout === "grid" || b.layout === "list") next.layout = b.layout;   // grid cards or compact expandable list
       if (Array.isArray(b.tabs)) { const t = [...new Set(b.tabs.filter(x => ["all", "active", "maintenance", "hiatus", "complete", "abandoned", "archive", "bin"].includes(x)))]; if (t.length) next.tabs = t; }   // which tabs show (Settings > Tabs shown)
       if (Array.isArray(b.groups)) { const g = [...new Set(b.groups.filter(x => ["active", "maintenance", "hiatus", "complete", "abandoned"].includes(x)))]; if (g.length) next.groups = g; }   // order of the groups in the All tab (Settings, drag)

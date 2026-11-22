@@ -131,7 +131,7 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
   "use strict";
   var TOKEN = "gd.token", ST = { active: ["Active", "#2563eb"], maintenance: ["Queued", "#d97706"], hiatus: ["Hiatus", "#7c3aed"], closed: ["Closed", "#6b7280"] };
   var $ = function (s) { return document.querySelector(s); };
-  var S = { lists: [], key: "", sha: "", list: null, worked: {}, readOnly: false, view: "all", collapsed: {}, layout: "grid", details: false, open: {}, user: null, busy: 0, lastOk: 0, err: "", auto: true, days: 3, owner: false, home: "", chat: "claude", tabs: ["all", "priority", "active", "maintenance", "hiatus", "complete", "abandoned", "archive", "bin"] };
+  var S = { lists: [], key: "", sha: "", list: null, worked: {}, readOnly: false, view: "all", collapsed: {}, layout: "grid", open: {}, user: null, busy: 0, lastOk: 0, err: "", auto: true, days: 3, owner: false, home: "", chat: "claude", tabs: ["all", "priority", "active", "maintenance", "hiatus", "complete", "abandoned", "archive", "bin"] };
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); };
   function tok() { try { return sessionStorage.getItem(TOKEN) || localStorage.getItem(TOKEN) || ""; } catch (e) { return ""; } }
   function api(path, method, body) {
@@ -168,11 +168,11 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
   }
 
   /* ---------- loading and live polling ---------- */
-  function savePrefs() { clearTimeout(savePrefs.h); savePrefs.h = setTimeout(function () { api("api/prefs", "PUT", { list: S.key, view: S.view, auto: S.auto, days: S.days, chat: S.chat, layout: S.layout, details: S.details, tabs: S.tabs, groups: S.groups, collapsed: Object.keys(S.collapsed).filter(function (k) { return S.collapsed[k]; }) }).catch(function () {}); }, 600); }
+  function savePrefs() { clearTimeout(savePrefs.h); savePrefs.h = setTimeout(function () { api("api/prefs", "PUT", { list: S.key, view: S.view, auto: S.auto, days: S.days, chat: S.chat, layout: S.layout, tabs: S.tabs, groups: S.groups, collapsed: Object.keys(S.collapsed).filter(function (k) { return S.collapsed[k]; }) }).catch(function () {}); }, 600); }
   function loadLists(keep) {
     return api("api/lists").then(function (j) {
       S.lists = j.lists; S.owner = !!j.owner; var pr = (S.user.prefs || {})["project-tracker"] || {}; if (window.JZTheme && !S.themeSet) { S.themeSet = 1; var th = pr.theme || (S.user.prefs || {}).theme; if (th === "light" || th === "dark") JZTheme.set(th, true); }
-      if (!S.key) { S.key = pr.list && j.lists.some(function (l) { return l.key === pr.list; }) ? pr.list : j.lists[0].key; if (pr.view) S.view = pr.view === "closed" ? "complete" : pr.view === "priority" ? "all" : pr.view; if (typeof pr.auto === "boolean") S.auto = pr.auto; if (pr.days >= 1 && pr.days <= 30) S.days = pr.days; if (pr.chat === "builtin") S.chat = "builtin"; if (pr.layout === "list") S.layout = "list"; if (pr.details === true) S.details = true; if (Array.isArray(pr.groups)) S.groups = pr.groups; if (Array.isArray(pr.tabs)) { var tk = []; pr.tabs.forEach(function (x) { (x === "closed" ? ["complete", "abandoned"] : [x]).forEach(function (y) { if (tk.indexOf(y) < 0 && TABS.some(function (t) { return t[0] === y; })) tk.push(y); }); }); if (tk.length) S.tabs = tk; } (pr.collapsed || []).forEach(function (c) { S.collapsed[c] = true; }); }
+      if (!S.key) { S.key = pr.list && j.lists.some(function (l) { return l.key === pr.list; }) ? pr.list : j.lists[0].key; if (pr.view) S.view = pr.view === "closed" ? "complete" : pr.view === "priority" ? "all" : pr.view; if (typeof pr.auto === "boolean") S.auto = pr.auto; if (pr.days >= 1 && pr.days <= 30) S.days = pr.days; if (pr.chat === "builtin") S.chat = "builtin"; if (pr.layout === "list") S.layout = "list"; if (Array.isArray(pr.groups)) S.groups = pr.groups; if (Array.isArray(pr.tabs)) { var tk = []; pr.tabs.forEach(function (x) { (x === "closed" ? ["complete", "abandoned"] : [x]).forEach(function (y) { if (tk.indexOf(y) < 0 && TABS.some(function (t) { return t[0] === y; })) tk.push(y); }); }); if (tk.length) S.tabs = tk; } (pr.collapsed || []).forEach(function (c) { S.collapsed[c] = true; }); }
       if (!j.lists.some(function (l) { return l.key === S.key; })) S.key = j.lists[0].key;
       $("#lists").innerHTML = j.lists.map(function (l) { return '<option value="' + esc(l.key) + '"' + (l.key === S.key ? " selected" : "") + ">" + esc(l.name) + " (" + l.count + ")" + (l.source === "shared" ? " · from " + esc(l.by || "someone") : "") + "</option>"; }).join("");
     });
@@ -217,7 +217,7 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
   }
   function visibleLive() { return S.list.projects.filter(function (p) { return p.state === "live" && (S.view === "all" || viewOf(p) === S.view); }); }
   function visibleCats() { var seen = {}; visibleLive().forEach(function (p) { seen[S.view === "all" ? "g:" + viewOf(p) : p.category] = 1; }); if (S.view === "all" && S.list.projects.some(function (p) { return p.state === "bin"; })) seen["g:bin"] = 1; return Object.keys(seen); }
-  var isOpen = function (p) { return S.open[p.id] === undefined ? (S.layout !== "list" || S.details) : !!S.open[p.id]; };   // tap the name to expand or collapse one tile
+  var isOpen = function (p) { return S.open[p.id] === undefined ? (S.layout !== "list") : !!S.open[p.id]; };   // tap the name to expand or collapse one tile
   function viewItems() {
     if (S.view === "archive" || S.view === "bin") return S.list.projects.filter(function (p) { return p.state === (S.view === "bin" ? "bin" : "archived"); });
     return visibleLive();
@@ -238,7 +238,7 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
     var c = counts(), tabs = shownTabs(), el = $("#tabs");
     if (!tabs.some(function (t) { return t[0] === S.view; })) S.view = tabs[0][0];
     var bd = binDue(), more = function (t) { return c[t[0]] + ((t[0] === "abandoned" || t[0] === "complete") && dueOf(t[0]) ? " · " + dueOf(t[0]) + (t[0] === "complete" ? " to archive" : " to review") : t[0] === "bin" && bd ? " · " + bd + " to empty" : ""); };
-    var tbx = '<span class="tbx"><button class="btn tiny" data-tb="layout">' + (S.layout === "list" ? "▦ Grid" : "☰ List") + '</button>' + (S.layout === "list" ? '<button class="btn tiny' + (S.details ? " primary" : "") + '" data-tb="details" aria-pressed="' + S.details + '">Details</button>' : "") + '<button class="btn tiny" data-tb="all">' + (allOpen() ? "Collapse all" : "Expand all") + "</button></span>";
+    var tbx = '<span class="tbx"><button class="btn tiny" data-tb="layout">' + (S.layout === "list" ? "▦ Grid" : "☰ List") + '</button>' + '' + '<button class="btn tiny" data-tb="all">' + (allOpen() ? "Collapse all" : "Expand all") + "</button></span>";
     el.className = "st";
     el.innerHTML = tabs.map(function (t) { return '<button class="btn tiny' + (S.view === t[0] ? " primary" : "") + '" data-v="' + t[0] + '">' + t[1] + '<span class="n">' + more(t) + "</span></button>"; }).join("") + tbx;
     if (tabs.length > 1 && el.scrollWidth > el.clientWidth + 1) {
@@ -479,7 +479,7 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
     if (a === "purge") return send({ ops: { remove: [p.id] } });
   };
   $("#tabs").onchange = function (ev) { if (ev.target.id === "tabsel") { S.view = ev.target.value; savePrefs(); render(); } };
-  $("#tabs").onclick = function (ev) { var t = ev.target.closest("[data-tb]"); if (t) { if (t.dataset.tb === "details") { S.details = !S.details; savePrefs(); return render(); } if (t.dataset.tb === "layout") { S.layout = S.layout === "list" ? "grid" : "list"; savePrefs(); return render(); } return setAll(!allOpen()); } var b = ev.target.closest("[data-v]"); if (b) { S.view = b.dataset.v; savePrefs(); render(); } };
+  $("#tabs").onclick = function (ev) { var t = ev.target.closest("[data-tb]"); if (t) { if (t.dataset.tb === "layout") { S.layout = S.layout === "list" ? "grid" : "list"; savePrefs(); return render(); } return setAll(!allOpen()); } var b = ev.target.closest("[data-v]"); if (b) { S.view = b.dataset.v; savePrefs(); render(); } };
   $("#add").onclick = function () { editDlg(null); };
   $("#settings").onclick = settingsDlg;
   // Press and hold a project (or right-click it) for Edit / Remove.
