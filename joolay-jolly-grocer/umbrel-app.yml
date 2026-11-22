@@ -19,7 +19,7 @@ gallery: []
 path: ""
 defaultUsername: ""
 defaultPassword: ""
-releaseNotes: "Changes: Jolly Grocer now has a menu bar and a toolbar docked under the top bar. The Lists and Spend tabs are in the menu bar. The toolbar has a dropdown to switch lists (with new list, new list from unbought items, rename and delete), and on Spend a Weekly, Monthly and Yearly switch spread equally across the toolbar with earlier and later arrows (Yearly is new, with a month by month chart)."
+releaseNotes: "Changes: Jolly Grocer now has a menu bar and a toolbar docked under the top bar. The Lists and Spend tabs are in the menu bar. The toolbar has a dropdown to switch lists (with new list, new list from unbought items, rename and delete), and on Spend a Weekly, Monthly and Annually switch spread equally across the toolbar with earlier and later arrows (Annually is new: the 12 months ending this month, with a month by month chart)."
 submitter: joolay
 submission: https://github.com/joolay/umbrel-apps
 icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-jolly-grocer/icon.svg
