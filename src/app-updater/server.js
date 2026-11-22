@@ -57,6 +57,7 @@ const DEFAULTS = {
   ticker: { enabled: false },  // announce finished updates in the JoolzApp dashboard news ticker (everyone sees it)
   groupOpen: {},               // { storeId: true | false } expanded/collapsed state of each store group
   seen: {},                    // { appId: lastAnnouncedVersion }
+  repoPending: {},             // { appId: version } on the repo but not yet listed by umbrelOS (logged once, cleared when umbrelOS catches up)
   selfUpdate: { enabled: true }, // update App Updater itself, but only once every other auto-update has cleared
   autoInstall: { enabled: true }, // install new JoolzApps Portal Admin has queued, as soon as umbrelOS lists them (on from the start)
   selfFailedAt: 0,             // when a self-update last failed (no new attempt for SELF_FAIL_BACKOFF_MS)
@@ -67,6 +68,7 @@ settings.ticker = Object.assign({}, DEFAULTS.ticker, settings.ticker);
 settings.selfUpdate = Object.assign({}, DEFAULTS.selfUpdate, settings.selfUpdate);
 settings.autoInstall = Object.assign({}, DEFAULTS.autoInstall, settings.autoInstall);
 settings.hidden = Object.assign({}, settings.hidden);
+settings.repoPending = Object.assign({}, settings.repoPending);
 const saveSettings = () => writeJson(SETTINGS_FILE, settings);
 
 // session.json holds the umbrelOS session token. When "stay connected" is chosen it also holds the
@@ -325,6 +327,31 @@ const status = {
   self: { latest: null, update: false, phase: 'idle', result: null }, // phase: idle | updating (checking is paused while updating)
 };
 let installedCache = [];
+const repoWatch = require('./repowatch')({
+  isNewer: (a, b) => isNewer(a, b),
+  fetchText: async (u) => { const r = await fetch(u, { headers: { 'user-agent': 'joolay-app-updater', accept: 'application/vnd.github+json, text/plain' }, signal: AbortSignal.timeout(15000) }); if (!r.ok) throw new Error('GitHub answered ' + r.status); return r.text(); },
+});
+let repoPending = [];
+// Logs, once, each app or version that is on the repo but not yet listed by umbrelOS, and again when umbrelOS catches up.
+function noteRepo(registry) {
+  repoPending = repoWatch.pending(registry);
+  if (!registry || repoWatch.state.error) return;
+  let changed = false;
+  const now = new Set(repoPending.map((p) => p.id));
+  for (const p of repoPending) {
+    if (settings.repoPending[p.id] === p.repo) continue;
+    settings.repoPending[p.id] = p.repo; changed = true;
+    addLog('warn', p.kind === 'new' ? 'New app on the repo, umbrelOS has not seen it yet: ' + p.name + ' ' + p.repo
+      : 'New version on the repo, umbrelOS has not seen it yet: ' + p.name + ' ' + p.repo + ' (umbrelOS lists ' + p.umbrel + ')', p.id);
+  }
+  for (const id of Object.keys(settings.repoPending)) {
+    if (now.has(id)) continue;
+    const r = repoWatch.state.apps[id], v = registry.get(id);
+    addLog('ok', 'umbrelOS now sees ' + (r ? r.name : id) + (v ? ' ' + v : ''), id);
+    delete settings.repoPending[id]; changed = true;
+  }
+  if (changed) saveSettings();
+}
 let lastRegistry = null;   // id -> version of every app umbrelOS lists in its stores, from the last check
 
 async function fetchRegistry() {
@@ -348,6 +375,8 @@ async function check() {
   const installed = (Array.isArray(list) ? list : []).filter((a) => a && a.id && !a.error && a.id !== SELF_APP_ID); // this app never lists or updates itself
   const registry = await fetchRegistry();
   lastRegistry = registry;
+  await repoWatch.refresh().catch(() => {});
+  noteRepo(registry);
   { const me = (Array.isArray(list) ? list : []).find((a) => a && a.id === SELF_APP_ID);
     const latest = registry && registry.get(SELF_APP_ID) ? registry.get(SELF_APP_ID) : null;
     status.self.latest = latest;
@@ -599,6 +628,7 @@ function snapshot() {
     apps,
     install: { enabled: settings.autoInstall.enabled, ...installer.state() },
     check: { at: status.lastCheck, error: status.lastError, registryProc: status.registryProc, registryCount: status.registryCount },
+    repo: { at: repoWatch.state.at || null, error: repoWatch.state.error, pending: repoPending },
     log: log.slice(-60).reverse(),
     time: Date.now(),
   };
@@ -652,6 +682,10 @@ const validZone = (z) => { try { new Intl.DateTimeFormat('en', { timeZone: z });
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x');
   try {
+    if (url.pathname === '/api/app-config' && req.method === 'GET') {   // the Home button: the JoolzApp Store is on the same host, port 3886 (Portal Admin's default)
+      const host = String(req.headers.host || '').replace(/:\d+$/, '');
+      return send(res, 200, { portalUrl: host && !/^\[/.test(host) && req.headers['x-forwarded-proto'] !== 'https' ? 'http://' + host + ':3886' : '' });
+    }
     if (url.pathname === '/api/link' && req.method === 'GET') return send(res, 200, feed ? feed.link() : { state: 'broken', shaking: false, note: 'Not reporting yet.' });
     if (url.pathname === '/api/state' && req.method === 'GET') return send(res, 200, snapshot());
 

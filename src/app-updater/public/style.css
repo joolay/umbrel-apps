@@ -109,3 +109,18 @@ dialog label.check{display:flex;gap:8px;align-items:center}
 /* top bar: keep the title on one line; the bar scrolls nothing, so small screens drop the least important pieces */
 .topbar h1{white-space:nowrap;font-size:17px}
 .topbar .brand{flex:none;min-width:0}
+
+/* Summary tiles are buttons: three open a list, Last check runs a check */
+.tile-btn{font:inherit;color:inherit;text-align:left;cursor:pointer;position:relative;-webkit-tap-highlight-color:transparent}
+.tile-btn:hover{border-color:var(--accent)}
+.tile-btn.on{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}
+.tile-btn:disabled{cursor:progress;opacity:.8}
+.tile-btn .ref{position:absolute;top:10px;right:10px;color:var(--accent);display:inline-flex}
+.tile-btn.spin .ref svg{animation:jzspin .8s linear infinite}
+@keyframes jzspin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.tile-btn.spin .ref svg{animation:none}}
+#list:empty{display:none}
+.log .warn{color:var(--warn)}
+.pending{display:grid;gap:6px;margin-top:12px}
+.pending .warn{display:flex;gap:8px;align-items:flex-start;font-size:13px;color:var(--warn)}
+.pending .pdot{flex:none;width:8px;height:8px;border-radius:50%;background:var(--warn);margin-top:6px}
