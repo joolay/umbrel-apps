@@ -1,10 +1,10 @@
 "use strict";
 // Project Pilot: the shape of a list and the rules for changing it. Pure functions, no network, so they are easy to test.
 // A list is { name, categories: [string], projects: [project] }. A project:
-//   id, name, category, desc, status (active|maintenance|hiatus|closed), closedAs (completed|abandoned|""), closedAt,
+//   id, name, category, desc, status (active|maintenance|hiatus|closed), closedAs (completed|abandoned|""; shown as the Complete and Abandoned tabs), closedAt, reviewedAt (closed only),
 //   statusAt (when someone last set the status by hand; the 3-day rule then waits for work done on a LATER day), auto ("" follow the global
 //   switch | "on" | "off"), lastWorked (YYYY-MM-DD), paths ([{repo, path}] used to read the last commit),
-//   notes ([{id, text, at, state: open|review}]: Claude reads them before working on the project, marks them "review" when done and asks before clearing),
+//   notes ([{id, text, at, state: open|review, by?: "claude", editedAt?}]: Claude reads them before working on the project, marks them "review" when done and asks before clearing),
 //   rank (lower is higher in its category), prank (optional global priority, lower is first, 0/absent = unranked), state (live|archived|bin), binnedAt, updatedAt.
 const STATUSES = ["active", "maintenance", "hiatus", "closed"];
 const STATES = ["live", "archived", "bin"];
@@ -23,7 +23,10 @@ function cleanNotes(p, now) {
     if (!n || typeof n !== "object") return;
     const text = str(n.text, 600); if (!text) return;
     let id = str(n.id, 40).replace(/[^A-Za-z0-9_-]/g, "") || "n" + (i + 1); while (seen.has(id)) id += "x"; seen.add(id);
-    out.push({ id, text, at: iso(n.at) || now, state: NOTE_STATES.includes(n.state) ? n.state : "open" });
+    const note = { id, text, at: iso(n.at) || now, state: NOTE_STATES.includes(n.state) ? n.state : "open" };
+    if (n.by === "claude") note.by = "claude";          // left by Claude (shown with a badge)
+    if (iso(n.editedAt)) note.editedAt = iso(n.editedAt);   // set when the owner edits a note
+    out.push(note);
   });
   return out;
 }
@@ -35,8 +38,9 @@ function cleanProject(p, now) {
   const paths = (Array.isArray(p.paths) ? p.paths : []).slice(0, 6).map(x => ({ repo: str(x && x.repo, 80), path: str(x && x.path, 120) })).filter(x => /^[\w.-]+\/[\w.-]+$/.test(x.repo) && x.path && !x.path.includes(".."));
   return {
     id, name, category: str(p.category, 60) || "General", desc: str(p.desc, 600), status,
-    closedAs: status === "closed" && ["completed", "abandoned"].includes(p.closedAs) ? p.closedAs : "",
+    closedAs: status === "closed" ? (p.closedAs === "abandoned" ? "abandoned" : "completed") : "",   // a closed project is Complete unless it was Abandoned
     closedAt: status === "closed" && iso(p.closedAt) ? iso(p.closedAt) : status === "closed" ? now : "",
+    reviewedAt: status === "closed" && iso(p.reviewedAt) ? iso(p.reviewedAt) : "",   // last monthly "Keep" of an abandoned project
     statusAt: iso(p.statusAt) || (p.pinned ? iso(p.updatedAt) || now : ""), auto: ["on", "off"].includes(p.auto) ? p.auto : "",
     lastWorked: isDay(p.lastWorked) ? p.lastWorked : "", paths, notes: cleanNotes(p, now),
     rank: Number.isFinite(+p.rank) ? +p.rank : 0, ...(Number.isFinite(+p.prank) && +p.prank > 0 ? { prank: +p.prank } : {}), state: STATES.includes(p.state) ? p.state : "live",
@@ -88,10 +92,10 @@ function effective(p, worked, now = Date.now(), autoGlobal = true, days = ACTIVE
   const auto = on && recent && later && (p.status === "maintenance" || p.status === "hiatus");
   return { status: auto ? "active" : p.status, auto, last: last || "" };
 }
-const dueForReview = (p, now = Date.now()) => p.state === "live" && p.status === "closed" && !!p.closedAt && now - Date.parse(p.closedAt) > REVIEW_DAYS * DAY;
-// Anything in the bin for more than 30 days goes for good.
-function purgeBin(list, now = Date.now()) {
-  const gone = list.projects.filter(p => p.state === "bin" && p.binnedAt && now - Date.parse(p.binnedAt) > BIN_DAYS * DAY).map(p => p.id);
-  return gone;
+// A finished project (completed or abandoned) is reviewed a month after it closed: completed ones are offered the Archive, abandoned ones Keep / Archive / Delete. Keep sets reviewedAt = now (asked again in a month).
+const dueForReview = (p, now = Date.now()) => p.state === "live" && p.status === "closed" && now - Date.parse(p.reviewedAt || p.closedAt) > REVIEW_DAYS * DAY;
+// The bin never empties itself: projects that have been in it for over a month are listed so the app can ask to empty it.
+function binDue(list, now = Date.now()) {
+  return list.projects.filter(p => p.state === "bin" && p.binnedAt && now - Date.parse(p.binnedAt) > BIN_DAYS * DAY).map(p => p.id);
 }
-module.exports = { STATUSES, STATES, BIN_DAYS, ACTIVE_DAYS, REVIEW_DAYS, cleanList, cleanProject, applyOps, move, effective, dueForReview, purgeBin, slug, str, isDay };
+module.exports = { STATUSES, STATES, BIN_DAYS, ACTIVE_DAYS, REVIEW_DAYS, cleanList, cleanProject, applyOps, move, effective, dueForReview, binDue, slug, str, isDay };

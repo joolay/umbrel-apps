@@ -48,8 +48,8 @@
 
 /* ---- Base ---- */
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html{-webkit-text-size-adjust:100%;text-size-adjust:100%;overflow-x:hidden}
-body{margin:0;min-height:100vh;min-height:100dvh;overflow-x:hidden;
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%;overflow-x:hidden;overflow-x:clip}   /* clip (not hidden) so position:sticky works inside the page */
+body{margin:0;min-height:100vh;min-height:100dvh;overflow-x:hidden;overflow-x:clip;
   font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--text);
   -webkit-font-smoothing:antialiased;
   padding:var(--safe-t) var(--safe-r) var(--safe-b) var(--safe-l);
@@ -165,3 +165,9 @@ tr:last-child td{border-bottom:0}tr.click{cursor:pointer}tr.click:hover td{backg
   .tabs{display:flex;overflow-x:auto;flex-wrap:nowrap}.tabs button{flex:none;white-space:nowrap}
   table{display:block;overflow-x:auto;-webkit-overflow-scrolling:touch}}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+
+/* Drag handle (see draghandle.js): a grip at the left of a tile or row; the tile follows the finger and the page never scrolls under it */
+.jz-handle{width:26px;min-height:40px;align-self:stretch;display:flex;align-items:center;justify-content:center;color:var(--muted);touch-action:none;cursor:grab;user-select:none;-webkit-user-select:none;font-size:1.1rem;letter-spacing:-2px;border-radius:10px}
+.jz-handle:hover{color:var(--text,inherit)}
+.jz-dragging{opacity:.92;box-shadow:var(--shadow);position:relative;z-index:30;transition:none!important;cursor:grabbing}
+html.jz-drag-on,html.jz-drag-on *{cursor:grabbing!important;user-select:none!important;-webkit-user-select:none!important}

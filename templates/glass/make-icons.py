@@ -1,18 +1,15 @@
 import subprocess,os
 D=os.path.abspath(os.path.join(os.path.dirname(__file__),'..','..'))  # repo root
 def svg(a,c1,c2,glyph):
-    # v2 (crisper): the frosted square is much larger (444 of 512, was 340) and has no outline, rim line or corner arc, the glyph is 16% larger,
-    # and the soft haze is gone: a clean gradient, one light sheen on the square and a tight shadow under the glyph.
+    # v3 (crystal clear): no frame, no frosted square, no sheen or haze at all. The brand gradient fills the whole icon edge to edge
+    # (the system rounds it on a phone), and a bold white glyph (20% larger than v1) sits on it with one tight, sharp shadow for definition.
     return f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="{c2}"/><stop offset="1" stop-color="{c1}"/></linearGradient>
-    <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".30"/><stop offset=".55" stop-color="#fff" stop-opacity=".04"/><stop offset="1" stop-color="#000" stop-opacity=".10"/></linearGradient>
-    <filter id="sh" x="-20%" y="-20%" width="140%" height="150%"><feDropShadow dx="0" dy="6" stdDeviation="5" flood-color="#000" flood-opacity=".30"/></filter>
+    <filter id="sh" x="-20%" y="-20%" width="140%" height="150%"><feDropShadow dx="0" dy="4" stdDeviation="2.5" flood-color="#000" flood-opacity=".28"/></filter>
   </defs>
   <rect width="512" height="512" fill="url(#bg)"/>
-  <rect x="34" y="34" width="444" height="444" rx="108" fill="#fff" fill-opacity=".16"/>
-  <rect x="34" y="34" width="444" height="444" rx="108" fill="url(#sheen)"/>
-  <g filter="url(#sh)"><g transform="translate(256 256) scale(1.16) translate(-256 -256)">{glyph}</g></g>
+  <g filter="url(#sh)"><g transform="translate(256 256) scale(1.2) translate(-256 -256)">{glyph}</g></g>
 </svg>
 '''
 W='fill="none" stroke="#fff" stroke-linecap="round" stroke-linejoin="round"'
@@ -27,7 +24,7 @@ icons={
  'joolztv':('#0a63c9','#64d2ff',f'<g {W} stroke-width="24"><circle cx="256" cy="262" r="112"/></g><path d="M230 208l86 54-86 54z" fill="#fff"/>'),
  'routing-reporter':('#0f766e','#2dd4bf',f'<path d="M150 342C150 262 256 292 256 232S362 198 362 160" {W} stroke-width="26"/><g fill="#fff"><circle cx="150" cy="344" r="26"/><circle cx="256" cy="246" r="26"/><circle cx="362" cy="158" r="26"/></g>'),
  'project-tracker':('#b45309','#f59e0b',f'<g {W} stroke-width="24"><path d="M146 184h128M146 256h128M146 328h128"/><path d="M352 330V190M312 228l40-40 40 40"/></g>'),
- 'shutterworth':('#145f4f','#2f8571','''<g fill="none" stroke="#fff" stroke-width="20" stroke-linecap="round" stroke-linejoin="round"><path d="M128 190v-56h56"/><path d="M328 134h56v56"/><path d="M128 322v56h56"/><path d="M328 378h56v-56"/></g><circle cx="352" cy="164" r="11" fill="#f0645a"/><g transform="translate(256 262) rotate(-27) scale(.82)"><defs><linearGradient id="gold" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f1d28a"/><stop offset=".5" stop-color="#d9ab55"/><stop offset="1" stop-color="#b98633"/></linearGradient></defs><path d="M-118 0 L-66 -54 H104 Q122 -54 122 -36 V36 Q122 54 104 54 H-66 Z" fill="url(#gold)" stroke="#c99a46" stroke-width="2" stroke-linejoin="round"/><circle cx="-68" cy="0" r="11" fill="#0f5a4b"/><text x="30" y="2" text-anchor="middle" dominant-baseline="middle" font-family="Georgia, serif" font-weight="700" font-size="86" fill="#0f5a4b">$</text></g>'''),
+ 'shutterworth':('#0b6b4f','#3ccb95',f'<g {W} stroke-width="24"><path d="M130 190v-60h60M322 130h60v60M130 322v60h60M322 382h60v-60"/></g><g transform="rotate(-35 256 256)"><path fill="#fff" fill-rule="evenodd" d="M168 256l46-52h108a22 22 0 0 1 22 22v60a22 22 0 0 1-22 22H214zM196 256a12 12 0 1 0 24 0a12 12 0 1 0-24 0z"/></g>'),
  'theme-editor':('#7c3aed','#f472b6',f'<g {W} stroke-width="24"><path d="M256 138c-70 0-122 50-122 112 0 60 46 124 112 124 30 0 34-22 18-40-14-16-4-36 20-36h46c40 0 68-26 68-62 0-58-60-98-142-98z"/></g><g fill="#fff"><circle cx="196" cy="226" r="20"/><circle cx="256" cy="190" r="20"/><circle cx="318" cy="226" r="20"/><circle cx="188" cy="296" r="20"/></g>'),
  'kiosk-manager':('#be123c','#fb7185',f'<g {W} stroke-width="24"><rect x="126" y="150" width="260" height="170" rx="28"/><path d="M256 320v46M196 366h120"/></g>'),
 }
@@ -40,7 +37,8 @@ GOLD='<linearGradient id="gold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" sto
 def line24(paths,scale=10.5,dy=4,extra=''):
     off=256-12*scale
     return f'<g transform="translate({off:g} {off+dy:g}) scale({scale:g})"><g {W} stroke-width="{26/scale:.2f}">{paths}</g>{extra}</g>'
-BOLTS=GOLD+'<g transform="translate(70 86) scale(3.5)"><path d="M50 10L24 46H42L34 72L62 36H44Z" fill="#fff"/><path d="M68 28L48 56H62L54 88L82 50H66Z" fill="url(#gold)"/></g>'
+# Store: a 2x2 grid of app tiles where the fourth tile is the JoolzApp bolt (gold). Same bold white shapes and 260px glyph box as every other icon.
+BOLTS=GOLD+'<g fill="#fff"><rect x="126" y="126" width="120" height="120" rx="34"/><rect x="266" y="126" width="120" height="120" rx="34"/><rect x="126" y="266" width="120" height="120" rx="34"/></g><path transform="translate(326 326) scale(6.2) translate(-12 -12)" d="M13 2 4 14h7l-1 8 9-12h-7z" fill="url(#gold)" stroke="url(#gold)" stroke-width="1" stroke-linejoin="round"/>'
 SHIELD='<path d="M12 3.2 5 5.8v5.6c0 4.3 2.8 7.6 7 9.4 4.2-1.8 7-5.1 7-9.4V5.8z"/>'
 HOME='<path d="M3.5 11.2 12 4l8.5 7.2"/><path d="M5.8 9.8V20h12.4V9.8"/><path d="M12 18c-2.6-1.7-3.9-3.1-3.9-4.7a2.1 2.1 0 0 1 3.9-1.1 2.1 2.1 0 0 1 3.9 1.1c0 1.6-1.3 3-3.9 4.7z"/>'
 GEAR='<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>'
@@ -48,7 +46,7 @@ ADMIN=GOLD+line24(SHIELD,11.5,2,'<path d="M13 7.6 9.4 12.7h2.4l-.9 3.9 3.8-5.2h-
 # name: (dark, light, glyph, [files to write], folder that also gets the PNG set or None)
 special={
  # JoolzApp Store: the twin bolts. Also the home-screen (PWA) icon of the dashboard, which is served from Portal Admin's public folder.
- 'portal':('#0a0f1f','#27386b',BOLTS,['joolay-portal/icon.svg','src/portal-admin/public/icon.svg'],'src/portal-admin/public'),
+ 'portal':('#2a35b8','#7482ff',BOLTS,['joolay-portal/icon.svg','src/portal-admin/public/icon.svg'],'src/portal-admin/public'),
  # Portal Admin: a shield holding the gold bolt. The dashboard's Admin tile is the same picture.
  'portal-admin':('#1e2a52','#5b6fc4',ADMIN,['joolay-portal-admin/icon.svg','src/portal-admin/public/icons/admin.svg'],None),
  'family':('#e8590c','#ff8fa3',line24(HOME,12.2,2),['src/portal-admin/public/icons/family.svg'],None),

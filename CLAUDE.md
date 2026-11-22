@@ -66,7 +66,7 @@ The Store and Portal Admin already load it; other apps move over one at a time, 
 Admins also get an **Admin folder** in their JoolzApp Store listing every owner-only app (`JOOLZAPP_DASHBOARD=hidden`): `GET /admin/apps` (admin-checked on the server, in both route lists) feeds a virtual folder that is built per admin and never saved in `store.layout`.
 
 ## Floating top bar (standard for every app)
-Title on the left, light/dark theme icon on the right, a full-width frosted bar fixed to the top edge (square, not pill-shaped). Files and markup are in `templates/glass/README.md` ("Floating top bar"): copy `floatbar.css` + `floatbar.js`.
+Home button first (`data-home`, hidden until the Store's address is known; `floatbar.js` handles it), title next, light/dark theme icon on the right, a full-width frosted bar fixed to the top edge (square, not pill-shaped). Files and markup are in `templates/glass/README.md` ("Floating top bar"): copy `floatbar.css` + `floatbar.js`.
 The JoolzApp Store has it; other apps move over one at a time, like the Glass theme.
 The bar is persistent: fixed to the top of the screen while the page scrolls (done in `floatbar.css`/`floatbar.js`; copy both, never make it sticky or scroll away). This is the standard for every app.
 Every app's top bar also carries the **Install** icon (`data-pwa-install` button, `install-help.js` + `installbtn.js`; see `templates/glass/README.md`, "Install icon"): it shows only in a browser tab and opens the install steps for the person's device. Add it to every app as it is edited; Project Pilot and Port Master have it.
@@ -121,6 +121,7 @@ Before building a feature from scratch (skip intro/credits, subtitles, metadata,
 Each project in the shared list (`appdev.json` in `joolay/tracking-data`) can carry `notes` the owner wrote in the Project Pilot app. Before starting work on one of his apps,
 fetch that file (poll it fresh), read the project's `notes`, and treat the open ones as part of the request. When a note has been dealt with, set its `state` to `review`
 (never delete it yourself), tell him what changed and ask him to confirm. He clears it in the app (or tells you to). Write back with a fresh read first, changing only that project.
+If you finish with something unfinished on a project (an open question, a problem that still needs attending, a follow-up you could not do), leave him a note on that project too: add `{ "id": "<new id>", "text": "...", "at": "<ISO now>", "state": "open", "by": "claude" }` to its `notes` (same fresh read, change only that project). The app shows `by: "claude"` notes with a Claude badge, and he can edit any note.
 
 ## Status feed: monitoring the apps on the Umbrel (read before diagnosing a problem)
 Nothing on the Umbrel is opened to the internet for monitoring. App Updater, Services Manager and Kiosk Manager (and any app that copies `status-feed.js`, see `src/portal-admin/README.md`, "Status feed")
