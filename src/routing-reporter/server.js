@@ -25,7 +25,17 @@ let paused = new Set(cleanPaused(config.pausedProxies || readJson(TSD_PAUSED, {}
 let pausedWrite = { ok: null, error: '' };
 const tsdStatus = () => readJson(TSD_STATUS, null);
 const knownProxies = () => new Set([...(monitor.last ? monitor.last.apps.map((a) => a.tsdName).filter(Boolean) : []), ...(((tsdStatus() || {}).proxies || []).map((p) => p.name))]);
-const mark = (r) => applyControl(r, { ignored, paused, tsd: tsdStatus() });
+const slugOf = (id) => String(id).toLowerCase().replace(/^joolay-/, '').replace(/[^a-z0-9_-]+/g, '-').replace(/^[^a-z0-9]+/, '').slice(0, 48);   // same rule as Portal Admin
+// Where each app stands on the JoolzApp Store: auto (a JoolzApp app, shown by itself), locked (an owner-only JoolzApp tool, lives in the Admin folder), on / off (any other app: Port Master can add or hide its tile).
+function withPortal(r) {
+  if (!r) return r;
+  return { ...r, apps: r.apps.map((a) => {
+    const slug = slugOf(a.id), rec = tiles.items && tiles.items.find((t) => t.slug === slug);
+    const portal = a.joolzapp ? { state: a.onPortal ? 'auto' : 'locked', slug } : { state: rec && rec.enabled ? 'on' : 'off', slug, url: rec && rec.enabled ? rec.url : '', audience: rec && rec.enabled ? rec.audience : '', known: !!tiles.items, error: tiles.items ? '' : tiles.error };
+    return { ...a, portal, onPortal: portal.state === 'auto' || portal.state === 'on' };
+  }) };
+}
+const mark = (r) => withPortal(applyControl(r, { ignored, paused, tsd: tsdStatus() }));
 function savePaused() {
   saveConfig();
   try { fs.writeFileSync(TSD_PAUSED + '.tmp', JSON.stringify({ paused: [...paused].sort(), at: new Date().toISOString(), by: 'port-master' }, null, 2)); fs.renameSync(TSD_PAUSED + '.tmp', TSD_PAUSED); pausedWrite = { ok: true, error: '' }; }
@@ -64,7 +74,17 @@ async function sendToPortal(report) {
     reportState = { ok: true, at: Date.now(), error: '' };
   } catch (e) { reportState = { ok: false, at: Date.now(), error: String(e.message || e).slice(0, 160) }; console.error('Report to Portal Admin: ' + reportState.error); }
 }
-async function checkNow() { const rep = mark(await monitor.run()); await sendToPortal(rep); return rep; }
+// Generic Portal API call (the same key and address as the report). Throws with Portal Admin's message.
+async function portalCall(fn, args) {
+  const p = portalLink(); if (!p) throw Object.assign(new Error('Not linked to Portal Admin yet: sign in to Portal Admin once and it links this app.'), { status: 409 });
+  const r = await fetch(p.url + '/app-api/call', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + p.key }, body: JSON.stringify({ fn, args }), signal: AbortSignal.timeout(15000) });
+  const j = await r.json().catch(() => ({})); if (!r.ok || !j.ok) throw Object.assign(new Error(j.message || 'Portal API error ' + r.status), { status: r.status === 200 ? (j.status || 502) : r.status });
+  return j.result;
+}
+// Tiles on the JoolzApp Store for apps that do not use the JoolzApp account (see src/portal-admin/portalapps.js). Refreshed with every check and after every change.
+let tiles = { items: null, at: 0, error: '' };
+async function refreshTiles() { try { tiles = { items: await portalCall('portalApps.list', []), at: Date.now(), error: '' }; } catch (e) { tiles = { items: tiles.items, at: tiles.at, error: String(e.message || e).slice(0, 160) }; } }
+async function checkNow() { await monitor.run(); await refreshTiles(); const rep = mark(monitor.last); await sendToPortal(rep); return rep; }
 function schedule() { clearTimeout(timer); timer = setTimeout(async () => { try { await checkNow(); } catch (e) { console.error('Check failed:', e.message); } schedule(); }, config.intervalMin * 60e3); if (timer.unref) timer.unref(); }
 // What the status feed carries: states and reasons, never latency (it changes every check and would be a commit every time).
 const feedPayload = async () => {
@@ -81,7 +101,7 @@ const feedPayload = async () => {
     intervalMin: r.intervalMin, config: r.config, reportedToPortalAdmin: reportState.ok, reportError: reportState.error, routesDown: down, portConflicts: conflicts,
     // Clashes with official Umbrel apps (installed or not): the official app keeps the port, the app listed under change should move (suggestedPort is free). The official list itself is not included, only its size.
     portClashes: clashes().map((c) => ({ port: c.port, keep: c.keep.map((p) => ({ id: p.id, source: p.source, installed: p.installed })), change: c.change.map((p) => ({ id: p.id, source: p.source, kind: p.kind, suggestedPort: p.suggestedPort || null })) })), officialPorts: officialInfo(), ports,
-    apps: r.apps.map((a) => ({ id: a.id, name: a.name, version: a.version, joolzapp: a.joolzapp, port: a.port, hostPorts: a.hostPorts || [], published: a.published, routes: a.routes.map((x) => ({ key: x.key, url: x.url, state: x.state, ignored: x.ignored, status: x.status, error: x.error, since: x.since })) })) };
+    apps: r.apps.map((a) => ({ id: a.id, name: a.name, version: a.version, joolzapp: a.joolzapp, portal: a.portal && a.portal.state, port: a.port, hostPorts: a.hostPorts || [], published: a.published, routes: a.routes.map((x) => ({ key: x.key, url: x.url, state: x.state, ignored: x.ignored, status: x.status, error: x.error, since: x.since })) })) };
 };
 
 /* ---------- web server ---------- */
@@ -94,6 +114,22 @@ const server = http.createServer(async (req, res) => {
     if (p === '/api/link' && req.method === 'GET') return send(res, 200, feedHandle ? feedHandle.link() : { state: 'broken', shaking: false, note: 'Not reporting yet.' });
     if (p === '/api/state' && req.method === 'GET') return send(res, 200, { report: mark(monitor.last), tsd: tsdInfo(), clashes: clashes(), official: officialInfo(), config, portal: { linked: !!portalLink(), ...reportState }, checking: false });
     if (p === '/api/check' && req.method === 'POST') { const rep = await checkNow(); refreshOfficial(); return send(res, 200, { report: rep, clashes: clashes(), official: officialInfo(), portal: { linked: !!portalLink(), ...reportState } }); }
+    if (p === '/api/portal-app' && req.method === 'POST') {       // put an installed app on the JoolzApp Store (or hide its tile again)
+      let b; try { b = JSON.parse((await body(req)) || '{}'); } catch { return send(res, 400, { message: 'Bad request.' }); }
+      const a = monitor.last && monitor.last.apps.find((x) => x.id === b.appId);
+      if (!a) return send(res, 404, { message: 'That app is not in the latest check.' });
+      if (a.joolzapp) return send(res, 400, { message: 'That is a JoolzApp app: it gets its tile by itself (owner-only tools live in the Admin folder).' });
+      try {
+        if (b.add === false) await portalCall('portalApps.remove', [slugOf(a.id)]);
+        else {
+          const want = String(b.route || ''), order = ['public', 'name', 'tailscale', 'lan', 'local'], open = (k) => { const x = a.routes.find((r) => r.key === k); return x && x.openUrl || ''; };
+          const url = want ? open(want) : order.map(open).find(Boolean);
+          if (!url) return send(res, 400, { message: 'No address people can open. Add your tailnet name or Tailscale address in Settings first.' });
+          await portalCall('portalApps.add', [{ id: a.id, name: String(b.name || '').slice(0, 60) || a.name, description: String(b.description || '').slice(0, 200), url, audience: b.audience === 'all' ? 'all' : 'admins' }]);
+        }
+      } catch (e) { return send(res, e.status >= 400 && e.status < 600 ? e.status : 502, { message: String(e.message || e) }); }
+      await refreshTiles(); const rep = mark(monitor.last); await sendToPortal(rep); return send(res, 200, { report: rep, tsd: tsdInfo(), portal: { linked: !!portalLink(), ...reportState } });
+    }
     if (p === '/api/tsdproxy' && req.method === 'GET') return send(res, 200, tsdInfo());
     if ((p === '/api/route' || p === '/api/proxy') && req.method === 'POST') {       // a tick (route) or a proxy button: turn a route on or off for real where it can be, else just stop counting it
       let b; try { b = JSON.parse((await body(req)) || '{}'); } catch { return send(res, 400, { message: 'Bad request.' }); }

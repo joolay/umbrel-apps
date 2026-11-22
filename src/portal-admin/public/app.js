@@ -441,6 +441,7 @@ async function resolveEffective(appSlug, userId) {
   const all = await listAll('portal_settings', {
     filter: `scope = "global" || (scope = "app" && app = ${fq(appSlug)})${userId ? ` || (scope = "user" && user = ${fq(userId)} && (app = "" || app = ${fq(appSlug)}))` : ''}`,
   });
+  const adminOnly = new Set(aoRows.filter((r) => r.value === true).map((r) => r.app)), apps = (isAdmin || (sl && sl.admin)) ? apps0 : apps0.filter((a) => !adminOnly.has(a.slug));
   const rank = (r) => r.scope === 'global' ? 0 : r.scope === 'app' ? 1 : (r.app ? 3 : 2);
   const names = ['global', 'app', 'user', 'user-app'];
   const eff = {};
@@ -1593,13 +1594,14 @@ const layoutKey = () => (adminMode() ? 'pref.adminhome.layout' : 'pref.home.layo
 async function homeModel() {
   await cfgReady;
   const uid = selfId() || state.uid, isAdmin = isAdminRole(), onlyTools = adminMode();
-  const [apps, reqs, acc, lrows, ssoRows, pend] = await Promise.all([
+  const [apps0, reqs, acc, lrows, ssoRows, pend, aoRows] = await Promise.all([
     onlyTools ? Promise.resolve([]) : listAll('portal_apps', { sort: 'name' }),
     isAdmin ? Promise.resolve([]) : listAll('portal_requests', { filter: `user = ${fq(uid)}`, sort: '-created' }).catch(() => null),
     isAdmin ? Promise.resolve([]) : listAll('portal_settings', { filter: 'key = "portal.access"' }),
     listAll('portal_settings', { filter: `scope = "user" && user = ${fq(uid)} && app = "" && (key = "${layoutKey()}" || key = "pref.adminUrl")` }).catch(() => []).then((rs) => { adminRow = rs.find((r) => r.key === 'pref.adminUrl') || null; return rs.filter((r) => r.key === layoutKey()); }),
     listAll('portal_settings', { filter: 'scope = "app" && key = "app.sso"' }).catch(() => []),
     isAdmin ? count('portal_requests', 'status = "pending"').catch(() => 0) : Promise.resolve(0),
+    listAll('portal_settings', { filter: 'scope = "app" && key = "app.adminOnly"' }).catch(() => []),   // tiles Port Master made admin-only: invisible to everyone else
   ]);
   ssoSlugs = new Set(ssoRows.filter((r) => r.value === true).map((r) => r.app));
   // An admin's Store also has an Admin folder listing the owner-only apps (JOOLZAPP_DASHBOARD=hidden). Everyone else never gets it (the server refuses them too).
