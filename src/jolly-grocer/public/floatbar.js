@@ -18,14 +18,41 @@
   apply(stored());
   document.addEventListener("click", function (e) { var b = e.target.closest && e.target.closest("[data-theme-toggle]"); if (b) set(effective() === "dark" ? "light" : "dark"); });
   document.addEventListener("DOMContentLoaded", paint);
-  // Keep the page below the fixed bar: an in-flow spacer as tall as the bar (+ its top gap), kept right as the bar wraps or the screen turns.
-  function spacer() {
+  // Dock: when the app has a menu bar and/or toolbar, wrap the top bar, menu bar and toolbar in ONE fixed .jz-dock so they always stay together.
+  function dock() {
     var bar = document.querySelector(".topbar"); if (!bar) return;
-    var sp = bar.nextElementSibling; if (!sp || !sp.classList.contains("topbar-spacer")) { sp = document.createElement("div"); sp.className = "topbar-spacer"; sp.setAttribute("aria-hidden", "true"); bar.parentNode.insertBefore(sp, bar.nextSibling); }
-    sp.style.height = bar.offsetHeight + "px";
+    var mb = document.querySelector(".menubar"), tb = document.querySelector(".toolbar"), d = bar.parentNode.classList.contains("jz-dock") ? bar.parentNode : null;
+    if (!d && !mb && !tb) return;
+    if (!d) { d = document.createElement("div"); d.className = "jz-dock"; bar.parentNode.insertBefore(d, bar); d.appendChild(bar); }
+    if (mb && mb.parentNode !== d) d.appendChild(mb);
+    if (tb && tb.parentNode !== d) d.appendChild(tb);
+    if (mb && tb && mb.nextElementSibling !== tb) d.appendChild(tb);
+    document.querySelectorAll(".jz-dock .mb-menu").forEach(function (m) { document.body.appendChild(m); });   // menus live in <body>, outside the blurred bars
   }
-  document.addEventListener("DOMContentLoaded", spacer); window.addEventListener("resize", spacer); window.addEventListener("load", spacer);
-  if (window.ResizeObserver) document.addEventListener("DOMContentLoaded", function () { var b = document.querySelector(".topbar"); if (b) new ResizeObserver(spacer).observe(b); });
+  // Keep the page below the fixed bar (or the whole dock): an in-flow spacer as tall as it, kept right as the bar wraps or the screen turns. --dock-h = that height, for sticky bars under it.
+  function spacer() {
+    var bar = document.querySelector(".jz-dock") || document.querySelector(".topbar"); if (!bar) return;
+    var sp = bar.nextElementSibling; if (!sp || !sp.classList.contains("topbar-spacer")) { sp = document.createElement("div"); sp.className = "topbar-spacer"; sp.setAttribute("aria-hidden", "true"); bar.parentNode.insertBefore(sp, bar.nextSibling); }
+    sp.style.height = bar.offsetHeight + "px"; root.style.setProperty("--dock-h", bar.offsetHeight + "px");
+  }
+  document.addEventListener("DOMContentLoaded", dock); document.addEventListener("DOMContentLoaded", spacer); window.addEventListener("resize", spacer); window.addEventListener("load", spacer);
+  if (window.ResizeObserver) document.addEventListener("DOMContentLoaded", function () { var b = document.querySelector(".jz-dock") || document.querySelector(".topbar"); if (b) new ResizeObserver(spacer).observe(b); });
+  // Menu bar: a button with data-menu="x" opens the .mb-menu[data-menu-for="x"]; choosing an item (or tapping outside, Esc, scrolling) closes it. Items are ordinary buttons the app listens to.
+  var openBtn = null;
+  function menuOf(b) { return document.querySelector('.mb-menu[data-menu-for="' + b.getAttribute("data-menu") + '"]'); }
+  function closeMenu() { if (!openBtn) return; var m = menuOf(openBtn); if (m) m.hidden = true; openBtn.setAttribute("aria-expanded", "false"); openBtn = null; }
+  function openMenu(b) {
+    closeMenu(); var m = menuOf(b); if (!m) return; m.hidden = false;
+    var r = b.getBoundingClientRect(); m.style.top = (r.bottom + 4) + "px"; m.style.left = Math.max(8, Math.min(r.left, window.innerWidth - m.offsetWidth - 8)) + "px";
+    b.setAttribute("aria-expanded", "true"); openBtn = b;
+  }
+  document.addEventListener("click", function (e) {
+    var b = e.target.closest && e.target.closest("[data-menu]");
+    if (b) { if (openBtn === b) closeMenu(); else openMenu(b); return; }
+    if (!e.target.closest(".mb-menu") || e.target.closest(".mb-item")) closeMenu();
+  });
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape") closeMenu(); });
+  window.addEventListener("resize", closeMenu); window.addEventListener("scroll", closeMenu, true);
   var homeUrl = "";
   function paintHome() { document.querySelectorAll("[data-home]").forEach(function (b) { b.hidden = !homeUrl; }); }
   function setHome(u) { homeUrl = typeof u === "string" && /^https?:\/\//i.test(u) ? u : ""; paintHome(); }
@@ -34,6 +61,6 @@
     if (!document.querySelector("[data-home]")) return;
     try { fetch("api/app-config", { cache: "no-store" }).then(function (r) { return r.ok ? r.json() : {}; }).then(function (c) { if (c && c.portalUrl) setHome(c.portalUrl); }).catch(function () {}); } catch (e) {}
   });
-  window.JZBar = { setHome: setHome };
+  window.JZBar = { setHome: setHome, closeMenu: closeMenu };
   window.JZTheme = { set: set, effective: effective, paint: paint };
 })();
