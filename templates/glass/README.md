@@ -118,6 +118,10 @@ The connected icon is a pair of **sync ticks** (WhatsApp style): one green tick 
 
 Copy `linkstatus.js` next to `index.html` and load it last in `<body>`: `<script src="linkstatus.js"></script>` (connected icon only) or `<script src="linkstatus.js" data-claude></script>` (adds the Claude handshake; the app must serve `GET /api/link`, see `src/app-updater/status-feed.js`). Rules and protocol: CLAUDE.md, "Connected icon and Claude handshake".
 
+## AI sparkle (top bar, apps with AI features)
+A sparkle that breathes and tilts, shown beside the sync ticks only while the AI is working. It is in `jz.js` already; an app with AI features just calls `JZLink.aiWhile(promise)` around the AI request
+(several at once are counted) or `JZLink.ai(true)` / `JZLink.ai(false)`. Nothing to add to the markup. It follows "reduce motion" (then it glows without moving).
+
 ## Drag handle (reordering tiles and rows)
 Reordering uses a grip, never ▲▼ buttons on tiles. Copy `draghandle.js` next to `index.html` (the handle's look, `.jz-handle` and `.jz-dragging`, is already in `glass.css`), load it before the app's script, and put
 `<span class="jz-handle" data-drag role="button" aria-label="Drag to reorder" title="Drag to reorder">⋮⋮</span>` as the first thing in each tile or row. Then call `JZDrag.init(root, { item, box, enabled, onStart, onDrop })` once (the options are listed at the top of `draghandle.js`).

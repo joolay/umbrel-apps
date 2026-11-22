@@ -120,6 +120,7 @@ Admin > Paid apps (Yoco) locks an app behind payment using the existing `portal.
   Claude's side is `status/claude-<app>.json`, written ONLY by Claude when it changes something for that app: `{ "toApp": { "rev": <n+1>, "at": "<ISO>", "note": "<what changed>" }, "seen": { "deviceRev": <the app's rev just read>, "at": "<ISO>" } }`.
   After reading `status/<app>.json`, set `seen.deviceRev` to its `rev` (that turns the app's hand into "read"); after a change, bump `toApp.rev` (the app marks it read on its next report, normally within a minute or two).
   Fresh read before every write, change only that file.
+- **AI sparkle** (every app with AI features, e.g. ones that call a model): `JZLink.aiWhile(promise)` (or `JZLink.ai(true|false)`) shows a breathing sparkle beside the ticks while the AI is working and hides it afterwards. Part of `jz.js`; see `templates/glass/README.md`, "AI sparkle".
 - New apps that talk to Claude: copy `status-feed.js`, keep the handle (`feedHandle = require('./status-feed')(...)`), serve `/api/link`, add `data-claude`.
 - JoolzTV (TV UI) has no top bar and is left out on purpose; see the TV rules.
 
