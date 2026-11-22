@@ -2,7 +2,7 @@ manifestVersion: 1
 id: joolay-jolly-grocer
 category: files
 name: Jolly Grocer
-version: "1.2.5"
+version: "1.3.0"
 tagline: Your grocery shopping companion
 description: >-
   Jolly Grocer sorts your shopping list by shop and category, remembers short shop codes, and checks each shop out with a
@@ -19,7 +19,7 @@ gallery: []
 path: ""
 defaultUsername: ""
 defaultPassword: ""
-releaseNotes: "Changes: The sync ticks in the top bar now overlap like a classic double tick: one green tick means your change is recorded to your account, two mean everyone it is shared with has read it, a pulsing grey tick means saving, and a red cross means not connected or the save failed."
+releaseNotes: "Changes: Jolly Grocer now has a menu bar and a toolbar docked under the top bar. The Lists and Spend tabs moved into the menu bar, with a new List menu (new list, new list from unbought items, rename, delete). The quick actions (new list, add from photo, carry over unbought items, and the weekly or monthly and earlier or later controls on Spend) moved into the toolbar."
 submitter: joolay
 submission: https://github.com/joolay/umbrel-apps
 icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-jolly-grocer/icon.svg
