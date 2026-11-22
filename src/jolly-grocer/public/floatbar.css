@@ -59,3 +59,6 @@
 .mb-item:hover,.mb-item:focus-visible{background:var(--glass-line);outline:0}
 .mb-item[aria-selected=true]{font-weight:700}.mb-item[aria-selected=true]::after{content:"";margin-left:auto;flex:none;width:6px;height:11px;border:solid var(--accent);border-width:0 2.5px 2.5px 0;transform:rotate(45deg) translate(-1px,-1px)}.mb-item[disabled]{opacity:.45;pointer-events:none}
 .mb-sep{height:1px;margin:5px 4px;background:var(--glass-line)}
+
+/* PWA / notch: the fixed bar already includes the safe-area inset, so the body must not add it again (that doubled the gap under the bar). */
+body:has(.topbar){padding-top:0}
