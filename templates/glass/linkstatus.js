@@ -16,7 +16,7 @@
 // The icons go into the bar (.topbar, else the first <header>) just before the Install / theme buttons.
 (function () {
   "use strict";
-  var me = document.currentScript, claude = !!(me && me.hasAttribute("data-claude"));
+  var me = (window.JZ_SCRIPT || document.currentScript), claude = !!(me && me.hasAttribute("data-claude"));
   var css = ".jz-ind{display:inline-flex;align-items:center;justify-content:center;flex:none;height:32px;min-width:32px;padding:0 4px;margin:0 2px;border:0;background:none;color:inherit;cursor:pointer;border-radius:10px;position:relative}" +
     ".jz-ind svg{display:block;overflow:visible}.jz-ind:focus-visible{outline:2px solid currentColor;outline-offset:1px}" +
     ".jz-conn svg{fill:none;stroke:#9aa3b2;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}.jz-conn .jz-t1,.jz-conn .jz-t2,.jz-conn .jz-cut{transition:stroke .3s,opacity .3s}.jz-conn .jz-t2,.jz-conn .jz-cut{opacity:0}" +

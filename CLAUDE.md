@@ -50,6 +50,12 @@ descriptions, app names and descriptions) is stored as the global `store.layout`
 checked server-side against `user.isAdmin`, cleaned by `src/portal-admin/storelayout.js`). Admins edit it in place (long-press, drag, rename, folder and app descriptions); nobody else gets edit mode.
 Keep `/store/layout` in both route lists (see the Portal section above).
 
+## ONE template file: `jz.js`
+The whole shared template (Glass theme, top bar, menu bar and toolbar, Install/Settings/Home/theme buttons, sync and Claude-link icons, global theme loader, drag handle, Quick Access UI) ships as ONE generated file,
+`templates/glass/jz.js`, loaded with a single `<script src="jz.js"></script>` first in `<head>` (options `data-claude`, `data-portal`). Edit the source files in `templates/glass/`, run `python3 templates/glass/build.py`
+(rebuilds and copies `jz.js` into every `src/*/public/` that has one; `--check` for CI). Never copy the separate template files into an app any more and never hand-edit a `jz.js`. New and edited apps use it (Port Master first);
+details in `templates/glass/README.md`. The older sections below that say "copy glass.css / floatbar.css / linkstatus.js ..." now mean "use jz.js".
+
 ## Glass theme (uniform style for every JoolzApp)
 All apps, old and new, use the shared Glass theme in `templates/glass/` (`glass.css` plus a README with the rules and each app's brand tokens).
 Copy `glass.css` into `src/<app>/public/`, link it before the app's own CSS, and set only `--accent` and `--accent-2` in the app. New apps start from it;
