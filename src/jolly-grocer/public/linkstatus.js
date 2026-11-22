@@ -19,9 +19,9 @@
   var me = document.currentScript, claude = !!(me && me.hasAttribute("data-claude"));
   var css = ".jz-ind{display:inline-flex;align-items:center;justify-content:center;flex:none;height:32px;min-width:32px;padding:0 4px;margin:0 2px;border:0;background:none;color:inherit;cursor:pointer;border-radius:10px;position:relative}" +
     ".jz-ind svg{display:block;overflow:visible}.jz-ind:focus-visible{outline:2px solid currentColor;outline-offset:1px}" +
-    ".jz-conn svg{fill:none;stroke:#9aa3b2;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}.jz-conn .jz-t1,.jz-conn .jz-t2,.jz-conn .jz-cut{transition:stroke .3s,opacity .3s}.jz-conn .jz-t2,.jz-conn .jz-cut{opacity:0}" +
+    ".jz-conn svg{fill:none;stroke:#9aa3b2;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}.jz-conn .jz-t1,.jz-conn .jz-t2,.jz-conn .jz-cut{transition:stroke .3s,opacity .3s}.jz-conn .jz-t2,.jz-conn .jz-cut{opacity:0}" +
     ".jz-conn[data-s=rec] .jz-t1,.jz-conn[data-s=part] .jz-t1,.jz-conn[data-s=read] .jz-t1,.jz-conn[data-s=read] .jz-t2{stroke:#22c55e}.jz-conn[data-s=part] .jz-t2{opacity:1;stroke:#f59e0b}.jz-conn[data-s=read] .jz-t2{opacity:1}" +
-    ".jz-conn[data-s=off] .jz-t1{stroke:#ef4444}.jz-conn[data-s=off] .jz-cut{opacity:1;stroke:#ef4444}.jz-conn[data-s=pend] .jz-t1,.jz-conn[data-s=local] .jz-t1{stroke:#9aa3b2}" +
+    ".jz-conn[data-s=off] .jz-t1{opacity:0}.jz-conn[data-s=off] .jz-cut{opacity:1;stroke:#ef4444}.jz-conn[data-s=rec] .jz-t2{opacity:.22;stroke:#22c55e}.jz-conn[data-s=pend] .jz-t1{animation:jzp 1.2s ease-in-out infinite}@keyframes jzp{50%{opacity:.35}}.jz-conn[data-s=pend] .jz-t1,.jz-conn[data-s=local] .jz-t1{stroke:#9aa3b2}" +
 
     ".jz-hs svg{fill:none;stroke:#9aa3b2;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;transition:stroke .3s}.jz-hs[data-s=both] svg{stroke:#22c55e}.jz-hs[data-s=device] svg,.jz-hs[data-s=ai] svg{stroke:#f59e0b}" +
     ".jz-hs .jz-cut{opacity:0}.jz-hs[data-s=broken] .jz-cut{opacity:1;stroke:#ef4444}" +
@@ -42,7 +42,7 @@
   function set(el, attrs, label) { for (var k in attrs) el.setAttribute(k, attrs[k]); el.title = label; el.setAttribute("aria-label", label); el._label = label; }
 
   // two overlapping ticks (the second one only shows once the data has been read) and a slash for "not connected"
-  var WIFI = '<svg viewBox="0 0 28 24" width="24" height="20" aria-hidden="true"><path class="jz-t1" d="M3 13l4.5 4.5L17 7"/><path class="jz-t2" d="M11 17.5l.5.5L25 7"/><path class="jz-cut" d="M4 4l20 16"/></svg>';
+  var WIFI = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path class="jz-t1" d="M2 13l4 4 8-9"/><path class="jz-t2" d="M7 13l4 4 8-9"/><path class="jz-cut" d="M7 7l10 10M17 7L7 17"/></svg>';
   // a chain link (still). Colour shows the state, see the header.
   var HS = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/><path class="jz-cut" d="M4 4l16 16" stroke-width="2"/></svg>';
 

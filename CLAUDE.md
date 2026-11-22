@@ -100,7 +100,7 @@ Admin > Paid apps (Yoco) locks an app behind payment using the existing `portal.
 
 ## Connected icon and Claude handshake (top bar, every app)
 `templates/glass/linkstatus.js` (copy into `public/`, load last in `<body>`) adds the sync ticks (plus the Claude link for Claude apps) to the top bar (`.topbar`, else the first `<header>`/`#bar`), just before the Install/theme buttons:
-- **Sync ticks** (every app, WhatsApp style; replaces the old green/red dot): red crossed tick = not connected or the last save failed; grey tick = saving / kept on this device only; **one green tick = recorded to PocketBase** (the person's JoolzApp account);
+- **Sync ticks** (every app, WhatsApp style; replaces the old green/red dot): red cross = not connected or the last save failed; pulsing grey tick = saving / kept on this device only; **one green tick = recorded to PocketBase** (the person's JoolzApp account);
   **two green ticks = read by all shared parties** (second tick amber while only some have read it; data nobody else shares counts as read once recorded). The server is checked every 15 s (HEAD) plus online/offline events.
   An app that says nothing shows one green tick while its server answers. An app that keeps data on the account reports its state: `JZLink.sync({ saved: "saving"|"saved"|"error"|"local", parties: <others it is shared with>, read: <how many have read the latest> })` (Jolly Grocer does this from its save routine).
 - **Handshake icon** (only apps that talk to Claude, add `data-claude` to the script tag: App Updater, Services Manager, Kiosk Manager, Port Master, Project Pilot): device on the left, "AI" on the right, two hands between them.
