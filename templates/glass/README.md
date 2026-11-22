@@ -1,3 +1,14 @@
+# JoolzApp template: ONE file (`jz.js`)
+
+Every app loads the whole template from a single generated file, `jz.js`: Glass theme, floating top bar, menu bar and toolbar, Home/Settings/Install/theme buttons,
+sync and Claude-link icons, global theme loader, drag handle and Quick Access UI. No more copying eight files and forgetting one.
+- In `index.html`, FIRST in `<head>` (before the app's own CSS): `<script src="jz.js"></script>`. Options on that tag: `data-claude` (Claude handshake icon), `data-portal="."` or `data-portal="https://..."` (global theme address; default same host, port 3886).
+  Do not add `glass.css`, `floatbar.css`, `floatbar.js`, `linkstatus.js`, `theme-global.js`, `installbtn.js`, `install-help.js`, `draghandle.js` or `quick-ui.js` tags any more.
+- Edit the SOURCE files in `templates/glass/` (and `src/portal-admin/public/install-help.js`), then run `python3 templates/glass/build.py`. It rebuilds `templates/glass/jz.js` and copies it into every `src/*/public/` that already has a `jz.js`.
+  `python3 templates/glass/build.py --check` fails when any copy is stale. Never edit a `jz.js` by hand.
+- A new app: copy `templates/glass/jz.js` into `src/<app>/public/`. An existing app moves over when it is next edited: swap its template tags for the one tag and delete its old template copies (Port Master is the first).
+- Not in the bundle (kept separate on purpose): the sign-in screens (`gate/`), `quick-server.js` (server side) and each app's own CSS/JS.
+
 # JoolzApp Glass theme
 
 One look for every JoolzApp: soft gradient backdrop, frosted panels, rounded corners, pill buttons, safe on iPhone.
@@ -100,8 +111,10 @@ Copy `install-help.js` (from `src/portal-admin/public/`) and `installbtn.js` nex
 and load both scripts at the end of `<body>` (`install-help.js` first). The icon shows in any normal browser tab, never inside the installed app. On an http address (home network, Tailscale IP) it opens a note saying installing needs the https address. Chromium browsers install in one tap;
 iPhone, iPad, Safari and Firefox get a sheet with the steps for that device. Project Pilot is the first app to use it.
 
-## Connected and handshake icons (top bar)
+## Connected icon and the Claude link (top bar)
 The connected icon is a pair of **sync ticks** (WhatsApp style): one green tick = recorded to PocketBase, two green ticks = read by all shared parties (second tick amber while only some have read it), grey = saving or on this device only, a red cross = not connected or the save failed (two tightly overlapping ticks, the second one a faint ghost until read; saving pulses grey). Apps that keep data on the account report it with `JZLink.sync({ saved: "saving"|"saved"|"error"|"local", parties, read })`; an app that reports nothing shows one green tick while its server answers. Jolly Grocer is the first app to report.
+
+**Claude link = the same ticks, no separate chain-link icon.** An app with `data-claude` (on the `jz.js` tag) reads `GET api/link` and shows it on the ticks: two green = Claude has read the last change, one green = this app wrote something Claude has not read yet, amber second tick = Claude wrote something the app has not read yet, red cross = the link is broken (a report has not come through).
 
 Copy `linkstatus.js` next to `index.html` and load it last in `<body>`: `<script src="linkstatus.js"></script>` (connected icon only) or `<script src="linkstatus.js" data-claude></script>` (adds the Claude handshake; the app must serve `GET /api/link`, see `src/app-updater/status-feed.js`). Rules and protocol: CLAUDE.md, "Connected icon and Claude handshake".
 

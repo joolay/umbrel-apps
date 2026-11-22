@@ -1,7 +1,9 @@
 (function () {
   "use strict";
-  var $ = function (s) { return document.querySelector(s); }, S = { report: null, config: {}, portal: {}, open: {}, clashes: [], official: {} };
+  var $ = function (s) { return document.querySelector(s); }, S = { tab: lsGet("pm.tab", "all"), sort: lsGet("pm.sort", "name"), report: null, config: {}, portal: {}, open: {}, clashes: [], official: {} };
   function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+  function lsGet(k, d) { try { return localStorage.getItem(k) || d; } catch (e) { return d; } }
+  function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
   function p2(n) { return n < 10 ? "0" + n : "" + n; }
   // Dates follow the South African default: DD/MM/YYYY and 24 hour time.
   function when(t) { if (!t) return ""; var d = new Date(t); return p2(d.getDate()) + "/" + p2(d.getMonth() + 1) + "/" + d.getFullYear() + " " + p2(d.getHours()) + ":" + p2(d.getMinutes()); }
@@ -12,7 +14,10 @@
       return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok) throw new Error(j.message || "Something went wrong (" + r.status + ")"); return j; });
     });
   }
+  // Every column is always shown (for JoolzApp apps and other apps alike); a dash means the app has no such route (for Name and Public: it is not published through TSDProxy).
   var COLS = [["lan", "LAN"], ["local", ".local"], ["tailscale", "Tailscale"], ["name", "Name"], ["public", "Public"]];
+  var PORTAL = '<svg viewBox="0 0 24 24"><rect x="4" y="4" width="6.5" height="6.5" rx="1.6"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.6"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.6"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.6"/></svg>';
+  function portalCell(a) { return a.onPortal ? '<td title="Shown as a tile on the JoolzApp Store home screen"><span class="ic portal" role="img" aria-label="On the portal">' + PORTAL + "</span></td>" : '<td class="na" title="' + (a.joolzapp ? "Hidden from the JoolzApp Store home screen (owner-only app)" : "Not a JoolzApp app, so not a tile on the JoolzApp Store") + '">–</td>'; }
   // Icons instead of words: green tick = answering, red cross = down, amber arrow hitting a wall = checking / in conflict, grey dash = ignored.
   var IC = {
     up: '<svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
@@ -23,13 +28,13 @@
   function ico(st) { return '<span class="ic ' + st + '" role="img" aria-label="' + TXT[st] + '" title="' + TXT[st] + '">' + IC[st] + "</span>"; }
   function cell(a, k) {
     var x = a.routes.filter(function (r) { return r.key === k; })[0];
-    if (!x) return '<td class="na">–</td>';
+    if (!x) return '<td class="na" title="' + (k === "name" || k === "public" ? "Not published through TSDProxy" : "No such route") + '">–</td>';
     var st = x.ignored ? "ign" : x.state === "up" ? "up" : x.state === "down" ? "down" : "checking";
     return '<td title="' + esc(x.url) + '">' + ico(st) + "</td>";
   }
   // Details (address, speed, reason, Ignore) stay folded until the app's row is tapped.
   function detail(a, n) {
-    var meta = (a.version ? "v" + a.version + " · " : "") + "port " + a.port + (a.published === "public" ? " · public" : a.published === "tailnet" ? " · tailnet only" : "");
+    var meta = (a.version ? "v" + a.version + " · " : "") + "port " + a.port + (a.hostPorts && a.hostPorts.length ? " · also publishes " + a.hostPorts.join(", ") : "") + (a.published === "public" ? " · public" : a.published === "tailnet" ? " · tailnet only" : " · not published through TSDProxy") + (a.onPortal ? " · tile on the JoolzApp Store" : a.joolzapp ? " · hidden from the JoolzApp Store (owner-only)" : "");
     return '<tr class="det"><td colspan="' + n + '"><div class="meta muted small">' + esc(meta) + "</div>" + a.routes.map(function (x) {
       var st = x.ignored ? "ign" : x.state === "up" ? "up" : x.state === "down" ? "down" : "checking";
       var btn = x.ignored ? '<button class="lnk" data-i="0" data-a="' + esc(a.id) + '" data-r="' + x.key + '">Unignore</button>' : x.state === "down" ? '<button class="lnk" data-i="1" data-a="' + esc(a.id) + '" data-r="' + x.key + '">Ignore</button>' : "";
@@ -39,19 +44,13 @@
       return '<div class="dr">' + ico(st) + "<b>" + esc(x.label) + "</b><span class=\"u\">" + esc(x.url) + "</span><span class=\"small\">" + (x.state === "up" ? (x.ms || 0) + " ms" : x.state === "down" ? esc(x.error) + " · since " + esc(when(x.since)) : "Checking") + "</span>" + open + fix + btn + "</div>" + help;
     }).join("") + "</td></tr>";
   }
-  // On a tablet or wider the list is split into two cards side by side (same columns in both), so it fills the screen instead of leaving big gaps.
-  function wide() { return window.innerWidth >= 700; }
-  function listHtml(apps) {
-    if (!wide() || apps.length < 6) return tableHtml(apps, apps);
-    var h = Math.ceil(apps.length / 2);
-    return '<div class="pair">' + tableHtml(apps.slice(0, h), apps) + tableHtml(apps.slice(h), apps) + "</div>";
-  }
-  function tableHtml(apps, all) {
-    var cols = COLS.filter(function (c) { return all.some(function (a) { return a.routes.some(function (r) { return r.key === c[0]; }); }); });
-    return '<div class="card tw"><table><thead><tr><th>App</th>' + cols.map(function (c) { return "<th>" + c[1] + "</th>"; }).join("") + "</tr></thead><tbody>" +
+  // One list per group, full width (no side-by-side grid).
+  function listHtml(apps) { return tableHtml(apps); }
+  function tableHtml(apps) {
+    return '<div class="card tw"><table><thead><tr><th class="app">App</th><th class="pt">Port</th><th class="pc">Portal</th>' + COLS.map(function (c) { return "<th>" + c[1] + "</th>"; }).join("") + "</tr></thead><tbody>" +
       apps.map(function (a) {
         var open = !!S.open[a.id];
-        return '<tr class="ar' + (open ? " open" : "") + '" data-id="' + esc(a.id) + '" tabindex="0" role="button" aria-expanded="' + open + '"><th scope="row"><b>' + esc(a.name || a.id) + "</b></th>" + cols.map(function (c) { return cell(a, c[0]); }).join("") + "</tr>" + (open ? detail(a, cols.length + 1) : "");
+        return '<tr class="ar' + (open ? " open" : "") + '" data-id="' + esc(a.id) + '" tabindex="0" role="button" aria-expanded="' + open + '"><th scope="row" class="app"><b>' + esc(a.name || a.id) + '</b></th><td class="pt mono">' + esc(a.port) + "</td>" + portalCell(a) + COLS.map(function (c) { return cell(a, c[0]); }).join("") + "</tr>" + (open ? detail(a, COLS.length + 3) : "");
       }).join("") + "</tbody></table></div>";
   }
   function problems(r) { var out = []; r.apps.forEach(function (a) { var l = a.routes.filter(function (x) { return x.state === "down" && !x.ignored; }).map(function (x) { return x.label; }); if (l.length) out.push({ name: a.name || a.id, routes: l }); }); return out; }
@@ -76,8 +75,14 @@
     $("#clash").innerHTML = r ? clashHtml() : "";
     $("#warn").hidden = !miss.length; $("#warn").innerHTML = miss.length ? "Add " + miss.join(" and ") + " in Settings to test those routes." : "";
     if (!r) { $("#list").innerHTML = ""; return; }
-    var j = r.apps.filter(function (a) { return a.joolzapp; }), o = r.apps.filter(function (a) { return !a.joolzapp; });
-    $("#list").innerHTML = (j.length ? '<div class="group"><h2>JoolzApp apps</h2>' + listHtml(j) + "</div>" : "") + (o.length ? '<div class="group"><h2>Other apps</h2>' + listHtml(o) + "</div>" : "");
+    var srt = function (l) { return l.slice().sort(function (a, b) { return S.sort === "port" ? (+a.port || 0) - (+b.port || 0) : String(a.name || a.id).localeCompare(String(b.name || b.id)); }); };
+    var isDown = function (a) { return a.routes.some(function (x) { return x.state === "down" && !x.ignored; }); };
+    var j = srt(r.apps.filter(function (a) { return a.joolzapp; })), o = srt(r.apps.filter(function (a) { return !a.joolzapp; })), t = S.tab;
+    if (t === "down") { j = j.filter(isDown); o = o.filter(isDown); } else if (t === "joolz") o = []; else if (t === "other") j = [];
+    $("#list").innerHTML = (j.length ? '<div class="group"><h2>JoolzApp apps</h2>' + listHtml(j) + "</div>" : "") + (o.length ? '<div class="group"><h2>Other apps</h2>' + listHtml(o) + "</div>" : "") + (!j.length && !o.length ? '<div class="card muted">' + (t === "down" ? "No routes are down." : "Nothing to show.") + "</div>" : "");
+    document.querySelectorAll("[data-tab]").forEach(function (b) { b.setAttribute("aria-selected", b.dataset.tab === t ? "true" : "false"); });
+    document.querySelectorAll("[data-sort]").forEach(function (b) { b.setAttribute("aria-selected", b.dataset.sort === S.sort ? "true" : "false"); });
+    $("#sortlabel").textContent = "Sort: " + (S.sort === "port" ? "Port" : "Name");
     $("#list").querySelectorAll(".ar").forEach(function (tr) { var t = function () { S.open[tr.dataset.id] = !S.open[tr.dataset.id]; render(); }; tr.onclick = t; tr.onkeydown = function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); t(); } }; });
     $("#list").querySelectorAll(".lnk.fx").forEach(function (b) { b.onclick = function () { var k = b.dataset.a + "|" + b.dataset.r; S.fix = S.fix === k ? "" : k; render(); }; });
     $("#list").querySelectorAll(".rc").forEach(function (b) { b.onclick = function () { b.disabled = true; b.textContent = "Checking…"; call("POST", "api/recheck", { appId: b.dataset.a, route: b.dataset.r }).then(function (j) { take(j); var a = S.report.apps.filter(function (x) { return x.id === b.dataset.a; })[0], r = a && a.routes.filter(function (x) { return x.key === b.dataset.r; })[0]; if (r && r.state === "up") S.fix = ""; render(); toast(r && r.state === "up" ? "Fixed: answering again" : "Still down"); }).catch(function (e) { toast(e.message); render(); }); }; });
@@ -87,7 +92,9 @@
   function load() { return call("GET", "api/state").then(function (j) { take(j); render(); }); }
   function runCheck() { var b = $("#check"); b.classList.add("spin"); return call("POST", "api/check").then(function (j) { take(j); render(); }).catch(function (e) { toast(e.message); }).then(function () { b.classList.remove("spin"); }); }
   $("#check").onclick = runCheck;
-  $("#settings").onclick = function () {
+  document.querySelectorAll("[data-tab]").forEach(function (b) { b.onclick = function () { S.tab = b.dataset.tab; lsSet("pm.tab", S.tab); render(); }; });
+  document.querySelectorAll("[data-sort]").forEach(function (b) { b.onclick = function () { S.sort = b.dataset.sort; lsSet("pm.sort", S.sort); render(); }; });
+  $("[data-settings]").onclick = function () {
     var d = $("#dlg"), c = S.config;
     d.innerHTML = "<h2>Settings</h2><form id='f'><label>LAN address of this Umbrel<input name='lanHost' value='" + esc(c.lanHost) + "' placeholder='192.168.1.50 or umbrel.local' required></label>" +
       "<label>.local name of this Umbrel (empty to skip)<input name='localHost' value='" + esc(c.localHost) + "' placeholder='umbrel.local'></label>" +
@@ -101,6 +108,5 @@
       call("PUT", "api/config", { lanHost: f.lanHost.value, localHost: f.localHost.value, tailscaleIp: f.tailscaleIp.value, tailnet: f.tailnet.value, intervalMin: f.intervalMin.value }).then(function (j) { take(j); d.close(); render(); toast("Saved"); }).catch(function (e) { d.querySelector("#e").textContent = e.message; });
     };
   };
-  var wasWide = wide(); window.addEventListener("resize", function () { if (wide() !== wasWide) { wasWide = wide(); render(); } });
   load().catch(function (e) { toast(e.message); }); setInterval(function () { load().catch(function () {}); }, 30000);
 })();

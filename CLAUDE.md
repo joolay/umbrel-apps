@@ -50,6 +50,12 @@ descriptions, app names and descriptions) is stored as the global `store.layout`
 checked server-side against `user.isAdmin`, cleaned by `src/portal-admin/storelayout.js`). Admins edit it in place (long-press, drag, rename, folder and app descriptions); nobody else gets edit mode.
 Keep `/store/layout` in both route lists (see the Portal section above).
 
+## ONE template file: `jz.js`
+The whole shared template (Glass theme, top bar, menu bar and toolbar, Install/Settings/Home/theme buttons, sync and Claude-link icons, global theme loader, drag handle, Quick Access UI) ships as ONE generated file,
+`templates/glass/jz.js`, loaded with a single `<script src="jz.js"></script>` first in `<head>` (options `data-claude`, `data-portal`). Edit the source files in `templates/glass/`, run `python3 templates/glass/build.py`
+(rebuilds and copies `jz.js` into every `src/*/public/` that has one; `--check` for CI). Never copy the separate template files into an app any more and never hand-edit a `jz.js`. New and edited apps use it (Port Master first);
+details in `templates/glass/README.md`. The older sections below that say "copy glass.css / floatbar.css / linkstatus.js ..." now mean "use jz.js".
+
 ## Glass theme (uniform style for every JoolzApp)
 All apps, old and new, use the shared Glass theme in `templates/glass/` (`glass.css` plus a README with the rules and each app's brand tokens).
 Copy `glass.css` into `src/<app>/public/`, link it before the app's own CSS, and set only `--accent` and `--accent-2` in the app. New apps start from it;
@@ -107,8 +113,8 @@ Admin > Paid apps (Yoco) locks an app behind payment using the existing `portal.
 - **Sync ticks** (every app, WhatsApp style; replaces the old green/red dot): red cross = not connected or the last save failed; pulsing grey tick = saving / kept on this device only; **one green tick = recorded to PocketBase** (the person's JoolzApp account);
   **two green ticks = read by all shared parties** (second tick amber while only some have read it; data nobody else shares counts as read once recorded). The server is checked every 15 s (HEAD) plus online/offline events.
   An app that says nothing shows one green tick while its server answers. An app that keeps data on the account reports its state: `JZLink.sync({ saved: "saving"|"saved"|"error"|"local", parties: <others it is shared with>, read: <how many have read the latest> })` (Jolly Grocer does this from its save routine).
-- **Handshake icon** (only apps that talk to Claude, add `data-claude` to the script tag: App Updater, Services Manager, Kiosk Manager, Port Master, Project Pilot): device on the left, "AI" on the right, two hands between them.
-  Green hand = who made the last change (left = the app, right = Claude); both green = the other side has read it; hands stop shaking (grey, struck through) = broken: a report the app should have made has not come through (nothing for 35 minutes).
+- **Claude link = the same ticks** (only apps that talk to Claude: App Updater, Services Manager, Kiosk Manager, Port Master, Project Pilot; add `data-claude` to the `jz.js` tag). There is no separate chain-link or handshake icon any more:
+  two green ticks = Claude has read the last change; one green tick = the app wrote something Claude has not read; amber second tick = Claude wrote something the app has not read; red cross = broken (a report the app should have made has not come through, nothing for 35 minutes).
   It reads `GET /api/link` on the app's own server, which returns `feed.link()` from `status-feed.js` (the state Portal Admin sent back with the last report).
 - Protocol (state logic and tests: `src/portal-admin/claudelink.js`, `test-claudelink.js`): `status/<app>.json` now carries `rev` (counts real changes, a heartbeat does not), `changedAt`, `sig` and `seenClaude` (the newest Claude message rev the app has read).
   Claude's side is `status/claude-<app>.json`, written ONLY by Claude when it changes something for that app: `{ "toApp": { "rev": <n+1>, "at": "<ISO>", "note": "<what changed>" }, "seen": { "deviceRev": <the app's rev just read>, "at": "<ISO>" } }`.

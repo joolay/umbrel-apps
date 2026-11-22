@@ -10,7 +10,7 @@
   try {
     var de = document.documentElement;
     if (!de.getAttribute('data-view') && (/[?&]view=tv\b/.test(location.search) || /Web0S|webOS|SMART-TV|SmartTV|Tizen|HbbTV|BRAVIA|AFTM|Android TV|GoogleTV/i.test(navigator.userAgent))) de.setAttribute('data-view', 'tv');
-    var s = document.currentScript, p = (s && s.getAttribute('data-portal')) || window.JZ_PORTAL || '';
+    var s = (window.JZ_SCRIPT || document.currentScript), p = (s && s.getAttribute('data-portal')) || window.JZ_PORTAL || '';
     var base = p === '.' ? '' : (p || (location.protocol + '//' + location.hostname + ':3886')).replace(/\/+$/, '');
     function add() { var l = document.createElement('link'); l.rel = 'stylesheet'; l.href = base + '/theme.css'; l.setAttribute('data-jz-theme', ''); document.head.appendChild(l); }
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', add); else add();
