@@ -204,7 +204,7 @@ const store = () => (pb.enabled ? pbStore : fileStore);
 function cleanState(d) {
   if (!d || typeof d !== "object" || !Array.isArray(d.lists) || !Array.isArray(d.shops)) return null;
   const arr = (a, n) => (Array.isArray(a) ? a.slice(0, n) : []);
-  const s = { shops: arr(d.shops, 200), defaultShop: String(d.defaultShop || "").slice(0, 40), lists: arr(d.lists, 500), activeId: String(d.activeId || "").slice(0, 40), prefs: d.prefs && typeof d.prefs === "object" && !Array.isArray(d.prefs) ? d.prefs : {}, purchases: arr(d.purchases, 20000), receipts: arr(d.receipts, 20000), settings: d.settings && typeof d.settings === "object" ? d.settings : {}, at: Date.now() };
+  const s = { shops: arr(d.shops, 200), defaultShop: String(d.defaultShop || "").slice(0, 40), ...(Array.isArray(d.cats) ? { cats: d.cats.slice(0, 60).map(c => String(c).slice(0, 30)) } : {}), lists: arr(d.lists, 500), activeId: String(d.activeId || "").slice(0, 40), prefs: d.prefs && typeof d.prefs === "object" && !Array.isArray(d.prefs) ? d.prefs : {}, purchases: arr(d.purchases, 20000), receipts: arr(d.receipts, 20000), settings: d.settings && typeof d.settings === "object" ? d.settings : {}, at: Date.now() };
   return JSON.stringify(s).length > 9 * 1024 * 1024 ? null : s;
 }
 
