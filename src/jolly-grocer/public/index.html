@@ -140,6 +140,7 @@ input,select,textarea{background:var(--glass-strong);border:1px solid var(--glas
 </nav>
 <div class="toolbar" id="toolbar" role="toolbar" aria-label="Lists and period">
   <button type="button" class="mb-btn mb-select" id="mb-list" data-menu="list" aria-haspopup="listbox" aria-expanded="false" aria-label="Choose a list"><span class="mb-label" id="mb-list-label">My list</span></button>
+  <button type="button" class="tool" id="mb-tag" aria-label="List tag" title="List tag" hidden style="min-width:0;max-width:46vw;padding:0 8px"><span id="mb-tag-label" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px"></span></button>
   <button type="button" class="tool" id="mb-search" aria-label="Search lists by tag or date" title="Search lists by tag or date" aria-pressed="false" style="margin-left:auto" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="m16 16 4 4"/></svg></button>
   <button type="button" class="mb-btn mb-select" id="mb-item" data-menu="item" aria-haspopup="listbox" aria-expanded="false" aria-label="Choose an item to analyse" hidden><span class="mb-label" id="mb-item-label">All items</span></button>
   <div class="tool-group" id="an-range" role="group" aria-label="Time span" hidden>
@@ -324,7 +325,7 @@ input,select,textarea{background:var(--glass-strong);border:1px solid var(--glas
     const seen = {}; d.cats = (Array.isArray(d.cats) ? d.cats : BASE_CATS).map((c) => String(c).trim().slice(0, 30)).filter((c) => { const k = c.toLowerCase(); if (!c || k === 'other' || seen[k]) return false; seen[k] = 1; return true; }).slice(0, 60);
     setCats(d.cats);
     d.shops = Array.isArray(d.shops) ? d.shops.filter((s) => s && s.id && typeof s.name === 'string').map((s) => ({ id: String(s.id), name: s.name.slice(0, 40), codes: (s.codes || []).map(String).slice(0, 6) })) : [];
-    d.lists = d.lists.filter((l) => l && l.id && Array.isArray(l.items)).map((l) => ({ id: String(l.id), name: '', tag: String(l.tag || '').slice(0, 30), date: l.date || dayKey(new Date()), items: l.items.filter((i) => i && typeof i.text === 'string').map((i) => ({ id: String(i.id || uid()), text: i.text.slice(0, 300), done: !!i.done, shop: i.shop || '', cat: CATS.indexOf(i.cat) >= 0 ? i.cat : 'Other', tag: i.tag === 'personal' || i.tag === 'other' ? i.tag : '', qty: Math.min(99, Math.max(1, Math.round(+i.qty) || 1)), pid: i.pid || '' })) }));
+    d.lists = d.lists.filter((l) => l && l.id && Array.isArray(l.items)).map((l) => ({ id: String(l.id), name: '', tag: String(l.tag || '').slice(0, 30), shopTags: (() => { const o = {}; Object.keys(l.shopTags || {}).forEach((k) => { const t = String(l.shopTags[k] || '').slice(0, 30); if (t) o[String(k)] = t; }); return o; })(), date: l.date || dayKey(new Date()), items: l.items.filter((i) => i && typeof i.text === 'string').map((i) => ({ id: String(i.id || uid()), text: i.text.slice(0, 300), done: !!i.done, shop: i.shop || '', cat: CATS.indexOf(i.cat) >= 0 ? i.cat : 'Other', tag: i.tag === 'personal' || i.tag === 'other' ? i.tag : '', qty: Math.min(99, Math.max(1, Math.round(+i.qty) || 1)), pid: i.pid || '' })) }));
     if (!d.shops.some((s) => s.id === d.defaultShop)) d.defaultShop = d.shops.length ? d.shops[0].id : '';
     d.prefs = d.prefs && typeof d.prefs === 'object' ? d.prefs : {};
     d.receipts = Array.isArray(d.receipts) ? d.receipts.filter((r) => r && r.id && r.at).map((r) => ({ id: String(r.id), pid: String(r.pid || ''), at: r.at, size: +r.size || 0 })) : [];
@@ -367,7 +368,7 @@ input,select,textarea{background:var(--glass-strong);border:1px solid var(--glas
     if (sync.on) { clearTimeout(sync.timer); sync.timer = setTimeout(pushNow, 600); }
   }
   window.addEventListener('pagehide', function () { if (sync.on && sync.timer) pushNow(); });
-  const ui = { pidx: null, rcUrl: '', rcFor: '', rolloverSkip: false, confirmRoll: false, tab: 'lists', menu: false, edit: '', co: null, rv: null, confirm: '', per: { mode: 'month', off: 0 }, an: { item: '', months: 6 }, find: null, openPur: '', exportText: '', focusAdd: false, newList: false };
+  const ui = { pidx: null, rcUrl: '', rcFor: '', rolloverSkip: false, confirmRoll: false, tab: 'lists', menu: false, edit: '', co: null, rv: null, confirm: '', per: { mode: 'month', off: 0 }, an: { item: '', months: 6 }, find: null, shopTagEdit: '', openPur: '', exportText: '', focusAdd: false, newList: false };
   const active = () => S.lists.find((l) => l.id === S.activeId) || S.lists[0];
   const QTYS = Array.from({ length: 20 }, (_, n) => [String(n + 1), 'Qty ' + (n + 1)]);
   const shopById = (id) => S.shops.find((s) => s.id === id);
@@ -605,7 +606,7 @@ input,select,textarea{background:var(--glass-strong);border:1px solid var(--glas
     const lists = ui.tab === 'lists' && !ui.co, spend = ui.tab === 'spend', an = ui.tab === 'analyse';
     [['tb-lists', ui.tab === 'lists'], ['tb-spend', spend], ['tb-analyse', an]].forEach((t) => $(t[0]).setAttribute('aria-selected', t[1] ? 'true' : 'false'));
     $('toolbar').hidden = !(lists || spend || an);
-    ['mb-list', 'mb-search'].forEach((id) => { $(id).hidden = !lists; });
+    ['mb-list', 'mb-tag', 'mb-search'].forEach((id) => { $(id).hidden = !lists; });
     $('mb-search').setAttribute('aria-pressed', ui.find ? 'true' : 'false');
     ['mb-per', 'mb-prev', 'mb-next'].forEach((id) => { $(id).hidden = !spend; });
     ['mb-item', 'an-range'].forEach((id) => { $(id).hidden = !an; });
@@ -613,6 +614,7 @@ input,select,textarea{background:var(--glass-strong);border:1px solid var(--glas
     if (lists) {
       const l = active(), open = l.items.filter((i) => !i.pid).length;
       $('mb-list-label').textContent = listTitle(l);
+      $('mb-tag-label').textContent = l.tag ? '# ' + l.tag : '+ Add tag'; $('mb-tag').title = l.tag ? 'Change tag' : 'Add a tag to this list';
       const m = $('mn-list'); m.textContent = '';
       S.lists.forEach((x) => m.appendChild(mbItem(listTitle(x), () => { S.activeId = x.id; ui.edit = ''; ui.rv = null; save(); render(); }, { sel: x.id === l.id })));
       m.appendChild(h('div', { class: 'mb-sep' }));
@@ -629,7 +631,7 @@ input,select,textarea{background:var(--glass-strong);border:1px solid var(--glas
     if (ui.co) return viewCheckout(v);
     const l = active();
     const head = h('div', { class: 'card' });
-    // Tag: a plain, tightly padded line right under the toolbar (no pill, no card).
+    // Tag: shown and tapped in the toolbar next to the date; this plain line only appears while editing it.
     const plain = 'border:0;background:none;padding:0;margin:0;font:inherit;font-size:13px;min-height:0;min-width:0;cursor:pointer;';
     const tagPart = (() => {
       if (ui.tagEdit) {
@@ -637,14 +639,13 @@ input,select,textarea{background:var(--glass-strong);border:1px solid var(--glas
         const done = () => { const t = ti.value.trim().slice(0, 30); ui.tagEdit = false; mutate(() => { l.tag = t; }); };
         ti.addEventListener('keydown', (e) => { if (e.key === 'Enter') done(); if (e.key === 'Escape') { ui.tagEdit = false; render(); } });
         setTimeout(() => { ti.focus(); ti.select(); }, 0);
-        return h('div', { class: 'row', style: 'gap:10px;padding:0 4px' }, ti, h('button', { type: 'button', style: plain + 'color:var(--accent-text);font-weight:700', onclick: done, text: 'Save' }), h('button', { type: 'button', style: plain + 'color:var(--muted)', onclick: () => { ui.tagEdit = false; render(); }, text: 'Cancel' }));
+        return h('div', { class: 'row', style: 'gap:10px;padding:0 4px' }, ti, l.tag ? h('button', { type: 'button', style: plain + 'color:var(--muted)', onclick: () => { ui.tagEdit = false; mutate(() => { l.tag = ''; }); }, text: 'Remove' }) : null, h('button', { type: 'button', style: plain + 'color:var(--accent-text);font-weight:700', onclick: done, text: 'Save' }), h('button', { type: 'button', style: plain + 'color:var(--muted)', onclick: () => { ui.tagEdit = false; render(); }, text: 'Cancel' }));
       }
-      if (l.tag) return h('div', { class: 'row', style: 'gap:12px;padding:0 4px' }, h('button', { type: 'button', title: 'Change tag', style: plain + 'color:var(--accent-text);font-weight:700', onclick: () => { ui.tagEdit = true; render(); }, text: '# ' + l.tag }), h('button', { type: 'button', 'aria-label': 'Remove tag', title: 'Remove tag', style: plain + 'color:var(--muted)', onclick: () => { mutate(() => { l.tag = ''; }); }, text: '\u00d7' }));
-      return h('div', { style: 'padding:0 4px' }, h('button', { type: 'button', style: plain + 'color:var(--muted)', onclick: () => { ui.tagEdit = true; render(); }, text: '+ Add tag' }));
+      return null;
     })();
     const del = ui.confirm === 'list' ? h('span', { class: 'row' }, btn('danger sm', 'trash', 'Confirm delete list', () => { ui.confirm = ''; mutate(() => { S.lists = S.lists.filter((x) => x.id !== l.id); if (!S.lists.length) S.lists.push({ id: uid(), name: '', tag: '', date: dayKey(new Date()), items: [] }); S.activeId = S.lists[0].id; }); }, 'Delete?'), btn('sm', 'x', 'Keep list', () => { ui.confirm = ''; render(); }, 'Keep'))
       : null;
-    v.appendChild(h('div', { style: 'margin:-6px 0 -4px' }, tagPart));
+    if (tagPart) v.appendChild(h('div', { style: 'margin:-6px 0 -4px' }, tagPart));
     if (ui.find) v.appendChild(findCard());
     if (del) { head.appendChild(h('div', { class: 'row' }, h('span', { class: 'muted', text: 'Delete ' + listLabel(l) + '?' }), del)); v.appendChild(head); }
 
@@ -683,7 +684,7 @@ input,select,textarea{background:var(--glass-strong);border:1px solid var(--glas
     const res = h('div', { style: 'display:grid;gap:6px;margin-top:8px' });
     const paint = () => {
       res.textContent = ''; const q = ui.find.q.trim().toLowerCase();
-      const hay = (x) => { const d = new Date((x.date || '') + 'T12:00:00'); return [x.tag || '', x.date || '', listLabel(x), isNaN(d) ? '' : d.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) + ' ' + d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })].join(' ').toLowerCase(); };
+      const hay = (x) => { const d = new Date((x.date || '') + 'T12:00:00'); return [x.tag || '', Object.keys(x.shopTags || {}).map((k) => x.shopTags[k]).join(' '), x.date || '', listLabel(x), isNaN(d) ? '' : d.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) + ' ' + d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })].join(' ').toLowerCase(); };
       const hits = S.lists.filter((x) => !q || hay(x).indexOf(q) >= 0).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
       if (!hits.length) res.appendChild(h('p', { class: 'muted', text: 'No list matches that tag or date.' }));
       hits.forEach((x) => res.appendChild(h('button', { type: 'button', class: 'btn', style: 'justify-content:space-between;width:100%', onclick: () => { S.activeId = x.id; ui.find = null; ui.edit = ''; ui.rv = null; save(); render(); } }, h('span', { text: listLabel(x) }), h('span', { class: 'pill', text: (x.tag ? x.tag + ' \u00b7 ' : '') + x.items.length + (x.items.length === 1 ? ' item' : ' items') }))));
@@ -702,6 +703,16 @@ input,select,textarea{background:var(--glass-strong);border:1px solid var(--glas
     const head = h('div', { class: 'ghead' }, h('span', null, h('b', { text: g.shop ? g.shop.name : 'No shop yet' }), h('span', { class: 'n', text: '  ' + g.items.length + (g.items.length === 1 ? ' item' : ' items') + (g.shop ? ' · ' + inBasket + ' in basket' + (estSum(g) ? ' · ≈ ' + money(estSum(g)) : '') : ' · tap an item to choose its shop') })));
     if (g.shop) head.appendChild(btn('primary sm', 'cart', 'Checkout at ' + g.shop.name, () => openCheckout(g.shop.id), 'Checkout'));
     box.appendChild(head);
+    if (g.shop) {   // each shop section has its own optional tag, separate from the list's tag in the toolbar
+      const sid = g.shop.id, cur = (l.shopTags && l.shopTags[sid]) || '', plain = 'border:0;background:none;padding:0;margin:0;font:inherit;font-size:13px;min-height:0;min-width:0;cursor:pointer;';
+      if (ui.shopTagEdit === sid) {
+        const ti = h('input', { type: 'text', maxlength: '30', placeholder: 'Tag for ' + g.shop.name, 'aria-label': 'Tag for ' + g.shop.name, value: cur, style: 'flex:1 1 120px;min-height:30px;padding:2px 8px;font-size:13px' });
+        const done = () => { const t = ti.value.trim().slice(0, 30); ui.shopTagEdit = ''; mutate(() => { l.shopTags = l.shopTags || {}; if (t) l.shopTags[sid] = t; else delete l.shopTags[sid]; }); };
+        ti.addEventListener('keydown', (e) => { if (e.key === 'Enter') done(); if (e.key === 'Escape') { ui.shopTagEdit = ''; render(); } });
+        setTimeout(() => { ti.focus(); ti.select(); }, 0);
+        box.appendChild(h('div', { class: 'row', style: 'gap:10px;padding:6px 12px 2px' }, ti, cur ? h('button', { type: 'button', style: plain + 'color:var(--muted)', onclick: () => { ui.shopTagEdit = ''; mutate(() => { delete l.shopTags[sid]; }); }, text: 'Remove' }) : null, h('button', { type: 'button', style: plain + 'color:var(--accent-text);font-weight:700', onclick: done, text: 'Save' }), h('button', { type: 'button', style: plain + 'color:var(--muted)', onclick: () => { ui.shopTagEdit = ''; render(); }, text: 'Cancel' })));
+      } else box.appendChild(h('div', { style: 'padding:6px 12px 0' }, h('button', { type: 'button', style: plain + (cur ? 'color:var(--accent-text);font-weight:700' : 'color:var(--muted)'), title: cur ? 'Change tag' : 'Add a tag for ' + g.shop.name, onclick: () => { ui.shopTagEdit = sid; render(); }, text: cur ? '# ' + cur : '+ Add tag' })));
+    }
     CATS.forEach((c) => {
       const its = g.items.filter((i) => i.cat === c); if (!its.length) return;
       box.appendChild(h('div', { class: 'cat', text: c }));
@@ -1077,6 +1088,7 @@ input,select,textarea{background:var(--glass-strong);border:1px solid var(--glas
   $('tb-lists').addEventListener('click', () => goTab('lists'));
   $('tb-spend').addEventListener('click', () => goTab('spend'));
   $('tb-analyse').addEventListener('click', () => goTab('analyse'));
+  $('mb-tag').addEventListener('click', () => { ui.tagEdit = !ui.tagEdit; render(); });
   $('mb-search').addEventListener('click', () => { ui.find = ui.find ? null : { q: '' }; render(); });
   [3, 6, 12].forEach((n) => $('an-' + n).addEventListener('click', () => { ui.an.months = n; render(); }));
   ['week', 'month', 'year'].forEach((k) => $('per-' + k).addEventListener('click', () => { ui.per = { mode: k, off: 0 }; render(); }));
