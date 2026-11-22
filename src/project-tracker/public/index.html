@@ -222,15 +222,6 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
     if (S.view === "archive" || S.view === "bin") return S.list.projects.filter(function (p) { return p.state === (S.view === "bin" ? "bin" : "archived"); });
     return visibleLive();
   }
-  function allOpen() {
-    var cs = (S.view === "archive" || S.view === "bin") ? [] : visibleCats(), its = viewItems(); if (!cs.length && !its.length) return false;
-    if (cs.some(function (c) { return S.collapsed[c]; })) return false;
-    return its.every(isOpen);
-  }
-  function setAll(open) {
-    visibleCats().forEach(function (c) { if (open) delete S.collapsed[c]; else S.collapsed[c] = true; });
-    viewItems().forEach(function (p) { S.open[p.id] = open; }); savePrefs(); render();
-  }
   var TABS = [["all", "All"], ["active", "Active"], ["maintenance", "Queued"], ["hiatus", "Hiatus"], ["complete", "Complete"], ["abandoned", "Abandoned"], ["archive", "Archive"], ["bin", "Bin"]];
   function shownTabs() { var c = counts(), t = TABS.filter(function (x) { return S.tabs.indexOf(x[0]) >= 0 && (x[0] === "all" || c[x[0]] > 0); }); return t.length ? t : [TABS[0]]; }   // a tab with nothing in it stays hidden
   // The tabs shown are the ones picked in Settings; when they don't fit the width they become a drop-down list.
@@ -238,7 +229,7 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
     var c = counts(), tabs = shownTabs(), el = $("#tabs");
     if (!tabs.some(function (t) { return t[0] === S.view; })) S.view = tabs[0][0];
     var bd = binDue(), more = function (t) { return c[t[0]] + ((t[0] === "abandoned" || t[0] === "complete") && dueOf(t[0]) ? " · " + dueOf(t[0]) + (t[0] === "complete" ? " to archive" : " to review") : t[0] === "bin" && bd ? " · " + bd + " to empty" : ""); };
-    var tbx = '<span class="tbx"><button class="btn tiny" data-tb="layout">' + (S.layout === "list" ? "▦ Grid" : "☰ List") + '</button>' + '' + '<button class="btn tiny" data-tb="all">' + (allOpen() ? "Collapse all" : "Expand all") + "</button></span>";
+    var tbx = '<span class="tbx"><button class="btn tiny" data-tb="layout">' + (S.layout === "list" ? "▦ Grid" : "☰ List") + '</button>' + "</span>";
     el.className = "st";
     el.innerHTML = tabs.map(function (t) { return '<button class="btn tiny' + (S.view === t[0] ? " primary" : "") + '" data-v="' + t[0] + '">' + t[1] + '<span class="n">' + more(t) + "</span></button>"; }).join("") + tbx;
     if (tabs.length > 1 && el.scrollWidth > el.clientWidth + 1) {
@@ -479,7 +470,7 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
     if (a === "purge") return send({ ops: { remove: [p.id] } });
   };
   $("#tabs").onchange = function (ev) { if (ev.target.id === "tabsel") { S.view = ev.target.value; savePrefs(); render(); } };
-  $("#tabs").onclick = function (ev) { var t = ev.target.closest("[data-tb]"); if (t) { if (t.dataset.tb === "layout") { S.layout = S.layout === "list" ? "grid" : "list"; savePrefs(); return render(); } return setAll(!allOpen()); } var b = ev.target.closest("[data-v]"); if (b) { S.view = b.dataset.v; savePrefs(); render(); } };
+  $("#tabs").onclick = function (ev) { var t = ev.target.closest("[data-tb]"); if (t) { if (t.dataset.tb === "layout") { S.layout = S.layout === "list" ? "grid" : "list"; S.open = {}; savePrefs(); return render(); } } var b = ev.target.closest("[data-v]"); if (b) { S.view = b.dataset.v; savePrefs(); render(); } };
   $("#add").onclick = function () { editDlg(null); };
   $("#settings").onclick = settingsDlg;
   // Press and hold a project (or right-click it) for Edit / Remove.
