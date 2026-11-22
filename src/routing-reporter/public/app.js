@@ -17,7 +17,20 @@
   // Every column is always shown (for JoolzApp apps and other apps alike); a dash means the app has no such route (for Name and Public: it is not published through TSDProxy).
   var COLS = [["lan", "LAN"], ["local", ".local"], ["tailscale", "Tailscale"], ["name", "Name"], ["public", "Public"]];
   var PORTAL = '<svg viewBox="0 0 24 24"><rect x="4" y="4" width="6.5" height="6.5" rx="1.6"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.6"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.6"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.6"/></svg>';
-  function portalCell(a) { return a.onPortal ? '<td title="Shown as a tile on the JoolzApp Store home screen"><span class="ic portal" role="img" aria-label="On the portal">' + PORTAL + "</span></td>" : '<td class="na" title="' + (a.joolzapp ? "Hidden from the JoolzApp Store home screen (owner-only app)" : "Not a JoolzApp app, so not a tile on the JoolzApp Store") + '">–</td>'; }
+  var PLUS = '<svg viewBox="0 0 24 24"><path d="M12 6v12M6 12h12"/></svg>';
+  // Portal column: auto = a JoolzApp app (shown by itself), locked = owner-only tool (Admin folder), on / off = any other app: tap to add its tile to the JoolzApp Store or hide it.
+  // Login column: a JoolzApp app is protected by the JoolzApp account (its gate); any other app keeps its own login, or none.
+  var SHIELD = '<svg viewBox="0 0 24 24"><path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.500-7-10V6z"/></svg>';
+  function loginCell(a) {
+    return a.joolzapp ? '<td title="Protected by the JoolzApp account (sign-in gate)"><span class="ic portal" role="img" aria-label="Protected by JoolzApp login">' + SHIELD + "</span></td>" : '<td class="na" title="Not protected by the JoolzApp account: this app keeps its own login, or has none">–</td>';
+  }
+  function portalCell(a) {
+    var p = a.portal || { state: a.onPortal ? "auto" : "locked" };
+    if (p.state === "auto") return '<td title="Shown as a tile on the JoolzApp Store home screen (a JoolzApp app)"><span class="ic portal" role="img" aria-label="On the portal">' + PORTAL + "</span></td>";
+    if (p.state === "locked") return '<td class="na" title="Owner-only JoolzApp tool: lives in the Admin folder, not a tile">–</td>';
+    var on = p.state === "on";
+    return '<td class="pg" data-a="' + esc(a.id) + '" data-on="' + (on ? "1" : "0") + '" tabindex="0" role="switch" aria-checked="' + on + '" title="' + (on ? (p.audience === "admins" ? "On the portal, Admin: only admins can see the tile" : "On the portal for everyone with a JoolzApp account") + ", tap to hide the tile" : "Not on the JoolzApp Store, tap to add it") + '"><span class="ic ' + (on ? "portal" : "ign add") + '" role="img" aria-label="' + (on ? "On the portal" : "Not on the portal") + '">' + (on ? PORTAL : PLUS) + "</span>" + (on && p.audience === "admins" ? '<small class="adm">Admin</small>' : "") + "</td>";
+  }
   // Icons instead of words: green tick = answering, red cross = down, amber arrow hitting a wall = checking / in conflict, grey dash = ignored.
   var IC = {
     up: '<svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
@@ -53,10 +66,10 @@
   // One list per group, full width (no side-by-side grid).
   function listHtml(apps) { return tableHtml(apps); }
   function tableHtml(apps) {
-    return '<div class="card tw"><table><thead><tr><th class="app">App</th><th class="pt">Port</th><th class="pc">Portal</th>' + COLS.map(function (c) { return "<th>" + c[1] + "</th>"; }).join("") + "</tr></thead><tbody>" +
+    return '<div class="card tw"><table><thead><tr><th class="app">App</th><th class="pt">Port</th><th class="pc">Portal</th><th class="pc">Login</th>' + COLS.map(function (c) { return "<th>" + c[1] + "</th>"; }).join("") + "</tr></thead><tbody>" +
       apps.map(function (a) {
         var open = !!S.open[a.id];
-        return '<tr class="ar' + (open ? " open" : "") + '" data-id="' + esc(a.id) + '" tabindex="0" role="button" aria-expanded="' + open + '"><th scope="row" class="app"><b>' + esc(a.name || a.id) + '</b></th><td class="pt mono">' + esc(a.port) + "</td>" + portalCell(a) + COLS.map(function (c) { return cell(a, c[0]); }).join("") + "</tr>" + (open ? detail(a, COLS.length + 3) : "");
+        return '<tr class="ar' + (open ? " open" : "") + '" data-id="' + esc(a.id) + '" tabindex="0" role="button" aria-expanded="' + open + '"><th scope="row" class="app"><b>' + esc(a.name || a.id) + '</b></th><td class="pt mono">' + esc(a.port) + "</td>" + portalCell(a) + loginCell(a) + COLS.map(function (c) { return cell(a, c[0]); }).join("") + "</tr>" + (open ? detail(a, COLS.length + 4) : "");
       }).join("") + "</tbody></table></div>";
   }
   function problems(r) { var out = []; r.apps.forEach(function (a) { var l = a.routes.filter(function (x) { return x.state === "down" && !x.ignored; }).map(function (x) { return x.label; }); if (l.length) out.push({ name: a.name || a.id, routes: l }); }); return out; }
@@ -96,6 +109,27 @@
     }).join("") + "<div class='actions'><button type='button' class='btn primary' id='x'>Close</button></div>";
     d.showModal(); d.querySelector("#x").onclick = function () { d.close(); };
   }
+  // Add or hide a tile for an app that does not use the JoolzApp account.
+  function portalDialog(a, on) {
+    var d = $("#dlg"), p = a.portal || {};
+    if (on) {
+      d.innerHTML = "<h2>Hide " + esc(a.name || a.id) + "</h2><p class='muted small'>The tile disappears from the JoolzApp Store for everyone. The app keeps running and you can add it again.</p><p class='err' id='e' role='alert'></p><div class='actions'><button type='button' class='btn' id='x'>Cancel</button><button class='btn primary' id='go'>Hide tile</button></div>";
+      d.showModal(); d.querySelector("#x").onclick = function () { d.close(); };
+      d.querySelector("#go").onclick = function () { call("POST", "api/portal-app", { appId: a.id, add: false }).then(function (j) { take(j); d.close(); render(); toast("Tile hidden"); }).catch(function (e) { d.querySelector("#e").textContent = e.message; }); };
+      return;
+    }
+    var order = ["public", "name", "tailscale", "lan", "local"], opts = order.map(function (k) { return a.routes.filter(function (r) { return r.key === k && r.openUrl; })[0]; }).filter(Boolean), first = opts[0];
+    d.innerHTML = "<h2>Add " + esc(a.name || a.id) + " to the JoolzApp Store</h2><form id='f'><label>Name on the tile<input name='name' maxlength='60' value='" + esc(a.name || a.id) + "'></label><label>Description (optional)<input name='description' maxlength='200' placeholder='What this app is'></label>" +
+      (opts.length ? "<fieldset class='rt'><legend class='small muted'>Address the tile opens</legend>" + opts.map(function (r) { return "<label class='rr'><input type='radio' name='route' value='" + r.key + "'" + (r === first ? " checked" : "") + "> <b>" + esc(r.label) + "</b> <span class='muted small'>" + esc(r.url) + (r.state === "down" ? " (down now)" : "") + "</span></label>"; }).join("") + "</fieldset>" : "<p class='err'>No address people can open yet. Add your tailnet name or Tailscale address in Settings first.</p>") +
+      "<fieldset class='rt'><legend class='small muted'>Who can open the tile</legend><label class='rr'><input type='radio' name='aud' value='admins' checked> <b>Admin</b> <span class='muted small'>only admins can see the tile</span></label><label class='rr'><input type='radio' name='aud' value='all'> <b>Portal</b> <span class='muted small'>everyone with a JoolzApp account sees the tile</span></label></fieldset><p class='muted small'>The tile is only a shortcut: this app is not behind the JoolzApp login (the Login column stays empty), so it keeps its own login, or has none. An address that is not public only opens for people on your network or tailnet.</p><p class='err small' id='pw' hidden>Public: anyone with the link can open this app, whatever the tile says, unless the app has a login of its own.</p>" + (p.error ? "<p class='err small'>" + esc(p.error) + "</p>" : "") + "<p class='err' id='e' role='alert'></p><div class='actions'><button type='button' class='btn' id='x'>Cancel</button><button class='btn primary'" + (opts.length ? "" : " disabled") + ">Add tile</button></div></form>";
+    d.showModal(); d.querySelector("#x").onclick = function () { d.close(); };
+    var warn = function () { var r = d.querySelector("input[name=route]:checked"), w = d.querySelector("#pw"); if (w) w.hidden = !(r && r.value === "public"); };
+    d.querySelectorAll("input[name=route]").forEach(function (i) { i.onchange = warn; }); warn();
+    d.querySelector("#f").onsubmit = function (ev) {
+      ev.preventDefault(); var f = ev.target.elements, r = f.route && (f.route.value || (f.route[0] && f.route[0].value));
+      call("POST", "api/portal-app", { appId: a.id, add: true, audience: d.querySelector("input[name=aud]:checked").value, name: f.name.value, description: f.description.value, route: r }).then(function (j) { take(j); d.close(); render(); toast("Added to the JoolzApp Store"); }).catch(function (e) { d.querySelector("#e").textContent = e.message; });
+    };
+  }
   function render() {
     var r = S.report, c = S.config, down = 0, total = 0, ign = 0, pr = r ? problems(r) : [];
     if (r) r.apps.forEach(function (a) { a.routes.forEach(function (x) { total++; if (x.ignored) ign++; else if (x.state === "down") down++; }); });
@@ -123,6 +157,10 @@
     $("#list").querySelectorAll(".ar").forEach(function (tr) { var t = function () { S.open[tr.dataset.id] = !S.open[tr.dataset.id]; render(); }; tr.onclick = t; tr.onkeydown = function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); t(); } }; });
     $("#list").querySelectorAll("td.tg").forEach(function (td) {
       var t = function (e) { e.stopPropagation(); if (td.dataset.busy) return; td.dataset.busy = "1"; var off = td.dataset.i === "1"; call("POST", "api/route", { appId: td.dataset.a, route: td.dataset.r, enabled: !off }).then(function (j) { take(j); render(); var x = ((S.report.apps.filter(function (q) { return q.id === td.dataset.a; })[0] || { routes: [] }).routes.filter(function (q) { return q.key === td.dataset.r; })[0]) || {}; toast(x.switch === "proxy" ? (off ? "Pausing the TSDProxy proxy (takes up to 15 s)" : "Resuming the TSDProxy proxy") : (off ? "Route disabled here" : "Route enabled")); if (x.switch === "proxy") setTimeout(function () { load().catch(function () {}); }, 17000); }).catch(function (er) { delete td.dataset.busy; toast(er.message); }); };
+      td.onclick = t; td.onkeydown = function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); t(e); } };
+    });
+    $("#list").querySelectorAll("td.pg").forEach(function (td) {
+      var t = function (e) { e.stopPropagation(); var a = S.report.apps.filter(function (x) { return x.id === td.dataset.a; })[0]; if (a) portalDialog(a, td.dataset.on === "1"); };
       td.onclick = t; td.onkeydown = function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); t(e); } };
     });
     $("#list").querySelectorAll(".lnk.fx").forEach(function (b) { b.onclick = function () { var k = b.dataset.a + "|" + b.dataset.r; S.fix = S.fix === k ? "" : k; render(); }; });

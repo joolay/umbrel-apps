@@ -495,8 +495,9 @@ async function signup(req, res) {
 const feed = require('./statusfeed')({ asSuper: (m, p, b) => pbx.asSuper(m, p, b) });
 const routes = require('./routes')({ dataDir: pbx.dataDir, feed });
 const theme = require('./theme')(pbx);
+const portalApps = require('./portalapps')({ pbx, installedApps });   // Port Master adds/hides tiles for apps that do not use the JoolzApp account
 const installQueue = require('./installqueue')({ asSuper: (m, p, b) => pbx.asSuper(m, p, b) });   // new JoolzApps App Updater should install
-const appapi = makeAppApi({ qrlogin, quick, feed, routes, theme, installQueue, pbx, DATA_DIR: pbx.dataDir, readBody, send });
+const appapi = makeAppApi({ qrlogin, quick, feed, routes, theme, portalApps, installQueue, pbx, DATA_DIR: pbx.dataDir, readBody, send });
 const notices = require('./notices')({ pbx, forgetTouch: appapi.forgetTouch });
 const storeLayout = require('./storelayout')(pbx);
 const changes = makeChanges({ pbx, installQueue, installedApps, APPS_DIR, DATA_DIR: pbx.dataDir, appKeys: appapi.keys });
