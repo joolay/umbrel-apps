@@ -10,11 +10,13 @@ services:
       PROXY_AUTH_ADD: "true"
 
   web:
-    image: ghcr.io/joolay/app-updater:1.8.0
+    image: ghcr.io/joolay/app-updater:1.9.0
     restart: on-failure
     stop_grace_period: 10s
     volumes:
       - ${APP_DATA_DIR}/data:/data
+      # TSDProxy's settings folder: App Updater shows what Services Manager reports about TSDProxy (version, update state) and writes its two choices there (automatic update + time, Update now).
+      - ${UMBREL_ROOT}/../tsdproxy/config:/tsdproxy-config
     # Lets the container reach umbrelOS on the host.
     extra_hosts:
       - "host.docker.internal:host-gateway"

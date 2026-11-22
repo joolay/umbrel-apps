@@ -321,7 +321,8 @@ async function feedPayload() {
     return o;
   });
   for (const c of containers.filter((x) => x.problem).slice(0, 8)) c.logTail = await dockerLogs(c.id, 25);
-  return { umbrel: snap.umbrel, summary: { containers: containers.length, running: containers.filter((c) => c.state === 'running').length, problems: containers.filter((c) => c.problem).map((c) => c.name) }, services: snap.services, containers };
+  let tsdproxy = null; try { tsdproxy = JSON.parse(fs.readFileSync(path.join(process.env.TSDPROXY_CONFIG_DIR || '/tsdproxy-config', 'tsdproxy-status.json'), 'utf8')); } catch { /* keeper has not run yet */ }
+  return { umbrel: snap.umbrel, tsdproxy, summary: { containers: containers.length, running: containers.filter((c) => c.state === 'running').length, problems: containers.filter((c) => c.problem).map((c) => c.name) }, services: snap.services, containers };
 }
 
 /* -------------------------------- actions --------------------------------- */
@@ -477,6 +478,10 @@ if (require.main === module) {
   // Portal Admin asks for a TSDProxy restart (30 s after its Tailnet change is applied) by writing a marker file in TSDProxy's settings folder.
   const watch = require('./restart-request').makeWatcher({ dir: process.env.TSDPROXY_CONFIG_DIR || '/tsdproxy-config', docker, log: (m) => console.error(m) });
   setInterval(watch, 5000).unref();
+  // TSDProxy keeper: API key, pause/resume for Port Master, version and updates (see tsdproxy.js). Reports in tsdproxy-status.json in the same folder.
+  const keeper = require('./tsdproxy').makeKeeper({ dir: process.env.TSDPROXY_CONFIG_DIR || '/tsdproxy-config', docker, selfId: SELF_ID, log: (m) => console.error(m) });
+  setInterval(() => keeper.tick().catch((e) => console.error('[tsdproxy] ' + e.message)), 15000).unref();
+  setTimeout(() => keeper.tick().catch(() => {}), 8000).unref();
   setTimeout(reconcile, 3000).unref();
 }
 

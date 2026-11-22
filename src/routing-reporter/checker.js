@@ -163,7 +163,7 @@ function makeMonitor({ dir, listFile, getConfig, probeImpl = probe, now = Date.n
   let last = null, running = null;
   async function run() {
     const cfg = getConfig(), apps = discover(dir, listFile), jobs = [];
-    const out = apps.map((a) => ({ id: a.id, name: a.name, version: a.version, port: a.port, hostPorts: a.hostPorts || [], joolzapp: a.joolzapp, onPortal: !!a.joolzapp && !a.hidden, published: a.tsdproxy ? (a.tsdproxy.funnel ? 'public' : 'tailnet') : '', routes: [] }));
+    const out = apps.map((a) => ({ id: a.id, name: a.name, version: a.version, port: a.port, hostPorts: a.hostPorts || [], joolzapp: a.joolzapp, onPortal: !!a.joolzapp && !a.hidden, published: a.tsdproxy ? (a.tsdproxy.funnel ? 'public' : 'tailnet') : '', tsdName: a.tsdproxy ? a.tsdproxy.name : '', routes: [] }));
     apps.forEach((a, i) => { for (const r of routesFor(a, cfg)) jobs.push({ i, r }); });
     let next = 0;
     await Promise.all(new Array(Math.min(concurrency, jobs.length || 1)).fill(0).map(async () => {
