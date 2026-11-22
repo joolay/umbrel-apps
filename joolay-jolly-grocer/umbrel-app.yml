@@ -2,7 +2,7 @@ manifestVersion: 1
 id: joolay-jolly-grocer
 category: files
 name: Jolly Grocer
-version: "1.2.3"
+version: "1.2.4"
 tagline: Your grocery shopping companion
 description: >-
   Jolly Grocer sorts your shopping list by shop and category, remembers short shop codes, and checks each shop out with a
@@ -19,7 +19,7 @@ gallery: []
 path: ""
 defaultUsername: ""
 defaultPassword: ""
-releaseNotes: "Changes: The shopping list is more compact with no lines between items, and unticked items show a clear empty box. The settings gear now follows the shared JoolzApp top bar template. Before: A settings (gear) icon opens Settings with your shops, categories, data and Sign out."
+releaseNotes: "Changes: The connection dot in the top bar is now WhatsApp-style ticks: one green tick means your change is recorded to your account, two mean everyone it is shared with has read it, grey means saving, red means not connected. Also fixed the Settings screen running off the right edge of the screen."
 submitter: joolay
 submission: https://github.com/joolay/umbrel-apps
 icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-jolly-grocer/icon.svg

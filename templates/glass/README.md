@@ -82,6 +82,8 @@ and load both scripts at the end of `<body>` (`install-help.js` first). The icon
 iPhone, iPad, Safari and Firefox get a sheet with the steps for that device. Project Pilot is the first app to use it.
 
 ## Connected and handshake icons (top bar)
+The connected icon is a pair of **sync ticks** (WhatsApp style): one green tick = recorded to PocketBase, two green ticks = read by all shared parties (second tick amber while only some have read it), grey = saving or on this device only, red crossed = not connected or the save failed. Apps that keep data on the account report it with `JZLink.sync({ saved: "saving"|"saved"|"error"|"local", parties, read })`; an app that reports nothing shows one green tick while its server answers. Jolly Grocer is the first app to report.
+
 Copy `linkstatus.js` next to `index.html` and load it last in `<body>`: `<script src="linkstatus.js"></script>` (connected icon only) or `<script src="linkstatus.js" data-claude></script>` (adds the Claude handshake; the app must serve `GET /api/link`, see `src/app-updater/status-feed.js`). Rules and protocol: CLAUDE.md, "Connected icon and Claude handshake".
 
 ## Drag handle (reordering tiles and rows)
