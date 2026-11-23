@@ -87,11 +87,11 @@
   var busy = false;
   function check() {
     if (!conn || busy) return; busy = true;
-    if (navigator.onLine === false) { busy = false; reach = false; return paint(); }
+    if (navigator.onLine === false) { busy = false; reach = false; if (window.JZBar) JZBar.setConn(false); return paint(); }
     var ctl = window.AbortController ? new AbortController() : null, to = setTimeout(function () { if (ctl) ctl.abort(); }, 7000);
     fetch(location.pathname || "/", { method: "HEAD", cache: "no-store", credentials: "same-origin", signal: ctl ? ctl.signal : undefined })
-      .then(function () { reach = true; paint(); })
-      .catch(function () { reach = false; paint(); })
+      .then(function () { reach = true; if (window.JZBar) JZBar.setConn(true); paint(); })
+      .catch(function () { reach = false; if (window.JZBar) JZBar.setConn(false); paint(); })
       .then(function () { clearTimeout(to); busy = false; });
   }
   function link() {
@@ -104,7 +104,7 @@
   }
 
   function start() { if (!mount()) { var n = 0, t = setInterval(function () { if (mount() || ++n > 40) { clearInterval(t); if (conn) go(); } }, 250); return; } go(); }
-  function go() { check(); link(); setInterval(check, 15000); setInterval(link, 30000); addEventListener("online", check); addEventListener("offline", check); document.addEventListener("visibilitychange", function () { if (!document.hidden) { check(); link(); } }); }
+  function go() { check(); link(); setInterval(check, 10000); setInterval(link, 30000); addEventListener("online", check); addEventListener("offline", check); document.addEventListener("visibilitychange", function () { if (!document.hidden) { check(); link(); } }); }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start); else start();
   window.JZLink = { check: check, link: link, sync: sync, ai: ai, aiWhile: aiWhile };
 })();

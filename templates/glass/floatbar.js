@@ -66,7 +66,7 @@
   // the Settings tile clicks the app's [data-settings] button (and hides with it), Log out clicks the app's [data-logout] element (or the function given to JZBar.onLogout; with neither the tile is hidden),
   // the Day/Night and Install tiles carry data-theme-toggle / data-pwa-install themselves. Install shows only in a phone or tablet browser tab, never inside the installed app (installbtn.js decides).
   // The app names the person with JZBar.setUser({ name, initial }); without it the icon is a plain person.
-  var meInfo = { name: "", initial: "" }, logoutFn = null, meBtn = null, meMenu = null;
+  var meInfo = { name: "", initial: "" }, logoutFn = null, meBtn = null, meMenu = null, connOk = null;   // connOk: null until the first check, then true (server answers) / false
   var SVG = function (cls, p) { return '<svg viewBox="0 0 24 24" aria-hidden="true"' + (cls ? ' class="' + cls + '"' : "") + ">" + p + "</svg>"; };
   var PERSON = SVG("", '<circle cx="12" cy="8.5" r="3.8"/><path d="M4.5 20.2a7.5 7.5 0 0 1 15 0"/>');
   var GEAR = '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3h0a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5h0a1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9v0a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>';
@@ -75,7 +75,10 @@
   function paintMe() {
     if (!meBtn) return;
     if (meInfo.initial) { meBtn.textContent = meInfo.initial; meBtn.classList.add("has-initial"); } else { meBtn.innerHTML = PERSON; meBtn.classList.remove("has-initial"); }
-    meBtn.title = meInfo.name || "Account"; meBtn.setAttribute("data-hint", (meInfo.name ? meInfo.name + " · " : "") + "Account menu"); meBtn.setAttribute("aria-label", meInfo.name ? "Account: " + meInfo.name : "Account");
+    var dot = document.createElement("span"); dot.className = "jz-dot"; meBtn.appendChild(dot);
+    var cs = connOk === null ? "" : connOk ? " · Connected" : " · Can't reach the server";
+    meBtn.title = meInfo.name || "Account"; meBtn.setAttribute("data-hint", (meInfo.name ? meInfo.name + " · " : "") + "Account menu" + cs); meBtn.setAttribute("aria-label", (meInfo.name ? "Account: " + meInfo.name : "Account") + cs);
+    meBtn.setAttribute("data-conn", connOk === null ? "" : connOk ? "ok" : "down");
     syncMe();
   }
   function syncMe() {
@@ -153,7 +156,9 @@
   document.addEventListener("mouseout", function (e) { if (hintFor && !(e.relatedTarget && hintFor.contains(e.relatedTarget))) hideHint(); });
   document.addEventListener("click", hideHint, true); document.addEventListener("keydown", hideHint, true); window.addEventListener("scroll", hideHint, true);
   function setUser(u) { u = u || {}; var n = String(u.name || "").trim(); meInfo = { name: n, initial: String(u.initial || n.charAt(0) || "").trim().charAt(0).toUpperCase() }; paintMe(); }
+  // Connected dot on the profile icon: green = the app's server answered the last check, red = it did not, grey = not checked yet. linkstatus.js checks the server every 10 s and reports here.
+  function setConn(ok) { var v = ok === null || ok === undefined ? null : !!ok; if (v === connOk) return; connOk = v; paintMe(); }
   function onLogout(fn) { logoutFn = typeof fn === "function" ? fn : null; syncMe(); }
-  window.JZBar = { setHome: setHome, closeMenu: closeMenu, setUser: setUser, onLogout: onLogout, closeAccount: closeMe };
+  window.JZBar = { setHome: setHome, closeMenu: closeMenu, setUser: setUser, onLogout: onLogout, closeAccount: closeMe, setConn: setConn };
   window.JZTheme = { set: set, effective: effective, paint: paint };
 })();
