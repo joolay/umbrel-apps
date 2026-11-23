@@ -235,3 +235,5 @@ body{overscroll-behavior-y:none}
 .audit-tbl th,.audit-tbl td{white-space:nowrap}.audit-tbl .clip{display:inline-block;max-width:240px;overflow:hidden;text-overflow:ellipsis;vertical-align:bottom}
 
 .grp{margin:18px 4px 8px;font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}.routedown{margin-top:10px;padding-top:10px;border-top:1px solid var(--line,rgba(128,128,128,.25))}.routedown p{margin:0 0 8px}
+
+.dock[hidden]{display:none}
