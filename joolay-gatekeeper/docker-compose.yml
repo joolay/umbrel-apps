@@ -1,0 +1,32 @@
+# Gatekeeper: the gate in front of the apps on this Umbrel (JoolzApp sign-in + per-app access, layered behind TSDProxy).
+# Source: src/gatekeeper in this repo (built by .github/workflows/build-images.yml).
+# Keep the image tag equal to `version` in umbrel-app.yml.
+services:
+  app_proxy:
+    environment:
+      APP_HOST: joolay-gatekeeper_web_1
+      APP_PORT: 3000
+      # Gatekeeper signs people in itself (JoolzApp account) and only the admin may change anything, so Umbrel's login is not stacked on top.
+      PROXY_AUTH_ADD: "false"
+
+  web:
+    image: ghcr.io/joolay/gatekeeper:1.0.0
+    restart: on-failure
+    stop_grace_period: 10s
+    # Reaches Portal Admin's apps-only port (3899) and the other apps' ports on this Umbrel.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    # TSDProxy sends the names that should be protected to this port (3921). The label below also gives Gatekeeper's own admin page a tailnet name (not public).
+    ports:
+      - "3921:3000"
+    labels:
+      tsdproxy.enable: "true"
+      tsdproxy.name: "gatekeeper"
+      tsdproxy.port.1: "443/https:3921/http, no_autodetect"
+    volumes:
+      # gatekeeper.json (the protected apps and the session secret) and pocketbase.env (this app's Portal API key, written by Portal Admin).
+      - ${APP_DATA_DIR}/data:/data
+    environment:
+      - POCKETBASE_APP_ID=gatekeeper
+      # Owner-only tool: no icon on the JoolzApp home screen.
+      - JOOLZAPP_DASHBOARD=hidden

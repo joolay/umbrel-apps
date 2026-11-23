@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#334155">
+<link rel="manifest" href="/__gk/manifest.webmanifest">
+<link rel="apple-touch-icon" sizes="180x180" href="/__gk/icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Gatekeeper">
+<link rel="icon" href="/__gk/icon.svg" type="image/svg+xml">
+<script src="/__gk/jz.js"></script>
+<title>Gatekeeper</title>
+<style>
+:root{--accent:#475569;--accent-2:#64748b}
+.gk{max-width:860px;margin:0 auto;padding:16px 16px 60px}
+.gk h1{margin:6px 0 2px;font-size:24px}
+.gk .route{display:grid;grid-template-columns:1fr auto;gap:8px 14px;align-items:center;padding:14px 16px;margin-bottom:10px}
+.gk .route b{font-size:16px}.gk .route .sub{font-size:13px;color:var(--muted);word-break:break-all}
+.gk .opts{display:flex;gap:14px;flex-wrap:wrap;align-items:center}.gk label.sw{display:flex;gap:6px;align-items:center;font-size:14px}
+.gk .add{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;padding:16px}
+.gk .add label{display:grid;gap:4px;font-size:13px;color:var(--muted)}.gk .add input{width:100%}
+.gk .note{font-size:13px;color:var(--muted);line-height:1.5}
+</style>
+</head>
+<body>
+<header class="topbar">
+  <button class="tb-btn" data-home hidden aria-label="Home" title="Home"><svg viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10.5V20h13v-9.5"/><path d="M10 20v-5.5h4V20"/></svg></button>
+  <div class="brand"><span>Gatekeeper</span></div>
+  <span class="tb-gap"></span>
+  <button class="tb-btn" data-pwa-install hidden aria-label="Install app" title="Install app"><svg viewBox="0 0 24 24"><path d="M12 4v10"/><path d="m8 10.5 4 4 4-4"/><path d="M5 17v2.5h14V17"/></svg></button>
+  <button class="tb-btn" data-theme-toggle aria-label="Switch theme"><svg class="i-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z"/></svg><svg class="i-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.5M12 19v2.5M2.5 12H5M19 12h2.5M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8"/></svg></button>
+  <button id="logout" data-logout hidden>Sign out</button>
+</header>
+<main class="gk">
+  <h1>Protected apps</h1>
+  <p class="note">Each app below is opened through Gatekeeper: people sign in with their JoolzApp account, and only those approved for the app (or the admin) get in. In TSDProxy, point the app's name at this app's port (3921) instead of the app.</p>
+  <div id="list"><p class="muted">Loading…</p></div>
+  <h2>Add an app</h2>
+  <form id="add" class="card add">
+    <label>Name (first part of the Tailscale address)<input name="name" placeholder="stremio" required pattern="[a-z0-9][a-z0-9-]*" autocapitalize="none"></label>
+    <label>App id (as in Portal Admin)<input name="slug" list="apps" placeholder="stremio" required autocapitalize="none"><datalist id="apps"></datalist></label>
+    <label>Where the app answers<input name="upstream" placeholder="http://host.docker.internal:8888" required autocapitalize="none"></label>
+    <label class="sw" style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" name="adminOnly" style="width:auto"> Admin only</label>
+    <div style="align-self:end"><button class="btn primary">Add</button></div>
+  </form>
+  <p class="error" id="err" hidden></p>
+</main>
+<script>
+(function(){
+  var $=function(s){return document.querySelector(s)}, esc=function(s){return String(s).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})};
+  function err(m){var e=$('#err'); e.textContent=m||''; e.hidden=!m;}
+  function api(m,p,b){return fetch(p,{method:m,headers:{'content-type':'application/json'},body:b?JSON.stringify(b):undefined}).then(function(r){return r.json().catch(function(){return{}}).then(function(j){if(r.status===401){location.replace('/__gk/login?next=/');throw new Error('sign in');} if(!r.ok) throw new Error(j.message||'That did not work.'); return j;});});}
+  function draw(d){
+    $('#apps').innerHTML=(d.apps||[]).map(function(a){return '<option value="'+esc(a.slug)+'">'+esc(a.name)+'</option>'}).join('');
+    $('#list').innerHTML=d.routes.length?d.routes.map(function(r){return '<div class="card route"><div><b>'+esc(r.name)+'</b> <span class="chip">'+esc(r.slug)+'</span>'+(r.adminOnly?' <span class="chip">admin only</span>':'')+(r.enabled?'':' <span class="chip">paused</span>')+'<div class="sub">'+esc(r.upstream)+'</div></div><div class="opts">'+
+      '<label class="sw"><input type="checkbox" data-a="admin" data-n="'+esc(r.name)+'"'+(r.adminOnly?' checked':'')+'> Admin only</label>'+
+      '<label class="sw"><input type="checkbox" data-a="on" data-n="'+esc(r.name)+'"'+(r.enabled?' checked':'')+'> On</label>'+
+      '<button class="btn" data-a="rm" data-n="'+esc(r.name)+'">Remove</button></div></div>';}).join(''):'<div class="card route"><span class="muted">Nothing protected yet. Add the first app below.</span></div>';
+    window.__routes=d.routes;
+  }
+  function load(){return api('GET','/__gk/api/routes').then(draw).catch(function(e){ if(e.message!=='sign in') err(e.message); });}
+  $('#list').onchange=$('#list').onclick=function(e){var t=e.target.closest('[data-a]'); if(!t||(e.type==='click'&&t.type==='checkbox')) return; var r=(window.__routes||[]).filter(function(x){return x.name===t.dataset.n})[0]; if(!r) return; err('');
+    var p; if(t.dataset.a==='rm'){ if(!confirm('Stop protecting '+r.name+'? It will no longer be reachable through Gatekeeper.')) return; p=api('POST','/__gk/api/routes',{action:'remove',name:r.name}); }
+    else { var n=Object.assign({},r); if(t.dataset.a==='admin') n.adminOnly=t.checked; else n.enabled=t.checked; p=api('POST','/__gk/api/routes',{route:n}); }
+    p.then(draw).catch(function(x){err(x.message)});};
+  $('#add').onsubmit=function(e){e.preventDefault(); err(''); var f=e.target; api('POST','/__gk/api/routes',{route:{name:f.name.value,slug:f.slug.value,upstream:f.upstream.value,adminOnly:f.adminOnly.checked}}).then(function(d){draw(d);f.reset();}).catch(function(x){err(x.message)});};
+  fetch('/__gk/me').then(function(r){ if(r.status===401){location.replace('/__gk/login?next=/');return null;} return r.json();}).then(function(me){ if(!me) return;
+    if(window.JZBar) JZBar.setUser({name:me.name||me.email}); if(!me.admin){ $('#list').innerHTML='<div class="card route"><span class="muted">This page is for the admin.</span></div>'; $('#add').hidden=true; return; } load(); });
+})();
+</script>
+</body></html>

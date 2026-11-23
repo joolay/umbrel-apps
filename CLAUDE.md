@@ -144,6 +144,13 @@ fetch `status/app-updater.json` / `status/services-manager.json` / `status/kiosk
 A new owner-only app that should be monitorable: copy `status-feed.js`, call it with a `getPayload` that returns useful, secret-free state, declare `POCKETBASE_APP_ID`, add it to the notes here.
 
 
+## Gatekeeper (`src/gatekeeper`, store app `joolay-gatekeeper`, port 3921, owner-only, `JOOLZAPP_DASHBOARD=hidden`)
+The gate in front of the apps, **layered behind an unmodified TSDProxy** (TSDProxy keeps the Tailscale names and Funnel and stays on its automatic updates). A protected app's TSDProxy name is pointed at Gatekeeper (port 3921) instead of the app;
+Gatekeeper reads the name (`X-Forwarded-Host` / `Host`, first label) -> a route in `<data>/gatekeeper.json` (`name`, `slug`, `upstream`, `adminOnly`, `enabled`), makes the person sign in with their JoolzApp account (Portal API `login`), asks Portal Admin `gate.can(userId, slug)`
+(Gatekeeper's key only: the same `portal.access` rules apps follow, plus the app's on/off switch; admins open everything; fails closed), then proxies (HTTP and WebSockets) with the gate's own cookie removed and `X-Gatekeeper-User` / `X-Gatekeeper-Admin` added.
+It runs beside the current routes: nothing changes until a name is pointed at it. Not in v1: Tailscale tag upkeep, the Umbrel-password rule for Umbrel's own dashboard, the Community Apps admin-only list. Sign-in is per name (a cookie on each name) until a cross-name hand-off is added.
+Portal Admin is also published on the tailnet (`portaladmin`, port 3909, never Funnel); it signs in with the PocketBase admin login as before.
+
 ## Port Master (formerly Routing Reporter): monitoring access routes (LAN, Tailscale, Public)
 `src/routing-reporter` (store app `joolay-routing-reporter`, port 3906, owner-only, `JOOLZAPP_DASHBOARD=hidden`) reads every installed app's manifest and compose file, checks each app's LAN, Tailscale-IP
 and TSDProxy (Funnel = Public) route from inside the Umbrel, and sends the report to Portal Admin (`publishRoutes` in the Portal API, kept by `src/portal-admin/routes.js`).

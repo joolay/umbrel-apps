@@ -26,6 +26,7 @@ icons={
  'project-tracker':('#b45309','#f59e0b',f'<g {W} stroke-width="24"><path d="M146 184h128M146 256h128M146 328h128"/><path d="M352 330V190M312 228l40-40 40 40"/></g>'),
  'shutterworth':('#0b6b4f','#3ccb95',f'<g {W} stroke-width="24"><path d="M130 190v-60h60M322 130h60v60M130 322v60h60M322 382h60v-60"/></g><g transform="rotate(-35 256 256)"><path fill="#fff" fill-rule="evenodd" d="M168 256l46-52h108a22 22 0 0 1 22 22v60a22 22 0 0 1-22 22H214zM196 256a12 12 0 1 0 24 0a12 12 0 1 0-24 0z"/></g>'),
  'theme-editor':('#7c3aed','#f472b6',f'<g {W} stroke-width="24"><path d="M256 138c-70 0-122 50-122 112 0 60 46 124 112 124 30 0 34-22 18-40-14-16-4-36 20-36h46c40 0 68-26 68-62 0-58-60-98-142-98z"/></g><g fill="#fff"><circle cx="196" cy="226" r="20"/><circle cx="256" cy="190" r="20"/><circle cx="318" cy="226" r="20"/><circle cx="188" cy="296" r="20"/></g>'),
+ 'gatekeeper':('#334155','#64748b',f'<g transform="translate(124 128) scale(11)"><g {W} stroke-width="2.36"><path d="M5 20V9.5a7 7 0 0 1 14 0V20"/><path d="M5 20h14M9.5 20v-6.2a2.5 2.5 0 0 1 5 0V20"/></g></g>'),
  'kiosk-manager':('#be123c','#fb7185',f'<g {W} stroke-width="24"><rect x="126" y="150" width="260" height="170" rx="28"/><path d="M256 320v46M196 366h120"/></g>'),
 }
 def run(*a): subprocess.run(a,check=True)
@@ -71,7 +72,7 @@ TOOLS={
 for _k,(_a,_b,_g) in TOOLS.items(): special['tool-'+_k]=(_a,_b,line24(_g,10.5,4),[f'src/portal-admin/public/icons/{_k}.svg'],None)
 # shortcuts to the other owner-only apps reuse each app's own icon; Gatekeeper has no app yet, so its icon is defined here
 for _a in ('services-manager','kiosk-manager','routing-reporter','app-updater'): special['shortcut-'+_a]=(icons[_a][0],icons[_a][1],icons[_a][2],[f'src/portal-admin/public/icons/{_a}.svg'],None)
-special['gatekeeper']=('#334155','#64748b',line24('<path d="M5 20V9.5a7 7 0 0 1 14 0V20"/><path d="M5 20h14M9.5 20v-6.2a2.5 2.5 0 0 1 5 0V20"/>',11,4),['src/portal-admin/public/icons/gatekeeper.svg'],None)
+special['shortcut-gatekeeper']=('#334155','#64748b',line24('<path d="M5 20V9.5a7 7 0 0 1 14 0V20"/><path d="M5 20h14M9.5 20v-6.2a2.5 2.5 0 0 1 5 0V20"/>',11,4),['src/portal-admin/public/icons/gatekeeper.svg'],None)
 
 def pngs(pub,c1):
     run('rsvg-convert','-w','180','-h','180',f'{pub}/icon.svg','-o',f'{pub}/icon-180.png')
