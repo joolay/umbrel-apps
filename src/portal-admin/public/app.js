@@ -1290,7 +1290,7 @@ async function loadAppearance() {
     applyBg(v('pref.background'), v('pref.backgroundMotion'));
   } catch { /* keep the default backdrop */ }
 }
-async function viewMe(tab) {
+async function viewMe() {
   const uid = selfId() || state.uid;
   const [rows, reqs] = await Promise.all([
     listAll('portal_settings', { filter: `scope = "user" && user = ${fq(uid)} && app = "" && key ~ "pref."` }),
@@ -1330,7 +1330,6 @@ async function viewMe(tab) {
     else if (val !== '') cur[key] = await api('POST', '/api/collections/portal_settings/records', { scope: 'user', user: uid, app: '', key: 'pref.' + key, value: val, secret: false });
   };
   profilePane(uid);
-  if (['prefs', 'profile', 'ai', 'quick', 'account'].includes(tab)) { showTab(tab); if (tab === 'quick') qaPane($('#pane-quick')); if (tab === 'ai') aiPane($('#pane-ai')); }   // opened from a Settings tile
   $('#prefs').onsubmit = guard(async (e) => {
     e.preventDefault();
     for (const [key] of PREFS) {
@@ -1533,8 +1532,6 @@ const GRADS = [['#5b8cff', '#7c5cf0'], ['#fb923c', '#ec4899'], ['#10b981', '#0ea
 const hashN = (s) => { let h = 0; for (const c of String(s)) h = (h * 31 + c.charCodeAt(0)) >>> 0; return h; };
 const GL = {
   family: '<path d="M3.5 11.2 12 4l8.5 7.2"/><path d="M5.8 9.8V20h12.4V9.8"/><path d="M12 18c-2.6-1.7-3.9-3.1-3.9-4.7a2.1 2.1 0 0 1 3.9-1.1 2.1 2.1 0 0 1 3.9 1.1c0 1.6-1.3 3-3.9 4.7z"/>',   // a home with a heart: your household
-  prefs: '<path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/>',
-  ai: '<path d="M12 3.5l1.7 4.8 4.8 1.7-4.8 1.7L12 16.5l-1.7-4.8L5.5 10l4.8-1.7z"/><path d="M18.5 15.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z"/>',
   me: '<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>',   // a gear: settings
   admin: '<path d="M12 3.2 5 5.8v5.6c0 4.3 2.8 7.6 7 9.4 4.2-1.8 7-5.1 7-9.4V5.8z"/><path d="m9 12 2.2 2.2 4-4.2"/>',   // a shield with a tick: the admin's door
   overview: '<rect x="4" y="4" width="7" height="7" rx="2"/><rect x="13" y="4" width="7" height="7" rx="2"/><rect x="4" y="13" width="7" height="7" rx="2"/><rect x="13" y="13" width="7" height="7" rx="2"/>',
@@ -1559,10 +1556,6 @@ const ADMIN_TOOLS = [
   ['overview', 'Overview', ['#5b8cff', '#7c5cf0']], ['global', 'Global settings', ['#94a3b8', '#475569']], ['apps', 'Apps', ['#a855f7', '#6366f1']],
   ['users', 'Users', ['#10b981', '#0ea5e9']], ['requests', 'Access requests', ['#f43f5e', '#fb923c']], ['cleanup', 'Cleanup', ['#14b8a6', '#22c55e']],
   ['paywall', 'Paid apps', ['#22c55e', '#0ea5e9']], ['keys', 'App keys', ['#f59e0b', '#ef4444']], ['joolzapps', 'JoolzApp apps', ['#0f766e', '#2dd4bf']], ['names', 'App names', ['#06b6d4', '#6366f1']], ['audit', 'Audit log', ['#eab308', '#f97316']], ['changes', 'Changes', ['#8b5cf6', '#ec4899']],
-];
-const ACCOUNT_TILES = [   // [tab in My settings, name, glyph, gradient]: the Portal Admin home shows these instead of one Settings tile
-  ['prefs', 'Preferences', 'prefs', ['#94a3b8', '#475569']], ['profile', 'Profile', 'users', ['#10b981', '#0ea5e9']], ['ai', 'AI', 'ai', ['#a855f7', '#ec4899']],
-  ['quick', 'Quick Access', 'keys', ['#f59e0b', '#ef4444']], ['account', 'Delete account', 'cleanup', ['#f43f5e', '#9f1239']]
 ];
 const ADMIN_SHORTCUTS = [   // [slug, name, port, gradient, hint]; ports are the store ports in each app's umbrel-app.yml (Gatekeeper: not built yet)
   ['services-manager', 'Services Manager', 3891, ['#0ea5e9', '#6366f1'], 'Looks after the Umbrel services'],
@@ -1614,7 +1607,6 @@ async function homeModel() {
   const names = {}; if (nameSrc && typeof nameSrc.names === 'object' && nameSrc.names) for (const [k, v] of Object.entries(nameSrc.names)) { const c = cleanName(v); if (c && /^[a-z0-9][a-z0-9_-]{0,60}$/.test(k)) names[k] = c; }
   const dsrc = sl && sl.layout && sl.layout.descs ? sl.layout.descs : {};
   apps.forEach((a) => { if (dsrc[a.slug]) a.description = String(dsrc[a.slug]); const nm = names[a.slug] || a.name; items['app:' + a.slug] = { id: 'app:' + a.slug, kind: 'app', name: nm, orig: a.name, app: a, grad: GRADS[hashN(a.slug) % GRADS.length], letter: (nm || '?').trim().charAt(0).toUpperCase(), ok: allowed(a.slug) }; });
-  if (onlyTools && selfId()) for (const [k, name, glyph, g] of ACCOUNT_TILES) items['set:' + k] = { id: 'set:' + k, kind: 'sys', name, glyph, grad: g, href: '#/me/' + k };   // Portal Admin: each part of Settings is its own tile, no dock
   if (onlyTools) for (const [k, name, g] of ADMIN_TOOLS) items['tool:' + k] = { id: 'tool:' + k, kind: 'sys', name, glyph: k, grad: g, href: '#/' + k, badge: k === 'requests' ? pend : 0 };
   if (!isAdmin || selfId()) {
     if (!onlyTools) items['sys:family'] = { id: 'sys:family', kind: 'sys', name: 'Family', glyph: 'family', img: 'icons/family.svg', grad: ['#fb7185', '#f59e0b'], href: '#/family' };   // Family belongs to the JoolzApp Dashboard
@@ -2010,7 +2002,7 @@ function setBar(view) {
   $('#tb-back').hidden = home; $('#tb-brand').hidden = !home; $('#tb-title').hidden = home;
   $('#tb-title').textContent = VIEW_TITLES[view] || '';
   window.JZBar && JZBar.setUser({ name: state.actor });   // the profile icon (account menu) comes from the shared template
-  $('#tb-settings').hidden = isAdminRole() && !selfId();   // the Settings screen belongs to a JoolzApp account
+  $('#tb-settings').hidden = adminMode() || (isAdminRole() && !selfId());   // account Settings belong to the JoolzApp Dashboard, not Portal Admin   // the Settings screen belongs to a JoolzApp account
   if (!home) { setEditing(false); $('#tb-done').hidden = true; $('#tb-view').hidden = true; } 
   $('#tb-view').hidden = !home || editing; renderTicker();
 }
