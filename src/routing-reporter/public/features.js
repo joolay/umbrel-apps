@@ -20,7 +20,7 @@ window.PM_FEATURES = [
   ]},
   { g: "Proposed", items: [
     { t: "Login for added apps", s: "proposed", d: "Now Gatekeeper's job (it checks the JoolzApp account and the per-app access in front of the app). Port Master only points the app's name at it." },
-    { t: "Tailscale tag upkeep", s: "proposed", d: "Port Master keeps the Tailscale tag on every app and dashboard name, so routing stays in one place and Gatekeeper only does access control. Waiting for which tag to use and where it is applied." },
+    { t: "Tailscale name upkeep", s: "proposed", d: "Port Master keeps the Tailscale names (TSDProxy names) of every app and dashboard, and points a name at Gatekeeper when an app is protected, so routing stays in one place and Gatekeeper only does access control. Waiting for how names are chosen and whether Port Master creates or only reports them." },
     { t: "Access denied page instead of nothing", s: "proposed", d: "For apps published through TSDProxy's list file (like OpenClaw), point the address at a small Access denied page. Not possible for apps whose route comes from their own compose labels." },
     { t: "Switch LAN and Tailscale address with a firewall", s: "proposed", d: "Needs a root-level helper on the Umbrel and the rules re-applied after a reboot. Higher risk of locking yourself out, so only with your go-ahead." },
     { t: "Schedules", s: "proposed", d: "For example, Public off from 23:00 to 05:00, or off whenever nobody has used the app for a week." },
