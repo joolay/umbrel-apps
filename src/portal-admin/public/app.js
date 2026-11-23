@@ -143,6 +143,9 @@ async function ensureSchema() {
 
 /* ---------- Auth ---------- */
 async function boot() {
+  // Back from Google: google-callback.html finished the sign-in with PocketBase and left the result for this tab.
+  { let g = null; try { g = JSON.parse(store.get('pa.goauth') || 'null'); store.set('pa.goauth', null); } catch {}
+    if (g && g.token) { state.pid = ''; state.pidTried = false; Object.assign(state, { token: g.token, actor: g.email, role: 'user', uid: g.id }); store.lset('pa.remember', '1'); saveSession(true); qaMarkSignedIn(); location.hash = '#/me'; return showShell(); } }
   $('#login-remember').checked = store.lget('pa.remember') === '1';
   $('#login-email').value = store.lget('pa.email');
   if (resetToken()) return showReset();
@@ -173,7 +176,21 @@ async function boot() {
   if (state.token) { try { await api('GET', '/api/collections/portal_apps/records?perPage=1').catch((e) => { if (e.status !== 404) throw e; }); return showShell(); } catch {} }
   showLogin();
 }
-function showLogin() { qaLoginButton(); $('#shell').classList.add('hidden'); $('#reset').classList.add('hidden'); $('#signup').classList.add('hidden'); $('#login').classList.remove('hidden'); }
+// "Continue with Google": shown only when PocketBase has Google switched on. The whole page goes to Google and comes back to google-callback.html
+// (works in an installed app too, where pop-ups do not).
+async function googleButton() {
+  const b = $('#login-google'); if (!b || location.protocol !== 'https:') return;
+  try {
+    const m = await api('GET', `/api/collections/${state.usersColl}/auth-methods`), g = ((m.oauth2 && m.oauth2.providers) || []).find((p) => p.name === 'google');
+    if (!g || !(m.oauth2 && m.oauth2.enabled !== false)) return;
+    b.classList.remove('hidden');
+    b.onclick = () => {
+      store.lset('pa.gauth', JSON.stringify({ state: g.state, verifier: g.codeVerifier, coll: state.usersColl, at: Date.now() }));
+      location.href = g.authURL + encodeURIComponent(location.origin + '/google-callback.html');
+    };
+  } catch { /* no Google: the button stays hidden */ }
+}
+function showLogin() { googleButton(); qaLoginButton(); $('#shell').classList.add('hidden'); $('#reset').classList.add('hidden'); $('#signup').classList.add('hidden'); $('#login').classList.remove('hidden'); }
 function resetToken() { const m = location.hash.match(/^#\/(?:reset|auth\/confirm-password-reset)\/([^/?]+)/); return m ? decodeURIComponent(m[1]) : ''; }
 $('#login-signup').onclick = (e) => { e.preventDefault(); $('#login').classList.add('hidden'); $('#signup').classList.remove('hidden'); $('#signup-err').textContent = ''; $('#signup-email').value = $('#login-email').value; $('#signup-email').focus(); };
 $('#signup-ai-prov').innerHTML = AI_PROVIDERS.map(([v, l]) => `<option value="${v}">${l}</option>`).join('');
@@ -2045,6 +2062,17 @@ async function viewHome() {
 }
 
 let chgNotes = { id: '', notes: [] };
+// "Sign in with Google" for the JoolzApp account. The secret is sent once to PocketBase and never kept or shown here.
+function googleCard(g) {
+  if (!g) return '';
+  return `<div class="card"><div class="row spread"><h2>Sign in with Google</h2>${g.on ? '<span class="chip ok">on</span>' : '<span class="chip warn">off</span>'}</div>
+    <p class="muted small">Lets people use their Google account for the JoolzApp account. Paste the client ID and secret from your Google Cloud OAuth client. They go straight to PocketBase and are not stored here.</p>
+    <p class="small">Google must have this redirect address on file: <code>${esc(g.redirect || 'set the portal.url global setting to show it')}</code></p>
+    <label class="small">Client ID<input id="g-id" type="text" autocomplete="off" spellcheck="false" value="${esc(g.clientId || '')}" placeholder="123456-abc.apps.googleusercontent.com"></label>
+    <label class="small">Client secret<input id="g-secret" type="password" autocomplete="off" spellcheck="false" placeholder="${g.on ? 'Saved. Paste a new one only to replace it' : 'GOCSPX-…'}"></label>
+    <div class="row"><button class="btn primary" data-g-save>${g.on ? 'Update Google sign-in' : 'Switch on Google sign-in'}</button>${g.on ? '<button class="btn" data-g-off>Switch off</button>' : ''}</div></div>`;
+}
+
 async function viewChanges() {
   let r;
   try { r = await Promise.race([acctFetch('/admin/changes'), new Promise((_, rej) => setTimeout(() => rej(new Error('Portal Admin did not answer in time.')), 60000))]); }
@@ -2054,12 +2082,23 @@ async function viewChanges() {
   const open = r.changes.filter((c) => c.status !== 'done'), archived = r.changes.filter((c) => c.status === 'done');
   const when = (id) => { const h = r.history.find((x) => x.id === id && x.ok); return h ? fmtDay(h.at) : ''; };
   const justDone = chgNotes.notes && chgNotes.notes.length ? r.changes.find((c) => c.id === chgNotes.id) : null;
-  main().innerHTML = `<h1>PocketBase changes</h1><p class="sub">Changes that ship with Portal Admin, or arrive through your change inbox. Each one shows exactly what it will do to PocketBase. Nothing happens until you press Apply, and applying twice is harmless. Applied changes move to the Archive.</p>
+  let g = null; try { g = await acctFetch('/admin/google-signin'); } catch {}
+  main().innerHTML = `<h1>PocketBase changes</h1>${googleCard(g)}<p class="sub">Changes that ship with Portal Admin, or arrive through your change inbox. Each one shows exactly what it will do to PocketBase. Nothing happens until you press Apply, and applying twice is harmless. Applied changes move to the Archive.</p>
     ${justDone ? `<div class="card"><h2>${esc(justDone.title)}</h2><span class="chip ok">applied</span>${chgNotes.notes.map((n) => `<p class="muted small">${esc(n)}</p>`).join('')}</div>` : ''}
     ${open.map((c) => `<div class="card" data-id="${esc(c.id)}"><div class="row spread"><h2>${esc(c.title)}</h2>${chip(c)}</div><p class="muted small">${esc(c.summary)}</p>
       ${c.error ? `<p class="error">${esc(c.error)}</p>` : `<ul>${c.plan.map((t) => `<li>${esc(t)}</li>`).join('')}</ul><button class="btn primary" data-apply>Apply ${c.plan.length} change${c.plan.length === 1 ? '' : 's'}</button>`}</div>`).join('') || '<p class="muted">No changes are waiting.</p>'}
     ${archived.length ? `<details class="card"><summary><b>Archive</b> <span class="muted small">(${archived.length} applied)</span></summary><table><tbody>${archived.map((c) => `<tr><td>${esc(c.title)}</td><td class="small muted" style="white-space:nowrap">${esc(when(c.id))}</td><td><span class="chip ok">done</span></td></tr>`).join('')}</tbody></table></details>` : ''}`;
   main().onclick = guard(async (e) => {
+    const gb = e.target.closest('[data-g-save],[data-g-off]');
+    if (gb) {
+      gb.disabled = true;
+      try {
+        if (gb.hasAttribute('data-g-off')) { await acctFetch('/admin/google-signin', { off: true }); await audit('pocketbase.google-signin', 'off', {}); toast('Google sign-in switched off'); }
+        else { const id = $('#g-id').value, sec = $('#g-secret').value; await acctFetch('/admin/google-signin', { clientId: id, clientSecret: sec }); $('#g-secret').value = ''; await audit('pocketbase.google-signin', 'on', { clientId: id.trim() }); toast('Google sign-in switched on'); }
+        await viewChanges();
+      } catch (er) { gb.disabled = false; toast(er.message, true); }
+      return;
+    }
     const b = e.target.closest('[data-apply]'); if (!b) return; const card = b.closest('.card'); b.disabled = true; b.textContent = 'Applying…';
     const j = await acctFetch('/admin/changes/apply', { id: card.dataset.id });
     await audit('pocketbase.change', card.dataset.id, { did: j.did, left: j.left });
