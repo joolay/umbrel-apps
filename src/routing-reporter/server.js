@@ -3,7 +3,7 @@
 // (Portal API `publishRoutes`, which feeds Portal Admin's "JoolzApp apps" page) and to the status feed (so a problem can be diagnosed without opening anything).
 // Node built-ins only. Owner-only: Umbrel's login stays in front of it.
 const http = require('http'), fs = require('fs'), path = require('path');
-const { applyControl, cleanPaused } = require('./control'), { makeMonitor } = require('./checker'), { makeRegistry } = require('./official'), { findPortClashes } = require('./clashes');
+const names = require('./names'), { applyControl, cleanPaused } = require('./control'), { makeMonitor } = require('./checker'), { makeRegistry } = require('./official'), { findPortClashes } = require('./clashes');
 
 const PORT = Number(process.env.PORT) || 3000, DATA_DIR = process.env.DATA_DIR || '/data', PUBLIC_DIR = path.join(__dirname, 'public');
 const APP_DIR = process.env.UMBREL_APP_DATA || '/umbrel-app-data', CONFIG_FILE = path.join(DATA_DIR, 'config.json');
@@ -53,7 +53,39 @@ const clean = (b, old) => {
 };
 
 /* ---------- checking and reporting ---------- */
-const monitor = makeMonitor({ dir: APP_DIR, listFile: process.env.TSDPROXY_LIST || '/tsdproxy-config/joolz-published.yaml', getConfig: () => config });
+const NAMES_FILE = path.join(TSD_DIR, names.LIST), TSD_YAML = path.join(TSD_DIR, 'tsdproxy.yaml');
+const monitor = makeMonitor({ dir: APP_DIR, listFile: [{ file: process.env.TSDPROXY_LIST || path.join(TSD_DIR, 'joolz-published.yaml'), source: 'list' }, { file: NAMES_FILE, source: 'names' }], getConfig: () => config });
+
+/* ---------- Tailscale name upkeep (names.js): create, modify and fix the names Port Master gives, kept in TSDProxy's list file joolz-names.yaml ---------- */
+let namesState = { ok: null, error: '', changes: [], at: 0, declared: null };
+const readText = (f) => { try { return fs.readFileSync(f, 'utf8'); } catch { return null; } };
+const atomic = (f, txt, mode) => { fs.writeFileSync(f + '.tmp', txt, mode ? { mode } : undefined); fs.renameSync(f + '.tmp', f); };
+// Makes the list file match what we want. Returns true when the file or TSDProxy's settings changed (the caller then checks again so the new names show up).
+function syncNames() {
+  const apps = monitor.last && monitor.last.apps; if (!apps) return false;
+  const owned = { ...(config.names || {}) };
+  const first = !config.namesAdopted;
+  if (first) { for (const a of apps) if (a.nameSource === 'names' && a.tsdName && !owned[a.id]) owned[a.id] = a.tsdName; config.namesAdopted = true; }
+  if (config.autoNames !== false) for (const a of apps) if (!a.tsdName && !owned[a.id] && !(config.noNames || {})[a.id]) { const n = names.suggest(apps, a.id); if (n) owned[a.id] = n; }
+  const r = names.reconcile(apps, owned);
+  if (JSON.stringify(r.owned) !== JSON.stringify(config.names || {}) || first) { if (Object.keys(r.owned).length) config.names = r.owned; else delete config.names; saveConfig(); }
+  let changed = false, error = '', declared = null;
+  const text = names.listFile(r.entries), cur = readText(NAMES_FILE);
+  try {
+    if ((cur === null && r.entries.length) || (cur !== null && cur !== text)) { atomic(NAMES_FILE, text); changed = true; }
+    if (r.entries.length) {
+      const yaml = readText(TSD_YAML);
+      if (yaml === null) error = "TSDProxy's settings file is not visible to Port Master, so the names list is not switched on yet.";
+      else { const next = names.withList(yaml); declared = next === yaml;
+        if (!declared) { try { fs.writeFileSync(TSD_YAML + '.bak', yaml, { mode: 0o600 }); } catch { /* backup is best effort */ } atomic(TSD_YAML, next, 0o600); declared = true; changed = true;
+          try { fs.writeFileSync(path.join(TSD_DIR, 'restart-tsdproxy'), new Date().toISOString() + '\n'); } catch { error = 'Restart the TSDProxy app once so it reads the names list.'; } } }
+    }
+  } catch (e) { error = "TSDProxy's folder is not writable from Port Master (" + String(e.code || e.message).slice(0, 60) + ')'; }
+  namesState = { ok: !error, error, changes: r.changes.slice(0, 20), at: Date.now(), declared };
+  return changed;
+}
+const namesInfo = () => { const apps = monitor.last ? monitor.last.apps : [], ts = tsdStatus(), live = !!(ts && ts.at && Date.now() - ts.at < 90e3 && ts.api && ts.api.reachable);
+  return { rows: names.review(apps, config.names || {}, live ? ts.proxies || [] : null), auto: config.autoNames !== false, write: namesState, owned: Object.keys(config.names || {}).length }; };
 // The hidden list of official Umbrel store ports (see official.js): fetched about once a week, kept in the data folder, used only to find clashes.
 const registry = makeRegistry({ file: path.join(DATA_DIR, 'official-ports.json'), url: process.env.OFFICIAL_STORE_URL || undefined });
 const officialInfo = () => ({ count: registry.count, at: registry.at, error: registry.error });
@@ -84,7 +116,7 @@ async function portalCall(fn, args) {
 // Tiles on the JoolzApp Store for apps that do not use the JoolzApp account (see src/portal-admin/portalapps.js). Refreshed with every check and after every change.
 let tiles = { items: null, at: 0, error: '' };
 async function refreshTiles() { try { tiles = { items: await portalCall('portalApps.list', []), at: Date.now(), error: '' }; } catch (e) { tiles = { items: tiles.items, at: tiles.at, error: String(e.message || e).slice(0, 160) }; } }
-async function checkNow() { await monitor.run(); await refreshTiles(); const rep = mark(monitor.last); await sendToPortal(rep); return rep; }
+async function checkNow() { await monitor.run(); if (syncNames()) await monitor.run(); await refreshTiles(); const rep = mark(monitor.last); await sendToPortal(rep); return rep; }
 function schedule() { clearTimeout(timer); timer = setTimeout(async () => { try { await checkNow(); } catch (e) { console.error('Check failed:', e.message); } schedule(); }, config.intervalMin * 60e3); if (timer.unref) timer.unref(); }
 // What the status feed carries: states and reasons, never latency (it changes every check and would be a commit every time).
 const feedPayload = async () => {
@@ -98,6 +130,7 @@ const feedPayload = async () => {
   const conflicts = Object.keys(by).filter((p) => by[p].size > 1).map((p) => ({ port: Number(p), apps: [...by[p]] }));
   const t = tsdInfo(), ts = t.status || {};
   return { tsdproxy: { fresh: t.fresh, apiReachable: !!(ts.api && ts.api.reachable), apiError: ts.api && ts.api.error || '', version: ts.api && ts.api.version || ts.container && ts.container.version || '', image: ts.container && ts.container.image || '', updateAvailable: !!(ts.update && ts.update.available), lastUpdate: ts.update && ts.update.last || null, pausedByPortMaster: t.paused, writeError: t.write.error, proxies: (ts.proxies || []).map((p) => ({ name: p.name, status: p.status })) },
+    names: (() => { const n = namesInfo(); return { auto: n.auto, keptByPortMaster: n.owned, withoutName: n.rows.filter((x) => x.state === 'none').length, problems: n.rows.filter((x) => x.state === 'clash' || x.state === 'unregistered').map((x) => ({ app: x.appId, name: x.tsdName, state: x.state })), lastError: n.write.error, fixed: n.write.changes }; })(),
     intervalMin: r.intervalMin, config: r.config, reportedToPortalAdmin: reportState.ok, reportError: reportState.error, routesDown: down, portConflicts: conflicts,
     // Clashes with official Umbrel apps (installed or not): the official app keeps the port, the app listed under change should move (suggestedPort is free). The official list itself is not included, only its size.
     portClashes: clashes().map((c) => ({ port: c.port, keep: c.keep.map((p) => ({ id: p.id, source: p.source, installed: p.installed })), change: c.change.map((p) => ({ id: p.id, source: p.source, kind: p.kind, suggestedPort: p.suggestedPort || null })) })), officialPorts: officialInfo(), ports,
@@ -112,8 +145,8 @@ const server = http.createServer(async (req, res) => {
     const p = decodeURIComponent(new URL(req.url, 'http://x').pathname);
     if (p === '/api/app-config' && req.method === 'GET') { const pl = portalLink(); return send(res, 200, { portalUrl: pl ? pl.url : '' }); }
     if (p === '/api/link' && req.method === 'GET') return send(res, 200, feedHandle ? feedHandle.link() : { state: 'broken', shaking: false, note: 'Not reporting yet.' });
-    if (p === '/api/state' && req.method === 'GET') return send(res, 200, { report: mark(monitor.last), tsd: tsdInfo(), clashes: clashes(), official: officialInfo(), config, portal: { linked: !!portalLink(), ...reportState }, checking: false });
-    if (p === '/api/check' && req.method === 'POST') { const rep = await checkNow(); refreshOfficial(); return send(res, 200, { report: rep, clashes: clashes(), official: officialInfo(), portal: { linked: !!portalLink(), ...reportState } }); }
+    if (p === '/api/state' && req.method === 'GET') return send(res, 200, { report: mark(monitor.last), tsd: tsdInfo(), names: namesInfo(), clashes: clashes(), official: officialInfo(), config, portal: { linked: !!portalLink(), ...reportState }, checking: false });
+    if (p === '/api/check' && req.method === 'POST') { const rep = await checkNow(); refreshOfficial(); return send(res, 200, { report: rep, names: namesInfo(), clashes: clashes(), official: officialInfo(), portal: { linked: !!portalLink(), ...reportState } }); }
     if (p === '/api/portal-app' && req.method === 'POST') {       // put an installed app on the JoolzApp Store (or hide its tile again)
       let b; try { b = JSON.parse((await body(req)) || '{}'); } catch { return send(res, 400, { message: 'Bad request.' }); }
       const a = monitor.last && monitor.last.apps.find((x) => x.id === b.appId);
@@ -131,6 +164,24 @@ const server = http.createServer(async (req, res) => {
       await refreshTiles(); const rep = mark(monitor.last); await sendToPortal(rep); return send(res, 200, { report: rep, tsd: tsdInfo(), portal: { linked: !!portalLink(), ...reportState } });
     }
     if (p === '/api/tsdproxy' && req.method === 'GET') return send(res, 200, tsdInfo());
+    if (p === '/api/names' && req.method === 'GET') return send(res, 200, namesInfo());
+    if (p === '/api/names' && req.method === 'POST') {       // create, rename, remove or auto: the names Port Master keeps in TSDProxy's list
+      let b; try { b = JSON.parse((await body(req)) || '{}'); } catch { return send(res, 400, { message: 'Bad request.' }); }
+      const apps = monitor.last ? monitor.last.apps : [], op = String(b.op || ''), id = String(b.appId || ''), owned = { ...(config.names || {}) };
+      try {
+        if (op === 'create' || op === 'rename') {
+          const a = apps.find((x) => x.id === id); if (!a) return send(res, 404, { message: 'That app is not in the latest check.' });
+          if (op === 'create' && a.tsdName) return send(res, 400, { message: (a.name || a.id) + ' already has the name ' + a.tsdName + '.' });
+          if (config.noNames) { delete config.noNames[id]; if (!Object.keys(config.noNames).length) delete config.noNames; }
+          owned[id] = names.validate(apps, id, b.name !== undefined && String(b.name).trim() ? b.name : names.suggest(apps, id));
+        } else if (op === 'remove') { if (!owned[id]) return send(res, 404, { message: 'Port Master did not give that app a name.' }); delete owned[id]; config.noNames = { ...(config.noNames || {}), [id]: true }; }   // removed by hand: automatic naming leaves it alone
+        else if (op === 'create-all') { delete config.noNames; apps.forEach((a) => { if (!a.tsdName && !owned[a.id]) { const n = names.suggest(apps, a.id); if (n) owned[a.id] = n; } }); }
+        else if (op === 'auto') config.autoNames = !!b.on;
+        else return send(res, 400, { message: 'Unknown change.' });
+      } catch (e) { return send(res, e.status || 400, { message: e.message }); }
+      if (Object.keys(owned).length) config.names = owned; else delete config.names; config.namesAdopted = true; saveConfig();
+      const rep = await checkNow(); return send(res, 200, { report: rep, names: namesInfo(), tsd: tsdInfo(), portal: { linked: !!portalLink(), ...reportState } });
+    }
     if ((p === '/api/route' || p === '/api/proxy') && req.method === 'POST') {       // a tick (route) or a proxy button: turn a route on or off for real where it can be, else just stop counting it
       let b; try { b = JSON.parse((await body(req)) || '{}'); } catch { return send(res, 400, { message: 'Bad request.' }); }
       const proxyName = p === '/api/proxy' ? String(b.name || '').toLowerCase() : (() => { const a = monitor.last && monitor.last.apps.find((x) => x.id === b.appId && x.routes.some((r) => r.key === b.route)); return a && (b.route === 'name' || b.route === 'public') ? a.tsdName : ''; })();

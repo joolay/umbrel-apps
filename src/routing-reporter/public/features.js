@@ -18,10 +18,14 @@ window.PM_FEATURES = [
     { t: "TSDProxy tab", s: "built", d: "Version, image, whether Port Master can control it, every proxy with its state, and Pause or Resume for each." },
     { t: "Version and automatic updates", s: "built", d: "Services Manager checks for a newer image about every 12 hours and installs it in the nightly window (or on Update now in App Updater), putting the old one back if the new one fails. App Updater shows the version." }
   ]},
+  { g: "Tailscale names", items: [
+    { t: "Names by themselves", s: "built", d: "Every app without a name gets one automatically (tailnet only, never public, kept in Port Master's own TSDProxy list file joolz-names.yaml). Remove a name and it stays off for that app; Create brings it back; Settings has Create names for all apps without one." },
+    { t: "Rename and remove", s: "built", d: "Rename a name Port Master gave (checked against every other app) or remove it. Names an app carries in its own settings, or Portal Admin published, are never changed from here." },
+    { t: "Fix by itself", s: "built", d: "Moves a clashing name to a free one, drops entries for apps that are gone or got a name of their own, and writes the list again when it was edited or an app changed port. Also flags a name TSDProxy has not registered." }
+  ]},
   { g: "Proposed", items: [
     { t: "Login for added apps", s: "proposed", d: "Now Gatekeeper's job (it checks the JoolzApp account and the per-app access in front of the app). Port Master only points the app's name at it." },
-    { t: "Tailscale name upkeep", s: "proposed", d: "Port Master keeps the Tailscale names (TSDProxy names) of every app and dashboard, and points a name at Gatekeeper when an app is protected, so routing stays in one place and Gatekeeper only does access control. Waiting for how names are chosen and whether Port Master creates or only reports them." },
-    { t: "Access denied page instead of nothing", s: "proposed", d: "For apps published through TSDProxy's list file (like OpenClaw), point the address at a small Access denied page. Not possible for apps whose route comes from their own compose labels." },
+        { t: "Access denied page instead of nothing", s: "proposed", d: "For apps published through TSDProxy's list file (like OpenClaw), point the address at a small Access denied page. Not possible for apps whose route comes from their own compose labels." },
     { t: "Switch LAN and Tailscale address with a firewall", s: "proposed", d: "Needs a root-level helper on the Umbrel and the rules re-applied after a reboot. Higher risk of locking yourself out, so only with your go-ahead." },
     { t: "Schedules", s: "proposed", d: "For example, Public off from 23:00 to 05:00, or off whenever nobody has used the app for a week." },
     { t: "Alerts when a route goes down", s: "proposed", d: "A notice in the JoolzApp ticker or a push when a route breaks and again when it is back." },

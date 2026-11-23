@@ -10,7 +10,7 @@ services:
       PROXY_AUTH_ADD: "true"
 
   web:
-    image: ghcr.io/joolay/routing-reporter:1.8.0
+    image: ghcr.io/joolay/routing-reporter:1.9.0
     restart: on-failure
     stop_grace_period: 10s
     # Lets the container reach the Umbrel's own ports (the default "LAN" address is the host itself).
@@ -29,7 +29,7 @@ services:
       # Read-only: Umbrel's installed-app folders (umbrel-app.yml and docker-compose.yml) tell it which apps exist, their ports and which are published.
       - ${UMBREL_ROOT}/app-data:/umbrel-app-data:ro
       # TSDProxy's settings folder. Port Master reads its list file (joolz-published.yaml: apps Portal Admin published for us, like OpenClaw) and Services Manager's report
-      # (tsdproxy-status.json), and writes ONE file there, joolz-paused.json (the proxies to pause: that is what the Public and Tailscale-name ticks do).
+      # (tsdproxy-status.json), and writes joolz-paused.json (the proxies to pause: that is what the Public and Tailscale-name ticks do) and joolz-names.yaml (the Tailscale names it gives apps without one). Once, it adds a "lists:" line for that file to tsdproxy.yaml (a .bak copy is kept) and leaves restart-tsdproxy for Services Manager.
       - ${UMBREL_ROOT}/../tsdproxy/config:/tsdproxy-config
     environment:
       # Signs this app in to Portal Admin (it writes data/pocketbase.env after you sign in there) so the report reaches the "JoolzApp apps" page and the status feed.
