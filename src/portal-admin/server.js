@@ -115,12 +115,18 @@ const dns = require('dns');
 const APP_PROXY_HOST = process.env.APP_PROXY_HOST || 'joolay-portal-admin_app_proxy_1';
 const AUTO_LOGIN = !/^(0|false|no|off)$/i.test(String(process.env.AUTO_LOGIN || ''));
 let proxyIps = { at: 0, v: [] };
+let autoWhy = '';   // why the last check said no (shown only to non-public requests, in /config, to help when the admin sign-in stops working)
 async function behindUmbrelLogin(req) {
-  if (!AUTO_LOGIN || req.publicPort || req.portalClientIp || isPublicRequest(req)) return false;
+  if (!AUTO_LOGIN) { autoWhy = 'AUTO_LOGIN is off'; return false; }
+  if (req.publicPort) { autoWhy = 'public port'; return false; }
+  if (req.portalClientIp) { autoWhy = 'portal client'; return false; }
+  if (isPublicRequest(req)) { autoWhy = 'public request'; return false; }
   if (Date.now() - proxyIps.at > 60000) { let v = []; try { v = (await dns.promises.lookup(APP_PROXY_HOST, { all: true })).map((a) => a.address); } catch {} proxyIps = { at: Date.now(), v }; }
   const from = String(req.socket.remoteAddress || '').replace(/^::ffff:/, '');
-  if (!proxyIps.v.includes(from)) return false;
-  const c = pbx.creds(); return !!(c.email && c.pass);
+  if (!proxyIps.v.length) { autoWhy = 'cannot find ' + APP_PROXY_HOST + ' (container name changed?); request came from ' + from; return false; }
+  if (!proxyIps.v.includes(from)) { autoWhy = 'request came from ' + from + ', not from ' + APP_PROXY_HOST + ' (' + proxyIps.v.join(', ') + ')'; return false; }
+  const c = pbx.creds(); if (!(c.email && c.pass)) { autoWhy = 'no saved PocketBase login in Portal Admin'; return false; }
+  autoWhy = ''; return true;
 }
 function isSuperuserToken(auth) {
   try {
@@ -633,7 +639,7 @@ const handle = async (req, res) => {
 
     if (pathname === '/config') {
       if (req.method !== 'GET') return send(res, 405, { message: 'Method not allowed' });
-      return send(res, 200, { pbUrl: currentPbUrl(), locked: true, custom: !!(ENV_PB_URL && normaliseUrl(ENV_PB_URL)), public: isPublicRequest(req), autoLogin: await behindUmbrelLogin(req) });
+      return send(res, 200, { pbUrl: currentPbUrl(), locked: true, custom: !!(ENV_PB_URL && normaliseUrl(ENV_PB_URL)), public: isPublicRequest(req), autoLogin: await behindUmbrelLogin(req), ...(isPublicRequest(req) || !autoWhy ? {} : { autoWhy }) });
     }
     // No second sign-in for the admin: whoever reaches this address has already passed Umbrel's own login (and Tailscale, from outside),
     // so the page is handed an admin session made with the login Portal Admin keeps. Strictly for requests that came through Umbrel's
