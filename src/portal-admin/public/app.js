@@ -458,7 +458,6 @@ async function resolveEffective(appSlug, userId) {
   const all = await listAll('portal_settings', {
     filter: `scope = "global" || (scope = "app" && app = ${fq(appSlug)})${userId ? ` || (scope = "user" && user = ${fq(userId)} && (app = "" || app = ${fq(appSlug)}))` : ''}`,
   });
-  const adminOnly = new Set(aoRows.filter((r) => r.value === true).map((r) => r.app)), apps = (isAdmin || (sl && sl.admin)) ? apps0 : apps0.filter((a) => !adminOnly.has(a.slug));
   const rank = (r) => r.scope === 'global' ? 0 : r.scope === 'app' ? 1 : (r.app ? 3 : 2);
   const names = ['global', 'app', 'user', 'user-app'];
   const eff = {};
@@ -1624,6 +1623,7 @@ async function homeModel() {
   // An admin's Store also has an Admin folder listing the owner-only apps (JOOLZAPP_DASHBOARD=hidden). Everyone else never gets it (the server refuses them too).
   // On the Portal the layout is ONE shared App Store layout that an admin edits and everyone sees (GET /store/layout; saving is admin-only on the server).
   const sl = !onlyTools && selfId() ? await acctFetch('/store/layout').catch(() => null) : null, canEdit = onlyTools ? true : !!(sl && sl.admin), viaStore = !onlyTools;
+  const adminOnly = new Set(aoRows.filter((r) => r.value === true).map((r) => r.app)), apps = (isAdmin || (sl && sl.admin)) ? apps0 : apps0.filter((a) => !adminOnly.has(a.slug));
   const rank = (r) => r.scope === 'global' ? 0 : r.scope === 'app' ? 1 : (r.app ? 3 : 2);
   const allowed = (slug) => {
     if (isAdmin || (sl && sl.admin)) return true;
