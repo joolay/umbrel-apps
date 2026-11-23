@@ -17,15 +17,12 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
-      # The old dashboard port. The dashboard is now the JoolzApp Dashboard app: this port only forwards browsers on the home
-      # network to it (host port 3886), so old bookmarks keep working. It is no longer published through the tunnel.
-      - "3892:3001"
       # Portal API for the apps and for JoolzApp Dashboard (each needs its own key). Not published through the tunnel.
       - "3899:3002"
     volumes:
       - ${APP_DATA_DIR}/data:/data
-      # Umbrel's installed-app folders: umbrel-app.yml and docker-compose.yml are read to detect new apps, and the "Connect" button
-      # writes one file, <app>/data/pocketbase.env, for your own joolay-* apps (after checking a PocketBase superuser login).
+      # Umbrel's installed-app folders: umbrel-app.yml and docker-compose.yml are read to detect new apps, and Portal Admin
+      # writes one file, <app>/data/pocketbase.env, for each new joolay-* app (a limited login and a Portal API key, never the superuser login).
       - ${UMBREL_ROOT}/app-data:/umbrel-app-data
       # TSDProxy's settings folder (~/tsdproxy/config, next to the Umbrel folder). Only the Changes page writes here, to publish third-party apps such as OpenClaw on the tailnet.
       - ${UMBREL_ROOT}/../tsdproxy/config:/tsdproxy-config

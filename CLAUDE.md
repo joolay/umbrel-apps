@@ -26,21 +26,20 @@ so the dashboard UI (`src/portal-admin/public`) exists once and the two apps can
 - `portal.js` holds no PocketBase login and serves only: the static UI, `/pb/*` (people's own calls; admin APIs and superuser tokens refused) and a fixed list of
   routes passed to Portal Admin's apps-only port as `/user/<route>` with the Portal's own Portal API key (`VIA_ADMIN` in `portal.js` = `PORTAL_ROUTES` in `server.js`; keep them equal).
   Portal Admin always treats those as public, user-only requests. A new server route the dashboard needs must be added to both lists.
-- Portal Admin gives the Portal its key by itself (`linkPortal` in `changes.js`), never a superuser or service login, and hides it from app lists, Connect and Changes.
+- Portal Admin gives the Portal its key by itself (`linkPortal` in `changes.js`), never a superuser or service login, and hides it from app lists and Changes.
 
 ## New apps and PocketBase logins (after the security changes)
 Once "Limited login for each app" has been applied in Portal Admin > Changes, a newly installed JoolzApp app is linked automatically within
 30 s (`linkNewApps` in `src/portal-admin/changes.js`): its data folder gets its own limited `app_service` login and a Portal API key, never the
 superuser login. So a new app must work that way from the start: copy `src/jolly-grocer/pocketbase.js` (Portal API hook included), use
 `pb.asApp`/`pb.appFetch` for its own data, and add a Changes card (like `009-app-data-storage.js`) that creates its collections and limits them
-to `@request.auth.collectionName = "app_service" && @request.auth.appId = "<slug>"`. Apps > Connect (superuser) is only for older apps.
+to `@request.auth.collectionName = "app_service" && @request.auth.appId = "<slug>"`. There is no Connect button any more (removed 23/11/2026): an app that is not linked yet is linked by the Changes card "Limited login for each app".
 
 ## JoolzApp-account apps and pocketbase.env
 Any `joolay-*` app that signs people in with the JoolzApp account declares `POCKETBASE_APP_ID=<slug>` in its compose file and reads
-`<app data>/data/pocketbase.env` (copy `src/jolly-grocer/pocketbase.js`, the newest version). Portal Admin writes that file, and only after
-you sign in there: it notices a new app with a data folder but no file (checks every 30 s, and the app must create its data folder on
-startup), opens a sign-in prompt, verifies the PocketBase superuser login, and writes the file for every waiting app. Nothing is stored
-by Portal Admin and an existing file is never overwritten. Apps must fail closed without the file, but must NOT need a restart: while
+`<app data>/data/pocketbase.env` (copy `src/jolly-grocer/pocketbase.js`, the newest version). Portal Admin writes that file by itself: within 30 s of a new app
+getting its data folder (the app must create it on startup) `linkNewApps` gives it a limited `app_service` login and a Portal API key (needs "Limited login for each app"
+applied in Changes; an existing file is never overwritten). Apps must fail closed without the file, but must NOT need a restart: while
 accounts are off, call `pb.reload()` on each request (it re-reads the file, at most every 2 s) and make the waiting page refresh itself.
 
 ## JoolzApp Dashboard is the App Store

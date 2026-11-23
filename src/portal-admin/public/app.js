@@ -352,7 +352,7 @@ window.addEventListener('hashchange', () => { if (resetToken()) return showReset
 function route() {
   let [, view = 'home', arg] = location.hash.split('/');
   if (state.role === 'user') view = (view === 'me' || view === 'family' || view === 'paid' || view === 'qr') ? view : 'home';
-  const v = { home: viewHome, overview: viewOverview, global: viewGlobal, apps: viewApps, users: viewUsers, requests: viewRequests, cleanup: viewCleanup, audit: viewAudit, changes: viewChanges, setup: viewSetup, me: viewMe, family: viewFamily, paywall: viewPaywall, keys: viewKeys, joolzapps: viewJoolzApps, names: viewNames, paid: viewPaid, qr: viewQr }[view] || viewHome;
+  const v = { home: viewHome, overview: viewOverview, global: viewGlobal, apps: viewApps, users: viewUsers, requests: viewRequests, cleanup: viewCleanup, audit: viewAudit, changes: viewChanges, me: viewMe, family: viewFamily, paywall: viewPaywall, keys: viewKeys, joolzapps: viewJoolzApps, names: viewNames, paid: viewPaid, qr: viewQr }[view] || viewHome;
   if (!v || v === viewHome) view = 'home';
   setBar(view); $('#sheet').open && $('#sheet').close();
   main().innerHTML = '<p class="muted">Loading…</p>';
@@ -495,7 +495,8 @@ async function viewOverview() {
 async function viewGlobal() {
   if (await needSetup()) return;
   main().innerHTML = `<h1>Global settings</h1><p class="sub">Defaults applied to every app and user. Apps and users can override them.</p>
-    <div class="card"><div id="ed"></div></div>`;
+    <div id="acct-ctl"></div><div class="card"><div id="ed"></div></div>`;
+  accountControls($('#acct-ctl')).catch(() => {});
   await settingsEditor($('#ed'), { scope: 'global' });
 }
 
@@ -596,43 +597,11 @@ async function syncSchemas(apps) {
   return applied;
 }
 
-/* ---------- First-time connect: sign in once, then the app gets its PocketBase login ---------- */
-// Nothing is remembered: the superuser login you type here is checked, written into each app's own data folder, and forgotten.
-const connectNeeded = (found) => found && found.available ? found.apps.filter((a) => /^joolay-/.test(a.id) && a.slug && a.slug !== 'portal' && a.env === 'missing') : [];
-const connectSkipped = new Set();
-function promptConnect(apps, force) {
-  const todo = apps.filter((a) => force || !connectSkipped.has(a.id));
-  if (!todo.length || document.getElementById('connectModal')) return;
-  const box = document.createElement('div'); box.id = 'connectModal';
-  box.style.cssText = 'position:fixed;inset:0;background:#0008;z-index:50;display:flex;align-items:center;justify-content:center;padding:16px';
-  box.innerHTML = `<form class="card" style="max-width:420px;width:100%;margin:0"><h2>Connect to PocketBase</h2>
-    <p class="muted small">${todo.map((a) => '<b>' + esc(a.name) + '</b>').join(', ')} ${todo.length > 1 ? 'are' : 'is'} new and not connected yet. Sign in with your PocketBase superuser login once. It is checked and passed on to ${todo.length > 1 ? 'those apps' : 'the app'}, and Portal Admin does not keep it.</p>
-    <input name="email" type="email" required value="${esc(state.actor || '')}" placeholder="Superuser email" autocomplete="username" style="width:100%;margin-top:8px">
-    <input name="password" type="password" required placeholder="Password" autocomplete="current-password" style="width:100%;margin-top:8px">
-    <div class="row" style="gap:8px;margin-top:12px;justify-content:flex-end"><button type="button" class="btn" id="cmLater">Later</button><button class="btn primary">Connect</button></div></form>`;
-  document.body.appendChild(box);
-  const close = () => box.remove();
-  box.querySelector('#cmLater').onclick = () => { todo.forEach((a) => connectSkipped.add(a.id)); close(); };
-  const f = box.querySelector('form'); f.email.focus();
-  f.onsubmit = guard(async (e) => {
-    e.preventDefault(); const btn = f.querySelector('button.primary'); btn.disabled = true;
-    try {
-      for (const a of todo) {
-        const r = await fetch('/connect-app', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: a.id, email: f.email.value.trim(), password: f.password.value }) });
-        const d = await r.json().catch(() => ({}));
-        if (!r.ok) throw new Error(d.message || 'Could not connect ' + a.name);
-        await audit('app.connect', a.id, { email: f.email.value.trim() });
-      }
-      toast(todo.map((a) => a.name).join(', ') + ' connected. The app starts on its own within a few seconds.');
-      close(); if (location.hash.startsWith('#/apps')) route();
-    } finally { btn.disabled = false; f.password.value = ''; }
-  });
-}
 let detectTimer;
 function startDetecting() {
   clearInterval(detectTimer);
   if (state.role === 'user') return;
-  const after = (r) => { if (!r) return; promptConnect(connectNeeded(r)); if ((r.added.length || r.schemaApplied.length) && location.hash.startsWith('#/apps')) route(); };
+  const after = (r) => { if (!r) return; if ((r.added.length || r.schemaApplied.length) && location.hash.startsWith('#/apps')) route(); };
   detectApps().then(after);
   detectTimer = setInterval(() => {
     if (!state.token || state.role === 'user' || document.hidden) return;
@@ -663,11 +632,6 @@ async function appList() {
     main().insertAdjacentHTML('beforeend', `<div class="card"><h2>PocketBase changes</h2><p class="muted small">Needed by apps on your Umbrel. Changes only add collections and fields; nothing is removed.</p>
       <table><tbody>${schemaPending.map((pl, i) => `<tr><td><b>${esc(pl.app.name)}</b><div class="muted small">${esc(describeSteps(pl) || 'nothing to change')}</div>${pl.problems.map((x) => `<div class="small" style="color:#b3261e">${esc(x)}</div>`).join('')}</td>
         <td style="text-align:right">${pl.steps.length ? `<button class="btn primary" data-apply="${i}">Apply</button>` : ''}</td></tr>`).join('')}</tbody></table></div>`);
-  }
-  const needConnect = connectNeeded(found);
-  if (needConnect.length) {
-    main().insertAdjacentHTML('beforeend', `<div class="card"><h2>Connect to PocketBase</h2><p class="muted small">${needConnect.map((a) => esc(a.name)).join(', ')} can't sign people in until PocketBase is connected.</p><button class="btn primary" id="connectNow">Sign in to connect</button></div>`);
-    main().querySelector('#connectNow').onclick = () => promptConnect(needConnect, true);
   }
   if (found && !found.available) main().insertAdjacentHTML('beforeend', '<p class="muted small">Portal Admin can\'t see which apps are installed on this Umbrel (the app list isn\'t mounted), so new apps aren\'t detected automatically.</p>');
   main().onclick = guard(async (e) => {
@@ -1087,7 +1051,7 @@ function evWhen(e, long) {
 const evIcon = (e) => (e.kind === 'birthday' ? '🎂' : e.kind === 'pickup' ? '🚌' : e.kind === 'notice' ? '📣' : e.kind === 'update' ? '🔄' : '📅');
 function renderTicker() {
   const b = $('#tb-ticker'), t = $('#tk-track'); if (!b || !t) return;
-  const show = !!selfId() && $('#shell').classList.contains('home-page') && !editing;
+  const show = !!selfId() && !adminMode() && $('#shell').classList.contains('home-page') && !editing;   // the ticker belongs to the JoolzApp Dashboard, not Portal Admin
   b.hidden = !show; $('#shell').classList.toggle('has-ticker', show);
   if (!show) return;
   if (!EVENTS.length) { t.innerHTML = '<span class="tk-i"><i>📅</i>Nothing coming up. Family birthdays and Organiser events will show here.</span>'; t.classList.add('still'); return; }
@@ -1097,7 +1061,7 @@ function renderTicker() {
   requestAnimationFrame(() => { const w = t.scrollWidth / 2; t.style.setProperty('--tk-dur', Math.max(14, Math.round(w / 45)) + 's'); });
 }
 async function loadEvents() {
-  if (!state.token || !selfId()) { EVENTS = []; renderTicker(); return; }
+  if (!state.token || !selfId() || adminMode()) { EVENTS = []; renderTicker(); return; }
   try { EVENTS = (await acctFetch('/events?days=60&today=' + localDay())).events || []; } catch { EVENTS = []; }
   renderTicker();
 }
@@ -1591,9 +1555,9 @@ const ICON_WARN = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 7v6M
 const ADMIN_TOOLS = [
   ['overview', 'Overview', ['#5b8cff', '#7c5cf0']], ['global', 'Global settings', ['#94a3b8', '#475569']], ['apps', 'Apps', ['#a855f7', '#6366f1']],
   ['users', 'Users', ['#10b981', '#0ea5e9']], ['requests', 'Access requests', ['#f43f5e', '#fb923c']], ['cleanup', 'Cleanup', ['#14b8a6', '#22c55e']],
-  ['paywall', 'Paid apps', ['#22c55e', '#0ea5e9']], ['keys', 'App keys', ['#f59e0b', '#ef4444']], ['joolzapps', 'JoolzApp apps', ['#0f766e', '#2dd4bf']], ['names', 'App names', ['#06b6d4', '#6366f1']], ['audit', 'Audit log', ['#eab308', '#f97316']], ['changes', 'Changes', ['#8b5cf6', '#ec4899']], ['setup', 'Setup', ['#0ea5e9', '#6366f1']],
+  ['paywall', 'Paid apps', ['#22c55e', '#0ea5e9']], ['keys', 'App keys', ['#f59e0b', '#ef4444']], ['joolzapps', 'JoolzApp apps', ['#0f766e', '#2dd4bf']], ['names', 'App names', ['#06b6d4', '#6366f1']], ['audit', 'Audit log', ['#eab308', '#f97316']], ['changes', 'Changes', ['#8b5cf6', '#ec4899']],
 ];
-const VIEW_TITLES = { joolzapps: 'JoolzApp apps', overview: 'Overview', global: 'Global settings', apps: 'Apps', users: 'Users', requests: 'Access requests', cleanup: 'Cleanup', audit: 'Audit log', changes: 'PocketBase changes', setup: 'Setup & integration', me: 'My settings', family: 'Family', paywall: 'Paid apps', keys: 'App keys', names: 'App names', paid: 'Payment' };
+const VIEW_TITLES = { joolzapps: 'JoolzApp apps', overview: 'Overview', global: 'Global settings', apps: 'Apps', users: 'Users', requests: 'Access requests', cleanup: 'Cleanup', audit: 'Audit log', changes: 'PocketBase changes', me: 'My settings', family: 'Family', paywall: 'Paid apps', keys: 'App keys', names: 'App names', paid: 'Payment' };
 const PROTECTED = new Set(['sys:me', 'sys:admin']);
 const ADMIN_FID = 'admin';   // the Admin folder (owner-only tools) exists only on an admin's own screen: built per admin, never saved in the shared layout
 const canFolder = (id) => !PROTECTED.has(id) && !String(id).startsWith('folder:') && !String(id).startsWith('adm:');   // folders hold apps and Family, never nest, never hide the way back to Settings/Admin   // can't be hidden, so nobody loses the way back to their settings
@@ -1638,7 +1602,7 @@ async function homeModel() {
   apps.forEach((a) => { if (dsrc[a.slug]) a.description = String(dsrc[a.slug]); const nm = names[a.slug] || a.name; items['app:' + a.slug] = { id: 'app:' + a.slug, kind: 'app', name: nm, orig: a.name, app: a, grad: GRADS[hashN(a.slug) % GRADS.length], letter: (nm || '?').trim().charAt(0).toUpperCase(), ok: allowed(a.slug) }; });
   if (onlyTools) for (const [k, name, g] of ADMIN_TOOLS) items['tool:' + k] = { id: 'tool:' + k, kind: 'sys', name, glyph: k, grad: g, href: '#/' + k, badge: k === 'requests' ? pend : 0 };
   if (!isAdmin || selfId()) {
-    items['sys:family'] = { id: 'sys:family', kind: 'sys', name: 'Family', glyph: 'family', img: 'icons/family.svg', grad: ['#fb7185', '#f59e0b'], href: '#/family' };
+    if (!onlyTools) items['sys:family'] = { id: 'sys:family', kind: 'sys', name: 'Family', glyph: 'family', img: 'icons/family.svg', grad: ['#fb7185', '#f59e0b'], href: '#/family' };   // Family belongs to the JoolzApp Dashboard
     items['sys:me'] = { id: 'sys:me', kind: 'sys', name: 'Settings', glyph: 'me', img: 'icons/settings.svg', grad: ['#94a3b8', '#475569'], href: '#/me' };
   }
   let adminApps = [];
@@ -2112,38 +2076,16 @@ async function viewAudit() {
   main().innerHTML = `<h1>Audit log</h1><p class="sub">Every change made through this panel.</p><div class="card"><table class="audit-tbl"><thead><tr><th>When</th><th>Who</th><th>Action</th><th>Target</th><th>Detail</th></tr></thead><tbody>${r.items.map((a) => `<tr><td class="small muted" style="white-space:nowrap">${esc(fmtDate(a.created))}</td><td>${esc(a.actor)}</td><td><code>${esc(a.action)}</code></td><td>${esc(a.target)}</td><td class="small"><code class="clip" title="${esc(JSON.stringify(a.detail))}">${esc(JSON.stringify(a.detail))}</code></td></tr>`).join('') || '<tr><td colspan="5" class="muted">No activity yet.</td></tr>'}</tbody></table></div>`;
 }
 
-async function viewSetup() {
-  const st = await schemaStatus(); const cfg = await (await fetch('/config')).json();
+async function accountControls(host) {
   const uColl = await api('GET', `/api/collections/${state.usersColl}`).catch(() => null);
   // Harden: an open create rule with no guard would let anyone register themselves as an admin straight through PocketBase's API.
   if (uColl && uColl.createRule !== null && uColl.createRule !== SIGNUP_RULE) { try { await api('PATCH', `/api/collections/${state.usersColl}`, { createRule: SIGNUP_RULE }); uColl.createRule = SIGNUP_RULE; } catch {} }
-  main().innerHTML = `<h1>Setup &amp; integration</h1><p class="sub">Connection details and how your apps consume these settings.</p>
-    <div class="card"><h2>Connection</h2><p>PocketBase: <code>${esc(cfg.pbUrl)}</code> <span class="chip">${cfg.custom ? 'set by PB_URL' : 'built in: your Umbrel PocketBase'}</span></p>
-      <label>Users collection<input id="uc" value="${esc(state.usersColl)}" style="max-width:260px"></label><button id="su" class="btn">Save</button></div>
+  host.innerHTML = `
     <div class="card"><h2>Sign-ups</h2><label class="inline"><input type="checkbox" id="su-open" disabled> Allow new users to create an account from the sign-in page</label>
       <p class="muted small">Changes who can create records in the <code>${esc(state.usersColl)}</code> collection, so it applies to every Joolzapp app that uses these accounts.</p></div>
     <div class="card"><h2>Account approval</h2><label class="inline"><input type="checkbox" id="ap-req" disabled> Require admin approval per app for new accounts</label>
-      <p class="muted small">Turning this on sets <code>portal.access = false</code> globally, so every app is closed by default. Existing users keep access to all apps. New sign-ups request each app separately and you approve them one app at a time under Access requests. Apps must honour <code>portal.access</code>.</p></div>
-    <div class="card"><h2>Collections</h2><ul>${st.map((s) => `<li><code>${s.name}</code> ${s.ok ? '<span class="chip ok">ready</span>' : '<span class="chip bad">missing</span>'}</li>`).join('')}</ul>
-      <button id="mk" class="btn primary">${st.every((s) => s.ok) ? 'Re-check' : 'Create missing collections'}</button></div>
-    <div class="card"><h2>Using the settings from your apps</h2>
-      <p class="muted">Signed-in app users can read non-secret settings directly from PocketBase. Resolve with precedence <b>global → app → user (all apps) → user × app</b>:</p>
-<pre>${esc(`// slug = this app's id, pb = PocketBase client already signed in as the user
-async function portalConfig(pb, slug) {
-  const uid = pb.authStore.record.id;
-  const rows = await pb.collection('portal_settings').getFullList({
-    filter: pb.filter('scope = "global" || (scope = "app" && app = {:s}) || (scope = "user" && (app = "" || app = {:s}))', { s: slug }),
-  });
-  const rank = r => r.scope === 'global' ? 0 : r.scope === 'app' ? 1 : (r.app ? 3 : 2);
-  const cfg = {};
-  rows.sort((a, b) => rank(a) - rank(b)).forEach(r => { cfg[r.key] = r.value; });
-  const app = await pb.collection('portal_apps').getFirstListItem(pb.filter('slug = {:s}', { s: slug }));
-  return { cfg, app, allowed: app.enabled && !app.maintenance && cfg['portal.access'] !== false };
-}`)}</pre>
-      <p class="muted small">The collection rules already restrict users to their own per-user rows, and hide settings flagged <i>secret</i>. Reserved keys: ${RESERVED.map((r) => `<code>${r[0]}</code> (${esc(r[2])})`).join('; ')}.</p></div>`;
-  $('#su').onclick = () => { state.usersColl = $('#uc').value.trim() || 'users'; store.lset('pa.usersColl', state.usersColl); toast('Saved'); };
-  $('#mk').onclick = guard(async () => { await ensureSchema(); toast('Collections ready'); viewSetup(); });
-  const apr = $('#ap-req');
+      <p class="muted small">Turning this on sets <code>portal.access = false</code> globally, so every app is closed by default. Existing users keep access to all apps. New sign-ups request each app separately and you approve them one app at a time under Access requests. Apps must honour <code>portal.access</code>.</p></div>`;
+  const apr = host.querySelector('#ap-req');
   approvalState().then((st) => {
     apr.disabled = false; apr.checked = st.required;
     apr.onchange = guard(async () => {
@@ -2159,7 +2101,7 @@ async function portalConfig(pb, slug) {
       await audit(apr.checked ? 'approval.require' : 'approval.off', 'global'); toast(apr.checked ? 'New accounts need approval per app' : 'New accounts no longer need approval');
     });
   }).catch(() => {});
-  const so = $('#su-open');
+  const so = host.querySelector('#su-open');
   if (uColl) {
     so.disabled = false; so.checked = uColl.createRule !== null;
     so.onchange = guard(async () => {

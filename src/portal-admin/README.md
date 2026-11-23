@@ -14,7 +14,7 @@ Precedence: `global < app < user (all apps) < user × app`.
 ## How it works
 Zero-dependency Node server serving a static UI and proxying `/pb/*` to your PocketBase (built in: the Umbrel PocketBase app at `http://host.docker.internal:5400`; override with `PB_URL`). No credentials are stored: you sign in as a PocketBase **superuser** and the browser keeps the token in `sessionStorage`. On first sign-in it offers to create the collections `portal_apps`, `portal_settings`, `portal_requests` and `portal_audit`. `portal_settings` is readable by signed-in app users only for non-secret global/app rows and their own user rows; users may only edit their own `pref.*` rows; other writes are superuser-only.
 
-Reserved key: `portal.access` = `false` blocks a user (app = blank → all apps). Apps must check it (see snippet on the Setup page).
+Reserved key: `portal.access` = `false` blocks a user (app = blank → all apps). Apps must check it (see "Using the settings from your apps" below).
 
 ## Run locally
 ```bash
@@ -25,7 +25,7 @@ PB_URL=http://127.0.0.1:8090 PORT=3000 node server.js
 Image is built by the monorepo workflow (`.github/workflows/build-images.yml`) to `ghcr.io/joolay/portal-admin:<version>`; the Umbrel manifest is `joolay-portal-admin/`. Bump `version` in `package.json`, the manifest and the compose image tag together.
 
 ## Account approval
-Setup → *Require admin approval per app* sets a global `portal.access = false` (every app closed by default) and gives existing users a user-wide `portal.access = true` so they keep access. New sign-ups request each app and you approve them one by one under *Access requests*, which sets `portal.access = true` for that user × app. Apps only need the `portal.access` check they already do.
+Global settings → *Require admin approval per app* sets a global `portal.access = false` (every app closed by default) and gives existing users a user-wide `portal.access = true` so they keep access. New sign-ups request each app and you approve them one by one under *Access requests*, which sets `portal.access = true` for that user × app. Apps only need the `portal.access` check they already do.
 
 ## Public access guard and the hub
 Portal Admin can double as the public front door for all your apps (see `deploy/tsdproxy`). Requests that arrive
@@ -113,3 +113,21 @@ removes passwords, tokens, keys and long secret-looking strings, caps sizes, and
 (default `joolay/tracking-data`, folder `status`) with a GitHub token kept only in a secret `portal_settings` row (app `status-feed`). It skips unchanged payloads and rewrites at least every 30 minutes,
 so the file's `at` time shows whether the app is alive. `POST /admin/status-feed` (admin, home network only) saves, tests and clears the settings.
 
+## Using the settings from your apps
+Signed-in app users can read non-secret settings straight from PocketBase. Resolve with precedence **global → app → user (all apps) → user × app**:
+
+```js
+// slug = this app's id, pb = PocketBase client already signed in as the user
+async function portalConfig(pb, slug) {
+  const uid = pb.authStore.record.id;
+  const rows = await pb.collection('portal_settings').getFullList({
+    filter: pb.filter('scope = "global" || (scope = "app" && app = {:s}) || (scope = "user" && (app = "" || app = {:s}))', { s: slug }),
+  });
+  const rank = r => r.scope === 'global' ? 0 : r.scope === 'app' ? 1 : (r.app ? 3 : 2);
+  const cfg = {};
+  rows.sort((a, b) => rank(a) - rank(b)).forEach(r => { cfg[r.key] = r.value; });
+  const app = await pb.collection('portal_apps').getFirstListItem(pb.filter('slug = {:s}', { s: slug }));
+  return { cfg, app, allowed: app.enabled && !app.maintenance && cfg['portal.access'] !== false };
+}
+```
+The collection rules already restrict users to their own per-user rows and hide settings flagged *secret*. (This used to be shown on the Setup screen, which was removed on 23/11/2026; its Sign-ups and Account approval switches now sit at the top of Global settings.)
