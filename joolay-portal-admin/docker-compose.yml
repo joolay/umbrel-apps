@@ -10,17 +10,17 @@ services:
       PROXY_AUTH_ADD: "true"
 
   web:
-    image: ghcr.io/joolay/portal-admin:0.40.3
+    image: ghcr.io/joolay/portal-admin:0.41.0
     restart: on-failure
     stop_grace_period: 10s
     # Lets the container reach the PocketBase app (port 5400) published on this Umbrel.
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
-      # The old dashboard port. The dashboard is now the JoolzApp Store app: this port only forwards browsers on the home
+      # The old dashboard port. The dashboard is now the JoolzApp Dashboard app: this port only forwards browsers on the home
       # network to it (host port 3886), so old bookmarks keep working. It is no longer published through the tunnel.
       - "3892:3001"
-      # Portal API for the apps and for JoolzApp Store (each needs its own key). Not published through the tunnel.
+      # Portal API for the apps and for JoolzApp Dashboard (each needs its own key). Not published through the tunnel.
       - "3899:3002"
     volumes:
       - ${APP_DATA_DIR}/data:/data

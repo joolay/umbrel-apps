@@ -9,14 +9,11 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="JoolzApp Store">
-<title>JoolzApp Store</title>
+<meta name="apple-mobile-web-app-title" content="JoolzApp Dashboard">
+<title>JoolzApp Dashboard</title>
 <link rel="icon" href="icon.svg">
-<link rel="stylesheet" href="glass.css">
-<script src="floatbar.js"></script>
+<script src="jz.js" data-portal="."></script>
 <link rel="stylesheet" href="style.css">
-<link rel="stylesheet" href="floatbar.css">
-<script src="theme-global.js" data-portal="."></script>
 </head>
 <body>
 <div id="bg" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
@@ -104,13 +101,15 @@
 <div id="shell" class="shell hidden">
   <header class="topbar" id="topbar">
     <button id="tb-back" class="tb-btn" aria-label="Back to Home" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg></button>
-    <div class="brand" id="tb-brand"><img src="icon.svg" alt="" width="28" height="28"><span>Portal Admin</span></div>
+    <div class="brand" id="tb-brand"><span>Portal Admin</span></div>
     <h1 class="tb-title" id="tb-title" hidden></h1>
     <span class="tb-gap"></span>
     <button id="tb-ticker" class="tb-ticker" type="button" hidden aria-label="Upcoming events"><span class="tk-win"><span class="tk-track" id="tk-track"></span></span></button>
     <button id="tb-view" class="tb-btn" hidden aria-label="Show as tiles" title="Show as tiles"><svg class="v-tiles" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4" width="17" height="6" rx="2"/><rect x="3.5" y="14" width="17" height="6" rx="2"/></svg><svg class="v-icons" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="6" height="6" rx="1.8"/><rect x="14" y="4" width="6" height="6" rx="1.8"/><rect x="4" y="14" width="6" height="6" rx="1.8"/><rect x="14" y="14" width="6" height="6" rx="1.8"/></svg></button>
     <button id="tb-edit" class="tb-btn" aria-label="Rearrange apps" title="Rearrange apps"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 16.5V20h3.5L18.2 9.3l-3.5-3.5z"/><path d="M14.7 5.8l1.6-1.6a1.7 1.7 0 0 1 2.5 0l1 1a1.7 1.7 0 0 1 0 2.5l-1.6 1.6"/></svg></button>
     <button id="tb-done" class="btn primary small pill" hidden>Done</button>
+    <button id="tb-install" class="tb-btn" data-pwa-install hidden aria-label="Install app" title="Install app"><svg viewBox="0 0 24 24"><path d="M12 4v10"/><path d="m8 10.5 4 4 4-4"/><path d="M5 17v2.5h14V17"/></svg></button>
+    <button id="tb-settings" class="tb-btn" data-settings aria-label="Settings" title="Settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3h0a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5h0a1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9v0a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
     <button id="tb-me" class="tb-btn avatar" aria-label="Account" title="Account"></button>
     <button id="tb-theme" class="tb-btn" data-theme-toggle aria-label="Switch theme"><svg class="i-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z"/></svg><svg class="i-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6 7 7M17 17l1.4 1.4M5.6 18.4 7 17M17 7l1.4-1.4"/></svg></button>
   </header>
@@ -127,8 +126,6 @@
 <div id="toast" class="toast hidden" role="status"></div>
 <script src="pwtoggle.js"></script>
 <script src="quick.js"></script>
-<script src="install-help.js"></script>
 <script src="app.js"></script>
-<script src="linkstatus.js"></script>
 </body>
 </html>

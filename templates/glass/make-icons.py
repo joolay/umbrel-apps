@@ -31,7 +31,7 @@ icons={
 def run(*a): subprocess.run(a,check=True)
 import sys
 
-# ---- JoolzApp Store, Portal Admin and the home screen's own tiles (Family, Settings, Admin) ----
+# ---- JoolzApp Dashboard, Portal Admin and the home screen's own tiles (Family, Settings, Admin) ----
 # Same glass tile as every app. Glyphs drawn on a 24x24 grid are placed with line24(); the brand bolts are filled shapes.
 GOLD='<linearGradient id="gold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff3c4"/><stop offset="1" stop-color="#e0a92f"/></linearGradient>'
 def line24(paths,scale=10.5,dy=4,extra=''):
@@ -45,7 +45,7 @@ GEAR='<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 
 ADMIN=GOLD+line24(SHIELD,11.5,2,'<path d="M13 7.6 9.4 12.7h2.4l-.9 3.9 3.8-5.2h-2.5z" fill="url(#gold)"/>')
 # name: (dark, light, glyph, [files to write], folder that also gets the PNG set or None)
 special={
- # JoolzApp Store: the twin bolts. Also the home-screen (PWA) icon of the dashboard, which is served from Portal Admin's public folder.
+ # JoolzApp Dashboard: the twin bolts. Also the home-screen (PWA) icon of the dashboard, which is served from Portal Admin's public folder.
  'portal':('#2a35b8','#7482ff',BOLTS,['joolay-portal/icon.svg','src/portal-admin/public/icon.svg'],'src/portal-admin/public'),
  # Portal Admin: a shield holding the gold bolt. The dashboard's Admin tile is the same picture.
  'portal-admin':('#1e2a52','#5b6fc4',ADMIN,['joolay-portal-admin/icon.svg','src/portal-admin/public/icons/admin.svg'],None),

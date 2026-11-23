@@ -22,7 +22,7 @@ module.exports = function makeChanges({ pbx, installQueue, installedApps, APPS_D
     async getCollection(name) { try { return await pbx.asSuper('GET', '/api/collections/' + encodeURIComponent(name)); } catch (e) { if (e.status === 404) return null; throw e; } },
     async needNewPocketBase() { try { await pbx.asSuper('GET', '/api/collections/_superusers'); } catch (e) { if (e.status === 404) throw new Error('These changes need PocketBase 0.23 or newer.'); throw e; } },
     // Apps of your own store that use the JoolzApp account and have a data folder we can write to.
-    // (JoolzApp Store is left out: it never gets a PocketBase login of any kind, and its key is handed over by linkPortal below.)
+    // (JoolzApp Dashboard is left out: it never gets a PocketBase login of any kind, and its key is handed over by linkPortal below.)
     apps() { return installedApps().apps.filter((a) => /^joolay-/.test(a.dir) && a.slug && a.slug !== 'portal' && a.env !== 'no-data-dir'); },
     readEnv(app) { try { return parseEnv(fs.readFileSync(path.join(dataDirOf(app), 'pocketbase.env'), 'utf8')); } catch { return {}; } },
     // Merge keys into <app data>/pocketbase.env, keeping every other line. Owner-only file, written atomically.
@@ -97,7 +97,7 @@ module.exports = function makeChanges({ pbx, installQueue, installedApps, APPS_D
       }
       return done;
     },
-    // JoolzApp Store (the internet-facing home screen app) needs only a Portal API key. Give it one as soon as it is installed and
+    // JoolzApp Dashboard (the internet-facing home screen app) needs only a Portal API key. Give it one as soon as it is installed and
     // whenever its file has none that still works. Returns a line for the log when it did something.
     linkPortal() {
       const a = installedApps().apps.find((x) => x.dir === 'joolay-portal' && x.slug === 'portal' && x.env !== 'no-data-dir'); if (!a) return '';

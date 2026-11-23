@@ -1,7 +1,7 @@
 'use strict';
 // Portal tiles for apps that do not use the JoolzApp account (Stremio, OpenClaw, ...). Port Master (owner-only) asks through the Portal API
 // (`portalApps.list` / `portalApps.add` / `portalApps.remove`, that app's key only) and this keeps ONE portal_apps row per app, the same row the Apps page's "Add" button
-// makes, so the tile shows on the JoolzApp Store like any other. Only an app that is really installed on this Umbrel and is not one of our own joolay-* apps can be added;
+// makes, so the tile shows on the JoolzApp Dashboard like any other. Only an app that is really installed on this Umbrel and is not one of our own joolay-* apps can be added;
 // a tile is hidden (enabled = false), never deleted, so adding it again brings it back with its name and address.
 const SET = '/api/collections/portal_settings/records', NOTE = 'Port Master: tile for admins only';
 const COLL = '/api/collections/portal_apps/records', AUD = '/api/collections/portal_audit/records', q = encodeURIComponent;

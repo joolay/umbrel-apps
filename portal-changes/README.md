@@ -7,7 +7,7 @@ Files are read from `main` by Portal Admin 0.28.0 or newer. They are data only (
 {
   "id": "portal-url",
   "title": "Set the JoolzApp address",
-  "summary": "QR sign-in on the TV needs the public address of the JoolzApp Portal.",
+  "summary": "QR sign-in on the TV needs the public address of the JoolzApp Dashboard.",
   "ops": [
     { "op": "setting", "key": "portal.url", "value": "https://joolzapp.<tailnet>.ts.net", "note": "address of the Portal" }
   ]

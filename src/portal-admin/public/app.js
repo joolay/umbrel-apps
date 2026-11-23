@@ -258,10 +258,10 @@ $('#reset-form').onsubmit = async (e) => {
 // People who sign in here are users of the JoolzApp apps, not admins, so the page is branded JoolzApp for them
 // and on the public address (the server tells us which one we are on through /config).
 function setBrand(name) { document.querySelectorAll('.brand span').forEach((n) => { n.textContent = name; }); document.title = name; }
-const cfgReady = fetch('/config').then((r) => r.json()).then((c) => { state.public = !!c.public; if (state.public) setBrand('JoolzApp Store'); }).catch(() => {});
+const cfgReady = fetch('/config').then((r) => r.json()).then((c) => { state.public = !!c.public; if (state.public) setBrand('JoolzApp Dashboard'); }).catch(() => {});
 async function showShell() {
   await resolvePid();
-  setBrand(state.role === 'user' || state.public ? 'JoolzApp Store' : 'Portal Admin');
+  setBrand(state.role === 'user' || state.public ? 'JoolzApp Dashboard' : 'Portal Admin');
   $('#login').classList.add('hidden'); $('#shell').classList.remove('hidden');
   $('#who').textContent = state.actor; route(); startDetecting();
   homeModel().then((m) => { if (!HM) HM = m; renderDock(); }).catch(() => {});   // so the dock is there on every page
@@ -269,7 +269,7 @@ async function showShell() {
   loadEvents(); qaWatch();
   if (state.role !== 'user' && !state.public) rememberAdminUrl().catch(() => {});
 }
-// Portal Admin notes its own address on every admin's account (a private pref.* row each), so JoolzApp Store can show them an Admin icon.
+// Portal Admin notes its own address on every admin's account (a private pref.* row each), so JoolzApp Dashboard can show them an Admin icon.
 async function rememberAdminUrl() {
   const admins = new Set((await listAll(state.usersColl, { filter: 'isAdmin = true', max: 50 }).catch(() => [])).map((u) => u.id)); if (state.pid) admins.add(state.pid);
   if (!admins.size) return;
@@ -1303,7 +1303,7 @@ const PREFS = [
   ['backgroundMotion', 'Background motion', [['animated', 'Slowly moving (default)'], ['still', 'Still']]],
 ];
 // The backdrop follows the person's account (pref.background / pref.backgroundMotion), so it is the same on every device.
-// The theme icon in the top bar (floatbar.js) keeps the choice on the device; here it is also saved on the account, so it follows the person.
+// The theme icon in the top bar (jz.js) keeps the choice on the device; here it is also saved on the account, so it follows the person.
 window.addEventListener('jz-theme', async (e) => {
   try {
     if (!selfId()) return; const uid = selfId(), v = e.detail;
@@ -1603,8 +1603,8 @@ let HM = null, editing = false, saveChain = Promise.resolve();
 const isAdminRole = () => state.role !== 'user';
 
 let adminRow = null;   // where this person's Portal Admin lives (only an admin has the row; Portal Admin writes it when they use it)
-// On Portal Admin itself an admin sees the Admin tools directly on the main screen. The apps live on JoolzApp Store, so they are not shown here.
-// That screen keeps its own layout row (pref.adminhome.layout) so it never overwrites the app layout the same person has on JoolzApp Store.
+// On Portal Admin itself an admin sees the Admin tools directly on the main screen. The apps live on JoolzApp Dashboard, so they are not shown here.
+// That screen keeps its own layout row (pref.adminhome.layout) so it never overwrites the app layout the same person has on JoolzApp Dashboard.
 const adminMode = () => isAdminRole() && !state.public;
 const layoutKey = () => (adminMode() ? 'pref.adminhome.layout' : 'pref.home.layout');
 async function homeModel() {
@@ -2017,6 +2017,7 @@ $('#tb-done').onclick = () => setEditing(false);
   d.addEventListener('pointerleave', reset);
 })();
 $('#tb-me').onclick = () => { $('#acct').showModal(); };
+$('#tb-settings').onclick = () => { location.hash = '#/me'; };   // the top bar's Settings gear opens the Settings screen (same as the Settings tile)
 $('#tb-back').onclick = () => { location.hash = '#/home'; };
 
 function setBar(view) {
@@ -2025,6 +2026,7 @@ function setBar(view) {
   $('#tb-back').hidden = home; $('#tb-brand').hidden = !home; $('#tb-title').hidden = home;
   $('#tb-title').textContent = VIEW_TITLES[view] || '';
   $('#tb-me').textContent = (state.actor || '?').trim().charAt(0).toUpperCase();
+  $('#tb-settings').hidden = isAdminRole() && !selfId();   // the Settings screen belongs to a JoolzApp account
   if (!home) { setEditing(false); $('#tb-edit').hidden = true; $('#tb-done').hidden = true; $('#tb-view').hidden = true; } else { $('#tb-edit').hidden = editing || !(HM && HM.canEdit); }
   $('#tb-view').hidden = !home || editing; renderTicker();
 }

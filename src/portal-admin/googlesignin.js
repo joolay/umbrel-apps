@@ -5,7 +5,7 @@
 const COLL = 'users';
 const bad = (m) => Object.assign(new Error(m), { status: 400 });
 module.exports = function makeGoogleSignIn({ pbx }) {
-  // The public address of the JoolzApp Store is the global setting portal.url; Google must have <that>/google-callback.html on file.
+  // The public address of the JoolzApp Dashboard is the global setting portal.url; Google must have <that>/google-callback.html on file.
   const redirect = async () => {
     try { const r = await pbx.asSuper('GET', '/api/collections/portal_settings/records?perPage=1&filter=' + encodeURIComponent('key = "portal.url" && scope = "global"')); const v = r.items && r.items[0] && r.items[0].value; return typeof v === 'string' && v ? v.replace(/\/+$/, '') + '/google-callback.html' : ''; } catch { return ''; }
   };

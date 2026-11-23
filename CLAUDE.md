@@ -18,8 +18,8 @@ Everything is managed here; never create a separate repo for a new app.
 Apps backed by PocketBase should read config via the Portal Admin settings (`src/portal-admin`).
 ShutterWorth (`src/shutterworth`) and Portal Admin (`src/portal-admin`) both follow this layout.
 
-## JoolzApp Store and Portal Admin: two apps, one image
-The home screen people use is its own store app, `joolay-portal` ("JoolzApp Store"), and it is the one that faces the internet.
+## JoolzApp Dashboard and Portal Admin: two apps, one image
+The home screen people use is its own store app, `joolay-portal` ("JoolzApp Dashboard"), and it is the one that faces the internet.
 It has no `src/portal` folder: its compose file runs the **Portal Admin image** with `command: ["node", "portal.js"]` (source `src/portal-admin/portal.js`),
 so the dashboard UI (`src/portal-admin/public`) exists once and the two apps can never drift apart.
 - Releasing Portal Admin means bumping BOTH manifests to the same version: `joolay-portal-admin/*` and `joolay-portal/*` (image tag `ghcr.io/joolay/portal-admin:<version>` in both).
@@ -43,7 +43,7 @@ startup), opens a sign-in prompt, verifies the PocketBase superuser login, and w
 by Portal Admin and an existing file is never overwritten. Apps must fail closed without the file, but must NOT need a restart: while
 accounts are off, call `pb.reload()` on each request (it re-reads the file, at most every 2 s) and make the waiting page refresh itself.
 
-## JoolzApp Store is the App Store
+## JoolzApp Dashboard is the App Store
 The Portal home screen IS the app store: every app is a tile, tapping one opens a sheet with **View on web** (signs the person in) and **Install** (steps for their device; installing is
 done by the browser from the app's own address, so a page cannot do it for another address). Apps are grouped in folders. ONE shared layout (order, dock, hidden apps, folders with names and
 descriptions, app names and descriptions) is stored as the global `store.layout` row in `portal_settings`; everyone reads it (`GET /store/layout`) and only an admin saves it (`POST /store/layout`,
@@ -69,14 +69,14 @@ clamped numbers, font from a fixed list), stores it as the global `theme.global`
 An app follows the global theme by adding `<script src="theme-global.js"></script>` last in `<head>` (copy `templates/glass/theme-global.js`; `data-portal="."` when the app IS the portal, `data-portal="https://..."` otherwise; default is the same host on port 3886).
 The theme has a base plus one override set per view (mobile under 600px, tablet 600-1023px, desktop 1024px and up, TV = `<html data-view="tv">`, which `theme-global.js` sets on TV browsers or `?view=tv`); a view with no settings of its own uses the base. It also styles the floating top bar (height, background, blur, line, shadow, title, buttons, icons) but never its position, full width or square corners.
 The Store and Portal Admin already load it; other apps move over one at a time, like the Glass theme itself.
-Admins also get an **Admin folder** in their JoolzApp Store listing every owner-only app (`JOOLZAPP_DASHBOARD=hidden`): `GET /admin/apps` (admin-checked on the server, in both route lists) feeds a virtual folder that is built per admin and never saved in `store.layout`.
+Admins also get an **Admin folder** in their JoolzApp Dashboard listing every owner-only app (`JOOLZAPP_DASHBOARD=hidden`): `GET /admin/apps` (admin-checked on the server, in both route lists) feeds a virtual folder that is built per admin and never saved in `store.layout`.
 
 ## Login and welcome screens (standard for every app)
 Every app's `gate.html` is the shared gate (`templates/glass/gate/`: `gate.css`, `gate.js`, `gate.html`, `sso.html`, `pwtoggle.js`; rules in `templates/glass/README.md`, "Login and welcome screens (gate)"): first-run welcome slides, JoolzApp sign-in with PIN / pattern first on known devices, the "Almost there" and "Can't reach the account server" screens. Do not copy-paste a new login page per app; copy the template files and set the `JZGate({...})` options. A change every app should get goes into `templates/glass/gate/` first. Existing apps move onto it one at a time as they are edited.
 
 ## Floating top bar (standard for every app)
 Home button first (`data-home`, hidden until the Store's address is known; `floatbar.js` handles it), title next (just the app's name: the app icon is NOT shown in the top bar), light/dark theme icon on the right, a full-width frosted bar fixed to the top edge (square, not pill-shaped). Files and markup are in `templates/glass/README.md` ("Floating top bar"): copy `floatbar.css` + `floatbar.js`.
-The JoolzApp Store has it; other apps move over one at a time, like the Glass theme.
+The JoolzApp Dashboard has it; other apps move over one at a time, like the Glass theme.
 The bar is persistent: fixed to the top of the screen while the page scrolls (done in `floatbar.css`/`floatbar.js`; copy both, never make it sticky or scroll away). This is the standard for every app.
 Every app's top bar also carries the **Settings gear** (`data-settings` button, markup in `templates/glass/README.md`, "Floating top bar"): it opens that app's own Settings screen (its preferences, the things it manages such as shops or categories, data export, and account actions like Sign out). No loose account rows under the bar. Order: Home, title, Install, Settings, theme. Add it to every app as it is edited; Jolly Grocer has it.
 Every app's top bar also carries the **Install** icon (`data-pwa-install` button, `install-help.js` + `installbtn.js`; see `templates/glass/README.md`, "Install icon"): it shows only in a browser tab and opens the install steps for the person's device. Add it to every app as it is edited; Project Pilot and Port Master have it.

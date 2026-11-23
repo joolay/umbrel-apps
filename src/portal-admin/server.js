@@ -249,7 +249,7 @@ async function connectApp(req, res) {
   if (/[\r\n]/.test(email + password) || /^(["']).*\1$/.test(password) || password !== password.trim()) return send(res, 400, { message: "That password can't be stored in the file (line breaks, surrounding quotes or spaces)." });
   const app = installedApps().apps.find((a) => a.id === id);
   if (!app || !/^joolay-[a-z0-9-]{1,60}$/.test(app.dir) || !app.slug) return send(res, 400, { message: "Only your own JoolzApp apps can be connected." });
-  if (app.slug === 'portal') return send(res, 400, { message: 'JoolzApp Store never gets a PocketBase login. Portal Admin links it by itself.' });
+  if (app.slug === 'portal') return send(res, 400, { message: 'JoolzApp Dashboard never gets a PocketBase login. Portal Admin links it by itself.' });
   if (app.env === 'no-data-dir') return send(res, 409, { message: "That app has no data folder yet. Open the app once, then try again." });
   let ok; try { ok = await verifySuperuser(email, password); } catch { return send(res, 502, { message: "Couldn't reach PocketBase." }); }
   if (!ok) { connectFails.push(Date.now()); return send(res, 401, { message: "PocketBase didn't accept that login. It has to be a superuser." }); }
@@ -274,7 +274,7 @@ function serveStatic(req, res, pathname) {
 // The caller is the right-most public address in X-Forwarded-For (what the first proxy that saw the internet appended, so a client
 // can't fake it by adding its own values on the left). On the home network there is no public hop, so the last address is used.
 function clientIp(req) {
-  if (req.portalClientIp) return req.portalClientIp;   // passed on by JoolzApp Store (checked by its key), which is the one that saw the caller
+  if (req.portalClientIp) return req.portalClientIp;   // passed on by JoolzApp Dashboard (checked by its key), which is the one that saw the caller
   const xs = String(req.headers['x-forwarded-for'] || '').split(',').map((x) => x.trim()).filter(Boolean);
   for (let i = xs.length - 1; i >= 0; i--) if (!isPrivateAddr(xs[i])) return xs[i];
   return xs.length ? xs[xs.length - 1] : String(req.socket.remoteAddress || '');
@@ -649,7 +649,7 @@ const handle = async (req, res) => {
     }
     // No second sign-in for the admin: whoever reaches this address has already passed Umbrel's own login (and Tailscale, from outside),
     // so the page is handed an admin session made with the login Portal Admin keeps. Strictly for requests that came through Umbrel's
-    // login proxy for this app; anything else (another container, the old dashboard port, JoolzApp Store's pass-through) gets nothing.
+    // login proxy for this app; anything else (another container, the old dashboard port, JoolzApp Dashboard's pass-through) gets nothing.
     if (pathname === '/auto-login') {
       if (req.method !== 'POST') return send(res, 405, { message: 'Method not allowed' });
       if (!(await behindUmbrelLogin(req))) return send(res, 403, { message: 'Not available here.' });
@@ -663,7 +663,7 @@ const handle = async (req, res) => {
     if (pathname === '/umbrel-apps') {
       if (req.method !== 'GET') return send(res, 405, { message: 'Method not allowed' });
       if (isPublicRequest(req)) return send(res, 403, { message: 'Only available from your home network or tailnet.' });
-      const found = installedApps();   // JoolzApp Store is part of this app, not something to register, connect or show as an icon
+      const found = installedApps();   // JoolzApp Dashboard is part of this app, not something to register, connect or show as an icon
       return send(res, 200, { ...found, apps: found.apps.filter((a) => a.dir !== 'joolay-portal') });
     }
 
@@ -693,7 +693,7 @@ const handle = async (req, res) => {
   }
 };
 
-// JoolzApp Store (the separate, internet-facing home screen app) passes these on for people: /user/<route> on the apps-only port,
+// JoolzApp Dashboard (the separate, internet-facing home screen app) passes these on for people: /user/<route> on the apps-only port,
 // with its own Portal API key. They are ALWAYS handled as public, user-only requests, and only the routes listed here exist.
 const PORTAL_ROUTES = new Set(['/signup-config', '/signup', '/forgot', '/guardians', '/family', '/family/users', '/events', '/paywall', '/pay', '/pay/status', '/account/ai', '/account/dob', '/account/username', '/account/guardian', '/store/layout', '/admin/apps', '/theme.css', '/qr', '/quick', '/api/active', '/yoco/webhook']);
 const portalBad = new Map();
@@ -709,12 +709,12 @@ function fromPortal(req, res) {
   return handle(req, res);
 }
 // The Portal app's key is handed over without a Changes card: it is our own app and no PocketBase change is involved.
-const linkPortal = () => { try { const r = changes.linkPortal(); if (r) console.log('JoolzApp Store: ' + r); } catch (e) { console.error('JoolzApp Store link:', e.message); } };
+const linkPortal = () => { try { const r = changes.linkPortal(); if (r) console.log('JoolzApp Dashboard: ' + r); } catch (e) { console.error('JoolzApp Dashboard link:', e.message); } };
 const linkNew = () => changes.linkNewApps().then((d) => { if (d.length) console.log('Linked new app(s) to Portal API with their own limited login: ' + d.join(', ')); }).catch((e) => console.error('Linking new apps:', e.message));
 setTimeout(() => { linkPortal(); linkNew(); }, 3000).unref(); setInterval(() => { linkPortal(); linkNew(); }, 30e3).unref();
 
 // Listeners. PORT is the normal one (Umbrel's app address, behind Umbrel's login): the admin's own.
-// PUBLIC_PORT (host port 3892) used to be the dashboard for everyone. That is now a separate app, JoolzApp Store (host port 3886,
+// PUBLIC_PORT (host port 3892) used to be the dashboard for everyone. That is now a separate app, JoolzApp Dashboard (host port 3886,
 // and the public joolzapp address). Once the Portal is installed this port only sends browsers on to it, so old bookmarks and the
 // apps' "Back to Dashboard" links on the home network keep working and nothing of Portal Admin is served to people.
 // Until the Portal is installed it still answers as before (always user-only), so nobody is locked out. PUBLIC_PORT=0 turns it off.
@@ -723,7 +723,7 @@ const PORTAL_HOST_PORT = String(process.env.PORTAL_HOST_PORT || 3886), OLD_HOST_
 const portalInstalled = () => installedApps().apps.some((a) => a.dir === 'joolay-portal' && a.slug === 'portal' && a.env === 'present');
 function toPortal(req, res) {
   const host = String(req.headers.host || '');
-  if (!host.endsWith(':' + OLD_HOST_PORT) || /[^A-Za-z0-9.:\[\]-]/.test(host)) return send(res, 410, 'The JoolzApp home screen has moved to the JoolzApp Store app. Open it from your JoolzApp address.');
+  if (!host.endsWith(':' + OLD_HOST_PORT) || /[^A-Za-z0-9.:\[\]-]/.test(host)) return send(res, 410, 'The JoolzApp home screen has moved to the JoolzApp Dashboard app. Open it from your JoolzApp address.');
   res.writeHead(req.method === 'GET' || req.method === 'HEAD' ? 302 : 307, { Location: 'http://' + host.slice(0, -OLD_HOST_PORT.length) + PORTAL_HOST_PORT + req.url, 'Cache-Control': 'no-store' });
   res.end();
 }
