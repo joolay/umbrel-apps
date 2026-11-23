@@ -131,3 +131,8 @@ async function portalConfig(pb, slug) {
 }
 ```
 The collection rules already restrict users to their own per-user rows and hide settings flagged *secret*. (This used to be shown on the Setup screen, which was removed on 23/11/2026; its Sign-ups and Account approval switches now sit at the top of Global settings.)
+
+## Recent activity on the Overview
+`GET /admin/activity` (admin only, read only; `activity.js`) builds the Overview's "Recent activity" list from what already exists, storing nothing new: the status files every app pushes
+(`readAll` in `statusfeed.js`: App Updater, Services Manager, Kiosk Manager, Port Master...; "stopped reporting" after 35 min), routes flagged down and back up (`events()` in `routes.js`), access requests and the audit log.
+A failing source never hides the others, and the Overview falls back to the audit log if the endpoint cannot be read. A new app shows up by pushing its status file like the others.

@@ -63,5 +63,14 @@ module.exports = function makeRoutes({ dataDir, feed, now = Date.now }) {
     if (i >= 0) { st.alerts.splice(i, 1); save(); await push(); }
     return view();
   }
-  return { publish, view, notify, clear };
+  // For the Overview activity feed: routes an admin flagged as down, and when they came back.
+  function events() {
+    const out = [];
+    for (const a of st.alerts) {
+      out.push({ at: Date.parse(a.reportedAt) || 0, label: a.name + ' ' + a.label + ' route flagged as down', sub: a.error ? String(a.error).slice(0, 120) : '', level: 'bad' });
+      if (a.resolvedAt) out.push({ at: Date.parse(a.resolvedAt) || 0, label: a.name + ' ' + a.label + ' route is answering again', sub: '', level: 'ok' });
+    }
+    return out;
+  }
+  return { publish, view, notify, clear, events };
 };

@@ -70,6 +70,7 @@ function toast(msg, isErr) {
   clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.add('hidden'), isErr ? 6000 : 2500);
 }
 const guard = (fn) => async (...a) => { try { return await fn(...a); } catch (e) { toast(e.message, true); } };
+const fmtAgo = (iso) => { const m = Math.round((Date.now() - Date.parse(iso)) / 60000); return m < 1 ? 'just now' : m < 60 ? m + ' min ago' : m < 1440 ? Math.round(m / 60) + ' h ago' : new Date(iso).toLocaleDateString(); };
 const fmtDate = (s) => s ? new Date(s.replace(' ', 'T')).toLocaleString() : '';
 const main = () => $('#main');
 
@@ -480,6 +481,7 @@ async function viewOverview() {
   ]);
   const overrides = await count('portal_settings', 'scope = "user"');
   const pending = await count('portal_requests', 'status = "pending"').catch(() => 0);
+  const feedItems = await acctFetch('/admin/activity').then((r) => (Array.isArray(r.items) ? r.items : null)).catch(() => null);   // all apps' activity in one list; falls back to the audit log if it cannot be read
   main().innerHTML = `<h1>Overview</h1><p class="sub">Everything your portal apps are doing, in one place.</p>
     <div class="grid" style="margin-bottom:16px">
       <div class="stat"><b>${apps.length}</b>apps registered</div><div class="stat"><b>${users ?? '–'}</b>users</div>
@@ -489,7 +491,9 @@ async function viewOverview() {
       <table><tbody>${apps.map((a) => `<tr class="click" onclick="location.hash='#/apps/${esc(a.slug)}'"><td><b>${esc(a.name)}</b> <span class="muted small">${esc(a.slug)}</span></td>
         <td>${a.enabled ? '<span class="chip ok">enabled</span>' : '<span class="chip bad">disabled</span>'} ${a.maintenance ? '<span class="chip warn">maintenance</span>' : ''}</td></tr>`).join('') || '<tr><td class="muted">No apps registered yet.</td></tr>'}</tbody></table></div>
     <div class="card"><div class="row spread"><h2>Recent activity</h2><a href="#/audit">Full log →</a></div>
-      <table><tbody>${audits.items.map((a) => `<tr><td class="muted small">${esc(fmtDate(a.created))}</td><td>${esc(a.actor)}</td><td><code>${esc(a.action)}</code></td><td>${esc(a.target)}</td></tr>`).join('') || '<tr><td class="muted">Nothing yet.</td></tr>'}</tbody></table></div>`;
+      <table><tbody>${feedItems ? feedItems.map((a) => `<tr><td class="muted small" style="white-space:nowrap">${esc(fmtAgo(a.at))}</td><td><span class="chip ${a.level === 'bad' ? 'bad' : a.level === 'warn' ? 'warn' : a.level === 'ok' ? 'ok' : ''}">${esc(a.source)}</span></td><td>${esc(a.title)}${a.sub ? ` <span class="muted small">${esc(a.sub)}</span>` : ''}</td></tr>`).join('') || '<tr><td class="muted">Nothing yet.</td></tr>'
+        : audits.items.map((a) => `<tr><td class="muted small">${esc(fmtDate(a.created))}</td><td>${esc(a.actor)}</td><td><code>${esc(a.action)}</code></td><td>${esc(a.target)}</td></tr>`).join('') || '<tr><td class="muted">Nothing yet.</td></tr>'}</tbody></table>
+      <p class="muted small">Brings together updates from your apps (App Updater, Services Manager, Kiosk Manager, Port Master), route alerts, access requests and the admin log.</p></div>`;
 }
 
 async function viewGlobal() {

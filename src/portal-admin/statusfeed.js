@@ -111,6 +111,27 @@ module.exports = function makeFeed({ asSuper, fetchImpl = fetch, now = () => Dat
     } catch { return null; }
   }
 
+  // Read-only: the status files every app has pushed (name, when it last reported, when it last really changed). Cached for a minute; used for the Overview activity feed.
+  let listCache = null;
+  async function readAll() {
+    if (listCache && now() - listCache.at < 60e3) return listCache.v;
+    const c = await load(); if (!ready(c)) return [];
+    const ref = c.branch ? '?ref=' + q(c.branch) : '';
+    const dir = await fetchImpl(`https://api.github.com/repos/${c.repo}/contents/${c.dir || ''}${ref}`, { headers: hdr(c), signal: AbortSignal.timeout(10000) });
+    if (dir.status !== 200) throw await why(dir);
+    const names = (await dir.json()).filter((f) => f && f.type === 'file' && /^[a-z0-9][a-z0-9-]*\.json$/.test(f.name) && !f.name.startsWith('claude-')).map((f) => f.name.slice(0, -5)).slice(0, 40);
+    const out = [];
+    await Promise.all(names.map(async (app) => {
+      try {
+        const r = await fetchImpl(url(c, app) + ref, { headers: hdr(c), signal: AbortSignal.timeout(10000) });
+        if (r.status !== 200) return;
+        const d = JSON.parse(Buffer.from((await r.json()).content, 'base64').toString('utf8'));
+        out.push({ app, at: Date.parse(d.at) || 0, changedAt: Date.parse(d.changedAt) || Date.parse(d.at) || 0, rev: Number(d.rev) || 0 });
+      } catch { /* one unreadable file must not hide the rest */ }
+    }));
+    listCache = { at: now(), v: out }; return out;
+  }
+
   // Called through Portal API by an app (app = the slug its key belongs to).
   async function publish(app, payload, opts = {}) {
     app = String(app || '');
@@ -142,6 +163,6 @@ module.exports = function makeFeed({ asSuper, fetchImpl = fetch, now = () => Dat
     await put(c, '_portal-admin', { app: 'portal-admin', at: new Date(now()).toISOString(), note: 'Status feed test from Portal Admin.' }, 'status: test');
     return { ok: true, message: 'Written to ' + c.repo + '/' + (c.dir ? c.dir + '/' : '') + '_portal-admin.json' };
   }
-  return { adminView, adminSave, adminClear, publish, test, clean, FeedError };
+  return { adminView, adminSave, adminClear, publish, test, readAll, clean, FeedError };
 };
 module.exports.clean = clean;

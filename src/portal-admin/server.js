@@ -462,6 +462,7 @@ async function signup(req, res) {
 
 const feed = require('./statusfeed')({ asSuper: (m, p, b) => pbx.asSuper(m, p, b) });
 const routes = require('./routes')({ dataDir: pbx.dataDir, feed });
+const activity = require('./activity')({ asSuper: (m, p, b) => pbx.asSuper(m, p, b), feed, routes });
 const theme = require('./theme')(pbx);
 const portalApps = require('./portalapps')({ pbx, installedApps });   // Port Master adds/hides tiles for apps that do not use the JoolzApp account
 const installQueue = require('./installqueue')({ asSuper: (m, p, b) => pbx.asSuper(m, p, b) });   // new JoolzApps App Updater should install
@@ -529,6 +530,13 @@ const handle = async (req, res) => {
         if (b.action === 'clear') return send(res, 200, await routes.clear(b));
         return send(res, 400, { message: 'Unknown action.' });
       } catch (e) { return send(res, e.status || 500, { message: String(e.message || e) }); }
+    }
+    if (pathname === '/admin/activity') {                                 // the Overview's recent-activity feed (app status, route alerts, access requests, audit log): admin only, read only
+      if (isPublicRequest(req)) return send(res, 403, { message: 'Only available from your home network or tailnet.' });
+      const tok = String(req.headers.authorization || '');
+      if (!tok || !(await pbx.isSuperuser(tok))) return send(res, 401, { message: 'Admin only.' });
+      if (req.method !== 'GET') return send(res, 405, { message: 'Method not allowed' });
+      try { return send(res, 200, { items: await activity.recent(20) }); } catch (e) { return send(res, e.status || 500, { message: String(e.message || e) }); }
     }
     if (pathname === '/admin/status-feed') {                               // where apps' status files go (a GitHub repo + token): admin only, the token is never sent back
       if (isPublicRequest(req)) return send(res, 403, { message: 'Only available from your home network or tailnet.' });
