@@ -1557,6 +1557,13 @@ const ADMIN_TOOLS = [
   ['users', 'Users', ['#10b981', '#0ea5e9']], ['requests', 'Access requests', ['#f43f5e', '#fb923c']], ['cleanup', 'Cleanup', ['#14b8a6', '#22c55e']],
   ['paywall', 'Paid apps', ['#22c55e', '#0ea5e9']], ['keys', 'App keys', ['#f59e0b', '#ef4444']], ['joolzapps', 'JoolzApp apps', ['#0f766e', '#2dd4bf']], ['names', 'App names', ['#06b6d4', '#6366f1']], ['audit', 'Audit log', ['#eab308', '#f97316']], ['changes', 'Changes', ['#8b5cf6', '#ec4899']],
 ];
+const ADMIN_SHORTCUTS = [   // [slug, name, port, gradient, hint]; ports are the store ports in each app's umbrel-app.yml (Gatekeeper: not built yet)
+  ['services-manager', 'Services Manager', 3891, ['#0ea5e9', '#6366f1'], 'Looks after the Umbrel services'],
+  ['kiosk-manager', 'Kiosk Manager', 3920, ['#f59e0b', '#ef4444'], "The Umbrel's own screen"],
+  ['routing-reporter', 'Port Master', 3906, ['#0f766e', '#2dd4bf'], 'LAN, Tailscale and Public routes'],
+  ['app-updater', 'App Updater', 3898, ['#22c55e', '#0ea5e9'], 'Updates your apps by itself'],
+  ['gatekeeper', 'Gatekeeper', 0, ['#64748b', '#334155'], 'Not installed yet']
+];
 const VIEW_TITLES = { joolzapps: 'JoolzApp apps', overview: 'Overview', global: 'Global settings', apps: 'Apps', users: 'Users', requests: 'Access requests', cleanup: 'Cleanup', audit: 'Audit log', changes: 'PocketBase changes', me: 'My settings', family: 'Family', paywall: 'Paid apps', keys: 'App keys', names: 'App names', paid: 'Payment' };
 const PROTECTED = new Set(['sys:me', 'sys:admin']);
 const ADMIN_FID = 'admin';   // the Admin folder (owner-only tools) exists only on an admin's own screen: built per admin, never saved in the shared layout
@@ -1604,6 +1611,11 @@ async function homeModel() {
   if (!isAdmin || selfId()) {
     if (!onlyTools) items['sys:family'] = { id: 'sys:family', kind: 'sys', name: 'Family', glyph: 'family', img: 'icons/family.svg', grad: ['#fb7185', '#f59e0b'], href: '#/family' };   // Family belongs to the JoolzApp Dashboard
     items['sys:me'] = { id: 'sys:me', kind: 'sys', name: 'Settings', glyph: 'me', img: 'icons/settings.svg', grad: ['#94a3b8', '#475569'], href: '#/me' };
+  }
+  // Portal Admin's own home also carries one-tap shortcuts to the owner-only tools (same tiles the Dashboard's Admin folder has). Gatekeeper has no app yet: its tile waits, dimmed, until it exists.
+  if (onlyTools) {
+    const urlFor = appUrlFinder([]);
+    for (const [slug, name, port, grad, desc] of ADMIN_SHORTCUTS) items['adm:' + slug] = { id: 'adm:' + slug, kind: 'sys', ext: true, name, app: { slug, name, enabled: true }, grad, letter: name.charAt(0), href: port ? urlFor({ port }) : '#', desc, soon: !port };
   }
   let adminApps = [];
   if (!onlyTools && sl && sl.admin) { const aa = await acctFetch('/admin/apps').catch(() => null); adminApps = aa && Array.isArray(aa.apps) ? aa.apps : []; }
@@ -1698,7 +1710,7 @@ function iconHTML(it, o = {}) {
   let tile, st = '';
   if (it.kind === 'folder') tile = `<button class="ic-tile folder" data-folder="1" aria-label="Admin tools">${folderMini()}</button>`;
   else if (it.kind === 'ufolder') tile = `<button class="ic-tile folder" data-ufolder="${esc(it.fid)}" aria-label="Folder ${esc(it.name)}">${ufMini(it)}</button>`;
-  else if (it.kind === 'sys') tile = `<a class="ic-tile"${it.ext ? ' target="_blank" rel="noopener"' : ''} href="${esc(it.href)}" draggable="false" aria-label="${esc(it.name)}">${tileInner(it)}</a>`;
+  else if (it.kind === 'sys') tile = `<a class="ic-tile"${it.soon ? ' style="opacity:.45;pointer-events:none" aria-disabled="true"' : ''}${it.ext ? ' target="_blank" rel="noopener"' : ''} href="${esc(it.href)}" draggable="false" aria-label="${esc(it.name)}${it.soon ? ' (not installed yet)' : ''}">${tileInner(it)}</a>`;
   else tile = `<button class="ic-tile" data-info="${esc(a.slug)}" aria-label="${esc(a.name)}">${tileInner(it)}</button>`;
   if (it.kind === 'app') {
     if (!a.enabled) st = '';
