@@ -96,7 +96,7 @@ Every app uses the same floating, frosted bar: the app's title on the left, the 
 
 ## Account menu (profile icon, top right)
 `floatbar.js` builds a **profile icon** as the last thing in every top bar (initial of the person's name in the accent colour, a plain person icon until the app names them). Tapping it drops down a menu of **large icons**, always in this order:
-**Log out, Settings (gear), Day/Night mode, Install**. The old loose Settings, theme and Install buttons are no longer shown in the bar (`floatbar.css` hides them) but stay in the markup, because the menu uses them: nothing to change in an app's existing handlers.
+**Settings (gear), Day/Night mode, Install, and Log out at the bottom**. The old loose Settings, theme and Install buttons are no longer shown in the bar (`floatbar.css` hides them) but stay in the markup, because the menu uses them: nothing to change in an app's existing handlers.
 - **Log out** clicks the app's `[data-logout]` element (an ordinary button, may be `hidden`), or call `JZBar.onLogout(fn)`. With neither, the tile is hidden.
 - **Settings** clicks the app's `[data-settings]` button in the bar and hides when that button is `hidden`; it lights up while the button has `aria-pressed="true"`.
 - **Day/Night mode** is its own `data-theme-toggle` tile (named for what it switches to) and keeps the menu open so the change is seen.

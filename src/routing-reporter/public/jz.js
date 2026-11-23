@@ -73,7 +73,7 @@
     if (!document.querySelector("[data-home]")) return;
     try { fetch("api/app-config", { cache: "no-store" }).then(function (r) { return r.ok ? r.json() : {}; }).then(function (c) { if (c && c.portalUrl) setHome(c.portalUrl); }).catch(function () {}); } catch (e) {}
   });
-  // Account menu: the profile icon at the far right of the top bar opens a dropdown of large icons: Log out, Settings, Day/Night mode, Install (in that order).
+  // Account menu: the profile icon at the far right of the top bar opens a dropdown of large icons: Settings, Day/Night mode, Install, then Log out at the bottom.
   // The old loose buttons (data-settings, data-theme-toggle, data-pwa-install inside the bar) stay in the page, hidden by floatbar.css, so every app's own handlers keep working:
   // the Settings tile clicks the app's [data-settings] button (and hides with it), Log out clicks the app's [data-logout] element (or the function given to JZBar.onLogout; with neither the tile is hidden),
   // the Day/Night and Install tiles carry data-theme-toggle / data-pwa-install themselves. Install shows only in a phone or tablet browser tab, never inside the installed app (installbtn.js decides).
@@ -108,10 +108,10 @@
     meBtn = document.createElement("button"); meBtn.type = "button"; meBtn.className = "tb-btn jz-me"; meBtn.setAttribute("aria-haspopup", "menu"); meBtn.setAttribute("aria-expanded", "false"); bar.appendChild(meBtn);
     meMenu = document.createElement("div"); meMenu.className = "jz-acct"; meMenu.setAttribute("role", "menu"); meMenu.hidden = true;
     meMenu.innerHTML = '<div class="jz-acct-name" hidden></div>' +
-      tile("logout", "", SVG("", '<path d="M9.5 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h3.5"/><path d="M16 8l4 4-4 4"/><path d="M20 12H9.5"/>'), "Log out", "Sign out of this app") +
       tile("settings", "", SVG("", GEAR), "Settings", "Open this app's settings") +
       tile("theme", " data-theme-toggle", SVG("i-moon", '<path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z"/>') + SVG("i-sun", '<circle cx="12" cy="12" r="4"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6 7 7M17 17l1.4 1.4M5.6 18.4 7 17M17 7l1.4-1.4"/>'), "Night mode", "Switch between the day and night display") +
-      tile("install", " data-pwa-install hidden", SVG("", '<path d="M12 4v10"/><path d="m8 10.5 4 4 4-4"/><path d="M5 17v2.5h14V17"/>'), "Install app", "Add this app to your Home Screen");
+      tile("install", " data-pwa-install hidden", SVG("", '<path d="M12 4v10"/><path d="m8 10.5 4 4 4-4"/><path d="M5 17v2.5h14V17"/>'), "Install app", "Add this app to your Home Screen") +
+      tile("logout", "", SVG("", '<path d="M9.5 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h3.5"/><path d="M16 8l4 4-4 4"/><path d="M20 12H9.5"/>'), "Log out", "Sign out of this app");
     document.body.appendChild(meMenu); paintMe(); paint();
   }
   // App icon: the bar shows the app's icon before its name. An app that has no <img> in .brand gets one from its apple-touch-icon (every app head carries it), so nothing to add per app.
