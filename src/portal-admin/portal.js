@@ -75,7 +75,7 @@ const authOk = (ip) => authFails.delete('ip:' + ip);
 // settings, backups, logs, every system collection (names starting with "_") and any superuser token are refused: this app has no admin side.
 const PB_ALLOW = [
   /^\/api\/health\/?$/,
-  /^\/api\/collections\/(?!_)[^/]+\/(records|auth-with-password|auth-refresh|auth-methods|request-password-reset|confirm-password-reset|request-verification|confirm-verification)(\/|$)/,
+  /^\/api\/collections\/(?!_)[^/]+\/(records|auth-with-password|auth-with-oauth2|auth-refresh|auth-methods|request-password-reset|confirm-password-reset|request-verification|confirm-verification)(\/|$)/,
   /^\/api\/files\//,
 ];
 function isSuperuserToken(auth) {

@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="referrer" content="no-referrer"><title>Signing in with Google…</title>
+<link rel="stylesheet" href="glass.css"></head>
+<body style="display:grid;place-items:center;min-height:100dvh;text-align:center">
+<div><p id="msg">Signing you in with Google…</p><p><a id="back" href="./" class="hidden" style="display:none">Back to sign in</a></p></div>
+<noscript><p>JavaScript is needed to sign in.</p></noscript>
+<script>
+// Google sends people back here with ?code=...&state=.... The page finishes the sign-in with PocketBase (through the Portal's /pb) using the
+// state and code verifier the sign-in screen saved before leaving, hands the result to the dashboard for this browser session, and opens it.
+(function () {
+  var q = new URLSearchParams(location.search), saved = null;
+  try { saved = JSON.parse(localStorage.getItem("pa.gauth") || "null"); localStorage.removeItem("pa.gauth"); } catch (e) {}
+  history.replaceState(null, "", location.pathname);
+  function fail(t) { document.getElementById("msg").textContent = t; var b = document.getElementById("back"); b.style.display = ""; }
+  if (q.get("error")) return fail("Google sign-in was cancelled.");
+  if (!saved || !q.get("code") || q.get("state") !== saved.state || Date.now() - saved.at > 10 * 60 * 1000) return fail("That Google sign-in expired. Please try again.");
+  fetch("pb/api/collections/" + encodeURIComponent(saved.coll || "users") + "/auth-with-oauth2", {
+    method: "POST", headers: { "content-type": "application/json" }, cache: "no-store",
+    body: JSON.stringify({ provider: "google", code: q.get("code"), codeVerifier: saved.verifier, redirectURL: location.origin + location.pathname })
+  }).then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.message || "failed"); return j; }); })
+    .then(function (j) {
+      try { sessionStorage.setItem("pa.goauth", JSON.stringify({ token: j.token, email: j.record.email, id: j.record.id })); } catch (e) {}
+      location.replace("./");
+    }).catch(function () { fail("Google sign-in did not work. If this is a new account, sign-ups may be closed."); });
+})();
+</script></body></html>

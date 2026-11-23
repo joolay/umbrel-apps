@@ -16,6 +16,7 @@ const events = require('./events');
 const paywall = require('./paywall');
 const appkeys = require('./appkeys'), appnames = require('./appnames');
 const makeChanges = require('./changes');
+const makeGoogleSignIn = require('./googlesignin');
 const makeAppApi = require('./appapi');
 const qrlogin = require('./qrlogin')();
 const quick = require('./quickaccess')();
@@ -133,7 +134,7 @@ function isSuperuserToken(auth) {
 // every system collection (names starting with "_") stay private.
 const PUBLIC_PB_ALLOW = [
   /^\/api\/health\/?$/,
-  /^\/api\/collections\/(?!_)[^/]+\/(records|auth-with-password|auth-refresh|auth-methods|request-password-reset|confirm-password-reset|request-verification|confirm-verification)(\/|$)/,
+  /^\/api\/collections\/(?!_)[^/]+\/(records|auth-with-password|auth-with-oauth2|auth-refresh|auth-methods|request-password-reset|confirm-password-reset|request-verification|confirm-verification)(\/|$)/,
   /^\/api\/files\//,
 ];
 function publicBlockReason(req, sub) {
@@ -500,6 +501,7 @@ const installQueue = require('./installqueue')({ asSuper: (m, p, b) => pbx.asSup
 const appapi = makeAppApi({ qrlogin, quick, feed, routes, theme, portalApps, installQueue, pbx, DATA_DIR: pbx.dataDir, readBody, send });
 const notices = require('./notices')({ pbx, forgetTouch: appapi.forgetTouch });
 const storeLayout = require('./storelayout')(pbx);
+const googleSignIn = makeGoogleSignIn({ pbx });
 const changes = makeChanges({ pbx, installQueue, installedApps, APPS_DIR, DATA_DIR: pbx.dataDir, appKeys: appapi.keys });
 const handle = async (req, res) => {
   try {
@@ -600,6 +602,16 @@ const handle = async (req, res) => {
       if (!tok || !(await pbx.isSuperuser(tok))) return send(res, 401, { message: 'Admin only.' });
       if (req.method !== 'POST') return send(res, 405, { message: 'Method not allowed' });
       try { const b = JSON.parse(await readBody(req)); return send(res, 200, await notices.send(b.ids)); } catch (e) { return send(res, e.status || 500, { message: String(e.message || e) }); }
+    }
+    if (pathname === '/admin/google-signin') {   // switch Google on/off as a sign-in provider of the JoolzApp account (admin only; the secret goes straight to PocketBase)
+      if (isPublicRequest(req)) return send(res, 403, { message: 'Only available from your home network or tailnet.' });
+      const tok = String(req.headers.authorization || '');
+      if (!tok || !(await pbx.isSuperuser(tok))) return send(res, 401, { message: 'Admin only.' });
+      try {
+        if (req.method === 'GET') return send(res, 200, await googleSignIn.status());
+        if (req.method !== 'POST') return send(res, 405, { message: 'Method not allowed' });
+        const b = JSON.parse(await readBody(req)); return send(res, 200, b.off ? await googleSignIn.off() : await googleSignIn.save(b));
+      } catch (e) { return send(res, e.status || 500, { message: String(e.message || e) }); }
     }
     if (pathname === '/admin/changes' || pathname === '/admin/changes/apply') {
       if (isPublicRequest(req)) return send(res, 403, { message: 'Only available from your home network or tailnet.' });
