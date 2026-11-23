@@ -11,7 +11,7 @@ services:
       PROXY_AUTH_ADD: "false"
 
   web:
-    image: ghcr.io/joolay/portal-admin:0.40.2
+    image: ghcr.io/joolay/portal-admin:0.40.3
     command: ["node", "portal.js"]
     restart: on-failure
     stop_grace_period: 10s

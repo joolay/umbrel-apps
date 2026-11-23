@@ -121,9 +121,15 @@ async function behindUmbrelLogin(req) {
   if (req.publicPort) { autoWhy = 'public port'; return false; }
   if (req.portalClientIp) { autoWhy = 'portal client'; return false; }
   if (isPublicRequest(req)) { autoWhy = 'public request'; return false; }
-  if (Date.now() - proxyIps.at > 60000) { let v = []; try { v = (await dns.promises.lookup(APP_PROXY_HOST, { all: true })).map((a) => a.address); } catch {} proxyIps = { at: Date.now(), v }; }
+  // The login proxy's container name depends on the Docker / umbrelOS version (joolay-portal-admin_app_proxy_1 or joolay-portal-admin-app_proxy-1);
+  // its service name app_proxy always resolves on the app's own network. Any of them counts.
+  if (Date.now() - proxyIps.at > 60000) {
+    const v = [];
+    for (const h of [...new Set([APP_PROXY_HOST, APP_PROXY_HOST.replace(/_app_proxy_1$/, '-app_proxy-1'), 'app_proxy'])]) { try { for (const a of await dns.promises.lookup(h, { all: true })) if (!v.includes(a.address)) v.push(a.address); } catch {} }
+    proxyIps = { at: Date.now(), v };
+  }
   const from = String(req.socket.remoteAddress || '').replace(/^::ffff:/, '');
-  if (!proxyIps.v.length) { autoWhy = 'cannot find ' + APP_PROXY_HOST + ' (container name changed?); request came from ' + from; return false; }
+  if (!proxyIps.v.length) { autoWhy = 'cannot find the login proxy (tried ' + APP_PROXY_HOST + ', its hyphen form and app_proxy); request came from ' + from; return false; }
   if (!proxyIps.v.includes(from)) { autoWhy = 'request came from ' + from + ', not from ' + APP_PROXY_HOST + ' (' + proxyIps.v.join(', ') + ')'; return false; }
   const c = pbx.creds(); if (!(c.email && c.pass)) { autoWhy = 'no saved PocketBase login in Portal Admin'; return false; }
   autoWhy = ''; return true;
