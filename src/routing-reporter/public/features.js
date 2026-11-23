@@ -19,7 +19,8 @@ window.PM_FEATURES = [
     { t: "Version and automatic updates", s: "built", d: "Services Manager checks for a newer image about every 12 hours and installs it in the nightly window (or on Update now in App Updater), putting the old one back if the new one fails. App Updater shows the version." }
   ]},
   { g: "Proposed", items: [
-    { t: "Login for added apps", s: "proposed", d: "Proxy that checks the JoolzApp session first, so the app itself is protected (may break apps with their own clients, e.g. Stremio players)." },
+    { t: "Login for added apps", s: "proposed", d: "Now Gatekeeper's job (it checks the JoolzApp account and the per-app access in front of the app). Port Master only points the app's name at it." },
+    { t: "Tailscale tag upkeep", s: "proposed", d: "Port Master keeps the Tailscale tag on every app and dashboard name, so routing stays in one place and Gatekeeper only does access control. Waiting for which tag to use and where it is applied." },
     { t: "Access denied page instead of nothing", s: "proposed", d: "For apps published through TSDProxy's list file (like OpenClaw), point the address at a small Access denied page. Not possible for apps whose route comes from their own compose labels." },
     { t: "Switch LAN and Tailscale address with a firewall", s: "proposed", d: "Needs a root-level helper on the Umbrel and the rules re-applied after a reboot. Higher risk of locking yourself out, so only with your go-ahead." },
     { t: "Schedules", s: "proposed", d: "For example, Public off from 23:00 to 05:00, or off whenever nobody has used the app for a week." },
