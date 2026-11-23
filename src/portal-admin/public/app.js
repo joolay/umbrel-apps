@@ -1562,7 +1562,7 @@ async function familyPane(uid) {
 
 /* ---------- Home screen (iPhone style) ---------- */
 // Every JoolzApp app is an icon. Family and My settings are icons too; an admin's tools live in an Admin folder.
-// Icons can be rearranged (long-press, or the pencil in the top bar), moved into the dock, or hidden. The layout is saved on the
+// Icons can be rearranged (long-press a tile or icon; there is no edit button), moved into the dock, or hidden. The layout is saved on the
 // person's JoolzApp account (one "pref.home.layout" row), so it follows them to every device and survives updates.
 const GRADS = [['#5b8cff', '#7c5cf0'], ['#fb923c', '#ec4899'], ['#10b981', '#0ea5e9'], ['#a855f7', '#6366f1'], ['#f43f5e', '#fb923c'], ['#14b8a6', '#22c55e'], ['#eab308', '#f97316'], ['#0ea5e9', '#6366f1']];
 const hashN = (s) => { let h = 0; for (const c of String(s)) h = (h * 31 + c.charCodeAt(0)) >>> 0; return h; };
@@ -1766,7 +1766,7 @@ function renderDock() {
 function setEditing(on) {
   editing = !!on && !!$('#sb') && !!(HM && HM.canEdit);
   document.body.classList.toggle('editing', editing);
-  renderTicker(); $('#tb-edit').hidden = editing || !$('#sb') || !(HM && HM.canEdit); $('#tb-done').hidden = !editing; if ($('#tb-view')) $('#tb-view').hidden = editing || !$('#sb');
+  renderTicker(); $('#tb-done').hidden = !editing; if ($('#tb-view')) $('#tb-view').hidden = editing || !$('#sb');
   if (HM) renderTray();
 }
 
@@ -1995,7 +1995,6 @@ document.addEventListener('click', guard(async (e) => {
     $('#sheet').close(); toast('Request sent'); route();
   }
 }));
-$('#tb-edit').onclick = () => setEditing(true);
 $('#tb-view').onclick = () => { if (!HM) return; HM.layout.view = homeView() === 'tiles' ? 'icons' : 'tiles'; applyView(); saveLayout(); };
 // Clicking anywhere on a tile card opens it (the whole card, not just the icon).
 document.addEventListener('click', (e) => {
@@ -2026,7 +2025,7 @@ function setBar(view) {
   $('#tb-title').textContent = VIEW_TITLES[view] || '';
   window.JZBar && JZBar.setUser({ name: state.actor });   // the profile icon (account menu) comes from the shared template
   $('#tb-settings').hidden = isAdminRole() && !selfId();   // the Settings screen belongs to a JoolzApp account
-  if (!home) { setEditing(false); $('#tb-edit').hidden = true; $('#tb-done').hidden = true; $('#tb-view').hidden = true; } else { $('#tb-edit').hidden = editing || !(HM && HM.canEdit); }
+  if (!home) { setEditing(false); $('#tb-done').hidden = true; $('#tb-view').hidden = true; } 
   $('#tb-view').hidden = !home || editing; renderTicker();
 }
 
@@ -2035,7 +2034,6 @@ function setBar(view) {
 async function viewHome() {
   const uid = selfId() || state.uid, isAdmin = isAdminRole(), hasSelf = !!selfId();
   HM = await homeModel();
-  $('#tb-edit').hidden = editing || !HM.canEdit;
   const g = !hasSelf ? null : await fetch('/guardians', { headers: { authorization: state.token }, cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
   const fam = !hasSelf ? null : await acctFetch('/family').catch(() => null);
   if (fam && fam.invites && fam.invites.length && HM.items['sys:family']) HM.items['sys:family'].badge = fam.invites.length;
