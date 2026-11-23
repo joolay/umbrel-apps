@@ -28,7 +28,7 @@
 .jz-me.has-initial{color:var(--accent-t,#fff);border:0;background:linear-gradient(145deg,var(--accent),var(--accent-2,var(--accent)))}
 .jz-me{position:relative}.jz-me[aria-expanded=true]{box-shadow:0 0 0 3px var(--glass-line)}
 /* connected dot on the profile icon: grey = not checked yet, green = the server answered the last check (every 10 s), red = it did not */
-.jz-dot{position:absolute;right:-2px;bottom:-2px;width:12px;height:12px;border-radius:50%;box-sizing:border-box;background:#94a3b8;border:2px solid var(--glass-strong,#fff);pointer-events:none}
+.jz-dot{position:absolute;right:-2px;top:-2px;width:12px;height:12px;border-radius:50%;box-sizing:border-box;background:#94a3b8;border:2px solid var(--glass-strong,#fff);pointer-events:none}
 .jz-me[data-conn=ok] .jz-dot{background:#22c55e;animation:jzdot 2.4s ease-out infinite}
 .jz-me[data-conn=down] .jz-dot{background:#ef4444}
 @keyframes jzdot{0%{box-shadow:0 0 0 0 rgba(34,197,94,.55)}70%,100%{box-shadow:0 0 0 7px rgba(34,197,94,0)}}
