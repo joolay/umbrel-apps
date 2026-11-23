@@ -52,6 +52,27 @@ special={
  'family':('#e8590c','#ff8fa3',line24(HOME,12.2,2),['src/portal-admin/public/icons/family.svg'],None),
  'settings':('#475569','#9aa7bd',line24(GEAR,10,4),['src/portal-admin/public/icons/settings.svg'],None),
 }
+
+# ---- Portal Admin's admin tools and the shortcut tiles on its home screen (same glass tile as every app) ----
+TOOLS={
+ 'overview':('#5b8cff','#7c5cf0','<rect x="4" y="4" width="7" height="7" rx="2"/><rect x="13" y="4" width="7" height="7" rx="2"/><rect x="4" y="13" width="7" height="7" rx="2"/><rect x="13" y="13" width="7" height="7" rx="2"/>'),
+ 'global':('#94a3b8','#475569','<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.6 2.4 3.6 5.2 3.6 8.5s-1 6.1-3.6 8.5c-2.6-2.4-3.6-5.2-3.6-8.5s1-6.1 3.6-8.5z"/>'),
+ 'apps':('#a855f7','#6366f1','<path d="M12 4l8 4.5-8 4.5-8-4.5z"/><path d="M4 12.5l8 4.5 8-4.5M4 16.5l8 4.5 8-4.5"/>'),
+ 'users':('#10b981','#0ea5e9','<circle cx="12" cy="8.5" r="3.5"/><path d="M5 20c.5-4 3.2-6 7-6s6.5 2 7 6"/>'),
+ 'requests':('#f43f5e','#fb923c','<path d="M4 13l2.5-7.5h11L20 13v5.5H4z"/><path d="M4 13h4.5l1 2.5h5l1-2.5H20"/>'),
+ 'cleanup':('#14b8a6','#22c55e','<path d="M5 7h14M10 7V4.5h4V7M7 7l1 12.5h8L17 7"/>'),
+ 'paywall':('#22c55e','#0ea5e9','<rect x="3.5" y="6" width="17" height="12" rx="2.5"/><path d="M3.5 10.5h17M7 14.5h3.5"/>'),
+ 'keys':('#f59e0b','#ef4444','<circle cx="8.5" cy="15.5" r="3.8"/><path d="M11.4 12.7 19.5 4.5M16.5 7.5l2.5 2.5M14 10l2 2"/>'),
+ 'joolzapps':('#0f766e','#2dd4bf','<rect x="4" y="4" width="7" height="7" rx="2"/><rect x="13" y="4" width="7" height="7" rx="2"/><rect x="4" y="13" width="7" height="7" rx="2"/><path d="M14.5 15.2 18 13l-1 3.4h2.5L15 21l.9-3.6z"/>'),
+ 'names':('#06b6d4','#6366f1','<path d="M4 6.5h8l8 8-5.5 5.5-8-8z"/><circle cx="8.2" cy="10.7" r="1.2"/>'),
+ 'audit':('#eab308','#f97316','<rect x="5" y="3.5" width="14" height="17" rx="2.5"/><path d="M8.5 8.5h7M8.5 12h7M8.5 15.5h4"/>'),
+ 'changes':('#8b5cf6','#ec4899','<path d="M5 8h10M12 5l3 3-3 3M19 16H9M12 13l-3 3 3 3"/>'),
+}
+for _k,(_a,_b,_g) in TOOLS.items(): special['tool-'+_k]=(_a,_b,line24(_g,10.5,4),[f'src/portal-admin/public/icons/{_k}.svg'],None)
+# shortcuts to the other owner-only apps reuse each app's own icon; Gatekeeper has no app yet, so its icon is defined here
+for _a in ('services-manager','kiosk-manager','routing-reporter','app-updater'): special['shortcut-'+_a]=(icons[_a][0],icons[_a][1],icons[_a][2],[f'src/portal-admin/public/icons/{_a}.svg'],None)
+special['gatekeeper']=('#334155','#64748b',line24('<path d="M5 20V9.5a7 7 0 0 1 14 0V20"/><path d="M5 20h14M9.5 20v-6.2a2.5 2.5 0 0 1 5 0V20"/>',11,4),['src/portal-admin/public/icons/gatekeeper.svg'],None)
+
 def pngs(pub,c1):
     run('rsvg-convert','-w','180','-h','180',f'{pub}/icon.svg','-o',f'{pub}/icon-180.png')
     run('rsvg-convert','-w','512','-h','512',f'{pub}/icon.svg','-o',f'{pub}/icon-512.png')

@@ -1548,6 +1548,8 @@ const GL = {
   cleanup: '<path d="M5 7h14M10 7V4.5h4V7M7 7l1 12.5h8L17 7"/>',
   changes: '<path d="M5 8h10M12 5l3 3-3 3M19 16H9M12 13l-3 3 3 3"/>',
   audit: '<rect x="5" y="3.5" width="14" height="17" rx="2.5"/><path d="M8.5 8.5h7M8.5 12h7M8.5 15.5h4"/>',
+  joolzapps: '<rect x="4" y="4" width="7" height="7" rx="2"/><rect x="13" y="4" width="7" height="7" rx="2"/><rect x="4" y="13" width="7" height="7" rx="2"/><path d="M14.5 15.2 18 13l-1 3.4h2.5L15 21l.9-3.6z"/>',
+  names: '<path d="M4 6.5h8l8 8-5.5 5.5-8-8z"/><circle cx="8.2" cy="10.7" r="1.2"/>',
   setup: '<path d="M14.5 5a4 4 0 0 0-4.7 5.2L4 16l4 4 5.8-5.8A4 4 0 0 0 19 9.5l-2.6 2.6-2.6-.7-.7-2.6z"/>',
 };
 const svgG = (k) => `<svg viewBox="0 0 24 24" aria-hidden="true">${GL[k]}</svg>`;
@@ -1611,7 +1613,7 @@ async function homeModel() {
   const names = {}; if (nameSrc && typeof nameSrc.names === 'object' && nameSrc.names) for (const [k, v] of Object.entries(nameSrc.names)) { const c = cleanName(v); if (c && /^[a-z0-9][a-z0-9_-]{0,60}$/.test(k)) names[k] = c; }
   const dsrc = sl && sl.layout && sl.layout.descs ? sl.layout.descs : {};
   apps.forEach((a) => { if (dsrc[a.slug]) a.description = String(dsrc[a.slug]); const nm = names[a.slug] || a.name; items['app:' + a.slug] = { id: 'app:' + a.slug, kind: 'app', name: nm, orig: a.name, app: a, grad: GRADS[hashN(a.slug) % GRADS.length], letter: (nm || '?').trim().charAt(0).toUpperCase(), ok: allowed(a.slug) }; });
-  if (onlyTools) for (const [k, name, g] of ADMIN_TOOLS) items['tool:' + k] = { id: 'tool:' + k, kind: 'sys', name, glyph: k, grad: g, href: '#/' + k, badge: k === 'requests' ? pend : 0 };
+  if (onlyTools) for (const [k, name, g] of ADMIN_TOOLS) items['tool:' + k] = { id: 'tool:' + k, kind: 'sys', name, glyph: k, img: 'icons/' + k + '.svg', grad: g, href: '#/' + k, badge: k === 'requests' ? pend : 0 };
   if (!isAdmin || selfId()) {
     if (!onlyTools) items['sys:family'] = { id: 'sys:family', kind: 'sys', name: 'Family', glyph: 'family', img: 'icons/family.svg', grad: ['#fb7185', '#f59e0b'], href: '#/family' };   // Family belongs to the JoolzApp Dashboard
     if (!onlyTools) items['sys:me'] = { id: 'sys:me', kind: 'sys', name: 'Settings', glyph: 'me', img: 'icons/settings.svg', grad: ['#94a3b8', '#475569'], href: '#/me' };
@@ -1619,7 +1621,7 @@ async function homeModel() {
   // Portal Admin's own home also carries one-tap shortcuts to the owner-only tools (same tiles the Dashboard's Admin folder has). Gatekeeper has no app yet: its tile waits, dimmed, until it exists.
   if (onlyTools) {
     const urlFor = appUrlFinder([]);
-    for (const [slug, name, port, grad, desc] of ADMIN_SHORTCUTS) items['adm:' + slug] = { id: 'adm:' + slug, kind: 'sys', ext: true, name, app: { slug, name, enabled: true }, grad, letter: name.charAt(0), href: port ? urlFor({ port }) : '#', desc, soon: !port };
+    for (const [slug, name, port, grad, desc] of ADMIN_SHORTCUTS) items['adm:' + slug] = { id: 'adm:' + slug, kind: 'sys', ext: true, name, app: { slug, name, enabled: true }, grad, glyph: slug === 'gatekeeper' ? 'admin' : 'apps', img: 'icons/' + slug + '.svg', letter: name.charAt(0), href: port ? urlFor({ port }) : '#', desc, soon: !port };
   }
   let adminApps = [];
   if (!onlyTools && sl && sl.admin) { const aa = await acctFetch('/admin/apps').catch(() => null); adminApps = aa && Array.isArray(aa.apps) ? aa.apps : []; }
