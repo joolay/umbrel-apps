@@ -102,6 +102,13 @@
       tile("install", " data-pwa-install hidden", SVG("", '<path d="M12 4v10"/><path d="m8 10.5 4 4 4-4"/><path d="M5 17v2.5h14V17"/>'), "Install app", "Add this app to your Home Screen");
     document.body.appendChild(meMenu); paintMe(); paint();
   }
+  // App icon: the bar shows the app's icon before its name. An app that has no <img> in .brand gets one from its apple-touch-icon (every app head carries it), so nothing to add per app.
+  function brandIcon() {
+    var br = document.querySelector(".topbar .brand"); if (!br || br.querySelector("img")) return;
+    var l = document.querySelector('link[rel="apple-touch-icon"]'); if (!l || !l.getAttribute("href")) return;
+    var im = document.createElement("img"); im.alt = ""; im.setAttribute("aria-hidden", "true"); im.src = l.getAttribute("href"); im.onerror = function () { im.remove(); }; br.insertBefore(im, br.firstChild);
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", brandIcon); else brandIcon();
   document.addEventListener("click", function (e) {
     var t = e.target.closest && e.target.closest(".jz-me, .jz-acct-item");
     if (t && t.classList.contains("jz-me")) { if (meOpen()) closeMe(); else openMe(); return; }

@@ -82,7 +82,7 @@ artwork gets a tinted glass tile with its first letter, so give every new app an
 
 ## Floating top bar
 
-The app icon is NOT shown in the top bar: just the app's title (`floatbar.css` hides any `.topbar .brand img`, so an old bar loses it as soon as it loads the template).
+The app's icon sits before its title in the top bar (28px, rounded). `floatbar.js` adds it by itself from the page's `apple-touch-icon` when `.brand` has no `<img>`; an app that already has an `<img>` there keeps it. If the file fails to load the icon simply disappears.
 
 The bar is `position:fixed` (a sticky bar quietly stops working inside any overflow container) and `floatbar.js` adds a `.topbar-spacer` below it so the page is not covered. Always copy both files; never restyle the bar back to sticky. (the standard for every JoolzApp)
 Every app uses the same floating, frosted bar: the app's title on the left, the light/dark theme icon on the right (app buttons, if any, sit between).

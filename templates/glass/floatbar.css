@@ -7,7 +7,7 @@
 /* The bar is fixed so it stays put whatever the page does (a sticky bar silently stops working inside any overflow container); floatbar.js adds .topbar-spacer to keep the page below it. */
 .topbar-spacer{height:64px;margin:0;padding:0;pointer-events:none}
 .topbar .brand{display:flex;align-items:center;gap:10px;min-width:0;font-weight:700}
-.topbar .brand img{display:none}   /* the app icon is not shown in the top bar (template rule) */
+.topbar .brand img{display:block;flex:none;width:28px;height:28px;border-radius:24%;object-fit:cover;box-shadow:0 2px 6px rgba(15,23,42,.22)}   /* the app icon sits before the name (floatbar.js adds it from the apple-touch-icon if the bar has none) */
 .topbar .brand span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .topbar .tb-gap{flex:1}
 [data-theme-toggle] .i-sun,[data-theme-toggle] .i-moon{display:none}
