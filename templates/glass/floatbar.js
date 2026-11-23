@@ -10,7 +10,7 @@
   function stored() { try { return localStorage.getItem(KEY) || ""; } catch (e) { return ""; } }
   function effective() { var t = root.getAttribute("data-theme"); if (t === "light" || t === "dark") return t; return window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"; }
   function paint() {
-    var m = effective(); document.querySelectorAll("[data-theme-toggle]").forEach(function (b) { b.setAttribute("data-mode", m); b.setAttribute("aria-label", m === "dark" ? "Switch to light theme" : "Switch to dark theme"); b.title = b.getAttribute("aria-label"); b.querySelectorAll(".jz-lb").forEach(function (l) { l.textContent = m === "dark" ? "Day mode" : "Night mode"; }); });   // account-menu tile: names what it switches TO
+    var m = effective(); document.querySelectorAll("[data-theme-toggle]").forEach(function (b) { b.setAttribute("data-mode", m); b.setAttribute("aria-label", m === "dark" ? "Switch to light theme" : "Switch to dark theme"); if (b.classList.contains("jz-acct-item")) b.removeAttribute("title"); else b.title = b.getAttribute("aria-label"); b.querySelectorAll(".jz-lb").forEach(function (l) { l.textContent = m === "dark" ? "Day mode" : "Night mode"; }); });   // account-menu tile: names what it switches TO
     var meta = document.querySelector('meta[name="theme-color"]'); if (meta && root.getAttribute("data-theme")) meta.setAttribute("content", m === "dark" ? "#0a0f1f" : "#f4f6fa");
   }
   function apply(v) { if (v === "light" || v === "dark") root.setAttribute("data-theme", v); else root.removeAttribute("data-theme"); paint(); }
@@ -70,12 +70,12 @@
   var SVG = function (cls, p) { return '<svg viewBox="0 0 24 24" aria-hidden="true"' + (cls ? ' class="' + cls + '"' : "") + ">" + p + "</svg>"; };
   var PERSON = SVG("", '<circle cx="12" cy="8.5" r="3.8"/><path d="M4.5 20.2a7.5 7.5 0 0 1 15 0"/>');
   var GEAR = '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3h0a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5h0a1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9v0a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>';
-  function tile(key, attrs, icon, label) { return '<button type="button" class="jz-acct-item" role="menuitem" data-jz="' + key + '"' + attrs + '><span class="jz-ic">' + icon + '</span><span class="jz-lb">' + label + "</span></button>"; }
+  function tile(key, attrs, icon, label, hint) { return '<button type="button" class="jz-acct-item" role="menuitem" data-jz="' + key + '" data-hint="' + hint + '"' + attrs + '><span class="jz-ic">' + icon + '</span><span class="jz-lb">' + label + "</span></button>"; }
   function meOpen() { return !!meMenu && !meMenu.hidden; }
   function paintMe() {
     if (!meBtn) return;
     if (meInfo.initial) { meBtn.textContent = meInfo.initial; meBtn.classList.add("has-initial"); } else { meBtn.innerHTML = PERSON; meBtn.classList.remove("has-initial"); }
-    meBtn.title = meInfo.name || "Account"; meBtn.setAttribute("aria-label", meInfo.name ? "Account: " + meInfo.name : "Account");
+    meBtn.title = meInfo.name || "Account"; meBtn.setAttribute("data-hint", (meInfo.name ? meInfo.name + " · " : "") + "Account menu"); meBtn.setAttribute("aria-label", meInfo.name ? "Account: " + meInfo.name : "Account");
     syncMe();
   }
   function syncMe() {
@@ -96,10 +96,10 @@
     meBtn = document.createElement("button"); meBtn.type = "button"; meBtn.className = "tb-btn jz-me"; meBtn.setAttribute("aria-haspopup", "menu"); meBtn.setAttribute("aria-expanded", "false"); bar.appendChild(meBtn);
     meMenu = document.createElement("div"); meMenu.className = "jz-acct"; meMenu.setAttribute("role", "menu"); meMenu.hidden = true;
     meMenu.innerHTML = '<div class="jz-acct-name" hidden></div>' +
-      tile("logout", "", SVG("", '<path d="M9.5 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h3.5"/><path d="M16 8l4 4-4 4"/><path d="M20 12H9.5"/>'), "Log out") +
-      tile("settings", "", SVG("", GEAR), "Settings") +
-      tile("theme", " data-theme-toggle", SVG("i-moon", '<path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z"/>') + SVG("i-sun", '<circle cx="12" cy="12" r="4"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6 7 7M17 17l1.4 1.4M5.6 18.4 7 17M17 7l1.4-1.4"/>'), "Night mode") +
-      tile("install", " data-pwa-install hidden", SVG("", '<path d="M12 4v10"/><path d="m8 10.5 4 4 4-4"/><path d="M5 17v2.5h14V17"/>'), "Install app");
+      tile("logout", "", SVG("", '<path d="M9.5 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h3.5"/><path d="M16 8l4 4-4 4"/><path d="M20 12H9.5"/>'), "Log out", "Sign out of this app") +
+      tile("settings", "", SVG("", GEAR), "Settings", "Open this app's settings") +
+      tile("theme", " data-theme-toggle", SVG("i-moon", '<path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z"/>') + SVG("i-sun", '<circle cx="12" cy="12" r="4"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6 7 7M17 17l1.4 1.4M5.6 18.4 7 17M17 7l1.4-1.4"/>'), "Night mode", "Switch between the day and night display") +
+      tile("install", " data-pwa-install hidden", SVG("", '<path d="M12 4v10"/><path d="m8 10.5 4 4 4-4"/><path d="M5 17v2.5h14V17"/>'), "Install app", "Add this app to your Home Screen");
     document.body.appendChild(meMenu); paintMe(); paint();
   }
   document.addEventListener("click", function (e) {
@@ -124,6 +124,27 @@
   window.addEventListener("resize", function () { closeMe(); });
   window.addEventListener("scroll", function (e) { if (meOpen() && !(e.target.nodeType === 1 && e.target.closest(".jz-acct"))) closeMe(); }, true);
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", buildMe); else buildMe();
+  // Hover hints (computer with a mouse only; phones and tablets never see them): pause the pointer on an icon-only button in the bars, the profile icon or an account-menu tile and a small styled hint appears
+  // (data-hint, else the button's old title, else its aria-label). Menu tiles show theirs to the left of the menu, everything else just below. Hidden again on leaving, clicking, scrolling or Esc.
+  var canHover = window.matchMedia && matchMedia("(hover:hover) and (pointer:fine)"), hintEl = null, hintFor = null, hintT = 0;
+  function hideHint() { clearTimeout(hintT); hintFor = null; if (hintEl) { hintEl.remove(); hintEl = null; } }
+  function showHint(b, text) {
+    hintEl = document.createElement("div"); hintEl.className = "jz-hint"; hintEl.setAttribute("role", "tooltip"); hintEl.textContent = text; document.body.appendChild(hintEl);
+    var r = b.getBoundingClientRect(), w = hintEl.offsetWidth, h = hintEl.offsetHeight, x, y;
+    if (b.classList.contains("jz-acct-item") && meMenu) { var m = meMenu.getBoundingClientRect(); x = m.left - w - 10; y = r.top + (r.height - h) / 2; if (x < 8) { x = Math.max(8, r.left); y = r.bottom + 6; } }
+    else { x = Math.min(innerWidth - w - 8, Math.max(8, r.left + (r.width - w) / 2)); y = r.bottom + 8; }
+    hintEl.style.left = Math.round(x) + "px"; hintEl.style.top = Math.round(y) + "px";
+  }
+  document.addEventListener("mouseover", function (e) {
+    if (!canHover || !canHover.matches) return;
+    var b = e.target.closest && e.target.closest(".topbar .tb-btn, .jz-acct-item, .toolbar .tool, .menubar .mb-btn[aria-label]");
+    if (b === hintFor) return; hideHint(); if (!b || b.disabled) return;
+    if (b.hasAttribute("title")) { if (!b.getAttribute("data-hint")) b.setAttribute("data-hint", b.getAttribute("title")); b.removeAttribute("title"); }   // no second, native hint on top of ours
+    var t = b.getAttribute("data-hint") || b.getAttribute("aria-label"); if (!t) return;
+    hintFor = b; hintT = setTimeout(function () { if (hintFor === b) showHint(b, t); }, 300);
+  });
+  document.addEventListener("mouseout", function (e) { if (hintFor && !(e.relatedTarget && hintFor.contains(e.relatedTarget))) hideHint(); });
+  document.addEventListener("click", hideHint, true); document.addEventListener("keydown", hideHint, true); window.addEventListener("scroll", hideHint, true);
   function setUser(u) { u = u || {}; var n = String(u.name || "").trim(); meInfo = { name: n, initial: String(u.initial || n.charAt(0) || "").trim().charAt(0).toUpperCase() }; paintMe(); }
   function onLogout(fn) { logoutFn = typeof fn === "function" ? fn : null; syncMe(); }
   window.JZBar = { setHome: setHome, closeMenu: closeMenu, setUser: setUser, onLogout: onLogout, closeAccount: closeMe };

@@ -102,6 +102,7 @@ Every app uses the same floating, frosted bar: the app's title on the left, the 
 - **Day/Night mode** is its own `data-theme-toggle` tile (named for what it switches to) and keeps the menu open so the change is seen.
 - **Install** is its own `data-pwa-install` tile and shows only in a **phone or tablet browser tab** (iPhone, iPad including iPadOS posing as a Mac, Android), never on a computer and never once the app is open as an installed app (PWA). `installbtn.js` decides; the loose Install button follows the same rule.
 - The app names the person with `JZBar.setUser({ name, initial })` (name shows at the top of the menu; `initial` defaults to the first letter). Call it after sign-in and again when the name changes.
+- **Hover hints (computer only):** pausing the mouse on any icon-only button in the bars, on the profile icon or on a menu tile shows a small styled hint after a moment (menu tiles: to the left of the menu, with a longer explanation from `data-hint`). Phones and tablets (no hover) never show them. Give an icon button a `data-hint` (or just an `aria-label`) and it gets one; the native browser hint is suppressed so there is never a double.
 - The menu closes on choosing Log out / Settings / Install, tapping outside, Esc, scrolling or turning the screen; arrow keys move between tiles.
 
 ## Menu bar and toolbar (docked under the top bar, opt-in per app)
