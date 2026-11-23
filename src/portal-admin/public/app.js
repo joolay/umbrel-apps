@@ -263,7 +263,7 @@ async function showShell() {
   await resolvePid();
   setBrand(state.role === 'user' || state.public ? 'JoolzApp Dashboard' : 'Portal Admin');
   $('#login').classList.add('hidden'); $('#shell').classList.remove('hidden');
-  $('#who').textContent = state.actor; route(); startDetecting();
+  window.JZBar && JZBar.setUser({ name: state.actor }); route(); startDetecting();
   homeModel().then((m) => { if (!HM) HM = m; renderDock(); }).catch(() => {});   // so the dock is there on every page
   if (selfId()) { seedRegional().then(loadDatePref).catch(loadDatePref); loadAppearance(); }
   loadEvents(); qaWatch();
@@ -354,7 +354,7 @@ function route() {
   if (state.role === 'user') view = (view === 'me' || view === 'family' || view === 'paid' || view === 'qr') ? view : 'home';
   const v = { home: viewHome, overview: viewOverview, global: viewGlobal, apps: viewApps, users: viewUsers, requests: viewRequests, cleanup: viewCleanup, audit: viewAudit, changes: viewChanges, setup: viewSetup, me: viewMe, family: viewFamily, paywall: viewPaywall, keys: viewKeys, joolzapps: viewJoolzApps, names: viewNames, paid: viewPaid, qr: viewQr }[view] || viewHome;
   if (!v || v === viewHome) view = 'home';
-  setBar(view); $('#acct').open && $('#acct').close(); $('#sheet').open && $('#sheet').close();
+  setBar(view); $('#sheet').open && $('#sheet').close();
   main().innerHTML = '<p class="muted">Loading…</p>';
   guard(async (a) => { if (await needDob()) return; if (await needUsername()) return; await v(a); })(arg ? decodeURIComponent(arg) : undefined);
 }
@@ -2016,7 +2016,6 @@ $('#tb-done').onclick = () => setEditing(false);
   });
   d.addEventListener('pointerleave', reset);
 })();
-$('#tb-me').onclick = () => { $('#acct').showModal(); };
 $('#tb-settings').onclick = () => { location.hash = '#/me'; };   // the top bar's Settings gear opens the Settings screen (same as the Settings tile)
 $('#tb-back').onclick = () => { location.hash = '#/home'; };
 
@@ -2025,7 +2024,7 @@ function setBar(view) {
   sh.classList.toggle('home-page', home); sh.classList.toggle('sub-page', !home);
   $('#tb-back').hidden = home; $('#tb-brand').hidden = !home; $('#tb-title').hidden = home;
   $('#tb-title').textContent = VIEW_TITLES[view] || '';
-  $('#tb-me').textContent = (state.actor || '?').trim().charAt(0).toUpperCase();
+  window.JZBar && JZBar.setUser({ name: state.actor });   // the profile icon (account menu) comes from the shared template
   $('#tb-settings').hidden = isAdminRole() && !selfId();   // the Settings screen belongs to a JoolzApp account
   if (!home) { setEditing(false); $('#tb-edit').hidden = true; $('#tb-done').hidden = true; $('#tb-view').hidden = true; } else { $('#tb-edit').hidden = editing || !(HM && HM.canEdit); }
   $('#tb-view').hidden = !home || editing; renderTicker();

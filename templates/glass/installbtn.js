@@ -8,7 +8,9 @@
   function standalone() { return (window.matchMedia && matchMedia("(display-mode: standalone)").matches) || (window.matchMedia && matchMedia("(display-mode: window-controls-overlay)").matches) || navigator.standalone === true; }
   function secure() { return window.isSecureContext !== false && location.protocol === "https:"; }   // browsers only install from https
   function buttons() { return document.querySelectorAll("[data-pwa-install]"); }
-  function paint() { var show = !installed && !standalone(); buttons().forEach(function (b) { b.hidden = !show; }); }
+  // Install is offered only in a phone or tablet browser tab (iPhone, iPad incl. iPadOS posing as a Mac, Android), never inside the installed app and never on a computer.
+  function handheld() { var d = H && H.detect({ ua: navigator.userAgent, platform: navigator.platform, touch: navigator.maxTouchPoints, standalone: false }); return !!d && (d.ios || /Android/.test(navigator.userAgent)); }
+  function paint() { var show = !installed && !standalone() && handheld(); buttons().forEach(function (b) { b.hidden = !show; }); }
   function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
   function sheet() {
     var d = H.detect({ ua: navigator.userAgent, platform: navigator.platform, touch: navigator.maxTouchPoints, standalone: standalone() });

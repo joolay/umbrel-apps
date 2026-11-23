@@ -21,6 +21,23 @@
 /* Settings gear (the standard Settings button, data-settings): lit while the app's Settings screen is open (set aria-pressed="true") */
 .tb-btn[aria-pressed=true]{background:var(--accent);color:var(--accent-t,#fff);border-color:transparent}
 
+/* Account menu: the profile icon at the far right of the bar (floatbar.js builds it) opens a dropdown of large icons: Log out, Settings, Day/Night mode, Install.
+   The loose Settings / theme / Install buttons an app still has in its bar stay in the page (its handlers use them) but are hidden: they live in the menu now. */
+.topbar [data-settings],.topbar [data-theme-toggle],.topbar [data-pwa-install]{display:none!important}
+.jz-me{font:700 15px/1 system-ui,-apple-system,"Segoe UI",sans-serif}
+.jz-me.has-initial{color:var(--accent-t,#fff);border:0;background:linear-gradient(145deg,var(--accent),var(--accent-2,var(--accent)))}
+.jz-me[aria-expanded=true]{box-shadow:0 0 0 3px var(--glass-line)}
+.jz-acct{position:fixed;z-index:40;width:min(270px,calc(100vw - 20px));padding:8px;border-radius:22px;border:1px solid var(--glass-line);background:var(--glass-strong);
+  -webkit-backdrop-filter:blur(22px) saturate(170%);backdrop-filter:blur(22px) saturate(170%);box-shadow:0 14px 40px rgba(0,0,0,.3)}
+.jz-acct[hidden],.jz-acct-name[hidden],.jz-acct-item[hidden]{display:none}
+.jz-acct-name{margin:0 4px 4px;padding:6px 8px 9px;border-bottom:1px solid var(--glass-line);font-size:13px;font-weight:600;opacity:.75;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.jz-acct-item{display:flex;width:100%;align-items:center;gap:14px;padding:7px 10px 7px 7px;border:0;border-radius:16px;background:none;color:var(--text);font:600 16px system-ui,-apple-system,"Segoe UI",sans-serif;text-align:left;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.jz-acct-item:hover,.jz-acct-item:focus-visible{background:var(--glass-line);outline:0}.jz-acct-item:active{transform:scale(.98)}
+.jz-ic{flex:none;width:50px;height:50px;border-radius:16px;display:grid;place-items:center;background:var(--glass-line)}
+.jz-ic svg{width:28px;height:28px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.jz-acct-item[data-jz=logout] .jz-ic{color:var(--danger,#e5484d)}
+.jz-acct-item[aria-pressed=true] .jz-ic{background:var(--accent);color:var(--accent-t,#fff)}
+
 /* Dock: the top bar, then an optional menu bar (the tabs), then an optional toolbar (drop-down selectors and quick actions), fixed together as ONE block so they never separate (PWA, notch, rubber-banding).
    An app opts in by adding <nav class="menubar"> and/or <div class="toolbar"> right after the <header class="topbar">; floatbar.js wraps them in .jz-dock and keeps the page below the whole dock.
    An app that has neither keeps the plain top bar. Markup in README.md ("Menu bar and toolbar"). */

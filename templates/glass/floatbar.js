@@ -10,7 +10,7 @@
   function stored() { try { return localStorage.getItem(KEY) || ""; } catch (e) { return ""; } }
   function effective() { var t = root.getAttribute("data-theme"); if (t === "light" || t === "dark") return t; return window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"; }
   function paint() {
-    var m = effective(); document.querySelectorAll("[data-theme-toggle]").forEach(function (b) { b.setAttribute("data-mode", m); b.setAttribute("aria-label", m === "dark" ? "Switch to light theme" : "Switch to dark theme"); b.title = b.getAttribute("aria-label"); });
+    var m = effective(); document.querySelectorAll("[data-theme-toggle]").forEach(function (b) { b.setAttribute("data-mode", m); b.setAttribute("aria-label", m === "dark" ? "Switch to light theme" : "Switch to dark theme"); b.title = b.getAttribute("aria-label"); b.querySelectorAll(".jz-lb").forEach(function (l) { l.textContent = m === "dark" ? "Day mode" : "Night mode"; }); });   // account-menu tile: names what it switches TO
     var meta = document.querySelector('meta[name="theme-color"]'); if (meta && root.getAttribute("data-theme")) meta.setAttribute("content", m === "dark" ? "#0a0f1f" : "#f4f6fa");
   }
   function apply(v) { if (v === "light" || v === "dark") root.setAttribute("data-theme", v); else root.removeAttribute("data-theme"); paint(); }
@@ -61,6 +61,71 @@
     if (!document.querySelector("[data-home]")) return;
     try { fetch("api/app-config", { cache: "no-store" }).then(function (r) { return r.ok ? r.json() : {}; }).then(function (c) { if (c && c.portalUrl) setHome(c.portalUrl); }).catch(function () {}); } catch (e) {}
   });
-  window.JZBar = { setHome: setHome, closeMenu: closeMenu };
+  // Account menu: the profile icon at the far right of the top bar opens a dropdown of large icons: Log out, Settings, Day/Night mode, Install (in that order).
+  // The old loose buttons (data-settings, data-theme-toggle, data-pwa-install inside the bar) stay in the page, hidden by floatbar.css, so every app's own handlers keep working:
+  // the Settings tile clicks the app's [data-settings] button (and hides with it), Log out clicks the app's [data-logout] element (or the function given to JZBar.onLogout; with neither the tile is hidden),
+  // the Day/Night and Install tiles carry data-theme-toggle / data-pwa-install themselves. Install shows only in a phone or tablet browser tab, never inside the installed app (installbtn.js decides).
+  // The app names the person with JZBar.setUser({ name, initial }); without it the icon is a plain person.
+  var meInfo = { name: "", initial: "" }, logoutFn = null, meBtn = null, meMenu = null;
+  var SVG = function (cls, p) { return '<svg viewBox="0 0 24 24" aria-hidden="true"' + (cls ? ' class="' + cls + '"' : "") + ">" + p + "</svg>"; };
+  var PERSON = SVG("", '<circle cx="12" cy="8.5" r="3.8"/><path d="M4.5 20.2a7.5 7.5 0 0 1 15 0"/>');
+  var GEAR = '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3h0a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5h0a1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9v0a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>';
+  function tile(key, attrs, icon, label) { return '<button type="button" class="jz-acct-item" role="menuitem" data-jz="' + key + '"' + attrs + '><span class="jz-ic">' + icon + '</span><span class="jz-lb">' + label + "</span></button>"; }
+  function meOpen() { return !!meMenu && !meMenu.hidden; }
+  function paintMe() {
+    if (!meBtn) return;
+    if (meInfo.initial) { meBtn.textContent = meInfo.initial; meBtn.classList.add("has-initial"); } else { meBtn.innerHTML = PERSON; meBtn.classList.remove("has-initial"); }
+    meBtn.title = meInfo.name || "Account"; meBtn.setAttribute("aria-label", meInfo.name ? "Account: " + meInfo.name : "Account");
+    syncMe();
+  }
+  function syncMe() {
+    if (!meMenu) return;
+    var lo = meMenu.querySelector('[data-jz="logout"]'), st = meMenu.querySelector('[data-jz="settings"]'), nm = meMenu.querySelector(".jz-acct-name"), sb = document.querySelector(".topbar [data-settings]");
+    lo.hidden = !(logoutFn || document.querySelector("[data-logout]"));
+    st.hidden = !sb || sb.hidden; st.setAttribute("aria-pressed", sb && sb.getAttribute("aria-pressed") === "true" ? "true" : "false");
+    nm.textContent = meInfo.name; nm.hidden = !meInfo.name;
+  }
+  function openMe() {
+    if (!meMenu) return; syncMe(); meMenu.hidden = false;
+    var r = meBtn.getBoundingClientRect(); meMenu.style.top = Math.round(r.bottom + 8) + "px"; meMenu.style.right = Math.max(10, Math.round(innerWidth - r.right)) + "px";
+    meBtn.setAttribute("aria-expanded", "true"); closeMenu();
+  }
+  function closeMe(refocus) { if (!meOpen()) return; meMenu.hidden = true; meBtn.setAttribute("aria-expanded", "false"); if (refocus) meBtn.focus(); }
+  function buildMe() {
+    var bar = document.querySelector(".topbar"); if (!bar || bar.querySelector(".jz-me")) return;
+    meBtn = document.createElement("button"); meBtn.type = "button"; meBtn.className = "tb-btn jz-me"; meBtn.setAttribute("aria-haspopup", "menu"); meBtn.setAttribute("aria-expanded", "false"); bar.appendChild(meBtn);
+    meMenu = document.createElement("div"); meMenu.className = "jz-acct"; meMenu.setAttribute("role", "menu"); meMenu.hidden = true;
+    meMenu.innerHTML = '<div class="jz-acct-name" hidden></div>' +
+      tile("logout", "", SVG("", '<path d="M9.5 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h3.5"/><path d="M16 8l4 4-4 4"/><path d="M20 12H9.5"/>'), "Log out") +
+      tile("settings", "", SVG("", GEAR), "Settings") +
+      tile("theme", " data-theme-toggle", SVG("i-moon", '<path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z"/>') + SVG("i-sun", '<circle cx="12" cy="12" r="4"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6 7 7M17 17l1.4 1.4M5.6 18.4 7 17M17 7l1.4-1.4"/>'), "Night mode") +
+      tile("install", " data-pwa-install hidden", SVG("", '<path d="M12 4v10"/><path d="m8 10.5 4 4 4-4"/><path d="M5 17v2.5h14V17"/>'), "Install app");
+    document.body.appendChild(meMenu); paintMe(); paint();
+  }
+  document.addEventListener("click", function (e) {
+    var t = e.target.closest && e.target.closest(".jz-me, .jz-acct-item");
+    if (t && t.classList.contains("jz-me")) { if (meOpen()) closeMe(); else openMe(); return; }
+    if (t) {
+      var k = t.getAttribute("data-jz");
+      if (k === "logout") { var lg = document.querySelector("[data-logout]"); closeMe(); if (lg) lg.click(); else if (logoutFn) logoutFn(); }
+      else if (k === "settings") { var sb = document.querySelector(".topbar [data-settings]"); closeMe(); if (sb) sb.click(); }
+      else if (k === "install") closeMe();   // installbtn.js handles the tap; Day/Night is switched by the handler above and keeps the menu open so the change is seen
+      return;
+    }
+    if (meOpen() && !e.target.closest(".jz-acct")) closeMe();
+  });
+  document.addEventListener("keydown", function (e) {
+    if (!meOpen()) return;
+    if (e.key === "Escape") { closeMe(true); return; }
+    if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+    var items = [].slice.call(meMenu.querySelectorAll(".jz-acct-item")).filter(function (b) { return !b.hidden; }), i = items.indexOf(document.activeElement);
+    e.preventDefault(); if (items.length) items[(i + (e.key === "ArrowDown" ? 1 : -1) + items.length) % items.length].focus();
+  });
+  window.addEventListener("resize", function () { closeMe(); });
+  window.addEventListener("scroll", function (e) { if (meOpen() && !(e.target.nodeType === 1 && e.target.closest(".jz-acct"))) closeMe(); }, true);
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", buildMe); else buildMe();
+  function setUser(u) { u = u || {}; var n = String(u.name || "").trim(); meInfo = { name: n, initial: String(u.initial || n.charAt(0) || "").trim().charAt(0).toUpperCase() }; paintMe(); }
+  function onLogout(fn) { logoutFn = typeof fn === "function" ? fn : null; syncMe(); }
+  window.JZBar = { setHome: setHome, closeMenu: closeMenu, setUser: setUser, onLogout: onLogout, closeAccount: closeMe };
   window.JZTheme = { set: set, effective: effective, paint: paint };
 })();
