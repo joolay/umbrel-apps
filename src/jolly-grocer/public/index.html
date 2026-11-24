@@ -8,8 +8,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Jolly Grocer">
 <title>Jolly Grocer</title>
-<script src="floatbar.js"></script>
-<link rel="stylesheet" href="glass.css">
+<script src="jz.js"></script>
 <style>
 :root{--accent:#1E7A4C;--accent-2:#4FC083;--accent-t:#fff}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--accent:#4FC083;--accent-2:#7FD6A6;--accent-t:#06210F}}
@@ -123,8 +122,7 @@ input,select,textarea{background:var(--glass-strong);border:1px solid var(--glas
 .rvrow input[type=text],.rvrow select,.line.rv .row select{width:100%;min-width:0;min-height:40px;padding:5px 10px}
 .line.rv .row.full{gap:6px}
 </style>
-<link rel="stylesheet" href="floatbar.css">
-<script src="theme-global.js"></script></head>
+</head>
 <body>
 <header class="topbar">
   <button class="tb-btn" data-home aria-label="Home" title="Home" hidden><svg viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10.5V20h13v-9.5"/><path d="M10 20v-5.5h4V20"/></svg></button>
@@ -167,8 +165,6 @@ input,select,textarea{background:var(--glass-strong);border:1px solid var(--glas
 <div class="toast-wrap" id="toast-wrap" hidden><div class="toast" role="status" aria-live="polite" id="toast"></div></div>
 <input type="file" id="file-list" accept="image/*" hidden>
 <input type="file" id="file-receipt" accept="image/*" hidden>
-<script src="install-help.js"></script>
-<script src="installbtn.js"></script>
 <script>
 (function () {
   'use strict';
@@ -1125,5 +1121,4 @@ input,select,textarea{background:var(--glass-strong);border:1px solid var(--glas
   window.__jg = { estimate: estimate, rollOver: rollOver, expiredReceipts: expiredReceipts, lowRes: lowRes, S: S, ui: ui, render: render, parseCode: parseCode, addItem: addItem, suggestions: suggestions, agg: agg, norm: norm, applyReceipt: applyReceipt, openCheckout: openCheckout, confirmCheckout: confirmCheckout, startReview: startReview, setSample: function (f) { sampleFn = f; render(); } };
 })();
 </script>
-<script src="linkstatus.js"></script>
 </body></html>

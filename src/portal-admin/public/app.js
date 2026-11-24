@@ -1548,6 +1548,8 @@ const GL = {
   cleanup: '<path d="M5 7h14M10 7V4.5h4V7M7 7l1 12.5h8L17 7"/>',
   changes: '<path d="M5 8h10M12 5l3 3-3 3M19 16H9M12 13l-3 3 3 3"/>',
   audit: '<rect x="5" y="3.5" width="14" height="17" rx="2.5"/><path d="M8.5 8.5h7M8.5 12h7M8.5 15.5h4"/>',
+  joolzapps: '<path d="M5 18c0-5.5 7-3.5 7-8.5S19 7 19 5"/><circle cx="5" cy="18.5" r="1.6"/><circle cx="12" cy="11" r="1.6"/><circle cx="19" cy="5.5" r="1.6"/>',
+  names: '<path d="M4 16.5V20h3.5L18.2 9.3l-3.5-3.5z"/><path d="M13 7.5l3.5 3.5"/>',
   setup: '<path d="M14.5 5a4 4 0 0 0-4.7 5.2L4 16l4 4 5.8-5.8A4 4 0 0 0 19 9.5l-2.6 2.6-2.6-.7-.7-2.6z"/>',
 };
 const svgG = (k) => `<svg viewBox="0 0 24 24" aria-hidden="true">${GL[k]}</svg>`;
@@ -1611,7 +1613,7 @@ async function homeModel() {
   const names = {}; if (nameSrc && typeof nameSrc.names === 'object' && nameSrc.names) for (const [k, v] of Object.entries(nameSrc.names)) { const c = cleanName(v); if (c && /^[a-z0-9][a-z0-9_-]{0,60}$/.test(k)) names[k] = c; }
   const dsrc = sl && sl.layout && sl.layout.descs ? sl.layout.descs : {};
   apps.forEach((a) => { if (dsrc[a.slug]) a.description = String(dsrc[a.slug]); const nm = names[a.slug] || a.name; items['app:' + a.slug] = { id: 'app:' + a.slug, kind: 'app', name: nm, orig: a.name, app: a, grad: GRADS[hashN(a.slug) % GRADS.length], letter: (nm || '?').trim().charAt(0).toUpperCase(), ok: allowed(a.slug) }; });
-  if (onlyTools) for (const [k, name, g] of ADMIN_TOOLS) items['tool:' + k] = { id: 'tool:' + k, kind: 'sys', name, glyph: k, grad: g, href: '#/' + k, badge: k === 'requests' ? pend : 0 };
+  if (onlyTools) for (const [k, name, g] of ADMIN_TOOLS) items['tool:' + k] = { id: 'tool:' + k, kind: 'sys', name, glyph: k, img: 'icons/' + k + '.svg', grad: g, href: '#/' + k, badge: k === 'requests' ? pend : 0 };
   if (!isAdmin || selfId()) {
     if (!onlyTools) items['sys:family'] = { id: 'sys:family', kind: 'sys', name: 'Family', glyph: 'family', img: 'icons/family.svg', grad: ['#fb7185', '#f59e0b'], href: '#/family' };   // Family belongs to the JoolzApp Dashboard
     if (!onlyTools) items['sys:me'] = { id: 'sys:me', kind: 'sys', name: 'Settings', glyph: 'me', img: 'icons/settings.svg', grad: ['#94a3b8', '#475569'], href: '#/me' };
@@ -1619,7 +1621,7 @@ async function homeModel() {
   // Portal Admin's own home also carries one-tap shortcuts to the owner-only tools (same tiles the Dashboard's Admin folder has). Gatekeeper has no app yet: its tile waits, dimmed, until it exists.
   if (onlyTools) {
     const urlFor = appUrlFinder([]);
-    for (const [slug, name, port, grad, desc] of ADMIN_SHORTCUTS) items['adm:' + slug] = { id: 'adm:' + slug, kind: 'sys', ext: true, name, app: { slug, name, enabled: true }, grad, letter: name.charAt(0), href: port ? urlFor({ port }) : '#', desc, soon: !port };
+    for (const [slug, name, port, grad, desc] of ADMIN_SHORTCUTS) items['adm:' + slug] = { id: 'adm:' + slug, kind: 'sys', ext: true, name, app: { slug, name, enabled: true }, grad, letter: name.charAt(0), img: slug === 'gatekeeper' ? 'icons/gatekeeper.svg' : '', href: port ? urlFor({ port }) : '#', desc, soon: !port };
   }
   let adminApps = [];
   if (!onlyTools && sl && sl.admin) { const aa = await acctFetch('/admin/apps').catch(() => null); adminApps = aa && Array.isArray(aa.apps) ? aa.apps : []; }
@@ -1680,7 +1682,7 @@ function iconFail(img) {
 window.iconFail = iconFail;
 function tileInner(it) {
   // Family, Settings and Admin have artwork in the same style as the apps' own icons; the line glyph shows underneath until it loads (or if it can't).
-  if (it.img) return `${svgG(it.glyph)}<img class="ic-img" src="${esc(it.img)}" alt="" draggable="false" onerror="this.remove()">`;
+  if (it.img) return `${it.glyph ? svgG(it.glyph) : ''}<img class="ic-img" src="${esc(it.img)}" alt="" draggable="false" onerror="this.remove()">`;
   if (it.glyph) return svgG(it.glyph);
   const img = it.app ? `<img class="ic-img" src="${esc(appIconUrl(it.app))}" alt="" draggable="false" loading="lazy" data-slug="${esc(it.app.slug)}" onerror="iconFail(this)">` : '';
   return `<b>${esc(it.letter)}</b>${img}`;
@@ -1689,7 +1691,7 @@ function ufMini(it) {
   const kids = ((HM && HM.layout.folders[it.fid]) || { items: [] }).items.map((id) => HM.items[id]).filter(Boolean).slice(0, 4);
   return `<span class="mini">${kids.map((k) => `<i style="--c1:${k.grad[0]};--c2:${k.grad[1]}">${tileInner(k)}</i>`).join('')}</span>`;
 }
-function folderMini() { return `<span class="mini">${ADMIN_TOOLS.slice(0, 4).map(([k, , g]) => `<i style="--c1:${g[0]};--c2:${g[1]}">${svgG(k)}</i>`).join('')}</span>`; }
+function folderMini() { return `<span class="mini">${ADMIN_TOOLS.slice(0, 4).map(([k, , g]) => `<i style="--c1:${g[0]};--c2:${g[1]}">${svgG(k)}<img class="ic-img" src="icons/${k}.svg" alt="" draggable="false" onerror="this.remove()"></i>`).join('')}</span>`; }
 // Tile view (desktop): a short description and a status line next to the icon. Hidden in the icon view.
 function tileText(it) {
   const a = it.app; let d = '', st = '';

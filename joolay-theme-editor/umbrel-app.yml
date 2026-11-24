@@ -2,7 +2,7 @@ manifestVersion: 1
 id: joolay-theme-editor
 category: developer
 name: Theme Editor
-version: "1.0.0"
+version: "1.1.0"
 tagline: Edit the global Glass theme that every JoolzApp can load
 description: >-
   Owner-only editor for the JoolzApp Glass theme: backdrop glows, panel and text colours, status colours, corner radius, glass opacity, font and,
@@ -19,7 +19,8 @@ gallery: []
 path: ""
 defaultUsername: ""
 defaultPassword: ""
-releaseNotes: "First release: edit the global Glass theme with a live light and dark preview, separate templates for mobile, tablet, desktop and TV, top bar styling, named options for every item, save it for every app that loads it, or reset to the Glass defaults."
+releaseNotes: >-
+  Moved onto the shared JoolzApp template (one jz.js file): same top bar, profile menu, theme switch and sync ticks as the other apps.
 submitter: joolay
 submission: https://github.com/joolay/umbrel-apps
 icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-theme-editor/icon.svg

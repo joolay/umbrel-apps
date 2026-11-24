@@ -198,8 +198,6 @@ dialog#sheet,dialog#acct{position:fixed;margin:auto;width:min(440px,calc(100vw -
 .ic-label{text-shadow:none;font-weight:550;letter-spacing:.01em}
 .ic-tile.folder{box-shadow:0 4px 12px rgba(15,23,42,.14),inset 0 1px 0 rgba(255,255,255,.4)}
 .ic-tile.folder .mini i{background:linear-gradient(150deg,color-mix(in srgb,var(--c1) 80%,transparent),color-mix(in srgb,var(--c2) 80%,transparent))}
-@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .ic-tile:not(:has(.ic-img)){border-color:rgba(255,255,255,.16);box-shadow:0 4px 12px rgba(0,0,0,.32),inset 0 1px 0 rgba(255,255,255,.14)}}
-:root[data-theme="dark"] .ic-tile:not(:has(.ic-img)){border-color:rgba(255,255,255,.16);box-shadow:0 4px 12px rgba(0,0,0,.32),inset 0 1px 0 rgba(255,255,255,.14)}
 .brand img{border-radius:24%;box-shadow:0 2px 6px rgba(15,23,42,.22)}   /* the icon file is a full square (the system rounds it on a phone); round it here too */
 
 /* Phones: whatever the browser shows outside the page (above, below, while bouncing) is the page colour, never the browser's grey,
@@ -237,3 +235,14 @@ body{overscroll-behavior-y:none}
 .grp{margin:18px 4px 8px;font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}.routedown{margin-top:10px;padding-top:10px;border-top:1px solid var(--line,rgba(128,128,128,.25))}.routedown p{margin:0 0 8px}
 
 .dock[hidden]{display:none}
+
+/* Tiles = one family (v0.42): every tile is the same solid gradient as the app icons. Folders are the same tile with the first four icons inside, no frosted glass.
+   Tiles with no artwork (a new app that has no icon yet) are the solid gradient with a bold white letter, never tinted glass. */
+.ic-tile,.ic-tile:not(:has(.ic-img)){background:linear-gradient(150deg,var(--c1),var(--c2));-webkit-backdrop-filter:none;backdrop-filter:none;border:0;
+  box-shadow:0 3px 10px rgba(15,23,42,.22),0 0 0 .5px rgba(15,23,42,.18)}
+.ic-tile.folder,.ic-tile.folder:not(:has(.ic-img)){background:linear-gradient(150deg,color-mix(in srgb,var(--c1) 70%,#0f172a),color-mix(in srgb,var(--c2) 70%,#0f172a));color:#fff;
+  box-shadow:0 3px 10px rgba(15,23,42,.22),0 0 0 .5px rgba(15,23,42,.18)}
+.ic-tile.folder .mini{padding:7px;gap:3px}
+.ic-tile.folder .mini i{border-radius:6px;background:linear-gradient(150deg,var(--c1),var(--c2));box-shadow:0 0 0 .5px rgba(255,255,255,.28)}
+.ic-tile b,.ic-tile svg{text-shadow:none}
+.ic-tile svg{stroke-width:2;filter:none}
