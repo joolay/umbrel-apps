@@ -76,7 +76,8 @@
       email.i.required = true; pass.i.required = true; f.append(email.l, pass.l);
       var opts = el("div", "jz-opts"), rl = el("label", "inline"), remember = el("input"), forgot = el("a", "", "Forgot password?"), ok = el("p", "jz-ok"), err = el("p", "jz-err");
       remember.type = "checkbox"; forgot.href = "#"; err.setAttribute("role", "alert");
-      try { remember.checked = localStorage.getItem("gd.remember") === "1"; if (remember.checked) email.i.value = localStorage.getItem("gd.email") || ""; } catch (e) {}
+      // Remember me is ON unless the person unticked it on purpose ("0"): an installed app (PWA) loses a session-only sign-in every time it is closed.
+      try { remember.checked = localStorage.getItem("gd.remember") !== "0"; if (remember.checked) email.i.value = localStorage.getItem("gd.email") || ""; } catch (e) { remember.checked = true; }
       rl.append(remember, document.createTextNode(" Remember me")); opts.append(rl, forgot); f.appendChild(opts);
       forgot.onclick = function (ev) {
         ev.preventDefault(); err.textContent = ""; ok.textContent = "";
@@ -89,11 +90,18 @@
         api("api/account/login", { method: "POST", body: JSON.stringify({ email: email.i.value, password: pass.i.value, remember: remember.checked }) })
           .then(function (j) {
             setTok(j.token, remember.checked);
-            try { if (remember.checked) { localStorage.setItem("gd.remember", "1"); localStorage.setItem("gd.email", email.i.value); } else { localStorage.removeItem("gd.remember"); localStorage.removeItem("gd.email"); } } catch (e) {}
+            try { if (remember.checked) { localStorage.setItem("gd.remember", "1"); localStorage.setItem("gd.email", email.i.value); } else { localStorage.setItem("gd.remember", "0"); localStorage.removeItem("gd.email"); } } catch (e) {}
             open(j.user);
           }).catch(function (e) { err.textContent = e.message; go.disabled = false; });
       };
       view.appendChild(f);
+      // "Continue with Google": Google only knows the dashboard's public https address, so the dashboard does the Google step and hands the
+      // person back to this app (its sso.html), which keeps the sign-in on this device. Hidden on LAN / Tailscale (http) addresses.
+      if (cfg.portalUrl && location.protocol === "https:" && cfg.google !== false) {
+        var gb = el("button", "jz-alt jz-google", "Continue with Google"); gb.type = "button";
+        gb.onclick = function () { location.href = cfg.portalUrl.replace(/\/+$/, "") + "/?google=1&next=" + encodeURIComponent(location.origin + location.pathname.replace(/[^\/]*$/, "")); };
+        view.appendChild(gb);
+      }
       if (QA && QA.has()) { var qb = el("button", "jz-alt", "Use my PIN or pattern"); qb.type = "button"; qb.onclick = quickFirst; view.appendChild(qb); }
       if (cfg.signups !== false) {
         // One JoolzApp sign-up page, in Portal Admin. It sends the person back here when the account is made.

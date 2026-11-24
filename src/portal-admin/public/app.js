@@ -146,8 +146,19 @@ async function ensureSchema() {
 async function boot() {
   // Back from Google: google-callback.html finished the sign-in with PocketBase and left the result for this tab.
   { let g = null; try { g = JSON.parse(store.get('pa.goauth') || 'null'); store.set('pa.goauth', null); } catch {}
-    if (g && g.token) { state.pid = ''; state.pidTried = false; Object.assign(state, { token: g.token, actor: g.email, role: 'user', uid: g.id }); store.lset('pa.remember', '1'); saveSession(true); qaMarkSignedIn(); location.hash = '#/me'; return showShell(); } }
-  $('#login-remember').checked = store.lget('pa.remember') === '1';
+    if (g && g.token) {
+      const back = takeGoogleNext(); if (back) return handOff(back, g.token);   // an app asked for the Google step: send the person back to it
+      state.pid = ''; state.pidTried = false; Object.assign(state, { token: g.token, actor: g.email, role: 'user', uid: g.id }); store.lset('pa.remember', '1'); saveSession(true); qaMarkSignedIn(); location.hash = '#/me'; return showShell(); } }
+  // An app's "Continue with Google" lands here (?google=1&next=<app address>): do the Google step, then hand the sign-in back to that app.
+  { const qs = new URLSearchParams(location.search), next = qs.get('google') === '1' ? googleNextOk(qs.get('next')) : '';
+    if (next) {
+      history.replaceState(null, '', location.pathname + location.hash);
+      store.lset('pa.gnext', JSON.stringify({ next, at: Date.now() }));
+      if (state.token && state.role === 'user') { try { const back = takeGoogleNext(); if (back) return handOff(back, await ssoToken()); } catch {} }
+      googleAuto = true;
+    } }
+  // Remember me is on unless it was unticked on purpose, so installed (PWA) sessions survive closing the app.
+  $('#login-remember').checked = store.lget('pa.remember') !== '0';
   $('#login-email').value = store.lget('pa.email');
   if (resetToken()) return showReset();
   // Every app's "Create a JoolzApp account" button lands here.
@@ -179,6 +190,22 @@ async function boot() {
 }
 // "Continue with Google": shown only when PocketBase has Google switched on. The whole page goes to Google and comes back to google-callback.html
 // (works in an installed app too, where pop-ups do not).
+// An app that sends people here for the Google step (?google=1&next=<its address>): only apps on this dashboard's own domain
+// (e.g. *.macaw-chroma.ts.net, https) are accepted, so a sign-in is never handed to another site.
+let googleAuto = false;
+function googleNextOk(raw) {
+  try {
+    const u = new URL(String(raw || '')), parent = location.hostname.split('.').slice(1).join('.');
+    return u.protocol === 'https:' && parent.includes('.') && u.hostname.endsWith('.' + parent) && u.hostname !== location.hostname ? u.origin + u.pathname.replace(/[^\/]*$/, '') : '';
+  } catch { return ''; }
+}
+function takeGoogleNext() {
+  let g = null; try { g = JSON.parse(store.lget('pa.gnext') || 'null'); } catch {}
+  store.lset('pa.gnext', null);
+  return g && Date.now() - g.at < 15 * 60 * 1000 ? googleNextOk(g.next) : '';
+}
+// The token travels in the address fragment (never sent to a server); the app's sso.html checks it and keeps it on the device.
+function handOff(next, token) { location.replace(new URL('sso.html', next).href + '#t=' + encodeURIComponent(token)); }
 async function googleButton() {
   const b = $('#login-google'); if (!b || location.protocol !== 'https:') return;
   try {
@@ -189,6 +216,7 @@ async function googleButton() {
       store.lset('pa.gauth', JSON.stringify({ state: g.state, verifier: g.codeVerifier, coll: state.usersColl, at: Date.now() }));
       location.href = g.authURL + encodeURIComponent(location.origin + '/google-callback.html');
     };
+    if (googleAuto) { googleAuto = false; b.onclick(); }
   } catch { /* no Google: the button stays hidden */ }
 }
 function showLogin() { googleButton(); qaLoginButton(); $('#shell').classList.add('hidden'); $('#reset').classList.add('hidden'); $('#signup').classList.add('hidden'); $('#login').classList.remove('hidden'); }
@@ -289,7 +317,7 @@ const selfId = () => (state.role === 'user' ? state.uid : state.pid) || '';
 async function resolvePid() {
   if (state.role === 'user' || state.pid || state.pidTried || !state.token) return;
   state.pidTried = true;
-  try { const r = await api('GET', `/api/collections/${state.usersColl}/records?perPage=1&filter=${q('email = ' + fq(String(state.actor || '').toLowerCase()))}`); state.pid = (r.items[0] && r.items[0].id) || ''; saveSession(!!store.lget('pa.remember')); } catch { /* no linked account */ }
+  try { const r = await api('GET', `/api/collections/${state.usersColl}/records?perPage=1&filter=${q('email = ' + fq(String(state.actor || '').toLowerCase()))}`); state.pid = (r.items[0] && r.items[0].id) || ''; saveSession(store.lget('pa.remember') !== '0'); } catch { /* no linked account */ }
 }
 function saveSession(remember) { SESSION_KEYS.forEach((k) => { store.set('pa.' + k, state[k]); store.lset('pa.' + k, remember ? state[k] : null); }); }
 function logout() { SESSION_KEYS.forEach((k) => { state[k] = ''; store.set('pa.' + k, null); store.lset('pa.' + k, null); }); state.role = 'admin'; state.pidTried = false; if (!store.get('pa.noauto')) autoLogin().then((ok) => (ok ? showShell() : showLogin())); else showLogin(); }
@@ -330,7 +358,7 @@ $('#login-form').onsubmit = async (e) => {
     Object.assign(state, await signIn(email, $('#login-pass').value));
     const remember = $('#login-remember').checked;
     saveSession(remember); qaMarkSignedIn();
-    store.lset('pa.remember', remember ? '1' : null); store.lset('pa.email', remember ? email : null);
+    store.lset('pa.remember', remember ? '1' : '0'); store.lset('pa.email', remember ? email : null);
     $('#login-ok').textContent = '';
     $('#login-pass').value = '';
     showShell();

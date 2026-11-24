@@ -66,7 +66,7 @@ details.ai{margin:10px 0;font-size:14px}details.ai summary{cursor:pointer;color:
     var remember, forgot, ok = el("p", "ok");
     if (!reg) {
       var opts = el("div", "opts"), rl = el("label", "inline"); remember = el("input"); remember.type = "checkbox";
-      try { remember.checked = localStorage.getItem("gd.remember") === "1"; if (remember.checked) email.i.value = localStorage.getItem("gd.email") || ""; } catch (e) {}
+      try { remember.checked = localStorage.getItem("gd.remember") !== "0"; if (remember.checked) email.i.value = localStorage.getItem("gd.email") || ""; } catch (e) {}
       rl.append(remember, document.createTextNode(" Remember me")); forgot = el("a", "", "Forgot password?"); forgot.href = "#";
       forgot.onclick = function (ev) {
         ev.preventDefault(); err.textContent = ""; ok.textContent = "";
@@ -81,10 +81,16 @@ details.ai{margin:10px 0;font-size:14px}details.ai summary{cursor:pointer;color:
     f.onsubmit = function (ev) {
       ev.preventDefault(); err.textContent = ""; go.disabled = true;
       api(reg ? "api/account/register" : "api/account/login", { method: "POST", body: JSON.stringify({ email: email.i.value, password: pass.i.value, name: name.i.value, remember: !reg && remember.checked }) })
-        .then(function (j) { var rem = !reg && remember.checked; setTok(j.token, rem); try { if (rem) { localStorage.setItem("gd.remember", "1"); localStorage.setItem("gd.email", email.i.value); } else if (!reg) { localStorage.removeItem("gd.remember"); localStorage.removeItem("gd.email"); } } catch (e) {} j.user.canOpen ? location.reload() : waiting(j.user); })
+        .then(function (j) { var rem = !reg && remember.checked; setTok(j.token, rem); try { if (rem) { localStorage.setItem("gd.remember", "1"); localStorage.setItem("gd.email", email.i.value); } else if (!reg) { localStorage.setItem("gd.remember", "0"); localStorage.removeItem("gd.email"); } } catch (e) {} j.user.canOpen ? location.reload() : waiting(j.user); })
         .catch(function (e) { err.textContent = e.message; go.disabled = false; });
     };
     view.appendChild(f);
+    if (!reg && cfg.portalUrl && location.protocol === "https:" && cfg.google !== false) {
+      // Google only knows the dashboard's public https address: the dashboard does the Google step and hands you back here (sso.html).
+      var gb = el("button", "alt", "Continue with Google"); gb.type = "button";
+      gb.onclick = function () { location.href = cfg.portalUrl.replace(/\/+$/, "") + "/?google=1&next=" + encodeURIComponent(location.origin + location.pathname.replace(/[^\/]*$/, "")); };
+      view.appendChild(gb);
+    }
     if (cfg.signups !== false) {
       // There is one JoolzApp sign-up page, in Portal Admin. It sends you back here when the account is made.
       var alt = el("button", "alt", "Create a JoolzApp account"); alt.type = "button";

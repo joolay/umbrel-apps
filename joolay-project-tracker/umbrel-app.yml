@@ -2,7 +2,7 @@ manifestVersion: 1
 id: joolay-project-tracker
 category: developer
 name: Project Pilot
-version: "1.9.0"
+version: "1.9.1"
 tagline: Every project, its status and its priority in one place
 description: >-
   Project Pilot keeps lists of projects with a status (Active, Queued, Hiatus or Closed), a priority order you set by dragging,
@@ -20,7 +20,7 @@ gallery: []
 path: ""
 defaultUsername: ""
 defaultPassword: ""
-releaseNotes: "New: Task schedule. Open a project's notes and tap Add to queue (next to Chat with Claude): Claude then works through the project's open notes at the next scheduled run (every Monday at 20:00 by default; change the day or time on the Task schedule tab), builds the update and, if Merge is on, merges it to main once the build is green. The new Task schedule tab lists what is waiting (with the next run time), lets you reorder, hold, resume, switch Merge on or off and remove items, and shows what finished in the last 14 days. Notes Claude finishes are set to To confirm, never deleted. The tab can be hidden in Settings > Tabs shown. Also: moved onto the shared JoolzApp template (one jz.js file): same top bar, profile menu, theme switch and sync ticks as the other apps."
+releaseNotes: "New: Task schedule. Open a project's notes and tap Add to queue (next to Chat with Claude): Claude then works through the project's open notes at the next scheduled run (every Monday at 20:00 by default; change the day or time on the Task schedule tab), builds the update and, if Merge is on, merges it to main once the build is green. The new Task schedule tab lists what is waiting (with the next run time), lets you reorder, hold, resume, switch Merge on or off and remove items, and shows what finished in the last 14 days. Notes Claude finishes are set to To confirm, never deleted. The tab can be hidden in Settings > Tabs shown. Also: moved onto the shared JoolzApp template (one jz.js file): same top bar, profile menu, theme switch and sync ticks as the other apps. Also: Remember me now starts ticked so an installed app keeps you signed in, and a Continue with Google button is on the sign-in screen (public address only)."
 submitter: joolay
 submission: https://github.com/joolay/umbrel-apps
 icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-project-tracker/icon.svg

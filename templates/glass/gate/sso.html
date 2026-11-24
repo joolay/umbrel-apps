@@ -16,7 +16,7 @@
   if (!t) return go();
   var h = {}; h[TOKEN_HEADER] = t;
   fetch("api/account/me", { headers: h, cache: "no-store" }).then(function (r) {
-    if (r.ok) { try { localStorage.removeItem(TOKEN_KEY); sessionStorage.setItem(TOKEN_KEY, t); } catch (e) {} }
+    if (r.ok) { try { localStorage.removeItem(TOKEN_KEY); sessionStorage.removeItem(TOKEN_KEY); (localStorage.getItem("gd.remember") !== "0" ? localStorage : sessionStorage).setItem(TOKEN_KEY, t); } catch (e) {} }
     go();
   }).catch(go);
 })();
