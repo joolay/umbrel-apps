@@ -4,7 +4,7 @@
   "private": true,
   "description": "JoolzTV: TV-style front end for the Stremio streaming server, behind JoolzApp accounts",
   "main": "server.js",
-  "scripts": { "build": "node build.js", "test": "node build.js && node test.js && node test-build.js && node test-subs.js && node test-subsync.js && node test-buffer.js && node test-sources.js && node test-marks.js && node test-community.js && node test-tmdb.js && node test-avail.js && node test-kidrules.js && node test-thumbs.js && node test-thumbplan.js && node test-policy.js && node test-image.js && node test-tmdbcache.js && node test-tvupdate.js && node test-qr.js && TZ=Africa/Johannesburg node test-theme.js" },
+  "scripts": { "build": "node build.js", "test": "node build.js && node test.js && node test-build.js && node test-subs.js && node test-subsync.js && node test-buffer.js && node test-sources.js && node test-marks.js && node test-community.js && node test-tmdb.js && node test-avail.js && node test-kidrules.js && node test-thumbs.js && node test-thumbplan.js && node test-policy.js && node test-image.js && node test-tmdbcache.js && node test-tmdbgaps.js && node test-tvupdate.js && node test-qr.js && TZ=Africa/Johannesburg node test-theme.js" },
   "devDependencies": { "acorn": "8.14.0", "core-js-bundle": "3.39.0", "esbuild": "0.24.2" },
   "license": "MIT"
 }

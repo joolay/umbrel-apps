@@ -414,6 +414,11 @@ async function tmdbRoutes(req, res, p, u) {
     try { tmdb.setKey((await jsonBody(req)).key); } catch (e) { if (e.code === "bad_key") return send(res, 400, { code: "bad_request", message: e.message }); throw e; }
     return send(res, 200, { enabled: tmdb.enabled() });
   }
+  if (p === "/api/tmdb/backfill" && req.method === "POST") {                       // admin: fill in cached titles that are missing details right now (it also runs by itself every few hours)
+    if (!u.isAdmin) return send(res, 403, { code: "forbidden", message: "Only a JoolzApp admin can do that." });
+    if (!tmdb.enabled()) return send(res, 503, { code: "tmdb_off", message: "TMDB is not set up." });
+    tmdb.backfill(+(await jsonBody(req).catch(() => ({}))).max || 40).catch(() => {}); return send(res, 202, { started: true, stats: tmdb.cacheStats() });
+  }
   if (!tmdb.enabled()) return send(res, 503, { code: "tmdb_off", message: "TMDB is not set up." });
   const h = hh(), limit = ageLimitOf(h, u), me0 = profileOf(h, u.id), hid = me0 && isKid(me0) ? h.hidden || {} : null;
   /* a title a parent hid is gone from every row, search and collection of a kids profile (matched by TMDB id, and by IMDb id when a card has one) */

@@ -149,6 +149,7 @@ var Views = (function () {
       Tmdb.title(m.type, m.id).then(function (t) {
         var box = el._for === m.id && document.getElementById('icp'); if (!box || !t) return;
         var add = certChip(t.cert);
+        if (!m.imdbRating && t.rating) add = '<span class="chip star">\u2605 ' + esc(t.rating) + '</span>' + add;
         if (!m.runtime && t.runtime) add += '<span class="chip">' + (t.runtime >= 60 ? Math.floor(t.runtime / 60) + 'h ' + (t.runtime % 60) + 'm' : t.runtime + ' min') + '</span>';
         if ((!m.genres || !m.genres.length) && t.genres && t.genres.length) add += '<span class="chip">' + esc(t.genres.slice(0, 3).map(function (g) { return g.name || g; }).join(' \u00b7 ')) + '</span>';
         box.innerHTML = add + box.innerHTML;
@@ -925,7 +926,7 @@ var Views = (function () {
     });
   }
   function personCard(p) {
-    return '<div class="pc f" data-act="person" data-id="' + esc(p.id) + '"><div class="ph img" data-bg="' + esc(p.photo || '') + '"></div><div class="n">' + esc(p.name) + '</div>' + (p.role || p.department ? '<div class="r">' + esc(p.role || p.department) + '</div>' : '') + '</div>';
+    return '<div class="pc f"' + (p.id ? ' data-act="person" data-id="' + esc(p.id) + '"' : '') + '><div class="ph img" data-bg="' + esc(p.photo || '') + '"></div><div class="n">' + esc(p.name) + '</div>' + (p.role || p.department ? '<div class="r">' + esc(p.role || p.department) + '</div>' : '') + '</div>';
   }
   /* opens the TV's Netflix app (LG webOS: the system's app launcher). In a normal browser: Netflix's own search page. It cannot jump to the title itself. */
   function launchNetflix(title) {
@@ -977,7 +978,9 @@ var Views = (function () {
       if (t.background) setArt(el, t.background);
       var h1 = d.querySelector('h1'); if (h1 && t.logo) h1.innerHTML = '<img class="dlogo" alt="' + esc(t.name) + '" src="' + esc(t.logo) + '">';
       var chips = d.querySelector('.chips'), add = certChip(t.cert);
+      if (!m.imdbRating && t.rating) add = '<span class="chip star">\u2605 ' + esc(t.rating) + '</span>' + add;
       if (!m.runtime && t.runtime) add += '<span class="chip">' + (t.runtime >= 60 ? Math.floor(t.runtime / 60) + 'h ' + (t.runtime % 60) + 'm' : t.runtime + ' min') + '</span>';
+      if ((!m.genres || !m.genres.length) && t.genres && t.genres.length) add += '<span class="chip">' + esc(t.genres.slice(0, 3).map(function (g) { return g.name || g; }).join(' \u00b7 ')) + '</span>';
       if (t.stinger && (t.stinger.during || t.stinger.after)) add += '<span class="chip">Stay for an extra scene</span>';
       if (t.type === 'series') {
         if (t.nextEpisode) add += '<span class="chip">Next: S' + t.nextEpisode.season + ':E' + t.nextEpisode.episode + (t.nextEpisode.air ? ' · ' + esc(fmtDate(t.nextEpisode.air)) : '') + '</span>';
