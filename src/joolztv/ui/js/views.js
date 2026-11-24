@@ -252,10 +252,10 @@ var Views = (function () {
   /* "Who's watching?" */
   function picker() {
     ++browseToken; Tmdb.forget(); Dl.stop();
-    var ps = Profiles.all(), h = '<div class="splash"><div class="picker"><h1>Who\'s watching?</h1><div class="ptiles">';
+    var ps = Profiles.all(), h = '<div class="splash"><div class="brand">Joolz<b>TV</b></div><div class="picker mid' + (ps.length > 6 ? ' many' : '') + '"><h1>Who\'s watching?</h1><div class="ptiles">';
     ps.forEach(function (p) {
       h += '<div class="ptile f" data-act="selprofile" data-id="' + esc(p.id) + '"><div class="pav" style="background:' + esc(p.color) + '">' + avHtml(p) + '</div><div class="pn">' + esc(p.name) + '</div>' +
-        (Store.getFor(p.id, 'token', null) ? '<div class="ps">Signed in</div>' : '') + '</div>';
+        (Store.getFor(p.id, 'token', null) ? '<div class="ps"><i></i>Signed in</div>' : '') + '</div>';
     });
     h += '</div></div></div>';
     replaceAll('picker', h, { onBack: function () { return !!Profiles.active() && (page('home'), true); } });

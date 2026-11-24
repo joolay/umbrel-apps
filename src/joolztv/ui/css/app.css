@@ -329,3 +329,21 @@ html.phone .form[style] { width: 640px !important; }
 .player .kwarn { position: absolute; left: 50%; top: 90px; -webkit-transform: translateX(-50%); transform: translateX(-50%); padding: 18px 36px; border-radius: 22px; text-align: center; z-index: 30; }
 .player .kwarn .kw1 { font-size: 56px; font-weight: 800; color: #ffd60a; }
 .player .kwarn .kw2 { font-size: 34px; margin-top: 4px; }
+
+/* ---- "Who's watching?": centred on the screen, bigger faces and names for a TV seen from across the room ---- */
+.picker.mid { height: 1080px; display: -webkit-flex; display: flex; -webkit-flex-direction: column; flex-direction: column; -webkit-align-items: center; align-items: center; -webkit-justify-content: center; justify-content: center; }
+.picker.mid h1 { font-size: 92px; margin: 0 0 64px 0; text-shadow: 0 6px 30px rgba(0,0,0,.5); }
+.picker.mid .ptiles { width: 1760px; }
+.picker.mid .ptile { width: 300px; margin: 0 26px 30px 26px; font-size: 46px; }
+.picker.mid .ptile .pav { width: 240px; height: 240px; margin: 0 30px; border-radius: 120px; line-height: 240px; font-size: 130px; }
+.picker.mid .ptile .pen { left: 30px; width: 240px; height: 240px; line-height: 240px; font-size: 100px; }
+.picker.mid .ptile .pn { margin-top: 22px; font-weight: 700; }
+.picker.mid .ptile .ps { margin-top: 6px; font-size: 32px; font-weight: 600; color: #30d158; }
+.picker.mid .ptile .ps i { display: inline-block; width: 14px; height: 14px; margin: 0 10px 2px 0; border-radius: 7px; background: #30d158; }
+.picker.mid .ptile.focus { color: #fff; }
+.picker.mid .ptile.focus .pav { -webkit-transform: scale(1.12); transform: scale(1.12); }
+.picker.mid.many h1 { margin-bottom: 36px; }
+.picker.mid.many .ptile { width: 250px; margin: 0 14px 20px 14px; font-size: 40px; }
+.picker.mid.many .ptile .pav { width: 190px; height: 190px; margin: 0 30px; border-radius: 95px; line-height: 190px; font-size: 100px; }
+.picker.mid.many .ptile .pen { left: 30px; width: 190px; height: 190px; line-height: 190px; font-size: 80px; }
+html.light .picker.mid .ptile .ps { color: #1e9b3f; }
