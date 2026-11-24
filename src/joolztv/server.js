@@ -222,6 +222,12 @@ async function householdRoutes(req, res, p) {
     if (body.sources !== undefined) next.sources = cleanSources(body.sources);
     if (body.region !== undefined) { if (body.region !== "" && !/^[A-Z]{2}$/.test(body.region)) return send(res, 400, { code: "bad_request", message: "Pick a country." }); next.region = body.region; }
     if (body.locale !== undefined) { if (body.locale !== "" && !/^[a-z]{2}(-[A-Z]{2})?$/.test(body.locale)) return send(res, 400, { code: "bad_request", message: "Pick a language." }); next.locale = body.locale; }
+    for (const [bk, nk] of [["genresMovie", "genresMovie"], ["genresSeries", "genresSeries"]]) {          // which genre rows Movies / TV Shows show (null = back to the common ones)
+      if (body[bk] === undefined) continue;
+      if (body[bk] === null) { delete next[nk]; continue; }
+      if (!Array.isArray(body[bk]) || body[bk].length > 40) return send(res, 400, { code: "bad_request", message: "Pick up to 40 genres." });
+      next[nk] = body[bk].filter(g => g && /^\d{1,6}$/.test(String(g.id))).map(g => ({ id: +g.id, name: String(g.name || "").replace(/[<>]/g, "").slice(0, 40) })).filter((g, i, a) => g.name && a.findIndex(x => x.id === g.id) === i);
+    }
     next.ts = Date.now(); h.prefs = next; writeJson(HH_FILE, h);
     return send(res, 200, { prefs: next });
   }
@@ -413,6 +419,11 @@ async function tmdbRoutes(req, res, p, u) {
     await tmdb.refreshKey(true);
     try { tmdb.setKey((await jsonBody(req)).key); } catch (e) { if (e.code === "bad_key") return send(res, 400, { code: "bad_request", message: e.message }); throw e; }
     return send(res, 200, { enabled: tmdb.enabled() });
+  }
+  if (p === "/api/tmdb/backfill" && req.method === "POST") {                       // admin: fill in cached titles that are missing details right now (it also runs by itself every few hours)
+    if (!u.isAdmin) return send(res, 403, { code: "forbidden", message: "Only a JoolzApp admin can do that." });
+    if (!tmdb.enabled()) return send(res, 503, { code: "tmdb_off", message: "TMDB is not set up." });
+    tmdb.backfill(+(await jsonBody(req).catch(() => ({}))).max || 40).catch(() => {}); return send(res, 202, { started: true, stats: tmdb.cacheStats() });
   }
   if (!tmdb.enabled()) return send(res, 503, { code: "tmdb_off", message: "TMDB is not set up." });
   const h = hh(), limit = ageLimitOf(h, u), me0 = profileOf(h, u.id), hid = me0 && isKid(me0) ? h.hidden || {} : null;

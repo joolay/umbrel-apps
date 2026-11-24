@@ -42,7 +42,7 @@ async function sweep() {
   let n = 0; cache.forEach((e, k) => { if (ids.has(entryId(k))) { e.at = 0; n++; } });
   lastSweep = now; cacheSave(); return { changed: ids.size, marked: n };
 }
-function startSweeps() { clearInterval(sweepT); sweepT = setInterval(() => { if (Date.now() - lastSweep > 20 * 3600e3) sweep().catch(() => {}); }, 3600e3); if (sweepT.unref) sweepT.unref(); setTimeout(() => { if (Date.now() - lastSweep > 20 * 3600e3) sweep().catch(() => {}); }, 30000).unref(); }
+function startSweeps() { clearInterval(sweepT); sweepT = setInterval(() => { if (Date.now() - lastSweep > 20 * 3600e3) sweep().catch(() => {}); }, 3600e3); if (sweepT.unref) sweepT.unref(); setTimeout(() => { if (Date.now() - lastSweep > 20 * 3600e3) sweep().catch(() => {}); }, 30000).unref(); setTimeout(() => backfill().catch(() => {}), 60000).unref(); setInterval(() => backfill().catch(() => {}), 6 * 3600e3).unref(); }
 /* ---- being polite: at most 12 calls in flight, one retry after a 429, a short pause for everyone if TMDB keeps refusing ---- */
 let inflight = 0, pauseUntil = 0; const waiting = [], shared = new Map();
 const MAXFLY = +process.env.JTV_TMDB_FLY || 12;
@@ -85,7 +85,7 @@ async function rawCall(path, params) {
     return r.json();
   }
 }
-async function call(path, params, ttl = 14 * 864e5) {
+async function call(path, params, ttl = 14 * 864e5, shortFn) {
   ttl = Math.min(ttl, MAX_AGE);
   await refreshKey(); if (!theKey()) throw Object.assign(new Error("TMDB is not set up"), { code: "off" });
   const q = new URLSearchParams(params || {}); const bearer = theKey().indexOf(".") > 0; if (!bearer) q.set("api_key", theKey());
@@ -93,7 +93,7 @@ async function call(path, params, ttl = 14 * 864e5) {
   if (hit && Date.now() - hit.at < hit.ttl && Date.now() - hit.at < ttl) { cache.delete(url); cache.set(url, hit); return hit.v; }        // fresh: mark as recently used
   if (shared.has(url)) return shared.get(url);                                           // the same question is already on its way
   const job = (async () => {
-    try { const v = await rawCall(path, params); cachePut(url, v, ttl); return v; }
+    try { const v = await rawCall(path, params); cachePut(url, v, shortFn ? Math.min(ttl, shortFn(v)) : ttl); return v; }
     catch (e) { if (hit && e.code !== "not_found" && e.code !== "off" && e.code !== "bad_key") return hit.v; throw e; }       // TMDB cannot be reached: an older copy beats nothing
     finally { shared.delete(url); }
   })();
@@ -124,7 +124,8 @@ function pickCert(d, type, region) {
     ? ((d.content_ratings && d.content_ratings.results) || []).map(x => ({ r: x.iso_3166_1, c: x.rating }))
     : ((d.release_dates && d.release_dates.results) || []).map(x => ({ r: x.iso_3166_1, c: ((x.release_dates || []).filter(y => y.certification)[0] || {}).certification }));
   for (const reg of [region, "GB", "US"]) { const row = rows.filter(x => x.r === reg && x.c)[0]; if (row) return { region: reg, rating: row.c, age: certAge(reg, row.c) }; }
-  return null;
+  const any = rows.filter(x => x.c)[0];                                                  // nothing for those three: any country's rating beats none
+  return any ? { region: any.r, rating: any.c, age: certAge(any.r, any.c), other: true } : null;
 }
 
 /* ---- the global adult block: porn and erotica, for everyone ---- */
@@ -153,16 +154,91 @@ const card = (x, type) => ({ tmdb: x.id, type: (x.media_type || type) === "tv" ?
   year: String(x.release_date || x.first_air_date || "").slice(0, 4), rating: x.vote_average ? Math.round(x.vote_average * 10) / 10 : null, description: x.overview || "", release: String(x.release_date || x.first_air_date || "") });
 const STINGER = /credits?\s*stinger|post.?credits?\s*scene|mid.?credits?\s*scene/i;
 
+/* ---- missing details: a fallback source, and filling the gaps from TMDB when it gets them ----
+   TMDB is the main source. When it has no runtime, genres, cast, director or summary for a title (new releases, small films) the gaps are filled from Cinemeta (the free
+   public Stremio metadata, no key) and the answer says which fields came from there (`fallback`) and which are still missing (`missing`). An answer with gaps is only cached for a few
+   hours, so TMDB is asked again soon; the moment TMDB has the details they replace the fallback. A daily-ish background pass (backfill) also re-asks TMDB for cached titles with gaps. */
+const CINEMETA = (process.env.CINEMETA_URL || "https://v3-cinemeta.strem.io").replace(/\/+$/, "");
+const GAP_TTL = +process.env.JTV_TMDB_GAP_TTL || 6 * 3600e3;
+function missingOf(d, t) {                                  // which of the facts people look for are absent from a raw TMDB movie / tv record
+  const out = [];
+  if (!(d.runtime || (d.episode_run_time && d.episode_run_time[0]))) out.push("runtime");
+  if (!(d.genres && d.genres.length)) out.push("genres");
+  if (!(d.credits && d.credits.cast && d.credits.cast.length)) out.push("cast");
+  if (!d.overview) out.push("overview");
+  const rows = t === "tv" ? ((d.content_ratings && d.content_ratings.results) || []).map(x => x.rating) : ((d.release_dates && d.release_dates.results) || []).map(x => ((x.release_dates || []).filter(y => y.certification)[0] || {}).certification);
+  if (!rows.some(Boolean)) out.push("cert");
+  const crew = (d.credits && d.credits.crew) || []; if (t !== "tv" && !crew.some(c => c.job === "Director")) out.push("directors");
+  return out;
+}
+const gapTtl = t => d => (d && missingOf(d, t).length ? GAP_TTL : Infinity);
+function minutes(v) {                                       // "136 min", "2h 16min", "1h" -> 136, 136, 60
+  const s = String(v || ""), h = /(\d+)\s*h/i.exec(s), m = /(\d+)\s*m/i.exec(s);
+  if (h || m) return (h ? +h[1] * 60 : 0) + (m ? +m[1] : 0);
+  const n = /^\s*(\d{1,4})\s*$/.exec(s); return n ? +n[1] : null;
+}
+const cinemetaMissing = m => { const o = []; if (!m || !minutes(m.runtime)) o.push("runtime"); if (!m || !(m.genres && m.genres.length)) o.push("genres"); if (!m || !(m.cast && m.cast.length)) o.push("cast"); if (!m || !m.description) o.push("overview"); return o; };
+async function cinemetaRaw(type, imdb, force) {            // one Cinemeta record, cached (and an older copy is served if Cinemeta cannot be reached); null when it knows nothing
+  const url = CINEMETA + "/meta/" + (type === "series" || type === "tv" ? "series" : "movie") + "/" + encodeURIComponent(imdb) + ".json", hit = cache.get(url);
+  if (hit && !force && Date.now() - hit.at < hit.ttl) { cache.delete(url); cache.set(url, hit); return hit.v; }
+  try {
+    const r = await fetch(url, { headers: { "user-agent": "JoolzTV" }, signal: AbortSignal.timeout(6000) });
+    if (!r.ok) throw new Error("cinemeta " + r.status);
+    const m = ((await r.json()) || {}).meta || null; if (m) cachePut(url, m, cinemetaMissing(m).length ? GAP_TTL : 14 * 864e5); return m;
+  } catch { return hit ? hit.v : null; }
+}
+const missUntil = new Map();                                // imdb -> time before which TMDB is not asked again about a title it does not know
+function fromCinemeta(m, t, imdb) {                         // the same shape title() returns, from Cinemeta alone
+  const cast = (m.cast || []).slice(0, 14).map(n => ({ id: null, name: String(n), role: "", photo: "" }));
+  const dirs = (m.director || []).slice(0, 2).map(n => ({ id: null, name: String(n) }));
+  return { runtime: minutes(m.runtime), genres: (m.genres || []).map(n => ({ id: null, name: String(n) })), cast, directors: dirs, overview: m.description || "", year: String(m.year || m.releaseInfo || "").slice(0, 4),
+    rating: m.imdbRating ? Math.round(+m.imdbRating * 10) / 10 || null : null, name: m.name || "", poster: m.poster || "", background: m.background || "", logo: m.logo || "" };
+}
+function fillGaps(r, m) {                                   // r: a title() result; m: a Cinemeta record. Fills only what is empty; notes where it came from.
+  const f = fromCinemeta(m), used = [];
+  if (!r.runtime && f.runtime) { r.runtime = f.runtime; used.push("runtime"); }
+  if (!(r.genres && r.genres.length) && f.genres.length) { r.genres = f.genres; used.push("genres"); }
+  if (!(r.cast && r.cast.length) && f.cast.length) { r.cast = f.cast; used.push("cast"); }
+  if (!(r.directors && r.directors.length) && f.directors.length) { r.directors = f.directors; r.directorLabel = r.directorLabel || "Directed by"; used.push("directors"); }
+  if (!r.overview && f.overview) { r.overview = f.overview; used.push("overview"); }
+  if (!r.rating && f.rating) { r.rating = f.rating; used.push("rating"); }
+  if (!r.year && f.year) { r.year = f.year; used.push("year"); }
+  if (!r.poster && f.poster) { r.poster = f.poster; used.push("poster"); }
+  if (!r.background && f.background) { r.background = f.background; used.push("background"); }
+  if (!r.logo && f.logo) { r.logo = f.logo; used.push("logo"); }
+  if (!r.name && f.name) r.name = f.name;
+  return used;
+}
+const MISSING_KEYS = ["runtime", "genres", "cast", "directors", "overview", "cert"];
+function gapsOf(r) { return MISSING_KEYS.filter(k => k === "cert" ? !r.cert : k === "genres" || k === "cast" || k === "directors" ? !(r[k] && r[k].length) : !r[k]); }
+function titleOnly(imdb, t, m) {                            // TMDB does not know the title or cannot be reached: what Cinemeta has, marked as a fallback
+  const r = { tmdb: null, type: t === "tv" || t === "series" ? "series" : "movie", imdb, tvdb: null, name: "", original: "", tagline: "", overview: "", genres: [], runtime: null, year: "", rating: null, status: "", cert: null, logo: "", poster: "", background: "",
+    cast: [], directors: [], directorLabel: "Directed by", collection: null, similar: [], seasons: [], nextEpisode: null, network: "", stinger: { during: false, after: false }, netflix: false, streaming: [] };
+  r.fallback = fillGaps(r, m); r.missing = gapsOf(r); r.partial = true; return r;
+}
+
 async function find(imdb) {
   const j = await call("/find/" + encodeURIComponent(imdb), { external_source: "imdb_id" }, 7 * 864e5);
   const m = (j.movie_results || [])[0], t = (j.tv_results || [])[0];
   return m ? { tmdb: m.id, type: "movie" } : t ? { tmdb: t.id, type: "tv" } : null;
 }
 async function title({ imdb, tmdb, type, locale, region }) {
-  let id = tmdb, t = type === "series" ? "tv" : type === "tv" ? "tv" : "movie";
-  if (!id) { const f = await find(imdb); if (!f) throw Object.assign(new Error("not found"), { code: "not_found" }); id = f.tmdb; t = f.type; }
-  const append = (t === "tv" ? "images,credits,content_ratings,keywords,recommendations,external_ids" : "images,credits,release_dates,keywords,recommendations,external_ids") + ",watch/providers";
-  const d = await call("/" + t + "/" + id, clean({ language: locale || "en-US", append_to_response: append, include_image_language: ((locale || "en").slice(0, 2)) + ",en,null" }));
+  let id = tmdb, t = type === "series" ? "tv" : type === "tv" ? "tv" : "movie", d;
+  if (!id && imdb && (missUntil.get(imdb) || 0) > Date.now()) { const m = await cinemetaRaw(t, imdb); if (m) return titleOnly(imdb, t, m); }      // TMDB said "unknown" a moment ago; ask again later
+  try {
+    if (!id) { const f = await find(imdb); if (!f) throw Object.assign(new Error("not found"), { code: "not_found" }); id = f.tmdb; t = f.type; }
+    const append = (t === "tv" ? "images,credits,content_ratings,keywords,recommendations,external_ids" : "images,credits,release_dates,keywords,recommendations,external_ids") + ",watch/providers";
+    d = await call("/" + t + "/" + id, clean({ language: locale || "en-US", append_to_response: append, include_image_language: ((locale || "en").slice(0, 2)) + ",en,null" }), undefined, gapTtl(t));
+    if (!d.overview && (locale || "en-US").slice(0, 2) !== "en") {                      // no summary in the person's language: TMDB's English one
+      const en = await call("/" + t + "/" + id, clean({ language: "en-US" }), undefined, gapTtl(t)).catch(() => null); if (en && en.overview) { d.overview = en.overview; if (!d.tagline) d.tagline = en.tagline || ""; }
+    }
+  } catch (e) {
+    if (imdb && ["not_found", "busy", "upstream"].indexOf(e.code) >= 0) {             // main source has nothing right now: Cinemeta alone, and try TMDB again later
+      if (e.code === "not_found") missUntil.set(imdb, Date.now() + GAP_TTL);
+      const m = await cinemetaRaw(t, imdb); if (m) return titleOnly(imdb, t, m);
+    }
+    throw e;
+  }
   const logos = ((d.images && d.images.logos) || []).slice().sort((a, b) => (b.vote_average || 0) - (a.vote_average || 0));
   const logo = logos.filter(l => l.iso_639_1 === (locale || "en").slice(0, 2))[0] || logos.filter(l => l.iso_639_1 === "en")[0] || logos[0];
   const kw = ((d.keywords && (d.keywords.keywords || d.keywords.results)) || []);
@@ -172,7 +248,7 @@ async function title({ imdb, tmdb, type, locale, region }) {
   const wp = (d["watch/providers"] && d["watch/providers"].results && d["watch/providers"].results[region || ""]) || null;       // where it streams (subscription) in the person's country (JustWatch data via TMDB)
   const flat = ((wp && wp.flatrate) || []).concat((wp && wp.ads) || []);
   const ne = d.next_episode_to_air;
-  return {
+  const r = {
     tmdb: d.id, type: t === "tv" ? "series" : "movie", imdb: (d.external_ids && d.external_ids.imdb_id) || imdb || "", tvdb: (d.external_ids && d.external_ids.tvdb_id) || null,
     name: d.title || d.name || "", original: d.original_title || d.original_name || "", tagline: d.tagline || "", overview: d.overview || "",
     genres: (d.genres || []).map(g => ({ id: g.id, name: g.name })), runtime: d.runtime || (d.episode_run_time && d.episode_run_time[0]) || null,
@@ -186,7 +262,41 @@ async function title({ imdb, tmdb, type, locale, region }) {
     nextEpisode: ne ? { season: ne.season_number, episode: ne.episode_number, name: ne.name || "", air: ne.air_date || "" } : null,
     network: (d.networks && d.networks[0] && d.networks[0].name) || "", stinger, netflix: flat.some(x => /^netflix/i.test(String(x.provider_name || ""))), streaming: flat.map(x => x.provider_name).filter((v, i, a) => v && a.indexOf(v) === i).slice(0, 6)
   };
+  r.fallback = []; r.missing = gapsOf(r);
+  if (r.missing.some(k => k !== "cert") && r.imdb) { const m = await cinemetaRaw(t, r.imdb); if (m) { r.fallback = fillGaps(r, m); r.missing = gapsOf(r); } }      // still gaps: fill from Cinemeta
+  r.partial = r.missing.length > 0;
+  return r;
 }
+/* ---- backfill: titles already in the cache that are missing details are asked about again (a few at a time, politely), so a title that was cached bare gets completed ---- */
+let backfilling = false, lastBackfill = null;
+function gapKeys() {                                         // cached TMDB title records and Cinemeta records that still have gaps
+  const out = [];
+  cache.forEach((e, k) => {
+    if (k.indexOf(API) === 0) { const m = /^\/(movie|tv)\/\d+\?/.exec(k.slice(API.length)); if (m && /append_to_response=[^&]*credits/.test(k) && missingOf(e.v || {}, m[1]).length) out.push(k); }
+    else if (k.indexOf(CINEMETA + "/meta/") === 0 && cinemetaMissing(e.v).length) out.push(k);
+  });
+  return out;
+}
+async function backfill(max) {
+  if (backfilling || !theKey()) return null; backfilling = true;
+  try {
+    const keys = gapKeys().slice(0, max || +process.env.JTV_TMDB_BACKFILL || 40); let updated = 0, completed = 0;
+    for (const k of keys) {
+      try {
+        if (k.indexOf(API) === 0) {
+          const rest = k.slice(API.length), m = /^(\/(movie|tv)\/\d+)\?(.*)$/.exec(rest), q = new URLSearchParams(m[3]); q.delete("api_key");
+          const v = await rawCall(m[1], Object.fromEntries(q)), left = missingOf(v, m[2]); cachePut(k, v, left.length ? GAP_TTL : 14 * 864e5); updated++; if (!left.length) completed++;
+        } else {
+          const rest = k.slice(CINEMETA.length).match(/^\/meta\/(movie|series)\/(tt\d+)\.json$/); if (!rest) continue;
+          const m = await cinemetaRaw(rest[1], rest[2], true); updated++; if (m && !cinemetaMissing(m).length) completed++;
+        }
+      } catch (e) { if (e.code === "busy" || e.code === "bad_key" || e.code === "off") break; }       // TMDB asked us to slow down: stop, the next pass continues
+      await nap(1200);
+    }
+    lastBackfill = { at: Date.now(), checked: keys.length, updated, completed, left: gapKeys().length }; cacheSave(); return lastBackfill;
+  } finally { backfilling = false; }
+}
+
 async function season({ tmdb, season, locale }) {
   const d = await call("/tv/" + tmdb + "/season/" + season, clean({ language: locale || "en-US" }));
   return { season: d.season_number, episodes: (d.episodes || []).map(e => ({ episode: e.episode_number, name: e.name || "", overview: e.overview || "", still: img(e.still_path, "w300"), air: e.air_date || "", runtime: e.runtime || null })) };
@@ -258,4 +368,4 @@ async function ageOf({ imdb, type, region }) {
   const d = await call("/" + t + "/" + f.tmdb, { append_to_response: t === "tv" ? "content_ratings" : "release_dates" }, 7 * 864e5);
   return pickCert(d, t, region);
 }
-module.exports = { find, adultOf, adultReason, collections, FRANCHISES, configure, setKey, enabled, refreshKey, keySource, sweep, _call: call, cacheSave, cacheStats: () => ({ entries: cache.size, bytes: cacheBytes, lastSweep }), find, title, season, list, genres, discover, person, search, collection, resolve, ageOf, certAge, pickCert, LISTS };
+module.exports = { find, adultOf, adultReason, collections, FRANCHISES, configure, setKey, enabled, refreshKey, keySource, sweep, _call: call, cacheSave, backfill, missingOf, minutes, cacheStats: () => ({ entries: cache.size, bytes: cacheBytes, lastSweep, withGaps: gapKeys().length, lastBackfill }), find, title, season, list, genres, discover, person, search, collection, resolve, ageOf, certAge, pickCert, LISTS };
