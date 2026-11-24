@@ -222,6 +222,12 @@ async function householdRoutes(req, res, p) {
     if (body.sources !== undefined) next.sources = cleanSources(body.sources);
     if (body.region !== undefined) { if (body.region !== "" && !/^[A-Z]{2}$/.test(body.region)) return send(res, 400, { code: "bad_request", message: "Pick a country." }); next.region = body.region; }
     if (body.locale !== undefined) { if (body.locale !== "" && !/^[a-z]{2}(-[A-Z]{2})?$/.test(body.locale)) return send(res, 400, { code: "bad_request", message: "Pick a language." }); next.locale = body.locale; }
+    for (const [bk, nk] of [["genresMovie", "genresMovie"], ["genresSeries", "genresSeries"]]) {          // which genre rows Movies / TV Shows show (null = back to the common ones)
+      if (body[bk] === undefined) continue;
+      if (body[bk] === null) { delete next[nk]; continue; }
+      if (!Array.isArray(body[bk]) || body[bk].length > 40) return send(res, 400, { code: "bad_request", message: "Pick up to 40 genres." });
+      next[nk] = body[bk].filter(g => g && /^\d{1,6}$/.test(String(g.id))).map(g => ({ id: +g.id, name: String(g.name || "").replace(/[<>]/g, "").slice(0, 40) })).filter((g, i, a) => g.name && a.findIndex(x => x.id === g.id) === i);
+    }
     next.ts = Date.now(); h.prefs = next; writeJson(HH_FILE, h);
     return send(res, 200, { prefs: next });
   }

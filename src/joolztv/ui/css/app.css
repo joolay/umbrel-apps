@@ -91,7 +91,7 @@ body.pointer { cursor: pointer; }
 .overlay { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; z-index: 50; background: rgba(5,6,10,.62); }
 .menu { position: absolute; left: 50%; top: 50%; width: 1180px; max-height: 920px; margin-left: -590px; padding: 40px 44px; border-radius: 44px; -webkit-transform: translateY(-50%); transform: translateY(-50%); }
 .menu h3 { font-size: 50px; font-weight: 800; margin-bottom: 22px; letter-spacing: -.3px; }
-.menu .list { position: relative; max-height: 700px; overflow: hidden; }
+.menu .list { position: relative; max-height: 660px; overflow: hidden; }
 .opt { padding: 16px 26px; margin-bottom: 10px; border-radius: 22px; font-size: 36px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; background: rgba(255,255,255,.08); }
 .opt small { color: var(--dim); font-size: 31px; margin-left: 14px; }
 .opt .q { display: inline-block; min-width: 130px; font-weight: 800; color: #64d2ff; }

@@ -781,11 +781,16 @@ var Views = (function () {
     defs.forEach(function () { var s = document.createElement('div'); rows.appendChild(s); slots.push(s); });
     var pending = defs.length + trows.length;
     function done() { if (--pending === 0 && token === browseToken && !rows.querySelector('.row')) main.innerHTML = '<div class="empty">Nothing to show right now. Check your internet connection.</div>'; }
+    var lazyChain = Promise.resolve();
     trows.forEach(function (r, i) {
-      r.load().then(function (items) {
-        if (token !== browseToken || !items.length) return;
-        tslots[i].innerHTML = r.cols ? '<div class="row"><h2>' + esc(r.title) + '</h2><div class="hs">' + items.map(colCard).join('') + '<span class="pad-end"></span></div></div>' : rowHtml(r.title, items.map(tmdbMeta)); Nav.hydrate(); focusFirst();
-      }).catch(function () {}).then(done);
+      function run() {
+        if (token !== browseToken) return done();
+        return r.load().then(function (items) {
+          if (token !== browseToken || !items.length) return;
+          tslots[i].innerHTML = r.cols ? '<div class="row"><h2>' + esc(r.title) + '</h2><div class="hs">' + items.map(colCard).join('') + '<span class="pad-end"></span></div></div>' : rowHtml(r.title, items.map(tmdbMeta)); Nav.hydrate(); focusFirst();
+        }).catch(function () {}).then(done);
+      }
+      if (r.lazy) lazyChain = lazyChain.then(run); else run();                      // genre rows one at a time, the rest straight away
     });
     defs.forEach(function (d, i) {
       Api.fetchCatalog(d).then(function (metas) {
@@ -902,6 +907,32 @@ var Views = (function () {
 
   /* ---------- TMDB: rows, title extras, people, collections, discover ---------- */
   function tmdbMeta(x) { return { type: x.type, tmdb: x.tmdb, id: '', name: x.name, poster: x.poster, background: x.background, description: x.description, year: x.year, imdbRating: x.rating }; }
+  /* the genre rows of Movies / TV Shows: the common ones, unless the household chose its own (Settings > Sources > genres) */
+  var GENRE_DEFAULTS = {
+    movie: [[28, 'Action'], [35, 'Comedy'], [18, 'Drama'], [53, 'Thriller'], [27, 'Horror'], [878, 'Sci-Fi'], [16, 'Animation'], [10751, 'Family'], [10749, 'Romance'], [80, 'Crime'], [99, 'Documentary'], [12, 'Adventure']],
+    series: [[10759, 'Action & Adventure'], [35, 'Comedy'], [18, 'Drama'], [80, 'Crime'], [10765, 'Sci-Fi & Fantasy'], [9648, 'Mystery'], [16, 'Animation'], [10751, 'Family'], [99, 'Documentary'], [10764, 'Reality']]
+  };
+  function genreKey(type) { return type === 'movie' ? 'genresMovie' : 'genresSeries'; }
+  function genreList(type) {
+    var l = Api.prefs()[genreKey(type)];
+    return Array.isArray(l) ? l : GENRE_DEFAULTS[type].map(function (g) { return { id: g[0], name: g[1] }; });
+  }
+  function genresMenu(type, focusId) {
+    var on = {}; genreList(type).forEach(function (g) { on[g.id] = 1; });
+    Tmdb.genres(type).then(function (r) {
+      var os = [{ label: 'Back to the common genres', reset: true }].concat(r.genres.map(function (g) { return { label: (on[g.id] ? '\u2714   ' : '\u2003\u2003') + g.name, g: g.id, n: g.name, selected: g.id === focusId }; }));
+      menu(type === 'movie' ? 'Genres shown in Movies' : 'Genres shown in TV Shows', os, function (o) {
+        var cur = genreList(type).slice(), patch = {};
+        if (o.reset) patch[genreKey(type)] = null;
+        else {
+          var at = -1; cur.forEach(function (g, i) { if (g.id === o.g) at = i; });
+          if (at >= 0) cur.splice(at, 1); else cur.push({ id: o.g, name: o.n });
+          patch[genreKey(type)] = cur;
+        }
+        savePrefs(patch, function () { genresMenu(type, o.g); });
+      }, 'A tick means the genre is a row. Pick again to remove it.');
+    }).catch(function () { toast('The genre list could not be loaded', 4000); });
+  }
   function tmdbRows(kind) {
     var rows = [];
     function L(title, k, t) { rows.push({ title: title, load: function () { return Tmdb.list(k, t).then(function (r) { return r.items; }); } }); }
@@ -910,6 +941,9 @@ var Views = (function () {
     if (kind === 'home') { L('Trending films', 'trending', 'movie'); L('Trending TV', 'trending', 'series'); L('Now in cinemas', 'now', 'movie'); L('Coming soon', 'soon', 'movie'); }
     else if (kind === 'movie') { rows.push({ title: 'Collections', cols: true, load: function () { return Tmdb.collections().then(function (r) { return r.collections.slice(0, 16); }); } }); L('Trending today', 'trending', 'movie'); L('Popular', 'popular', 'movie'); L('Top rated', 'top', 'movie'); L('Now in cinemas', 'now', 'movie'); L('Coming soon', 'soon', 'movie'); }
     else { L('Trending today', 'trending', 'series'); L('Popular', 'popular', 'series'); L('Top rated', 'top', 'series'); L('On the air', 'now', 'series'); L('Airing today', 'soon', 'series'); }
+    if (kind === 'movie' || kind === 'series') genreList(kind).forEach(function (g) {                       // then one row per chosen genre, loaded one after the other as you scroll down
+      rows.push({ title: g.name + (kind === 'movie' ? ' films' : ' shows'), lazy: true, load: function () { return Tmdb.discover({ type: kind, genre: String(g.id), sort: 'popular' }).then(function (r) { return r.items; }); } });
+    });
     return rows;
   }
   function openTmdb(m) {
@@ -1282,7 +1316,9 @@ var Views = (function () {
     var h = '<div class="lbl">Artwork, ratings and cast (shared by the household)</div>';
     if (Tmdb.on()) {
       h += '<div class="srow f" data-act="tregion">Country (age ratings, cinema listings): <b>' + esc(countryName(Tmdb.region())) + '</b></div>' +
-        '<div class="srow f" data-act="tlocale">Language of titles and summaries: <b>' + esc(localeName(Tmdb.locale())) + '</b></div>';
+        '<div class="srow f" data-act="tlocale">Language of titles and summaries: <b>' + esc(localeName(Tmdb.locale())) + '</b></div>' +
+        (Tmdb.restricted() ? '' : '<div class="srow f" data-act="tgenres" data-t="movie">Genres shown in Movies: <b>' + genreList('movie').length + ' on</b></div>' +
+        '<div class="srow f" data-act="tgenres" data-t="series">Genres shown in TV Shows: <b>' + genreList('series').length + ' on</b></div>');
     }
     if (Tmdb.canKey()) h += '<input id="tmdbkey" class="field f" type="password" placeholder="' + (Tmdb.on() ? 'TMDB key saved. Paste a new one to replace it' : 'Paste the TMDB key to switch this on') + '" autocomplete="off"><div class="srow f" data-act="savetmdb">Save the TMDB key</div>';
     else if (Tmdb.source() === 'portal') h += '<div class="hint">The TMDB key is kept safely in Portal Admin (App keys).</div>';
@@ -1440,6 +1476,7 @@ var Views = (function () {
     if (a === 'srccustom') { var c6 = Api.sourcesCfg(), cv = val('srcurl'); if (cv && !/^https:\/\//.test(cv)) return toast('The address must start with https://'); c6.custom = cv; return saveSources(c6, 'custom'); }
     if (a === 'srcreset') { return savePrefs({ sources: Sources.defaults() }, function () { toast('Source filters restored'); sourcesPage(); }); }
     if (a === 'srctest') return testSources();
+    if (a === 'tgenres') return genresMenu(el.getAttribute('data-t') === 'series' ? 'series' : 'movie');
     if (a === 'tregion') return menu('Country', Tmdb.COUNTRIES.map(function (c) { return { label: c[1], c: c[0], selected: c[0] === Tmdb.region() }; }), function (o) { savePrefs({ region: o.c }, function () { settingsPage(); }); });
     if (a === 'tlocale') return menu('Language of titles and summaries', Tmdb.LOCALES.map(function (c) { return { label: c[1], c: c[0], selected: c[0] === Tmdb.locale() }; }), function (o) { savePrefs({ locale: o.c }, function () { settingsPage(); }); });
     if (a === 'savetmdb') { var tk = val('tmdbkey'); if (!tk) return toast('Paste the TMDB key first'); return Tmdb.setKey(tk).then(function (j) { toast(j.enabled ? 'TMDB is on' : 'TMDB is off', 4000); settingsPage(); }).catch(function (e) { toast(e.message, 6000); }); }
