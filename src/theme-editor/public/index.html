@@ -12,13 +12,12 @@
 <meta name="apple-mobile-web-app-title" content="Themes">
 <title>Theme Editor</title>
 <link rel="icon" href="icon.svg" type="image/svg+xml">
-<script src="floatbar.js"></script>
-<link rel="stylesheet" href="glass.css">
+<script src="jz.js"></script>
 <link rel="stylesheet" href="style.css">
-<link rel="stylesheet" href="floatbar.css">
 </head>
 <body>
 <header class="topbar">
+  <button class="tb-btn" data-home hidden aria-label="Home" title="Home"><svg viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10.5V20h13v-9.5"/><path d="M10 20v-5.5h4V20"/></svg></button>
   <div class="brand"><img src="icon.svg" alt="" width="28" height="28"><span>Theme Editor</span></div>
   <span class="tb-gap"></span>
   <button class="tb-btn" data-pwa-install hidden aria-label="Install app" title="Install app"><svg viewBox="0 0 24 24"><path d="M12 4v10"/><path d="m8 10.5 4 4 4-4"/><path d="M5 17v2.5h14V17"/></svg></button>
@@ -48,8 +47,5 @@
 </main>
 <div id="toast" class="toast" role="status" hidden></div>
 <script src="app.js"></script>
-<script src="install-help.js"></script>
-<script src="installbtn.js"></script>
-<script src="theme-global.js"></script>
 </body>
 </html>

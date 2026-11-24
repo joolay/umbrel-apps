@@ -24,8 +24,8 @@ main{max-width:980px;margin:0 auto;padding:20px}
 .stat b { display: block; font-size: 24px; font-weight: 650; }
 .stat span { color: var(--muted); font-size: 12.5px; }
 
-.toolbar { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
-.toolbar input { flex: 1 1 220px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; color: var(--text); padding: 9px 12px; font: inherit; }
+.svc-toolbar { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
+.svc-toolbar input { flex: 1 1 220px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; color: var(--text); padding: 9px 12px; font: inherit; }
 .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
 .seg button { background: var(--panel); color: var(--muted); border: 0; padding: 9px 14px; font: inherit; cursor: pointer; }
 .seg button.on { background: var(--panel2); color: var(--text); }
