@@ -5,6 +5,7 @@
 //   statusAt (when someone last set the status by hand; the 3-day rule then waits for work done on a LATER day), auto ("" follow the global
 //   switch | "on" | "off"), lastWorked (YYYY-MM-DD), paths ([{repo, path}] used to read the last commit),
 //   notes ([{id, text, at, state: open|review, by?: "claude", editedAt?}]: Claude reads them before working on the project, marks them "review" when done and asks before clearing),
+//   queue (optional, the Task schedule: { state: queued|held|running|done|failed, at, pos, merge, startedAt?, doneAt?, result?, runs? }: Claude's scheduled run takes the queued projects in pos order, works through their open notes, builds the update and, when merge is on, merges it to main; it writes running / done / failed and a short result back),
 //   rank (lower is higher in its category), prank (optional global priority, lower is first, 0/absent = unranked), state (live|archived|bin), binnedAt, updatedAt.
 const STATUSES = ["active", "maintenance", "hiatus", "closed"];
 const STATES = ["live", "archived", "bin"];
@@ -13,6 +14,36 @@ const str = (v, n) => String(v == null ? "" : v).replace(/[\u0000-\u0008\u000b\u
 const isDay = v => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v);
 const iso = v => { const t = Date.parse(v); return isFinite(t) ? new Date(t).toISOString() : ""; };
 const NOTE_STATES = ["open", "review"];
+const QUEUE_STATES = ["queued", "held", "running", "done", "failed"], QUEUE_ACTIVE = ["queued", "held", "running"];
+const cleanSchedule = s => {   // when Claude runs the queue: on these weekdays (0 = Sunday ... 6 = Saturday) at this time, in the owner's clock (default every Monday 20:00 South African time, UTC+2)
+  const days = [...new Set((s && Array.isArray(s.days) ? s.days : []).map(Number).filter(d => Number.isInteger(d) && d >= 0 && d <= 6))].sort();
+  const out = { days: days.length ? days : [1], time: s && /^([01]\d|2[0-3]):[0-5]\d$/.test(s.time) ? s.time : "20:00", offsetMin: s && Number.isInteger(+s.offsetMin) && Math.abs(+s.offsetMin) <= 840 ? +s.offsetMin : 120 };
+  if (s && iso(s.lastRun)) out.lastRun = iso(s.lastRun);   // written by Claude's runner when a run starts, so one run is never repeated
+  return out;
+};
+function cleanQueue(q, now) {
+  if (!q || typeof q !== "object" || !QUEUE_STATES.includes(q.state)) return null;
+  const out = { state: q.state, at: iso(q.at) || now, pos: Number.isFinite(+q.pos) ? +q.pos : 0, merge: q.merge !== false };
+  if (iso(q.startedAt)) out.startedAt = iso(q.startedAt); if (iso(q.doneAt)) out.doneAt = iso(q.doneAt);
+  const r = str(q.result, 500); if (r) out.result = r; if (Number.isInteger(+q.runs) && +q.runs > 0) out.runs = +q.runs;
+  return out;
+}
+// The next time the run is due after `now` (epoch ms): the next chosen weekday at the chosen time.
+function nextRun(schedule, now = Date.now()) {
+  const sc = cleanSchedule(schedule), [h, m] = sc.time.split(":").map(Number), off = sc.offsetMin * 60e3, local = new Date(now + off);
+  for (let d = 0; d <= 7; d++) {
+    const t = Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate() + d, h, m) - off;
+    if (t > now && sc.days.includes(new Date(t + off).getUTCDay())) return t;
+  }
+  return now + 7 * DAY;
+}
+// The queue as shown: waiting projects in pos order (running first), then what finished in the last 14 days, newest first.
+function queueRows(list, now = Date.now()) {
+  const live = (list.projects || []).filter(p => p.queue && p.state === "live");
+  const act = live.filter(p => QUEUE_ACTIVE.includes(p.queue.state)).sort((a, b) => (a.queue.state === "running" ? 0 : 1) - (b.queue.state === "running" ? 0 : 1) || a.queue.pos - b.queue.pos || a.name.localeCompare(b.name));
+  const done = live.filter(p => !QUEUE_ACTIVE.includes(p.queue.state) && now - Date.parse(p.queue.doneAt || p.queue.at) <= 14 * DAY).sort((a, b) => String(b.queue.doneAt || b.queue.at).localeCompare(String(a.queue.doneAt || a.queue.at)));
+  return { waiting: act, finished: done };
+}
 const slug = s => str(s, 60).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "project";
 
 function cleanNotes(p, now) {
@@ -45,6 +76,7 @@ function cleanProject(p, now) {
     lastWorked: isDay(p.lastWorked) ? p.lastWorked : "", paths, notes: cleanNotes(p, now),
     rank: Number.isFinite(+p.rank) ? +p.rank : 0, ...(Number.isFinite(+p.prank) && +p.prank > 0 ? { prank: +p.prank } : {}), state: STATES.includes(p.state) ? p.state : "live",
     binnedAt: p.state === "bin" ? (iso(p.binnedAt) || now) : "", updatedAt: iso(p.updatedAt) || now,
+    ...(cleanQueue(p.queue, now) ? { queue: cleanQueue(p.queue, now) } : {}),
   };
 }
 function cleanList(d, now = new Date().toISOString()) {
@@ -52,7 +84,7 @@ function cleanList(d, now = new Date().toISOString()) {
   const seen = new Set(), projects = [];
   for (const p of d.projects.slice(0, 2000)) { const c = cleanProject(p, now); if (c && !seen.has(c.id)) { seen.add(c.id); projects.push(c); } }
   const cats = [...new Set([...(Array.isArray(d.categories) ? d.categories.map(c => str(c, 60)).filter(Boolean) : []), ...projects.map(p => p.category)])].slice(0, 60);
-  return { version: 1, name: str(d.name, 80) || "Projects", categories: cats, projects, updatedAt: iso(d.updatedAt) || now };
+  return { version: 1, name: str(d.name, 80) || "Projects", categories: cats, projects, schedule: cleanSchedule(d.schedule), updatedAt: iso(d.updatedAt) || now };
 }
 // Apply a person's change to a list. ops: { upsert: [project], remove: [id] }. Each upserted project replaces the stored one of the same id
 // (it is a deliberate action), so two people editing different projects never collide. Removing is only for the bin: emptying it.
@@ -69,6 +101,7 @@ function applyOps(list, ops, now = new Date().toISOString()) {
   for (const id of (ops && Array.isArray(ops.remove) ? ops.remove : []).slice(0, 500)) { const p = by.get(str(id, 60)); if (p && p.state === "bin") by.delete(p.id); }
   out.projects = [...by.values()];
   if (ops && Array.isArray(ops.categories)) out.categories = [...new Set([...ops.categories.map(c => str(c, 60)).filter(Boolean), ...out.projects.map(p => p.category)])].slice(0, 60);
+  if (ops && ops.schedule) out.schedule = cleanSchedule(ops.schedule);
   if (ops && typeof ops.name === "string" && str(ops.name, 80)) out.name = str(ops.name, 80);
   out.updatedAt = now; return out;
 }
@@ -98,4 +131,4 @@ const dueForReview = (p, now = Date.now()) => p.state === "live" && p.status ===
 function binDue(list, now = Date.now()) {
   return list.projects.filter(p => p.state === "bin" && p.binnedAt && now - Date.parse(p.binnedAt) > BIN_DAYS * DAY).map(p => p.id);
 }
-module.exports = { STATUSES, STATES, BIN_DAYS, ACTIVE_DAYS, REVIEW_DAYS, cleanList, cleanProject, applyOps, move, effective, dueForReview, binDue, slug, str, isDay };
+module.exports = { QUEUE_STATES, QUEUE_ACTIVE, cleanQueue, cleanSchedule, nextRun, queueRows, STATUSES, STATES, BIN_DAYS, ACTIVE_DAYS, REVIEW_DAYS, cleanList, cleanProject, applyOps, move, effective, dueForReview, binDue, slug, str, isDay };

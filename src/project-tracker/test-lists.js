@@ -56,4 +56,26 @@ assert.strictEqual(L.cleanProject({ id: "p", name: "P", paths: [{ repo: "joolay/
 const nn = L.cleanProject({ id: "p", name: "P", notes: [{ id: "n1", text: "a", by: "claude", editedAt: "2026-11-21T10:00:00Z", extra: 1 }, { id: "n2", text: "b", by: "someone" }] }, NOW).notes;
 assert.strictEqual(nn[0].by, "claude"); assert.strictEqual(nn[0].editedAt, "2026-11-21T10:00:00.000Z"); assert.strictEqual(nn[0].extra, undefined);
 assert.strictEqual(nn[1].by, undefined); assert.strictEqual(nn[1].editedAt, undefined);
+// Task schedule: the queue lives on the project, the run time on the list
+let q = L.applyOps(base(), { upsert: [
+  { id: "a", name: "A", category: "X", status: "maintenance", queue: { state: "queued", pos: 20, at: "2026-11-19T01:00:00Z" } },
+  { id: "b", name: "B", category: "X", status: "active", queue: { state: "queued", pos: 10, merge: false } },
+  { id: "c", name: "C", category: "X", status: "hiatus", queue: { state: "done", pos: 5, doneAt: "2026-11-18T02:10:00Z", result: "Built 1.2.0, merged.", runs: 1 } },
+  { id: "d", name: "D", category: "Y", status: "active", queue: { state: "nonsense" } }] }, NOW);
+assert.strictEqual(q.projects.find(p => p.id === "d").queue, undefined, "a queue with an unknown state is dropped");
+assert.strictEqual(q.projects.find(p => p.id === "a").queue.merge, true, "merging to main is on unless switched off"); assert.strictEqual(q.projects.find(p => p.id === "b").queue.merge, false);
+let rows = L.queueRows(q, T); assert.deepStrictEqual(rows.waiting.map(p => p.id), ["b", "a"], "waiting projects in pos order"); assert.deepStrictEqual(rows.finished.map(p => p.id), ["c"]);
+q = L.applyOps(q, { upsert: [{ ...q.projects.find(p => p.id === "a"), queue: { ...q.projects.find(p => p.id === "a").queue, state: "running" } }] }, NOW); assert.strictEqual(L.queueRows(q, T).waiting[0].id, "a", "running comes first");
+q = L.applyOps(q, { upsert: [{ ...q.projects.find(p => p.id === "c"), queue: null }] }, NOW); assert.strictEqual(L.queueRows(q, T).finished.length, 0, "clearing removes it");
+assert.strictEqual(L.queueRows(L.applyOps(q, { upsert: [{ ...q.projects.find(p => p.id === "b"), queue: { state: "failed", pos: 1, doneAt: "2026-10-01T00:00:00Z" } }] }, NOW), T).finished.length, 0, "finished items older than 14 days drop out of view");
+assert.deepStrictEqual(q.schedule, { days: [1], time: "20:00", offsetMin: 120 }, "default: every Monday at 20:00");
+assert.strictEqual(L.cleanSchedule({ time: "25:00", offsetMin: 99999, days: [9, "x"] }).time, "20:00"); assert.deepStrictEqual(L.cleanSchedule({ days: [5, 1, 5, 9] }).days, [1, 5]);
+assert.strictEqual(L.applyOps(q, { schedule: { days: [2, 4], time: "03:30", offsetMin: 120 } }, NOW).schedule.time, "03:30"); assert.strictEqual(L.cleanSchedule({ lastRun: "2026-11-23T18:00:00Z" }).lastRun, "2026-11-23T18:00:00.000Z");
+// next run. NOW is Thu 2026-11-19 12:00 UTC; Monday 20:00 in UTC+2 is 18:00 UTC
+const nr = (sc, at) => new Date(L.nextRun(sc, Date.parse(at))).toISOString();
+assert.strictEqual(nr(q.schedule, NOW), "2026-11-23T18:00:00.000Z");
+assert.strictEqual(nr(q.schedule, "2026-11-23T17:59:00Z"), "2026-11-23T18:00:00.000Z", "just before it is still this Monday");
+assert.strictEqual(nr(q.schedule, "2026-11-23T18:00:00Z"), "2026-11-30T18:00:00.000Z", "exactly at the time means the next week");
+assert.strictEqual(nr({ days: [1, 4], time: "01:30", offsetMin: 120 }, "2026-11-19T22:00:00Z"), "2026-11-22T23:30:00.000Z", "Monday 01:30 local is Sunday 23:30 UTC");
+assert.strictEqual(nr({ days: [0, 1, 2, 3, 4, 5, 6], time: "02:00", offsetMin: 120 }, NOW), "2026-11-20T00:00:00.000Z", "every day still works");
 console.log("lists ok");

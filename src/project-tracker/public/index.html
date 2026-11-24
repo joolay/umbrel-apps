@@ -96,6 +96,13 @@ dialog::backdrop{background:rgba(10,14,24,.45)}
 dialog h2{margin:0 0 10px;font-size:1.1rem}
 dialog label{display:grid;gap:4px;margin:8px 0;font-size:.85rem;color:var(--muted)}
 dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:14px}
+.qhead{padding:12px 14px;margin-bottom:10px;display:grid;gap:4px}
+.qlist{display:grid;gap:8px;margin-bottom:12px}
+.qrow{padding:10px 12px;display:grid;gap:6px;border-left:4px solid var(--c)}
+.qrow .top{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.qrow .pn{min-width:1.2em;text-align:center;color:var(--muted);font-size:.8rem}
+.qrow .nm{font-weight:600;cursor:pointer;min-width:0;flex:1 1 120px}
+.qrow .meta{display:flex;gap:4px 6px;flex-wrap:wrap;font-size:.76rem;color:var(--muted)}
 .fab{position:fixed;right:max(16px,var(--safe-r));bottom:max(16px,var(--safe-b));z-index:5}
 </style>
 </head>
@@ -125,7 +132,7 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
   "use strict";
   var TOKEN = "gd.token", ST = { active: ["Active", "#2563eb"], maintenance: ["Queued", "#d97706"], hiatus: ["Hiatus", "#7c3aed"], closed: ["Closed", "#6b7280"] };
   var $ = function (s) { return document.querySelector(s); };
-  var S = { lists: [], key: "", sha: "", list: null, worked: {}, readOnly: false, view: "all", collapsed: {}, layout: "grid", open: {}, user: null, busy: 0, lastOk: 0, err: "", auto: true, days: 3, owner: false, home: "", chat: "claude", tabs: ["all", "priority", "active", "maintenance", "hiatus", "complete", "abandoned", "archive", "bin"] };
+  var S = { lists: [], key: "", sha: "", list: null, worked: {}, readOnly: false, view: "all", collapsed: {}, layout: "grid", open: {}, user: null, busy: 0, lastOk: 0, err: "", auto: true, days: 3, owner: false, home: "", chat: "claude", tabs: ["all", "priority", "active", "maintenance", "hiatus", "complete", "abandoned", "archive", "bin", "schedule"] };
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); };
   function tok() { try { return sessionStorage.getItem(TOKEN) || localStorage.getItem(TOKEN) || ""; } catch (e) { return ""; } }
   function api(path, method, body) {
@@ -162,11 +169,11 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
   }
 
   /* ---------- loading and live polling ---------- */
-  function savePrefs() { clearTimeout(savePrefs.h); savePrefs.h = setTimeout(function () { api("api/prefs", "PUT", { list: S.key, view: S.view, auto: S.auto, days: S.days, chat: S.chat, layout: S.layout, tabs: S.tabs, groups: S.groups, collapsed: Object.keys(S.collapsed).filter(function (k) { return S.collapsed[k]; }) }).catch(function () {}); }, 600); }
+  function savePrefs() { clearTimeout(savePrefs.h); savePrefs.h = setTimeout(function () { api("api/prefs", "PUT", { list: S.key, view: S.view, auto: S.auto, days: S.days, chat: S.chat, layout: S.layout, tabs: S.tabs, tabsV: 2, groups: S.groups, collapsed: Object.keys(S.collapsed).filter(function (k) { return S.collapsed[k]; }) }).catch(function () {}); }, 600); }
   function loadLists(keep) {
     return api("api/lists").then(function (j) {
       S.lists = j.lists; S.owner = !!j.owner; var pr = (S.user.prefs || {})["project-tracker"] || {}; if (window.JZTheme && !S.themeSet) { S.themeSet = 1; var th = pr.theme || (S.user.prefs || {}).theme; if (th === "light" || th === "dark") JZTheme.set(th, true); }
-      if (!S.key) { S.key = pr.list && j.lists.some(function (l) { return l.key === pr.list; }) ? pr.list : j.lists[0].key; if (pr.view) S.view = pr.view === "closed" ? "complete" : pr.view === "priority" ? "all" : pr.view; if (typeof pr.auto === "boolean") S.auto = pr.auto; if (pr.days >= 1 && pr.days <= 30) S.days = pr.days; if (pr.chat === "builtin") S.chat = "builtin"; if (pr.layout === "list") S.layout = "list"; if (Array.isArray(pr.groups)) S.groups = pr.groups; if (Array.isArray(pr.tabs)) { var tk = []; pr.tabs.forEach(function (x) { (x === "closed" ? ["complete", "abandoned"] : [x]).forEach(function (y) { if (tk.indexOf(y) < 0 && TABS.some(function (t) { return t[0] === y; })) tk.push(y); }); }); if (tk.length) S.tabs = tk; } (pr.collapsed || []).forEach(function (c) { S.collapsed[c] = true; }); }
+      if (!S.key) { S.key = pr.list && j.lists.some(function (l) { return l.key === pr.list; }) ? pr.list : j.lists[0].key; if (pr.view) S.view = pr.view === "closed" ? "complete" : pr.view === "priority" ? "all" : pr.view; if (typeof pr.auto === "boolean") S.auto = pr.auto; if (pr.days >= 1 && pr.days <= 30) S.days = pr.days; if (pr.chat === "builtin") S.chat = "builtin"; if (pr.layout === "list") S.layout = "list"; if (Array.isArray(pr.groups)) S.groups = pr.groups; if (Array.isArray(pr.tabs)) { var tk = []; if (pr.tabsV !== 2) pr.tabs = pr.tabs.concat("schedule"); pr.tabs.forEach(function (x) { (x === "closed" ? ["complete", "abandoned"] : [x]).forEach(function (y) { if (tk.indexOf(y) < 0 && TABS.some(function (t) { return t[0] === y; })) tk.push(y); }); }); if (tk.length) S.tabs = tk; } (pr.collapsed || []).forEach(function (c) { S.collapsed[c] = true; }); }
       if (!j.lists.some(function (l) { return l.key === S.key; })) S.key = j.lists[0].key;
       $("#lists").innerHTML = j.lists.map(function (l) { return '<option value="' + esc(l.key) + '"' + (l.key === S.key ? " selected" : "") + ">" + esc(l.name) + " (" + l.count + ")" + (l.source === "shared" ? " · from " + esc(l.by || "someone") : "") + "</option>"; }).join("");
     });
@@ -192,9 +199,87 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
   }
   var upsert = function (p, ch) { return send({ ops: { upsert: [Object.assign({}, p, ch)] } }); };
 
+  /* ---------- Task schedule: projects queued for Claude's nightly run ---------- */
+  var QS = { queued: ["Queued", "#d97706"], held: ["On hold", "#6b7280"], running: ["Running", "#2563eb"], done: ["Done", "#16a34a"], failed: ["Failed", "#dc2626"] };
+  var Q = {
+    active: function (p) { return !!p.queue && (p.queue.state === "queued" || p.queue.state === "held" || p.queue.state === "running"); },
+    sched: function () { var c = (S.list && S.list.schedule) || {}, d = (c.days || []).filter(function (x) { return x >= 0 && x <= 6; }); return { days: d.length ? d : [1], time: /^\d\d:\d\d$/.test(c.time || "") ? c.time : "20:00", offsetMin: Number.isInteger(c.offsetMin) ? c.offsetMin : 120, lastRun: c.lastRun }; },
+    DAYS: ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
+    when: function () { var sc = Q.sched(), n = sc.days.map(function (d) { return Q.DAYS[d]; }); return (sc.days.length === 7 ? "every day" : "every " + (n.length > 1 ? n.slice(0, -1).join(", ") + " and " + n[n.length - 1] : n[0])) + " at " + sc.time; },
+    rows: function () {   // waiting in order (running first), then what finished in the last 14 days
+      var live = S.list.projects.filter(function (p) { return p.state === "live" && p.queue; }), now = Date.now();
+      var w = live.filter(Q.active).sort(function (a, b) { return (a.queue.state === "running" ? 0 : 1) - (b.queue.state === "running" ? 0 : 1) || (a.queue.pos || 0) - (b.queue.pos || 0) || a.name.localeCompare(b.name); });
+      var f = live.filter(function (p) { return !Q.active(p) && now - Date.parse(p.queue.doneAt || p.queue.at) <= 14 * 864e5; }).sort(function (a, b) { return String(b.queue.doneAt || b.queue.at).localeCompare(String(a.queue.doneAt || a.queue.at)); });
+      return { waiting: w, finished: f };
+    },
+    next: function () {   // the next run: the next chosen weekday at the chosen time (in the schedule's own clock)
+      var sc = Q.sched(), hm = sc.time.split(":"), off = sc.offsetMin * 60e3, now = Date.now(), l = new Date(now + off);
+      for (var d = 0; d <= 7; d++) {
+        var t = Date.UTC(l.getUTCFullYear(), l.getUTCMonth(), l.getUTCDate() + d, +hm[0], +hm[1]) - off, loc = new Date(t + off);
+        if (t > now && sc.days.indexOf(loc.getUTCDay()) >= 0) return Q.DAYS[loc.getUTCDay()] + " " + fmt(loc.toISOString().slice(0, 10)) + " at " + sc.time;
+      }
+      return "";
+    },
+    editDlg: function () {
+      var sc = Q.sched();
+      dialog("<h2>When Claude runs the queue</h2><p class='small muted'>Claude checks the queue every hour and starts a run once the chosen day and time have passed. Times are in your time zone.</p><div style='display:grid;grid-template-columns:repeat(4,1fr);gap:6px 10px;margin:10px 0'>" + Q.DAYS.map(function (n, i) { return "<label class='switch' style='margin:0;justify-content:flex-start'><input type='checkbox' data-d='" + i + "'" + (sc.days.indexOf(i) >= 0 ? " checked" : "") + "><span>" + n.slice(0, 3) + "</span></label>"; }).join("") + "</div><label>Time <input type='time' id='qt' value='" + esc(sc.time) + "'></label>" +
+        "<div class='row'><button class='btn' data-close>Cancel</button><button class='btn primary' id='qs'>Save</button></div>", function (d) {
+        d.querySelector("#qs").onclick = function () {
+          var days = [].slice.call(d.querySelectorAll("[data-d]")).filter(function (c) { return c.checked; }).map(function (c) { return +c.dataset.d; }), tm = d.querySelector("#qt").value;
+          if (!days.length || !/^\d\d:\d\d$/.test(tm)) return toast("Pick at least one day and a time");
+          d.close(); send({ ops: { schedule: Object.assign({}, S.list.schedule || {}, { days: days, time: tm, offsetMin: Q.sched().offsetMin }) } }).then(function () { toast("Schedule saved"); });
+        };
+      });
+    },
+    nextPos: function () { var m = 0; S.list.projects.forEach(function (p) { if (p.queue && p.queue.pos > m) m = p.queue.pos; }); return m + 10; },
+    openNotes: function (p) { return (p.notes || []).filter(function (n) { return n.state === "open"; }).length; },
+    add: function (p, merge) { return upsert(p, { queue: { state: "queued", at: new Date().toISOString(), pos: Q.nextPos(), merge: merge } }); },
+    set: function (p, ch) { return upsert(p, { queue: Object.assign({}, p.queue, ch) }); },
+    renumber: function (order) { var ups = []; order.forEach(function (p, i) { if (p.queue.pos !== (i + 1) * 10) ups.push(Object.assign({}, p, { queue: Object.assign({}, p.queue, { pos: (i + 1) * 10 }) })); }); return ups.length ? send({ ops: { upsert: ups } }) : render(); },
+    move: function (p, dir) { var w = Q.rows().waiting.filter(function (x) { return x.queue.state !== "running"; }), i = w.indexOf(p), j = i + dir; if (i < 0 || j < 0 || j >= w.length) return; w[i] = w[j]; w[j] = p; return Q.renumber(w); },
+    addDlg: function (p) {
+      var n = Q.openNotes(p);
+      dialog("<h2>Add “" + esc(p.name) + "” to the queue</h2><p class='small'>At the next run (" + esc(Q.next()) + ") Claude works through the " + n + " open note" + (n === 1 ? "" : "s") + " on this project, builds the update and then, if you leave this on, merges it to main once the build is green.</p>" +
+        "<label class='switch'><input type='checkbox' id='qm' checked><span><b>Merge to main when the build is green</b><br><span class='muted small'>Off: Claude stops after the build and leaves it for you to merge.</span></span></label>" +
+        "<p class='muted small'>Adding it confirms that all your notes for this project are in. Notes Claude finishes are set to “to confirm”, never deleted.</p>" +
+        "<div class='row'><button class='btn' data-close>Cancel</button><button class='btn primary' id='qa'>Add to queue</button></div>", function (d) {
+        d.querySelector("#qa").onclick = function () { var m = d.querySelector("#qm").checked; d.close(); Q.add(p, m).then(function () { S.view = "schedule"; savePrefs(); render(); toast("Added to the queue"); }); };
+      });
+    },
+    row: function (p, i, last) {
+      var q = p.queue, st = QS[q.state] || QS.queued, w = Q.active(p), ro = S.readOnly, n = Q.openNotes(p), run = q.state === "running";
+      var meta = w ? [n + " open note" + (n === 1 ? "" : "s"), q.merge ? "merges to main when the build is green" : "stops after the build, no merge", "added " + fmt(q.at)] : [q.result ? esc(q.result) : "No details", fmt(q.doneAt || q.at)];
+      var b = function (k, t, c) { return '<button class="btn tiny' + (c ? " " + c : "") + '" data-q="' + k + '">' + t + "</button>"; }, acts = "";
+      if (!ro) acts = run ? "" : w ? (i > 0 ? b("up", "▲") : "") + (i < last ? b("down", "▼") : "") + b(q.state === "held" ? "resume" : "hold", q.state === "held" ? "Resume" : "Hold") + b("merge", q.merge ? "Merge: on" : "Merge: off") + b("remove", "Remove", "danger") : b("again", "Queue again") + b("clear", "Clear");
+      return '<div class="card qrow" style="--c:' + st[1] + '" data-id="' + esc(p.id) + '"><div class="top">' + (w ? '<span class="pn">' + (run ? "▶" : i + 1) + "</span>" : "") + '<div class="nm" data-q="notes" title="Open the notes">' + esc(p.name) + '</div><span class="chip">' + esc(p.category) + '</span><span class="chip" style="background:' + st[1] + ';color:#fff">' + st[0] + "</span></div>" +
+        '<div class="meta">' + meta.join(" · ") + "</div>" + (acts ? '<div class="acts">' + acts + "</div>" : "") + "</div>";
+    },
+    html: function () {
+      var r = Q.rows(), sc = Q.sched(), idle = r.waiting.filter(function (p) { return p.queue.state !== "running"; }), li = idle.length;
+      var h = '<div class="card qhead"><b>Claude runs this queue ' + esc(Q.when()) + '</b><div class="muted small">Next run: ' + esc(Q.next()) + ". Claude works through each queued project’s open notes in this order, builds the update and, where Merge is on, merges it to main. Add a project from its notes with <b>Add to queue</b>.</div>" + (S.readOnly ? "" : '<div class="acts"><button class="btn tiny" data-q="when">Change day or time</button></div>') + "</div>";
+      h += '<div class="cat"><span>Waiting</span><span>' + r.waiting.length + "</span></div>";
+      h += r.waiting.length ? '<div class="qlist">' + r.waiting.map(function (p) { var i = idle.indexOf(p); return Q.row(p, i, li - 1); }).join("") + "</div>" : '<p class="empty">Nothing queued. Open a project’s notes and choose Add to queue.</p>';
+      if (r.finished.length) h += '<div class="cat"><span>Finished in the last 14 days</span><span>' + r.finished.length + '</span></div><div class="qlist">' + r.finished.map(function (p) { return Q.row(p, 0, 0); }).join("") + "</div>";
+      return h;
+    },
+    click: function (ev) {   // returns true when the click was ours
+      var b = ev.target.closest("[data-q]"); if (!b) return false;
+      if (b.dataset.q === "when") { if (!S.readOnly) Q.editDlg(); return true; }
+      var card = b.closest(".qrow"), p = card && byId(card.dataset.id); if (!p) return true;
+      var k = b.dataset.q; if (k === "notes") { notesDlg(p); return true; }
+      if (S.readOnly) return true;
+      if (k === "up" || k === "down") Q.move(p, k === "up" ? -1 : 1);
+      else if (k === "hold" || k === "resume") Q.set(p, { state: k === "hold" ? "held" : "queued" });
+      else if (k === "merge") Q.set(p, { merge: !p.queue.merge });
+      else if (k === "remove" || k === "clear") upsert(p, { queue: null });
+      else if (k === "again") Q.add(p, p.queue.merge !== false).then(function () { toast("Added to the queue"); });
+      return true;
+    }
+  };
+
   /* ---------- drawing ---------- */
   function counts() {
-    var c = { all: 0, active: 0, maintenance: 0, hiatus: 0, complete: 0, abandoned: 0, archive: 0, bin: 0 };
+    var c = { all: 0, active: 0, maintenance: 0, hiatus: 0, complete: 0, abandoned: 0, archive: 0, bin: 0, schedule: Q.rows().waiting.length };
     S.list.projects.forEach(function (p) { if (p.state === "archived") c.archive++; else if (p.state === "bin") c.bin++; else { c.all++; c[viewOf(p)]++; } });
     return c;
   }
@@ -227,8 +312,8 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
   }
   // Grid needs room for two 360px columns; on a phone in portrait there is none, so the Grid / List button is hidden there.
   var gridFits = function () { return ($("#main").clientWidth || window.innerWidth) >= 740; };
-  var TABS = [["all", "All"], ["active", "Active"], ["maintenance", "Queued"], ["hiatus", "Hiatus"], ["complete", "Complete"], ["abandoned", "Abandoned"], ["archive", "Archive"], ["bin", "Bin"]];
-  function shownTabs() { var c = counts(), t = TABS.filter(function (x) { return S.tabs.indexOf(x[0]) >= 0 && (x[0] === "all" || c[x[0]] > 0); }); return t.length ? t : [TABS[0]]; }   // a tab with nothing in it stays hidden
+  var TABS = [["all", "All"], ["active", "Active"], ["maintenance", "Queued"], ["hiatus", "Hiatus"], ["complete", "Complete"], ["abandoned", "Abandoned"], ["archive", "Archive"], ["bin", "Bin"], ["schedule", "Task schedule"]];
+  function shownTabs() { var c = counts(), t = TABS.filter(function (x) { return S.tabs.indexOf(x[0]) >= 0 && (x[0] === "all" || x[0] === "schedule" || c[x[0]] > 0); }); return t.length ? t : [TABS[0]]; }   // a tab with nothing in it stays hidden
   // The tabs shown are the ones picked in Settings; when they don't fit the width they become a drop-down list.
   function drawTabs() {
     var c = counts(), tabs = shownTabs(), el = $("#tabs");
@@ -248,6 +333,7 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
     openSw = null;
     $("#add").hidden = S.readOnly;
     drawTabs();
+    if (S.view === "schedule") { var ky = window.scrollY; $("#main").innerHTML = Q.html(); window.scrollTo(0, ky); return; }
     var live = S.list.projects.filter(function (p) { return p.state === "live"; }), out = "";
     if (S.view === "archive" || S.view === "bin") {
       var rows = S.list.projects.filter(function (p) { return p.state === (S.view === "bin" ? "bin" : "archived"); }).sort(function (a, b) { return a.name.localeCompare(b.name); });
@@ -378,10 +464,12 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
       return "<div class='nrow" + (n.state === "review" ? " review" : "") + "'><div class='t'>" + esc(n.text) + "</div><div class='m'>" + (n.by === "claude" ? "<span class='chip'>Claude</span> " : "") + fmt(n.at) + (n.editedAt ? " · edited " + fmt(n.editedAt) : "") + (n.state === "review" ? " · Claude says this is done. Confirm?" : "") + "</div>" +
         (ro ? "" : "<div class='acts'><button class='btn tiny' data-n='edit' data-id='" + esc(n.id) + "'>Edit</button>" + (n.state === "review" ? "<button class='btn tiny primary' data-n='clear' data-id='" + esc(n.id) + "'>Yes, clear it</button><button class='btn tiny' data-n='reopen' data-id='" + esc(n.id) + "'>Not yet</button>" : "<button class='btn tiny' data-n='clear' data-id='" + esc(n.id) + "'>Remove</button>") + "</div>") + "</div>";
     }).join("");
-    dialog("<h2>" + esc(p.name) + "</h2><p class='muted small'>Notes for this project. Claude reads them before working on it, then asks you to confirm each one is done before it is cleared.</p><div class='row' style='justify-content:flex-start'><button type='button' class='btn' id='chat'>" + (S.chat === "builtin" ? "Ask AI" : "Chat with Claude ↗") + "</button></div><div class='nlist'>" + (rows || "<p class='muted small'>No notes yet.</p>") + "</div>" +
+    dialog("<h2>" + esc(p.name) + "</h2><p class='muted small'>Notes for this project. Claude reads them before working on it, then asks you to confirm each one is done before it is cleared.</p><div class='row' style='justify-content:flex-start'><button type='button' class='btn' id='chat'>" + (S.chat === "builtin" ? "Ask AI" : "Chat with Claude ↗") + "</button>" + (ro ? "" : Q.active(p) ? " <button type='button' class='btn' id='qgo'>In the queue ✓ Task schedule</button>" : Q.openNotes(p) ? " <button type='button' class='btn' id='qadd'>Add to queue</button>" : " <button type='button' class='btn' disabled title='Add a note first'>Add to queue</button>") + "</div><div class='nlist'>" + (rows || "<p class='muted small'>No notes yet.</p>") + "</div>" +
       (ro ? "" : "<form id='f'><label>New note<textarea name='t' rows='2' maxlength='600' placeholder='What needs doing?'></textarea></label><div class='row'><button type='button' class='btn' data-close>Close</button><button class='btn primary'>Add note</button></div></form>") + (ro ? "<div class='row'><button class='btn' data-close>Close</button></div>" : ""), function (d) {
       var save = function (next) { d.close(); upsert(p, { notes: next }).then(function () { var q = byId(p.id); if (q) notesDlg(q); }); };
       d.querySelector("#chat").onclick = function () { d.close(); chatWith(p); };
+      var qa = d.querySelector("#qadd"); if (qa) qa.onclick = function () { d.close(); Q.addDlg(p); };
+      var qg = d.querySelector("#qgo"); if (qg) qg.onclick = function () { d.close(); S.view = "schedule"; savePrefs(); render(); };
       var f = d.querySelector("#f"); if (f) f.onsubmit = function (ev) { ev.preventDefault(); var t = f.elements.t.value.trim(); if (!t) return; save(ns.concat([{ id: nid(), text: t, at: new Date().toISOString(), state: "open" }])); };
       d.querySelectorAll("[data-n]").forEach(function (b) { b.onclick = function () { var id = b.dataset.id, k = b.dataset.n;
         if (k === "edit") { var row = b.closest(".nrow"), cur = ns.filter(function (n) { return n.id === id; })[0]; if (!row || !cur) return;
@@ -453,6 +541,7 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-
   $("#main").onclick = function (ev) {
     if (Date.now() < holdUntil || Date.now() < swipeUntil) return;   // the press-and-hold just opened a menu / a swipe just ended
     var go = ev.target.closest("[data-go]"); if (go) { S.view = go.dataset.go; savePrefs(); return render(); }
+    if (Q.click(ev)) return;
     var ot = ev.target.closest(".p"); if (openSw && ot === openSw && !ev.target.closest(".swa")) return closeSw(); if (openSw && ot !== openSw) closeSw();
     var cat = ev.target.closest(".cat"); if (cat) { S.collapsed[cat.dataset.cat] = !S.collapsed[cat.dataset.cat]; savePrefs(); return render(); }
     var b = ev.target.closest("[data-a]");
