@@ -74,16 +74,17 @@ function parseList(text) {
   }
   return out;
 }
+// listFile: one path (apps Portal Admin published) or [{ file, source }] ("list" = Portal Admin's list, "names" = the names Port Master gives, see names.js).
 function discover(dir, listFile) {
-  const out = [];
-  let listed = []; try { if (listFile) listed = parseList(fs.readFileSync(listFile, 'utf8')); } catch { /* no list: labels only */ }
+  const out = [], files = (Array.isArray(listFile) ? listFile : listFile ? [{ file: listFile, source: 'list' }] : []);
+  let listed = []; for (const f of files) { try { listed = listed.concat(parseList(fs.readFileSync(f.file, 'utf8')).map((l) => ({ ...l, source: f.source }))); } catch { /* no list: labels only */ } }
   let names = []; try { names = fs.readdirSync(dir); } catch { return out; }
   for (const d of names.sort()) {
     let man; try { man = parseManifest(fs.readFileSync(path.join(dir, d, 'umbrel-app.yml'), 'utf8')); } catch { continue; }
     if (!man.id || !man.port) continue;
     let comp = { tsdproxy: null, hostPorts: [], hidden: false }; try { comp = parseCompose(fs.readFileSync(path.join(dir, d, 'docker-compose.yml'), 'utf8')); } catch { /* no compose: LAN and Tailscale only */ }
     const via = comp.tsdproxy ? null : listed.find((l) => l.port === man.port);
-    out.push({ ...man, joolzapp: /^joolay-/.test(man.id), tsdproxy: comp.tsdproxy || (via ? { name: via.name, funnel: false } : null), hostPorts: comp.hostPorts, hidden: !!comp.hidden });
+    out.push({ ...man, joolzapp: /^joolay-/.test(man.id), tsdproxy: comp.tsdproxy || (via ? { name: via.name, funnel: false } : null), nameSource: comp.tsdproxy ? 'label' : via ? via.source : '', hostPorts: comp.hostPorts, hidden: !!comp.hidden });
   }
   return out;
 }
@@ -163,7 +164,7 @@ function makeMonitor({ dir, listFile, getConfig, probeImpl = probe, now = Date.n
   let last = null, running = null;
   async function run() {
     const cfg = getConfig(), apps = discover(dir, listFile), jobs = [];
-    const out = apps.map((a) => ({ id: a.id, name: a.name, version: a.version, port: a.port, hostPorts: a.hostPorts || [], joolzapp: a.joolzapp, onPortal: !!a.joolzapp && !a.hidden, published: a.tsdproxy ? (a.tsdproxy.funnel ? 'public' : 'tailnet') : '', tsdName: a.tsdproxy ? a.tsdproxy.name : '', routes: [] }));
+    const out = apps.map((a) => ({ id: a.id, name: a.name, version: a.version, port: a.port, hostPorts: a.hostPorts || [], joolzapp: a.joolzapp, onPortal: !!a.joolzapp && !a.hidden, published: a.tsdproxy ? (a.tsdproxy.funnel ? 'public' : 'tailnet') : '', tsdName: a.tsdproxy ? a.tsdproxy.name : '', nameSource: a.nameSource || '', routes: [] }));
     apps.forEach((a, i) => { for (const r of routesFor(a, cfg)) jobs.push({ i, r }); });
     let next = 0;
     await Promise.all(new Array(Math.min(concurrency, jobs.length || 1)).fill(0).map(async () => {

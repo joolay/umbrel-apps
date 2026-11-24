@@ -10,7 +10,7 @@ services:
       PROXY_AUTH_ADD: "true"
 
   web:
-    image: ghcr.io/joolay/portal-admin:0.42.0
+    image: ghcr.io/joolay/portal-admin:0.42.1
     restart: on-failure
     stop_grace_period: 10s
     # Lets the container reach the PocketBase app (port 5400) published on this Umbrel.
@@ -19,6 +19,12 @@ services:
     ports:
       # Portal API for the apps and for JoolzApp Dashboard (each needs its own key). Not published through the tunnel.
       - "3899:3002"
+      # Portal Admin on the tailnet: https://portaladmin.<tailnet>.ts.net (Tailscale only, never public). Sign in with an admin JoolzApp account.
+      - "3909:3000"
+    labels:
+      tsdproxy.enable: "true"
+      tsdproxy.name: "portaladmin"
+      tsdproxy.port.1: "443/https:3909/http, no_autodetect"
     volumes:
       - ${APP_DATA_DIR}/data:/data
       # Umbrel's installed-app folders: umbrel-app.yml and docker-compose.yml are read to detect new apps, and Portal Admin

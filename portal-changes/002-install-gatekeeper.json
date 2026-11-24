@@ -1,0 +1,8 @@
+{
+  "id": "install-gatekeeper",
+  "title": "Install Gatekeeper",
+  "summary": "Adds Gatekeeper, the sign-in gate for your apps. It runs beside the current routes, so nothing changes until you point a name at it.",
+  "ops": [
+    { "op": "install-app", "id": "joolay-gatekeeper" }
+  ]
+}

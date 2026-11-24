@@ -144,11 +144,23 @@ fetch `status/app-updater.json` / `status/services-manager.json` / `status/kiosk
 A new owner-only app that should be monitorable: copy `status-feed.js`, call it with a `getPayload` that returns useful, secret-free state, declare `POCKETBASE_APP_ID`, add it to the notes here.
 
 
+## Gatekeeper (`src/gatekeeper`, store app `joolay-gatekeeper`, port 3921, owner-only, `JOOLZAPP_DASHBOARD=hidden`)
+The gate in front of the apps, **layered behind an unmodified TSDProxy** (TSDProxy keeps the Tailscale names and Funnel and stays on its automatic updates). A protected app's TSDProxy name is pointed at Gatekeeper (port 3921) instead of the app;
+Gatekeeper reads the name (`X-Forwarded-Host` / `Host`, first label) -> a route in `<data>/gatekeeper.json` (`name`, `slug`, `upstream`, `adminOnly`, `enabled`), makes the person sign in with their JoolzApp account (Portal API `login`), asks Portal Admin `gate.can(userId, slug)`
+(Gatekeeper's key only: the same `portal.access` rules apps follow, plus the app's on/off switch; admins open everything; fails closed), then proxies (HTTP and WebSockets) with the gate's own cookie removed and `X-Gatekeeper-User` / `X-Gatekeeper-Admin` added.
+It runs beside the current routes: nothing changes until a name is pointed at it. Gatekeeper's one job is access control; routing stays with Port Master, so **Tailscale name upkeep (the TSDProxy names, not ACL tags) belongs to Port Master** (decided 23/11/2026, built in Port Master 1.9.0: `src/routing-reporter/names.js`). Not in v1: the Umbrel-password rule for Umbrel's own dashboard, the Community Apps admin-only list. Sign-in is per name (a cookie on each name) until a cross-name hand-off is added.
+Portal Admin is also published on the tailnet (`portaladmin`, port 3909, never Funnel); it signs in with the PocketBase admin login as before.
+
 ## Port Master (formerly Routing Reporter): monitoring access routes (LAN, Tailscale, Public)
 `src/routing-reporter` (store app `joolay-routing-reporter`, port 3906, owner-only, `JOOLZAPP_DASHBOARD=hidden`) reads every installed app's manifest and compose file, checks each app's LAN, Tailscale-IP
 and TSDProxy (Funnel = Public) route from inside the Umbrel, and sends the report to Portal Admin (`publishRoutes` in the Portal API, kept by `src/portal-admin/routes.js`).
 Portal Admin > **JoolzApp apps** shows it; an admin taps **Notify Claude** on a down route, which writes `status/route-alerts.json` in the feed (app, route, URL, error, since when; clears itself when the route answers).
 Port Master's own summary is `status/routing-reporter.json`: every app with its name, port, published host ports, each route's address and state, a sorted `ports` list and any `portConflicts` (not only the problems). Before diagnosing "can't reach app X" fetch `status/route-alerts.json` and `status/routing-reporter.json` fresh and check `at`. Read-only, like the rest of the feed.
+
+## Tailscale names (Port Master 1.9.0)
+Port Master creates, renames and fixes the Tailscale (TSDProxy) names of apps that have none: TSDProxy tab > "Tailscale names" (automatic and on from the start: every app without a name gets one; Remove keeps it off for that app via `noNames`, Create brings it back; Settings has Create names for all apps without one). They live in Port Master's OWN TSDProxy list file `joolz-names.yaml` (tailnet only, never Funnel;
+declared once in `tsdproxy.yaml` with a `.bak`, then `restart-tsdproxy` for Services Manager); Portal Admin's `joolz-published.yaml` (OpenClaw) is separate and untouched. Names in an app's compose labels (ours) or Portal Admin's list are never changed from there, only checked.
+Fixes by itself: clash -> free name, app gone or named itself -> entry dropped, port moved or file edited -> rewritten. Existing names stay as they are. Wishes are kept in Port Master's config (`names`, `noNames`, `autoNames`, on unless set to false). Tests: `test-names.js`, `test-names-flow.js`.
 
 ## TSDProxy keeper (Services Manager) and route switches (Port Master)
 TSDProxy is not an Umbrel App Store app, so `src/services-manager/tsdproxy.js` looks after it (Services Manager owns the Docker socket): it adds an API key to `tsdproxy.yaml` once (`apiKeyFile`, then one restart), reaches the REST API on TSDProxy's Docker network,

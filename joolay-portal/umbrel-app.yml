@@ -2,7 +2,7 @@ manifestVersion: 1
 id: joolay-portal
 category: social
 name: JoolzApp Dashboard
-version: "0.42.0"
+version: "0.42.1"
 tagline: The JoolzApp home screen for everyone in the family
 description: >-
   The home screen people use for every JoolzApp app: sign in or create an account, open your apps, arrange icons and folders,
@@ -21,7 +21,7 @@ path: ""
 defaultUsername: ""
 defaultPassword: ""
 releaseNotes: >-
-  Every tile on the JoolzApp Dashboard and Portal Admin home now uses the same solid gradient icon art as the apps: new icons for all admin tools and Gatekeeper, folders match, no more tinted-glass tiles.
+  Folders and tiles without artwork on the Dashboard and Portal Admin home now use the same solid gradient look as the app icons (no more tinted glass).
 submitter: joolay
 submission: https://github.com/joolay/umbrel-apps
 icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-portal/icon.svg

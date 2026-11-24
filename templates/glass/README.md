@@ -74,6 +74,7 @@ JoolzApp bolt) with one tight shadow so it stays sharp at any size. That covers 
   It writes `icon.svg`, `icon-180.png`, `icon-512.png`, `icon-maskable-512.png` in `src/<app>/public/` and the store icon in `joolay-<app>/`.
 - **Portal, Portal Admin and built-in tiles**: the `special` table (`portal`, `portal-admin`, `family`, `settings`). A new built-in home-screen
   tile gets an entry there (a 24x24 line glyph via `line24()`), a file in `src/portal-admin/public/icons/`, and `img: 'icons/<name>.svg'` on its item in `homeModel()`.
+- **Portal Admin's admin tools and its shortcut tiles** (`tool-<name>`, `shortcut-<app>`, `gatekeeper` in the `special` table) write `src/portal-admin/public/icons/<name>.svg`; the tile items in `homeModel()` carry `img: 'icons/<name>.svg'`. A new admin tool or shortcut gets an entry there, never a hand-drawn tile.
 - Always name what to build. Run with no names and it only lists what it knows (it never rebuilds everything, so it can't overwrite an icon that was tuned later).
 - Needs `rsvg-convert` and ImageMagick.
 

@@ -1548,8 +1548,8 @@ const GL = {
   cleanup: '<path d="M5 7h14M10 7V4.5h4V7M7 7l1 12.5h8L17 7"/>',
   changes: '<path d="M5 8h10M12 5l3 3-3 3M19 16H9M12 13l-3 3 3 3"/>',
   audit: '<rect x="5" y="3.5" width="14" height="17" rx="2.5"/><path d="M8.5 8.5h7M8.5 12h7M8.5 15.5h4"/>',
-  joolzapps: '<path d="M5 18c0-5.5 7-3.5 7-8.5S19 7 19 5"/><circle cx="5" cy="18.5" r="1.6"/><circle cx="12" cy="11" r="1.6"/><circle cx="19" cy="5.5" r="1.6"/>',
-  names: '<path d="M4 16.5V20h3.5L18.2 9.3l-3.5-3.5z"/><path d="M13 7.5l3.5 3.5"/>',
+  joolzapps: '<rect x="4" y="4" width="7" height="7" rx="2"/><rect x="13" y="4" width="7" height="7" rx="2"/><rect x="4" y="13" width="7" height="7" rx="2"/><path d="M14.5 15.2 18 13l-1 3.4h2.5L15 21l.9-3.6z"/>',
+  names: '<path d="M4 6.5h8l8 8-5.5 5.5-8-8z"/><circle cx="8.2" cy="10.7" r="1.2"/>',
   setup: '<path d="M14.5 5a4 4 0 0 0-4.7 5.2L4 16l4 4 5.8-5.8A4 4 0 0 0 19 9.5l-2.6 2.6-2.6-.7-.7-2.6z"/>',
 };
 const svgG = (k) => `<svg viewBox="0 0 24 24" aria-hidden="true">${GL[k]}</svg>`;
@@ -1563,12 +1563,12 @@ const ADMIN_TOOLS = [
   ['users', 'Users', ['#10b981', '#0ea5e9']], ['requests', 'Access requests', ['#f43f5e', '#fb923c']], ['cleanup', 'Cleanup', ['#14b8a6', '#22c55e']],
   ['paywall', 'Paid apps', ['#22c55e', '#0ea5e9']], ['keys', 'App keys', ['#f59e0b', '#ef4444']], ['joolzapps', 'JoolzApp apps', ['#0f766e', '#2dd4bf']], ['names', 'App names', ['#06b6d4', '#6366f1']], ['audit', 'Audit log', ['#eab308', '#f97316']], ['changes', 'Changes', ['#8b5cf6', '#ec4899']],
 ];
-const ADMIN_SHORTCUTS = [   // [slug, name, port, gradient, hint]; ports are the store ports in each app's umbrel-app.yml (Gatekeeper: not built yet)
+const ADMIN_SHORTCUTS = [   // [slug, name, port, gradient, hint]; ports are the store ports in each app's umbrel-app.yml (Gatekeeper: 3921)
   ['services-manager', 'Services Manager', 3891, ['#0ea5e9', '#6366f1'], 'Looks after the Umbrel services'],
   ['kiosk-manager', 'Kiosk Manager', 3920, ['#f59e0b', '#ef4444'], "The Umbrel's own screen"],
   ['routing-reporter', 'Port Master', 3906, ['#0f766e', '#2dd4bf'], 'LAN, Tailscale and Public routes'],
   ['app-updater', 'App Updater', 3898, ['#22c55e', '#0ea5e9'], 'Updates your apps by itself'],
-  ['gatekeeper', 'Gatekeeper', 0, ['#64748b', '#334155'], 'Not installed yet']
+  ['gatekeeper', 'Gatekeeper', 3921, ['#64748b', '#334155'], 'Sign-in gate for your apps']
 ];
 const VIEW_TITLES = { joolzapps: 'JoolzApp apps', overview: 'Overview', global: 'Global settings', apps: 'Apps', users: 'Users', requests: 'Access requests', cleanup: 'Cleanup', audit: 'Audit log', changes: 'PocketBase changes', me: 'My settings', family: 'Family', paywall: 'Paid apps', keys: 'App keys', names: 'App names', paid: 'Payment' };
 const PROTECTED = new Set(['sys:me', 'sys:admin']);
@@ -1618,10 +1618,10 @@ async function homeModel() {
     if (!onlyTools) items['sys:family'] = { id: 'sys:family', kind: 'sys', name: 'Family', glyph: 'family', img: 'icons/family.svg', grad: ['#fb7185', '#f59e0b'], href: '#/family' };   // Family belongs to the JoolzApp Dashboard
     if (!onlyTools) items['sys:me'] = { id: 'sys:me', kind: 'sys', name: 'Settings', glyph: 'me', img: 'icons/settings.svg', grad: ['#94a3b8', '#475569'], href: '#/me' };
   }
-  // Portal Admin's own home also carries one-tap shortcuts to the owner-only tools (same tiles the Dashboard's Admin folder has). Gatekeeper has no app yet: its tile waits, dimmed, until it exists.
+  // Portal Admin's own home also carries one-tap shortcuts to the owner-only tools (same tiles the Dashboard's Admin folder has). Gatekeeper is the sign-in gate (port 3921).
   if (onlyTools) {
     const urlFor = appUrlFinder([]);
-    for (const [slug, name, port, grad, desc] of ADMIN_SHORTCUTS) items['adm:' + slug] = { id: 'adm:' + slug, kind: 'sys', ext: true, name, app: { slug, name, enabled: true }, grad, letter: name.charAt(0), img: slug === 'gatekeeper' ? 'icons/gatekeeper.svg' : '', href: port ? urlFor({ port }) : '#', desc, soon: !port };
+    for (const [slug, name, port, grad, desc] of ADMIN_SHORTCUTS) items['adm:' + slug] = { id: 'adm:' + slug, kind: 'sys', ext: true, name, app: { slug, name, enabled: true }, grad, glyph: slug === 'gatekeeper' ? 'admin' : 'apps', img: 'icons/' + slug + '.svg', letter: name.charAt(0), href: port ? urlFor({ port }) : '#', desc, soon: !port };
   }
   let adminApps = [];
   if (!onlyTools && sl && sl.admin) { const aa = await acctFetch('/admin/apps').catch(() => null); adminApps = aa && Array.isArray(aa.apps) ? aa.apps : []; }
@@ -1682,7 +1682,7 @@ function iconFail(img) {
 window.iconFail = iconFail;
 function tileInner(it) {
   // Family, Settings and Admin have artwork in the same style as the apps' own icons; the line glyph shows underneath until it loads (or if it can't).
-  if (it.img) return `${it.glyph ? svgG(it.glyph) : ''}<img class="ic-img" src="${esc(it.img)}" alt="" draggable="false" onerror="this.remove()">`;
+  if (it.img) return `${svgG(it.glyph)}<img class="ic-img" src="${esc(it.img)}" alt="" draggable="false" onerror="this.remove()">`;
   if (it.glyph) return svgG(it.glyph);
   const img = it.app ? `<img class="ic-img" src="${esc(appIconUrl(it.app))}" alt="" draggable="false" loading="lazy" data-slug="${esc(it.app.slug)}" onerror="iconFail(this)">` : '';
   return `<b>${esc(it.letter)}</b>${img}`;

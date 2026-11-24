@@ -26,6 +26,7 @@ icons={
  'project-tracker':('#b45309','#f59e0b',f'<g {W} stroke-width="24"><path d="M146 184h128M146 256h128M146 328h128"/><path d="M352 330V190M312 228l40-40 40 40"/></g>'),
  'shutterworth':('#0b6b4f','#3ccb95',f'<g {W} stroke-width="24"><path d="M130 190v-60h60M322 130h60v60M130 322v60h60M322 382h60v-60"/></g><g transform="rotate(-35 256 256)"><path fill="#fff" fill-rule="evenodd" d="M168 256l46-52h108a22 22 0 0 1 22 22v60a22 22 0 0 1-22 22H214zM196 256a12 12 0 1 0 24 0a12 12 0 1 0-24 0z"/></g>'),
  'theme-editor':('#7c3aed','#f472b6',f'<g {W} stroke-width="24"><path d="M256 138c-70 0-122 50-122 112 0 60 46 124 112 124 30 0 34-22 18-40-14-16-4-36 20-36h46c40 0 68-26 68-62 0-58-60-98-142-98z"/></g><g fill="#fff"><circle cx="196" cy="226" r="20"/><circle cx="256" cy="190" r="20"/><circle cx="318" cy="226" r="20"/><circle cx="188" cy="296" r="20"/></g>'),
+ 'gatekeeper':('#334155','#64748b',f'<g transform="translate(124 128) scale(11)"><g {W} stroke-width="2.36"><path d="M5 20V9.5a7 7 0 0 1 14 0V20"/><path d="M5 20h14M9.5 20v-6.2a2.5 2.5 0 0 1 5 0V20"/></g></g>'),
  'kiosk-manager':('#be123c','#fb7185',f'<g {W} stroke-width="24"><rect x="126" y="150" width="260" height="170" rx="28"/><path d="M256 320v46M196 366h120"/></g>'),
 }
 def run(*a): subprocess.run(a,check=True)
@@ -51,21 +52,28 @@ special={
  'portal-admin':('#1e2a52','#5b6fc4',ADMIN,['joolay-portal-admin/icon.svg','src/portal-admin/public/icons/admin.svg'],None),
  'family':('#e8590c','#ff8fa3',line24(HOME,12.2,2),['src/portal-admin/public/icons/family.svg'],None),
  'settings':('#475569','#9aa7bd',line24(GEAR,10,4),['src/portal-admin/public/icons/settings.svg'],None),
- # Portal Admin's own tools and the folders: same solid tile as the apps (colours = the tile gradients in src/portal-admin/public/app.js, ADMIN_TOOLS).
- 'overview':('#7c5cf0','#5b8cff',line24('<rect x="4" y="4" width="7" height="7" rx="2"/><rect x="13" y="4" width="7" height="7" rx="2"/><rect x="4" y="13" width="7" height="7" rx="2"/><rect x="13" y="13" width="7" height="7" rx="2"/>',10.5,4),['src/portal-admin/public/icons/overview.svg'],None),
- 'global':('#475569','#94a3b8',line24('<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.6 2.4 3.6 5.2 3.6 8.5s-1 6.1-3.6 8.5c-2.6-2.4-3.6-5.2-3.6-8.5s1-6.1 3.6-8.5z"/>',10.5,4),['src/portal-admin/public/icons/global.svg'],None),
- 'apps':('#6366f1','#a855f7',line24('<path d="M12 4l8 4.5-8 4.5-8-4.5z"/><path d="M4 12.5l8 4.5 8-4.5M4 16.5l8 4.5 8-4.5"/>',10.5,4),['src/portal-admin/public/icons/apps.svg'],None),
- 'users':('#0ea5e9','#10b981',line24('<circle cx="12" cy="8.5" r="3.5"/><path d="M5 20c.5-4 3.2-6 7-6s6.5 2 7 6"/>',10.5,4),['src/portal-admin/public/icons/users.svg'],None),
- 'requests':('#fb923c','#f43f5e',line24('<path d="M4 13l2.5-7.5h11L20 13v5.5H4z"/><path d="M4 13h4.5l1 2.5h5l1-2.5H20"/>',10.5,4),['src/portal-admin/public/icons/requests.svg'],None),
- 'cleanup':('#22c55e','#14b8a6',line24('<path d="M5 7h14M10 7V4.5h4V7M7 7l1 12.5h8L17 7"/>',10.5,4),['src/portal-admin/public/icons/cleanup.svg'],None),
- 'paywall':('#0ea5e9','#22c55e',line24('<rect x="3.5" y="6" width="17" height="12" rx="2.5"/><path d="M3.5 10.5h17M7 14.5h3.5"/>',10.5,4),['src/portal-admin/public/icons/paywall.svg'],None),
- 'keys':('#ef4444','#f59e0b',line24('<circle cx="8.5" cy="15.5" r="3.8"/><path d="M11.4 12.7 19.5 4.5M16.5 7.5l2.5 2.5M14 10l2 2"/>',10.5,4),['src/portal-admin/public/icons/keys.svg'],None),
- 'joolzapps':('#0f766e','#2dd4bf',line24('<path d="M5 18c0-5.5 7-3.5 7-8.5S19 7 19 5"/><circle cx="5" cy="18.5" r="1.6"/><circle cx="12" cy="11" r="1.6"/><circle cx="19" cy="5.5" r="1.6"/>',10.5,4),['src/portal-admin/public/icons/joolzapps.svg'],None),
- 'names':('#6366f1','#06b6d4',line24('<path d="M4 16.5V20h3.5L18.2 9.3l-3.5-3.5z"/><path d="M13 7.5l3.5 3.5"/>',10.5,4),['src/portal-admin/public/icons/names.svg'],None),
- 'audit':('#f97316','#eab308',line24('<rect x="5" y="3.5" width="14" height="17" rx="2.5"/><path d="M8.5 8.5h7M8.5 12h7M8.5 15.5h4"/>',10.5,4),['src/portal-admin/public/icons/audit.svg'],None),
- 'changes':('#ec4899','#8b5cf6',line24('<path d="M5 8h10M12 5l3 3-3 3M19 16H9M12 13l-3 3 3 3"/>',10.5,4),['src/portal-admin/public/icons/changes.svg'],None),
- 'gatekeeper':('#334155','#64748b',line24('<rect x="5" y="10.5" width="14" height="9.5" rx="2.5"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/><path d="M12 14.2v2.6"/>',10.5,4),['src/portal-admin/public/icons/gatekeeper.svg'],None),
 }
+
+# ---- Portal Admin's admin tools and the shortcut tiles on its home screen (same glass tile as every app) ----
+TOOLS={
+ 'overview':('#5b8cff','#7c5cf0','<rect x="4" y="4" width="7" height="7" rx="2"/><rect x="13" y="4" width="7" height="7" rx="2"/><rect x="4" y="13" width="7" height="7" rx="2"/><rect x="13" y="13" width="7" height="7" rx="2"/>'),
+ 'global':('#94a3b8','#475569','<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.6 2.4 3.6 5.2 3.6 8.5s-1 6.1-3.6 8.5c-2.6-2.4-3.6-5.2-3.6-8.5s1-6.1 3.6-8.5z"/>'),
+ 'apps':('#a855f7','#6366f1','<path d="M12 4l8 4.5-8 4.5-8-4.5z"/><path d="M4 12.5l8 4.5 8-4.5M4 16.5l8 4.5 8-4.5"/>'),
+ 'users':('#10b981','#0ea5e9','<circle cx="12" cy="8.5" r="3.5"/><path d="M5 20c.5-4 3.2-6 7-6s6.5 2 7 6"/>'),
+ 'requests':('#f43f5e','#fb923c','<path d="M4 13l2.5-7.5h11L20 13v5.5H4z"/><path d="M4 13h4.5l1 2.5h5l1-2.5H20"/>'),
+ 'cleanup':('#14b8a6','#22c55e','<path d="M5 7h14M10 7V4.5h4V7M7 7l1 12.5h8L17 7"/>'),
+ 'paywall':('#22c55e','#0ea5e9','<rect x="3.5" y="6" width="17" height="12" rx="2.5"/><path d="M3.5 10.5h17M7 14.5h3.5"/>'),
+ 'keys':('#f59e0b','#ef4444','<circle cx="8.5" cy="15.5" r="3.8"/><path d="M11.4 12.7 19.5 4.5M16.5 7.5l2.5 2.5M14 10l2 2"/>'),
+ 'joolzapps':('#0f766e','#2dd4bf','<rect x="4" y="4" width="7" height="7" rx="2"/><rect x="13" y="4" width="7" height="7" rx="2"/><rect x="4" y="13" width="7" height="7" rx="2"/><path d="M14.5 15.2 18 13l-1 3.4h2.5L15 21l.9-3.6z"/>'),
+ 'names':('#06b6d4','#6366f1','<path d="M4 6.5h8l8 8-5.5 5.5-8-8z"/><circle cx="8.2" cy="10.7" r="1.2"/>'),
+ 'audit':('#eab308','#f97316','<rect x="5" y="3.5" width="14" height="17" rx="2.5"/><path d="M8.5 8.5h7M8.5 12h7M8.5 15.5h4"/>'),
+ 'changes':('#8b5cf6','#ec4899','<path d="M5 8h10M12 5l3 3-3 3M19 16H9M12 13l-3 3 3 3"/>'),
+}
+for _k,(_a,_b,_g) in TOOLS.items(): special['tool-'+_k]=(_a,_b,line24(_g,10.5,4),[f'src/portal-admin/public/icons/{_k}.svg'],None)
+# shortcuts to the other owner-only apps reuse each app's own icon; Gatekeeper has no app yet, so its icon is defined here
+for _a in ('services-manager','kiosk-manager','routing-reporter','app-updater'): special['shortcut-'+_a]=(icons[_a][0],icons[_a][1],icons[_a][2],[f'src/portal-admin/public/icons/{_a}.svg'],None)
+special['shortcut-gatekeeper']=('#334155','#64748b',line24('<path d="M5 20V9.5a7 7 0 0 1 14 0V20"/><path d="M5 20h14M9.5 20v-6.2a2.5 2.5 0 0 1 5 0V20"/>',11,4),['src/portal-admin/public/icons/gatekeeper.svg'],None)
+
 def pngs(pub,c1):
     run('rsvg-convert','-w','180','-h','180',f'{pub}/icon.svg','-o',f'{pub}/icon-180.png')
     run('rsvg-convert','-w','512','-h','512',f'{pub}/icon.svg','-o',f'{pub}/icon-512.png')

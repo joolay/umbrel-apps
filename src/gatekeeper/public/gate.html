@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#334155">
+<link rel="manifest" href="/__gk/manifest.webmanifest">
+<link rel="apple-touch-icon" sizes="180x180" href="/__gk/icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Gatekeeper">
+<link rel="icon" href="/__gk/icon.svg" type="image/svg+xml">
+<script src="/__gk/jz.js"></script>
+<title>Sign in · Gatekeeper</title>
+<style>:root{--accent:#475569;--accent-2:#64748b}.gk-wrap{min-height:100vh;display:grid;place-items:center;padding:24px}.gk-card{width:100%;max-width:380px;padding:28px;text-align:center}.gk-card img{width:72px;height:72px;border-radius:22%;margin-bottom:12px}.gk-card h1{font-size:22px;margin:0 0 4px}.gk-card form{display:grid;gap:10px;margin-top:18px;text-align:left}.gk-card input{width:100%}</style>
+</head>
+<body>
+<main class="gk-wrap"><div class="card gk-card">
+  <img src="/__gk/icon.svg" alt="">
+  <h1>Sign in</h1><p class="muted">Use your JoolzApp account to open this app.</p>
+  <form id="f"><label>Email<input name="email" type="email" autocomplete="username" required></label>
+  <label>Password<input name="password" type="password" autocomplete="current-password" required></label>
+  <p class="error" id="err" hidden></p><button class="btn primary" id="go">Sign in</button></form>
+</div></main>
+<script>
+(function(){
+  var next=new URLSearchParams(location.search).get('next')||'/'; if(!/^\/(?!\/)/.test(next)) next='/';
+  document.getElementById('f').onsubmit=function(e){e.preventDefault(); var b=document.getElementById('go'),er=document.getElementById('err'); b.disabled=true; er.hidden=true;
+    fetch('/__gk/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email:e.target.email.value,password:e.target.password.value})})
+    .then(function(r){return r.json().then(function(j){return{ok:r.ok,j:j}})}).then(function(x){ if(x.ok) location.replace(next); else { er.textContent=x.j.message||'Could not sign in.'; er.hidden=false; b.disabled=false; } })
+    .catch(function(){er.textContent='Could not reach Gatekeeper.'; er.hidden=false; b.disabled=false;});};
+})();
+</script>
+</body></html>

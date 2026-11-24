@@ -100,7 +100,26 @@
     return '<div class="card"><div class="row"><b>TSDProxy</b><span class="muted small">' + esc(ver ? "version " + ver : "version not reported") + (c.image ? " · " + esc(c.image) + (c.imageId ? " (" + esc(c.imageId) + ")" : "") : "") + '</span></div><div class="row"><span class="chip ' + ctl[0] + '">Control</span> <span class="small">' + esc(ctl[1]) + "</span></div>" + (upd ? '<div class="row">' + upd + "</div>" : "") + last +
       (t.write && t.write.ok === false ? '<div class="small attn">' + esc(t.write.error) + "</div>" : "") +
       '<p class="muted small">Auto-update and Update now are in App Updater. TSDProxy\'s own dashboard (proxy cards with Pause and Restart) only answers on the Umbrel itself, at port 8088; it is not published on your network.</p></div>' +
-      '<div class="group"><h2>Proxies</h2><div class="card tw">' + (rows ? "<table><thead><tr><th class=\"app\">Proxy</th><th>State</th><th></th></tr></thead><tbody>" + rows + "</tbody></table>" : '<div class="muted small">No proxies reported yet.</div>') + '</div></div><p><button class="btn" id="feat">Port Master features: now and proposed</button></p>';
+      namesHtml() + '<div class="group"><h2>Proxies</h2><div class="card tw">' + (rows ? "<table><thead><tr><th class=\"app\">Proxy</th><th>State</th><th></th></tr></thead><tbody>" + rows + "</tbody></table>" : '<div class="muted small">No proxies reported yet.</div>') + '</div></div><p><button class="btn" id="feat">Port Master features: now and proposed</button></p>';
+  }
+  /* ---------- Tailscale names (created, changed and fixed by Port Master) ---------- */
+  var NS = { ok: ["up", "Named"], none: ["ign", "No name"], clash: ["down", "Clash"], unregistered: ["checking", "Waiting"] };
+  function namesHtml() {
+    var n = S.names; if (!n) return "";
+    var rows = n.rows.slice().sort(function (a, b) { return (a.state === "ok") - (b.state === "ok") || String(a.name).localeCompare(String(b.name)); }), w = n.write || {};
+    var body = rows.map(function (x) {
+      var src = x.source === "names" ? "kept by Port Master" : x.source === "label" ? "from the app's own settings" : x.source === "list" ? "published by Portal Admin" : "";
+      var act = x.editable ? '<button class="btn small nm" data-a="' + esc(x.appId) + '">' + (x.tsdName ? "Rename" : "Create") + "</button>" + (x.source === "names" ? ' <button class="btn small nr" data-a="' + esc(x.appId) + '">Remove</button>' : "") : '<span class="muted small">fixed</span>';
+      return '<tr><th scope="row" class="app"><b>' + esc(x.name) + '</b><div class="muted small">port ' + esc(x.port) + "</div></th><td>" + (x.tsdName ? "<b>" + esc(x.tsdName) + '</b><div class="muted small src">' + esc(src) + "</div>" : '<span class="muted small">' + (x.suggestion ? "suggested: " + esc(x.suggestion) : "none") + "</span>") + '</td><td><span class="chip ' + NS[x.state][0] + '">' + NS[x.state][1] + "</span>" + (x.note ? '<div class="muted small note">' + esc(x.note) + "</div>" : "") + "</td><td>" + act + "</td></tr>";
+    }).join("");
+    return '<div class="group"><h2>Tailscale names</h2>' + (w.ok === false && w.error ? '<div class="card"><div class="small attn">' + esc(w.error) + '</div></div>' : '') + '<div class="card tw"><table class="nt"><thead><tr><th class="app">App</th><th>Name</th><th>State</th><th></th></tr></thead><tbody>' + body + "</tbody></table></div></div>";
+  }
+  function nameDialog(x) {
+    var d = $("#dlg"), cur = x.tsdName || x.suggestion || "";
+    d.innerHTML = "<h2>" + (x.tsdName ? "Rename" : "Name") + " " + esc(x.name) + "</h2><form id='f'><label>Tailscale name<input name='n' value='" + esc(cur) + "' maxlength='63' pattern='[A-Za-z0-9][A-Za-z0-9-]*' required></label><p class='muted small'>Letters, numbers and dashes. The app opens at <b>https://" + esc(cur || "name") + "." + esc(S.config.tailnet || "your-tailnet") + "</b> for people on your tailnet. A new name appears in TSDProxy within a minute.</p><p class='err' id='e' role='alert'></p><div class='actions'><button type='button' class='btn' id='x'>Cancel</button><button class='btn primary'>" + (x.tsdName ? "Rename" : "Create") + "</button></div></form>";
+    d.showModal(); d.querySelector("#x").onclick = function () { d.close(); };
+    d.querySelector("#f").onsubmit = function (ev) { ev.preventDefault(); var b = ev.target.querySelector(".primary"); b.disabled = true;
+      call("POST", "api/names", { op: x.tsdName ? "rename" : "create", appId: x.appId, name: ev.target.elements.n.value }).then(function (j) { take(j); d.close(); render(); toast(x.tsdName ? "Renamed" : "Name created"); }).catch(function (e) { b.disabled = false; d.querySelector("#e").textContent = e.message; }); };
   }
   var FS = { live: ["up", "Live"], built: ["checking", "Built, waiting for your yes"], proposed: ["ign", "Proposed"] };
   function featuresDialog() {
@@ -143,6 +162,8 @@
       $("#list").innerHTML = tsdHtml(); $("#clash").innerHTML = "";
       document.querySelectorAll("[data-tab]").forEach(function (b) { b.setAttribute("aria-selected", b.dataset.tab === "tsd" ? "true" : "false"); });
       var f = $("#feat"); if (f) f.onclick = featuresDialog;
+      var q = function (sel, fn) { $("#list").querySelectorAll(sel).forEach(fn); }, row = function (id) { return S.names.rows.filter(function (x) { return x.appId === id; })[0]; }, names = function (b, body, msg) { b.disabled = true; call("POST", "api/names", body).then(function (j) { take(j); render(); toast(msg); }).catch(function (e) { b.disabled = false; toast(e.message); }); };
+      q(".nm", function (b) { b.onclick = function () { nameDialog(row(b.dataset.a)); }; }); q(".nr", function (b) { b.onclick = function () { names(b, { op: "remove", appId: b.dataset.a }, "Name removed"); }; });
       $("#list").querySelectorAll(".px").forEach(function (b) { b.onclick = function () { b.disabled = true; call("POST", "api/proxy", { name: b.dataset.n, paused: b.dataset.p === "1" }).then(function (j) { take(j); render(); toast(b.dataset.p === "1" ? "Pausing (takes up to 15 s)" : "Resuming (takes up to 15 s)"); setTimeout(function () { load().catch(function () {}); }, 17000); }).catch(function (e) { toast(e.message); render(); }); }; });
       return;
     }
@@ -167,7 +188,7 @@
     $("#list").querySelectorAll(".rc").forEach(function (b) { b.onclick = function () { b.disabled = true; b.textContent = "Checking…"; call("POST", "api/recheck", { appId: b.dataset.a, route: b.dataset.r }).then(function (j) { take(j); var a = S.report.apps.filter(function (x) { return x.id === b.dataset.a; })[0], r = a && a.routes.filter(function (x) { return x.key === b.dataset.r; })[0]; if (r && r.state === "up") S.fix = ""; render(); toast(r && r.state === "up" ? "Fixed: answering again" : "Still down"); }).catch(function (e) { toast(e.message); render(); }); }; });
     $("#list").querySelectorAll(".lnk[data-i]").forEach(function (b) { b.onclick = function () { call("POST", "api/route", { appId: b.dataset.a, route: b.dataset.r, enabled: b.dataset.i !== "1" }).then(function (j) { take(j); render(); toast(b.dataset.i === "1" ? "Route disabled" : "Route enabled"); }).catch(function (e) { toast(e.message); }); }; });
   }
-  function take(j) { if (j.report) S.report = j.report; if (j.config) S.config = j.config; if (j.portal) S.portal = j.portal; if (j.clashes) S.clashes = j.clashes; if (j.official) S.official = j.official; if (j.tsd) S.tsd = j.tsd; }
+  function take(j) { if (j.report) S.report = j.report; if (j.config) S.config = j.config; if (j.portal) S.portal = j.portal; if (j.clashes) S.clashes = j.clashes; if (j.official) S.official = j.official; if (j.tsd) S.tsd = j.tsd; if (j.names) S.names = j.names; }
   function load() { return call("GET", "api/state").then(function (j) { take(j); render(); }); }
   function runCheck() { var b = $("#check"); b.classList.add("spin"); return call("POST", "api/check").then(function (j) { take(j); render(); }).catch(function (e) { toast(e.message); }).then(function () { b.classList.remove("spin"); }); }
   $("#check").onclick = runCheck;
@@ -179,9 +200,10 @@
       "<label>.local name of this Umbrel (empty to skip)<input name='localHost' value='" + esc(c.localHost) + "' placeholder='umbrel.local'></label>" +
       "<label>Tailscale address of this Umbrel<input name='tailscaleIp' value='" + esc(c.tailscaleIp) + "' placeholder='100.x.y.z'></label>" +
       "<label>Your tailnet name<input name='tailnet' value='" + esc(c.tailnet) + "' placeholder='tail1234.ts.net'></label>" +
-      "<label>Check every (minutes)<input name='intervalMin' type='number' min='1' max='60' value='" + esc(c.intervalMin) + "'></label><p class='err' id='e' role='alert'></p>" +
+      "<label>Tailscale names<button type='button' class='btn' id='nall2'>Create names for all apps without one</button></label><label>Check every (minutes)<input name='intervalMin' type='number' min='1' max='60' value='" + esc(c.intervalMin) + "'></label><p class='err' id='e' role='alert'></p>" +
       "<div class='actions'><button type='button' class='btn' id='x'>Cancel</button><button class='btn primary'>Save and check</button></div></form>";
     d.showModal(); d.querySelector("#x").onclick = function () { d.close(); };
+    d.querySelector("#nall2").onclick = function () { var b = this; b.disabled = true; call("POST", "api/names", { op: "create-all" }).then(function (j) { take(j); d.close(); render(); toast("Names created"); }).catch(function (e) { b.disabled = false; d.querySelector("#e").textContent = e.message; }); };
     d.querySelector("#f").onsubmit = function (ev) {
       ev.preventDefault(); var f = ev.target.elements;
       call("PUT", "api/config", { lanHost: f.lanHost.value, localHost: f.localHost.value, tailscaleIp: f.tailscaleIp.value, tailnet: f.tailnet.value, intervalMin: f.intervalMin.value }).then(function (j) { take(j); d.close(); render(); toast("Saved"); }).catch(function (e) { d.querySelector("#e").textContent = e.message; });

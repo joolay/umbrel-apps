@@ -1,0 +1,9 @@
+{
+  "name": "gatekeeper",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Gate in front of the apps on this Umbrel: JoolzApp sign-in and per-app access, layered behind TSDProxy",
+  "main": "server.js",
+  "scripts": { "start": "node server.js", "test": "node test-gate.js" },
+  "license": "MIT"
+}

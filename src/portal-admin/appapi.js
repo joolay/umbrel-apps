@@ -46,7 +46,7 @@ module.exports = function makeAppApi({ qrlogin, quick, feed, routes, theme, port
     const cl = makeClient({ url: pbx.url(), email: c.email, pass: c.pass, app });
     clients.set(app, { sig, cl }); return cl;
   }
-  const ALLOWED = new Set([...Object.entries(makeClient({ url: '', email: '', pass: '', app: 'x' })).filter(([k, v]) => typeof v === 'function' && !RAW.has(k)).map(([k]) => k), ...GUARD.map((n) => 'guardians.' + n), 'publishStatus', 'publishRoutes', 'portalApps.list', 'portalApps.add', 'portalApps.remove', 'updater.queue', 'updater.report', 'theme.get', 'theme.set', 'theme.reset', ...FAMILY.map((n) => 'family.' + n), ...QR.map((n) => 'qr.' + n), ...['login', 'setup', 'list', 'remove', 'status', 'check'].map((n) => 'qa.' + n), 'touchActive']);
+  const ALLOWED = new Set([...Object.entries(makeClient({ url: '', email: '', pass: '', app: 'x' })).filter(([k, v]) => typeof v === 'function' && !RAW.has(k)).map(([k]) => k), ...GUARD.map((n) => 'guardians.' + n), 'publishStatus', 'publishRoutes', 'portalApps.list', 'portalApps.add', 'portalApps.remove', 'updater.queue', 'updater.report', 'theme.get', 'theme.set', 'theme.reset', ...FAMILY.map((n) => 'family.' + n), ...QR.map((n) => 'qr.' + n), ...['login', 'setup', 'list', 'remove', 'status', 'check'].map((n) => 'qa.' + n), 'touchActive', 'gate.can']);
 
   // Apps say "this person just used me"; Portal Admin keeps one date per person so accounts unused for a year can be reviewed (Cleanup page).
   const lastTouch = new Map();
@@ -62,6 +62,16 @@ module.exports = function makeAppApi({ qrlogin, quick, feed, routes, theme, port
     return null;
   }
 
+  // Gatekeeper asks "may this person open that app?": the same portal.access rules every app already follows (user x app > app > global), plus the app's on/off switch.
+  // Only the Gatekeeper's own key may ask, and only for an account id and an app slug of the usual shape.
+  async function gateCan(app, userId, slug) {
+    if (app !== 'gatekeeper') throw Object.assign(new Error('Only Gatekeeper can check access for other apps.'), { status: 403 });
+    userId = String(userId || ''); slug = String(slug || '');
+    if (!/^[a-z0-9]{15}$/.test(userId) || !/^[a-z0-9][a-z0-9-]{0,60}$/.test(slug)) throw Object.assign(new Error('Invalid request.'), { status: 400 });
+    const p = await client(slug).portalFor(userId);
+    if (!p) return { allowed: true, enabled: true };                    // no portal rules at all: nothing blocks
+    return { allowed: p.access !== false, enabled: !p.app || p.app.enabled !== false };
+  }
   const plain = (v) => (v instanceof Set ? [...v] : v);   // JSON can't carry a Set
   // Admin work needs more than an app's key: the request must carry the token of a signed-in admin, checked here with PocketBase.
   // So a leaked or misused app key can't list, change, create or delete people.
@@ -90,7 +100,7 @@ module.exports = function makeAppApi({ qrlogin, quick, feed, routes, theme, port
     const fn = String(b.fn || '');
     if (!ALLOWED.has(fn)) return send(res, 200, { ok: false, status: 404, message: 'Unknown function: ' + fn });
     if (ADMIN_ONLY.has(fn)) { let adm = false; try { adm = await isAdminToken(b.as); } catch (e) { return send(res, 200, { ok: false, status: Number(e.status) || 500, message: String(e.message || e) }); } if (!adm) return send(res, 200, { ok: false, status: 403, message: 'Only a signed-in admin can do that.' }); }
-    try { const args = Array.isArray(b.args) ? b.args : [], r = fn === 'touchActive' ? await touchActive(args[0]) : fn === 'publishStatus' ? await feed.publish(app, args[0]) : fn === 'publishRoutes' ? routes.publish(app, args[0]) : fn === 'updater.queue' ? await installQueue.queueFor(app) : fn === 'updater.report' ? await installQueue.reportFrom(app, args[0]) : fn === 'theme.get' ? await theme.get() : (fn === 'theme.set' || fn === 'theme.reset') ? (app !== 'theme-editor' ? (() => { throw Object.assign(new Error('Only the Theme Editor can change the global theme.'), { status: 403 }); })() : fn === 'theme.set' ? await theme.set(args[0]) : await theme.reset()) : fn.startsWith('portalApps.') ? await portalApps[fn.slice(11)](app, ...args) : fn.startsWith('guardians.') ? await guardians[fn.slice(10)](...args) : fn.startsWith('family.') ? plain(await family[fn.slice(7)](...args)) : fn.startsWith('qr.') ? qrlogin[fn.slice(3)](app, ...args) : fn.startsWith('qa.') ? await quick[fn.slice(3)](...args) : await client(app)[fn](...args); return send(res, 200, { ok: true, result: r === undefined ? null : r }); }
+    try { const args = Array.isArray(b.args) ? b.args : [], r = fn === 'touchActive' ? await touchActive(args[0]) : fn === 'gate.can' ? await gateCan(app, args[0], args[1]) : fn === 'publishStatus' ? await feed.publish(app, args[0]) : fn === 'publishRoutes' ? routes.publish(app, args[0]) : fn === 'updater.queue' ? await installQueue.queueFor(app) : fn === 'updater.report' ? await installQueue.reportFrom(app, args[0]) : fn === 'theme.get' ? await theme.get() : (fn === 'theme.set' || fn === 'theme.reset') ? (app !== 'theme-editor' ? (() => { throw Object.assign(new Error('Only the Theme Editor can change the global theme.'), { status: 403 }); })() : fn === 'theme.set' ? await theme.set(args[0]) : await theme.reset()) : fn.startsWith('portalApps.') ? await portalApps[fn.slice(11)](app, ...args) : fn.startsWith('guardians.') ? await guardians[fn.slice(10)](...args) : fn.startsWith('family.') ? plain(await family[fn.slice(7)](...args)) : fn.startsWith('qr.') ? qrlogin[fn.slice(3)](app, ...args) : fn.startsWith('qa.') ? await quick[fn.slice(3)](...args) : await client(app)[fn](...args); return send(res, 200, { ok: true, result: r === undefined ? null : r }); }
     catch (e) { return send(res, 200, { ok: false, status: Number(e.status) || 500, message: String(e.message || e), data: e.data || undefined }); }
   }
   return { handle, keys, allowed: [...ALLOWED], adminOnly: [...ADMIN_ONLY], touchActive, forgetTouch };
