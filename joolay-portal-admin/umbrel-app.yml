@@ -2,7 +2,7 @@ manifestVersion: 1
 id: joolay-portal-admin
 category: developer
 name: Portal Admin
-version: "0.42.1"
+version: "0.42.2"
 tagline: One admin panel for all your custom PocketBase apps
 description: >-
   A central admin panel for your custom apps that use PocketBase. Register each app, then manage
@@ -22,7 +22,7 @@ path: ""
 defaultUsername: ""
 defaultPassword: ""
 releaseNotes: >-
-  Folders and tiles without artwork on the Dashboard and Portal Admin home now use the same solid gradient look as the app icons (no more tinted glass).
+  Remember me now starts ticked on the dashboard sign-in so installed apps keep you signed in. The dashboard can now do the Google step for an app's Continue with Google button and hand you back to it.
 submitter: joolay
 submission: https://github.com/joolay/umbrel-apps
 icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-portal-admin/icon.svg

@@ -2,7 +2,7 @@ manifestVersion: 1
 id: joolay-project-tracker
 category: developer
 name: Project Pilot
-version: "1.8.0"
+version: "1.8.1"
 tagline: Every project, its status and its priority in one place
 description: >-
   Project Pilot keeps lists of projects with a status (Active, Queued, Hiatus or Closed), a priority order you set by dragging,
@@ -21,7 +21,7 @@ path: ""
 defaultUsername: ""
 defaultPassword: ""
 releaseNotes: >-
-  Moved onto the shared JoolzApp template (one jz.js file): same top bar, profile menu, theme switch and sync ticks as the other apps.
+  Stays signed in: Remember me now starts ticked (so an installed app keeps you signed in), and signing in from the dashboard is kept on this device. Added Continue with Google on the sign-in screen (public address only).
 submitter: joolay
 submission: https://github.com/joolay/umbrel-apps
 icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-project-tracker/icon.svg

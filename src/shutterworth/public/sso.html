@@ -12,7 +12,7 @@
   function go() { location.replace("./"); }
   if (!t) return go();
   fetch("api/account/me", { headers: { "x-sw-token": t }, cache: "no-store" }).then(function (r) {
-    if (r.ok) { try { localStorage.removeItem("sw.token"); sessionStorage.setItem("sw.token", t); } catch (e) {} }
+    if (r.ok) { try { localStorage.removeItem("sw.token"); sessionStorage.removeItem("sw.token"); (localStorage.getItem("sw.remember") !== "0" ? localStorage : sessionStorage).setItem("sw.token", t); } catch (e) {} }
     go();
   }).catch(go);
 })();
