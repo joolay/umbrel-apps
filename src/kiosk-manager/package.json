@@ -1,1 +1,1 @@
-{ "name": "kiosk-manager", "version": "1.1.0", "private": true, "main": "server.js" }
+{ "name": "kiosk-manager", "version": "1.2.0", "private": true, "main": "server.js" }

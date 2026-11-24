@@ -2,7 +2,7 @@ manifestVersion: 1
 id: joolay-app-updater
 category: developer
 name: App Updater
-version: "1.9.0"
+version: "1.10.0"
 tagline: Update the Umbrel apps you choose automatically, nightly or the moment a new version appears
 description: >-
   Umbrel never updates apps by itself. App Updater does it for the apps you pick, including Portal Admin.
@@ -21,7 +21,8 @@ gallery: []
 path: ""
 defaultUsername: ""
 defaultPassword: ""
-releaseNotes: "New: a TSDProxy card shows the version of TSDProxy (the service behind your Public and Tailscale-name addresses, which is not an Umbrel app), whether a newer image is ready, an automatic update switch with its time and an Update now button. Services Manager 1.3.0 does the checking and installing. Before: Changes: Moved onto the latest Glass template (Home button, calmer link icon). The Last check tile is now the check button: tap it to check straight away, and the old Check now button and \"Updated\" date are gone. Tap Installed apps, Updates waiting or On auto-update to list just those apps by store. Activity now tells you when a new app or version is on the repo but umbrelOS has not seen it yet, and again when it does. Before: Installs new JoolzApps by itself, switched on from the start: when you apply an install card in Portal Admin > Changes, App Updater waits until umbrelOS lists the app in its store, installs it and reports back (switch under Automatic updates). Needs Portal Admin 0.38.0. Before: Top bar shows a connected icon (green when the server answers, red when it does not) and, because this app talks to Claude, an animated handshake icon: device on the left, AI on the right; the hand that is green made the last change, both green means the other side has read it, and hands that stop shaking mean a report Claude expected has not come through. Before: Faster updates showing in the status feed: it is sent right after each update finishes (retried while Portal Admin restarts), and checks run every 15 seconds for 3 minutes after a change. Before: Sends its status (apps, update results, log and checks, no passwords) to the Portal Admin status feed once it is switched on, so you and Claude can see whether updates loaded. Needs Portal Admin 0.33.0."
+releaseNotes: >-
+  Moved onto the shared JoolzApp template (one jz.js file): same top bar, profile menu, theme switch and sync ticks as the other apps.
 submitter: joolay
 submission: https://github.com/joolay/umbrel-apps
 icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-app-updater/icon.svg

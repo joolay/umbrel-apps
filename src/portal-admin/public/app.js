@@ -1691,7 +1691,7 @@ function ufMini(it) {
   const kids = ((HM && HM.layout.folders[it.fid]) || { items: [] }).items.map((id) => HM.items[id]).filter(Boolean).slice(0, 4);
   return `<span class="mini">${kids.map((k) => `<i style="--c1:${k.grad[0]};--c2:${k.grad[1]}">${tileInner(k)}</i>`).join('')}</span>`;
 }
-function folderMini() { return `<span class="mini">${ADMIN_TOOLS.slice(0, 4).map(([k, , g]) => `<i style="--c1:${g[0]};--c2:${g[1]}">${svgG(k)}</i>`).join('')}</span>`; }
+function folderMini() { return `<span class="mini">${ADMIN_TOOLS.slice(0, 4).map(([k, , g]) => `<i style="--c1:${g[0]};--c2:${g[1]}">${svgG(k)}<img class="ic-img" src="icons/${k}.svg" alt="" draggable="false" onerror="this.remove()"></i>`).join('')}</span>`; }
 // Tile view (desktop): a short description and a status line next to the icon. Hidden in the icon view.
 function tileText(it) {
   const a = it.app; let d = '', st = '';
