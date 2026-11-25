@@ -20,7 +20,7 @@ const makeGoogleSignIn = require('./googlesignin');
 const makeAppApi = require('./appapi');
 const qrlogin = require('./qrlogin')();
 const quick = require('./quickaccess')();
-const aiKeys = require('./ai')({ asSuper: (m, p, b) => pbx.asSuper(m, p, b) });
+const aiKeys = require('./ai')({ asSuper: (m, p, b) => pbx.asSuper(m, p, b), family });
 const CHILD_REQ = '__child_account__', SPOUSE_REQ = '__spouse_account__';
 
 const PORT = Number(process.env.PORT || 3000);
@@ -316,11 +316,21 @@ async function accountRoutes(req, res, pathname) {
     if (pathname === '/account/ai') {   // a person's saved AI keys (list, add, remove, choose, test). Keys never leave here except their last 4 characters.
       if (req.method !== 'POST') return send(res, 405, { message: 'Method not allowed' });
       try {
-        if (b.action === 'add') return send(res, 200, { key: await aiKeys.add(user.id, b), ...(await aiKeys.state(user.id)) });
-        if (b.action === 'remove') { await aiKeys.remove(user.id, b.id); return send(res, 200, await aiKeys.state(user.id)); }
-        if (b.action === 'select') { await aiKeys.select(user.id, b.app || '', b.id || ''); return send(res, 200, await aiKeys.state(user.id)); }
-        if (b.action === 'test') return send(res, 200, await aiKeys.test(user.id, b.id));
-        return send(res, 200, await aiKeys.state(user.id));
+        const adm = !!user.isAdmin, minor = guardians.isMinor(user), st = () => aiKeys.state(user.id, adm, minor);
+        if (b.action === 'add') return send(res, 200, { key: await aiKeys.add(user.id, b), ...(await st()) });
+        if (b.action === 'remove') { await aiKeys.remove(user.id, b.id); return send(res, 200, await st()); }
+        if (b.action === 'select') { await aiKeys.select(user.id, b.app || '', b.id || '', b.model || ''); return send(res, 200, await st()); }
+        if (b.action === 'test') return send(res, 200, await aiKeys.test(user.id, b.id, b.id === 'master' && adm));
+        if (b.action === 'models') return send(res, 200, await aiKeys.models(user.id, b.id === 'master' ? { master: true } : { id: b.id }));
+        if (b.action === 'usage') return send(res, 200, await aiKeys.usage(user.id, minor, String(b.month || '')));
+        if (b.action === 'family-share') { await aiKeys.shareFamily(user.id, user.name || String(user.email || '').split('@')[0], minor, b.id, b.model || ''); return send(res, 200, await st()); }   // a parent shares one of their own keys with the household
+        if (b.action === 'family-stop') { await aiKeys.unshareFamily(user.id); return send(res, 200, await st()); }
+        if (b.action === 'master-set' || b.action === 'master-clear') {   // the Master key: admins only, checked here
+          if (!adm) return send(res, 403, { message: 'Only an admin can change the Master key.' });
+          if (b.action === 'master-set') await aiKeys.setMaster(b); else await aiKeys.clearMaster();
+          return send(res, 200, await st());
+        }
+        return send(res, 200, await st());
       } catch (e) { return send(res, e.status || 500, { message: String(e.message || e) }); }
     }
     if (pathname === '/store/layout') {   // the shared App Store layout: anyone signed in reads it, only an admin changes it (checked here, never from the browser)
@@ -466,7 +476,7 @@ const activity = require('./activity')({ asSuper: (m, p, b) => pbx.asSuper(m, p,
 const theme = require('./theme')(pbx);
 const portalApps = require('./portalapps')({ pbx, installedApps });   // Port Master adds/hides tiles for apps that do not use the JoolzApp account
 const installQueue = require('./installqueue')({ asSuper: (m, p, b) => pbx.asSuper(m, p, b) });   // new JoolzApps App Updater should install
-const appapi = makeAppApi({ qrlogin, quick, feed, routes, theme, portalApps, installQueue, pbx, DATA_DIR: pbx.dataDir, readBody, send });
+const appapi = makeAppApi({ aiKeys, qrlogin, quick, feed, routes, theme, portalApps, installQueue, pbx, DATA_DIR: pbx.dataDir, readBody, send });
 const notices = require('./notices')({ pbx, forgetTouch: appapi.forgetTouch });
 const storeLayout = require('./storelayout')(pbx);
 const googleSignIn = makeGoogleSignIn({ pbx });

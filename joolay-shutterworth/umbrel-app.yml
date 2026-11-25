@@ -2,7 +2,7 @@ manifestVersion: 1
 id: joolay-shutterworth
 category: files
 name: ShutterWorth
-version: "1.8.2"
+version: "1.9.0"
 tagline: Photograph your belongings and build an insurance inventory
 description: >-
   Photograph your belongings and build an insurance inventory with replacement and depreciated values.
@@ -19,7 +19,7 @@ path: ""
 defaultUsername: ""
 defaultPassword: ""
 releaseNotes: >-
-  Stays signed in: Remember me now starts ticked (so an installed app keeps you signed in), and signing in from the dashboard is kept on this device. Added Continue with Google on the sign-in screen (public address only).
+  AI: Settings > Account has a drop-down to use the Master key or one of your own keys with a model of your choice. Family members use the key a parent shares instead of the free trial. NVIDIA added. Each AI request now counts towards your monthly AI usage in Portal Admin.
 submitter: joolay
 submission: https://github.com/joolay/umbrel-apps
 icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-shutterworth/icon.svg

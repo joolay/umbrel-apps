@@ -8,6 +8,7 @@ const PRESETS = {
   gemini: { baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai/", model: "gemini-3.8-flash" },
   openai: { baseUrl: "https://api.openai.com/v1", model: "" },
   openrouter: { baseUrl: "https://openrouter.ai/api/v1", model: "" },
+  nvidia: { baseUrl: "https://integrate.api.nvidia.com/v1", model: "" },
   custom: { baseUrl: "", model: "" },
 };
 class AiError extends Error { constructor(code, message, status) { super(message); this.code = code; this.status = status || 502; } }

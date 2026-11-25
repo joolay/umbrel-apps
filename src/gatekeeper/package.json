@@ -1,6 +1,6 @@
 {
   "name": "gatekeeper",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "private": true,
   "description": "Gate in front of the apps on this Umbrel: JoolzApp sign-in and per-app access, layered behind TSDProxy",
   "main": "server.js",

@@ -42,6 +42,7 @@ const PRESETS = {
   gemini: { baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai/", model: "gemini-3.8-flash", quickModel: "" },
   openai: { baseUrl: "https://api.openai.com/v1", model: "", quickModel: "" },
   openrouter: { baseUrl: "https://openrouter.ai/api/v1", model: "", quickModel: "" },
+  nvidia: { baseUrl: "https://integrate.api.nvidia.com/v1", model: "", quickModel: "" },
   custom: { baseUrl: "", model: "", quickModel: "" },
 };
 function loadAI() {
@@ -307,6 +308,16 @@ async function accountRoutes(req, res, p, url) {
 }
 
 // Photo identifications need an account when accounts are on. Trials count photo requests only.
+// The Master key (while the trial lasts) or the key a parent shares with the family (after it), as decided by Portal Admin. null when there is none.
+// Tell Portal Admin one AI request happened, so the person (and a parent) can see the month's usage there. Never slows or breaks the request.
+function logAI(user, c) { try { if (user && user.id && pb.portalOn && pb.portalOn()) pb.portalCall("ai.log", [user.id, { source: (c && c.source) || (c && c.own ? "own" : "master") }]).catch(() => {}); } catch {} }
+async function portalAI(userId, trialOver) {
+  if (!pb.portalOn || !pb.portalOn()) return null;
+  try {
+    const r = await pb.portalCall("ai.resolve", [userId, !!trialOver]), pre = r && PRESETS[r.provider];
+    return pre ? { source: r.source, cfg: { provider: r.provider, apiKey: r.apiKey || "", baseUrl: r.provider === "custom" ? r.baseUrl : pre.baseUrl, model: r.model || pre.model, quickModel: "", own: r.source !== "master" } } : null;
+  } catch { return null; }
+}
 async function aiGate(req, body) {
   const u = await currentUser(req);
   if (!u) return { deny: { status: 401, body: { code: "signin_required", message: "Sign in under Settings > Account to use photo identification." } } };
@@ -316,10 +327,12 @@ async function aiGate(req, body) {
   if (mine) return { id: u.id, reserved: false, cfg: mine };   // their own key: no trial limit
   const info = trialInfo(fresh);
   const counted = Array.isArray(body.images) && body.images.length > 0;
-  if (info.unlimited || !counted) return { id: u.id, reserved: false };
-  if (info.used >= info.limit) return { deny: { status: 403, body: { code: "trial_over", message: `Your free trial of ${info.limit} photo identifications is used up. Add your own AI key in Portal Admin (My settings) to keep going, or ask the admin to extend it.` } } };
+  const over = !info.unlimited && info.used >= info.limit, pa = await portalAI(u.id, over), cfg = pa ? pa.cfg : undefined;
+  if (pa && pa.source === "family") return { id: u.id, reserved: false, cfg };   // a parent's shared key: no trial limit
+  if (info.unlimited || !counted) return { id: u.id, reserved: false, cfg };
+  if (over) return { deny: { status: 403, body: { code: "trial_over", message: `Your free trial of ${info.limit} photo identifications is used up. Add your own AI key in Portal Admin (My settings) to keep going, or ask a parent to share theirs with the family.` } } };
   await pb.updateAccess(u.id, { "trialUsed+": 1 });
-  return { id: u.id, reserved: true };
+  return { id: u.id, reserved: true, cfg };
 }
 
 /* ---------- HTTP ---------- */
@@ -366,7 +379,7 @@ const server = http.createServer(async (req, res) => {
     // Umbrel's own login is switched off for this app, so this is the only lock: with REQUIRE_ACCOUNTS set it fails closed.
     let user = null;
     const isPage = p === "/" || p === "/index.html";
-    const isData = p === "/api/events" || p === "/api/docs" || p === "/api/write" || p.startsWith("/api/share/") || p === "/api/ai/status" || p.startsWith("/api/assets") || p.startsWith("/_blob/");
+    const isData = p === "/api/events" || p === "/api/docs" || p === "/api/write" || p.startsWith("/api/share/") || p === "/api/ai/status" || p.startsWith("/api/ai/choice") || p.startsWith("/api/assets") || p.startsWith("/_blob/");
     if (isPage || isData) {
       if (!pb.enabled) {
         if (REQUIRE_ACCOUNTS) {
@@ -437,6 +450,15 @@ const server = http.createServer(async (req, res) => {
       fs.writeFileSync(AI_FILE, JSON.stringify(next), { mode: 0o600 });
       return send(res, 200, publicAI(loadAI()));
     }
+    if (p === "/api/ai/choice" || p === "/api/ai/choice/models") {   // this person's AI choice for THIS app (its Settings screen): Master key, own keys and models, through Portal API
+      const user = await currentUser(req).catch(() => null);
+      if (!user || !pb.portalOn || !pb.portalOn()) return send(res, 503, { message: "AI choices need the JoolzApp account." });
+      try {
+        if (p.endsWith("/models")) return send(res, 200, await pb.portalCall("ai.models", [user.id, new URL(req.url, "http://x").searchParams.get("id") || ""]));
+        if (req.method === "POST") { const b = JSON.parse((await readBody(req)).toString() || "{}"); await pb.portalCall("ai.choose", [user.id, String(b.id || ""), String(b.model || "")]); }
+        return send(res, 200, await pb.portalCall("ai.mine", [user.id]));
+      } catch (e) { return send(res, e.status >= 400 && e.status < 600 ? e.status : 502, { message: e.message }); }
+    }
     if (p === "/api/ai/status") {
       const c = loadAI(); let own = false;
       if (pb.enabled) { const u = await currentUser(req).catch(() => null); if (u) own = !!userAI(await pb.getUser(u.id).catch(() => null)); }
@@ -450,7 +472,7 @@ const server = http.createServer(async (req, res) => {
         catch (e) { if (e instanceof pb.PBError) return send(res, 503, { code: "accounts_unavailable", message: e.message }); throw e; }
         if (gate.deny) return send(res, gate.deny.status, gate.deny.body);
       }
-      try { return send(res, 200, { result: await callAI(body, gate && gate.cfg) }); }
+      try { const result = await callAI(body, gate && gate.cfg); logAI(gate && gate.id ? { id: gate.id } : null, gate && gate.cfg); return send(res, 200, { result }); }
       catch (e) {
         if (gate && gate.reserved) await pb.updateAccess(gate.id, { "trialUsed-": 1 }).catch(() => {}); // a failed request doesn't use up the trial
         return send(res, e.code === "rate_limited" ? 429 : 502, { code: e.code || "ai_error", message: e.message });
