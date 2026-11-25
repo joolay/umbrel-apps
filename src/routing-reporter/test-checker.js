@@ -73,3 +73,16 @@ const C = require('./checker'), { clean } = require('./server');
   assert.strictEqual(C.openUrl({ key: 'lan', url: 'http://host.docker.internal:1/' }, { lanHost: 'host.docker.internal' }), '');
   assert.strictEqual(C.openUrl({ key: 'tailscale', url: 'http://100.1.1.1:1/' }, { lanHost: 'host.docker.internal' }), 'http://100.1.1.1:1/');
 
+
+// Tailscale name that cannot be looked up from inside the container: MagicDNS answer is used, and TSDProxy "Running" keeps the route up
+(async () => {
+  const srv = require('http').createServer((q, r) => { r.end('ok'); }).listen(0, '127.0.0.1'); await new Promise((r) => srv.on('listening', r));
+  const p = await C.probe('http://x.macaw.ts.net:' + srv.address().port + '/', { tailnetResolver: async () => '127.0.0.1' }); assert.strictEqual(p.ok, true, 'a .ts.net name connects to the address MagicDNS gave'); srv.close();
+  const dir = require('fs').mkdtempSync(require('os').tmpdir() + '/pmx-'); require('fs').mkdirSync(dir + '/app-a', { recursive: true });
+  require('fs').writeFileSync(dir + '/app-a/umbrel-app.yml', 'id: app-a\nname: A\nversion: "1"\nport: 4101\n'); require('fs').writeFileSync(dir + '/app-a/docker-compose.yml', 'services:\n  web:\n    labels:\n      tsdproxy.enable: "true"\n      tsdproxy.name: "app-a"\n');
+  let st = 'Running'; const dnsFail = async (u) => (u.includes('ts.net') ? { ok: false, status: 0, ms: 3, error: 'name not found (DNS)' } : { ok: true, status: 200, ms: 3, error: '' });
+  const mon = C.makeMonitor({ dir, getConfig: () => ({ lanHost: 'h', tailscaleIp: '1.2.3.4', tailnet: 'x.ts.net', intervalMin: 5 }), probeImpl: dnsFail, proxyStatus: () => st });
+  let r = await mon.run(); let n = r.apps[0].routes.find((x) => x.key === 'name'); assert.ok(n, 'name route exists'); assert.strictEqual(n.state, 'up', 'Running in TSDProxy: not down');
+  st = 'Paused'; r = await mon.run(); r = await mon.run(); n = r.apps[0].routes.find((x) => x.key === 'name'); assert.strictEqual(n.state, 'down', 'a paused proxy still shows down');
+  console.log('tailnet name fallback ok');
+})().catch((e) => { console.error(e); process.exit(1); });

@@ -61,6 +61,14 @@ function mdnsResolve(host, timeoutMs = 2500) {
     try { sock.bind(0, () => sock.send(mdnsQuery(host), 5353, '224.0.0.251', (e) => { if (e) end(''); })); } catch { end(''); }
   });
 }
+// Tailscale names (.ts.net): a tailnet-only name is answered by MagicDNS (100.100.100.100), which a container on the Umbrel often does not use, so the normal resolver says
+// "name not found" for a name that works fine on the tailnet. Ask the system first, then MagicDNS directly.
+function resolveTailnet(host) {
+  return new Promise((resolve) => dns.lookup(host, { family: 4 }, (e, a) => {
+    if (!e && a) return resolve(a);
+    try { const r = new dns.Resolver({ timeout: 2000, tries: 1 }); r.setServers(['100.100.100.100']); r.resolve4(host, (e2, list) => resolve(!e2 && list && list[0] || '')); } catch { resolve(''); }
+  }));
+}
 function resolveLocal(host) {
   return new Promise((resolve) => dns.lookup(host, { family: 4 }, (e, a) => (!e && a ? resolve(a) : mdnsResolve(host).then(resolve))));
 }
@@ -93,10 +101,10 @@ function routesFor(app, cfg) {
   const r = [];
   if (cfg.lanHost) r.push({ key: 'lan', label: 'LAN', url: `http://${cfg.lanHost}:${app.port}/` });
   if (cfg.localHost) r.push({ key: 'local', label: '.local', url: `http://${cfg.localHost}:${app.port}/` });
-  if (cfg.tailscaleIp) r.push({ key: 'tailscale', label: 'Tailscale', url: `http://${cfg.tailscaleIp}:${app.port}/` });
+  if (cfg.tailscaleIp) r.push({ key: 'tailscale', label: 'TS IP', url: `http://${cfg.tailscaleIp}:${app.port}/` });
   if (app.tsdproxy && cfg.tailnet) {
     const url = `https://${app.tsdproxy.name}.${cfg.tailnet}/`;
-    r.push(app.tsdproxy.funnel ? { key: 'public', label: 'Public', url } : { key: 'name', label: 'Tailscale name', url });
+    r.push(app.tsdproxy.funnel ? { key: 'public', label: 'Public', url } : { key: 'name', label: 'TS Name', url });
   }
   return r;
 }
@@ -133,7 +141,7 @@ function fixHint(app, route, siblings, cfg) {
 }
 const FRIENDLY = { ECONNREFUSED: 'connection refused (nothing listening)', ETIMEDOUT: 'timed out', UND_ERR_CONNECT_TIMEOUT: 'timed out', EHOSTUNREACH: 'host unreachable', ENETUNREACH: 'network unreachable', ENOTFOUND: 'name not found (DNS)', LOCALNAME: 'the .local name did not resolve (mDNS/Avahi), the IP address may still work', ECONNRESET: 'connection reset', CERT_HAS_EXPIRED: 'certificate expired', DEPTH_ZERO_SELF_SIGNED_CERT: 'certificate not trusted', UNABLE_TO_VERIFY_LEAF_SIGNATURE: 'certificate not trusted' };
 // A fresh connection every time (agent: false), so a pooled keep-alive connection can never make a dead app look alive.
-async function probe(url, { timeoutMs = 8000, now = Date.now, resolver = resolveLocal } = {}) {
+async function probe(url, { timeoutMs = 8000, now = Date.now, resolver = resolveLocal, tailnetResolver = resolveTailnet } = {}) {
   const t0 = now(), mod = /^https:/i.test(url) ? require('https') : require('http');
   let headers = { 'user-agent': 'routing-reporter', connection: 'close' };
   const u = (() => { try { return new URL(url); } catch { return null; } })();
@@ -142,12 +150,17 @@ async function probe(url, { timeoutMs = 8000, now = Date.now, resolver = resolve
     if (!ip) return { ms: now() - t0, ok: false, status: 0, error: FRIENDLY.LOCALNAME };
     headers = { ...headers, host: u.host }; u.hostname = ip; url = u.toString();
   }
+  let tlsName = '';
+  if (u && /\.ts\.net$/i.test(u.hostname)) {         // a Tailscale name: resolve it ourselves (system, then MagicDNS) and connect to that address
+    const ip = await tailnetResolver(u.hostname);
+    if (ip) { tlsName = u.hostname; headers = { ...headers, host: u.host }; u.hostname = ip; url = u.toString(); }
+  }
   return new Promise((resolve) => {
     let done = false;
     const finish = (r) => { if (!done) { done = true; resolve({ ms: now() - t0, ...r }); } };
     const fail = (e, timedOut) => { const code = e && e.code || ''; finish({ ok: false, status: 0, error: timedOut ? 'timed out' : FRIENDLY[code] || String((e && e.message) || 'failed').slice(0, 120) }); };
     let req;
-    try { req = mod.request(url, { method: 'GET', agent: false, timeout: timeoutMs, headers }, (res) => {
+    try { req = mod.request(url, { method: 'GET', agent: false, timeout: timeoutMs, headers, ...(tlsName ? { servername: tlsName } : {}) }, (res) => {
       res.resume(); const st = res.statusCode || 0;
       if (st >= 500) finish({ ok: false, status: st, error: st === 502 || st === 503 || st === 504 ? 'the app behind it is not answering (' + st + ')' : 'server error ' + st });
       else finish({ ok: true, status: st, error: '' });
@@ -159,7 +172,7 @@ async function probe(url, { timeoutMs = 8000, now = Date.now, resolver = resolve
   });
 }
 // Keeps each route's history so one blip is not reported: a route turns "down" after 2 failed checks in a row and "up" again after one good one.
-function makeMonitor({ dir, listFile, getConfig, probeImpl = probe, now = Date.now, concurrency = 6 }) {
+function makeMonitor({ dir, listFile, getConfig, probeImpl = probe, now = Date.now, concurrency = 6, proxyStatus = () => '' }) {
   const mem = new Map();      // "app:route" -> { state, fails, since }
   let last = null, running = null;
   async function run() {
@@ -169,7 +182,11 @@ function makeMonitor({ dir, listFile, getConfig, probeImpl = probe, now = Date.n
     let next = 0;
     await Promise.all(new Array(Math.min(concurrency, jobs.length || 1)).fill(0).map(async () => {
       while (next < jobs.length) {
-        const j = jobs[next++], res = await probeImpl(j.r.url, { now }), k = out[j.i].id + ':' + j.r.key, t = now();
+        const j = jobs[next++], k0 = out[j.i];
+        let res = await probeImpl(j.r.url, { now });
+        // The name cannot be looked up from inside this container, but TSDProxy itself says the proxy is running: the name is published and answering, so it is not "down".
+        if (!res.ok && j.r.key === 'name' && res.status === 0 && /name not found/.test(res.error || '') && /^running$/i.test(proxyStatus(k0.tsdName) || '')) res = { ms: res.ms, ok: true, status: 0, error: '', viaProxy: true };
+        const k = out[j.i].id + ':' + j.r.key, t = now();
         let m = mem.get(k) || { state: 'unknown', fails: 0, since: t };
         if (res.ok) { m.fails = 0; if (m.state !== 'up') { m.state = 'up'; m.since = t; } }
         else { m.fails++; if (m.fails >= 2 && m.state !== 'down') { m.state = 'down'; m.since = t; } }
@@ -187,7 +204,9 @@ function makeMonitor({ dir, listFile, getConfig, probeImpl = probe, now = Date.n
     if (!last) throw Object.assign(new Error('No check has run yet.'), { status: 409 });
     const cfg = getConfig(), a = last.apps.find((x) => x.id === appId), x = a && a.routes.find((r) => r.key === key);
     if (!x) throw Object.assign(new Error('That route is not in the latest check.'), { status: 404 });
-    const res = await probeImpl(x.url, { now }), t = now(), k = appId + ':' + key, m = mem.get(k) || { state: 'unknown', fails: 0, since: t };
+    let res = await probeImpl(x.url, { now }); const t = now(), k = appId + ':' + key;
+    if (!res.ok && key === 'name' && res.status === 0 && /name not found/.test(res.error || '') && /^running$/i.test(proxyStatus(a.tsdName) || '')) res = { ms: res.ms, ok: true, status: 0, error: '', viaProxy: true };
+    const m = mem.get(k) || { state: 'unknown', fails: 0, since: t };
     if (res.ok) { m.fails = 0; if (m.state !== 'up') { m.state = 'up'; m.since = t; } } else { m.fails = Math.max(2, m.fails + 1); if (m.state !== 'down') { m.state = 'down'; m.since = t; } }
     mem.set(k, m); Object.assign(x, { state: m.state, status: res.status, ms: res.ms, error: res.ok ? '' : res.error, since: m.since, checkedAt: t }); delete x.fix;
     for (const r of a.routes) { delete r.fix; if (r.state === 'down') r.fix = fixHint(a, r, a.routes, cfg); }
@@ -195,4 +214,4 @@ function makeMonitor({ dir, listFile, getConfig, probeImpl = probe, now = Date.n
   }
   return { recheck, run: () => (running = running || run().finally(() => { running = null; })), get last() { return last; } };
 }
-module.exports = { fixHint, openUrl, mdnsQuery, mdnsParse, resolveLocal, parseManifest, parseCompose, parseList, discover, routesFor, probe, makeMonitor };
+module.exports = { resolveTailnet, fixHint, openUrl, mdnsQuery, mdnsParse, resolveLocal, parseManifest, parseCompose, parseList, discover, routesFor, probe, makeMonitor };
