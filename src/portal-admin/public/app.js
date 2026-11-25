@@ -41,6 +41,7 @@ const fq = (s) => '"' + String(s).replace(/\\/g, '\\\\').replace(/"/g, '\\"') + 
 const AI_PROVIDERS = [ // [id, label, model hint, help, default model]
   ['gemini', 'Google Gemini', 'gemini-3.8-flash', 'Free keys are available at aistudio.google.com/apikey.', 'gemini-3.8-flash'],
   ['openrouter', 'OpenRouter', 'e.g. anthropic/claude-sonnet-4.5 (pick from the list)', 'One OpenRouter key works with hundreds of models. Get a key at openrouter.ai/keys.', ''],
+  ['nvidia', 'NVIDIA (build.nvidia.com)', 'e.g. meta/llama-3.3-70b-instruct (pick from the list)', 'Free developer keys (nvapi-...) at build.nvidia.com.', ''],
   ['anthropic', 'Anthropic (Claude)', 'claude-sonnet-5-5', 'Use a key from console.anthropic.com.', 'claude-sonnet-5-5'],
   ['openai', 'OpenAI', 'e.g. gpt-4o', 'Use a key from platform.openai.com.', ''],
   ['custom', 'Custom (OpenAI-compatible)', 'Model name', 'Any service that speaks the OpenAI chat API, such as a local Ollama or LM Studio.', ''],
@@ -1406,12 +1407,22 @@ const ageFrom = (d) => { const b = new Date(d + 'T00:00:00'), n = new Date(); le
 async function aiPane(box) {
   if (!box) return;
   let st; try { st = await acctFetch('/account/ai', { action: 'list' }); } catch (e) { box.innerHTML = '<p class="muted">' + esc(e.message) + '</p>'; return; }
-  const optsFor = (sel, none) => `<option value=""${sel ? '' : ' selected'}>${esc(none)}</option>` + st.keys.map((k) => `<option value="${esc(k.id)}"${sel === k.id ? ' selected' : ''}>${esc(k.label)} · ${esc((st.providers[k.provider] || {}).label || k.provider)}</option>`).join('');
+  const M = st.master || { set: false}, mName = M.set ? 'Master key · ' + M.providerLabel + ' · ' + M.model : 'Master key (not set)';
+  const optsFor = (sel, none) => `<option value=""${sel ? '' : ' selected'}>${esc(none)}</option>` + (M.set ? `<option value="master"${sel === 'master' ? ' selected' : ''}>${esc(mName)}</option>` : '') + st.keys.map((k) => `<option value="${esc(k.id)}"${sel === k.id ? ' selected' : ''}>${esc(k.label)} · ${esc((st.providers[k.provider] || {}).label || k.provider)}</option>`).join('');
   const provs = Object.entries(st.providers).map(([v, p]) => `<option value="${v}">${esc(p.label)}</option>`).join('');
-  box.innerHTML = `<h2>AI keys</h2><p class="muted small">Save keys from different providers and choose which one your apps use. Keys are kept on your server and never shown again after you save them. You pay your provider for what you use.</p>
+  const admin = state.role !== 'user';   // the server decides for real; this only shows or hides the form
+  const masterCard = admin ? `<div class="aikey" style="display:block"><h3>Master key</h3><p class="muted small">The default for every app and every person without a key of their own, and what free-trial users run on. Only admins can see or change it; nobody sees the key, not even you after saving.</p>
+      ${M.set ? `<p><b>${esc(M.providerLabel)}</b> · ${esc(M.model)} · key ends …${esc(M.last4 || '')} <button class="btn" data-ai="mtest" type="button">Test</button> <button class="btn danger" data-ai="mclear" type="button">Remove</button></p>` : '<p class="muted">No Master key yet.</p>'}
+      <form id="ai-master"><div class="kv"><label>Provider<select name="provider">${provs}</select></label><label>Model<input name="model" list="ai-mmodels" autocomplete="off"><datalist id="ai-mmodels"></datalist></label><label>API key<input name="apiKey" type="password" autocomplete="off" placeholder="${M.set ? 'Leave empty to keep the saved key' : 'Paste your API key'}"></label><label id="ai-mbase">Base address<input name="baseUrl" autocomplete="off"></label></div><button class="btn" type="button" data-ai="mmodels">Load models</button> <button class="btn primary">Save Master key</button></form></div>` : (M.set ? `<p class="muted small">Default AI for your apps: ${esc(M.providerLabel)} · ${esc(M.model)}. It also covers free trials.</p>` : '');
+  const F = st.family || { inFamily: false };
+  const famCard = !F.inFamily ? '' : `<div class="aikey" style="display:block"><h3>Family key</h3>${F.shared
+    ? `<p>${F.shared.mine ? 'You share' : esc(F.shared.byName) + ' shares'} <b>${esc(F.shared.label)}</b> (${esc(F.shared.providerLabel)} · ${esc(F.shared.model)}) with the family. Family members use it instead of the free trial.${F.canStop ? ' <button class="btn danger" data-ai="fstop" type="button">Stop sharing</button>' : ''}</p>`
+    : '<p class="muted small">Nobody shares a key with the family yet. Once a parent shares one, family members use it instead of the free trial.</p>'}
+    ${F.canShare && st.keys.length ? `<div class="kv"><label>Share one of my keys with the family<select id="ai-fshare"><option value="">Choose a key…</option>${st.keys.map((k) => `<option value="${esc(k.id)}">${esc(k.label)} · ${esc((st.providers[k.provider] || {}).label || k.provider)}</option>`).join('')}</select></label></div>` : F.canShare ? '<p class="muted small">Save a key below, then share it here.</p>' : ''}</div>`;
+  box.innerHTML = `<h2>AI keys</h2><div class="card" id="ai-usage" style="margin:8px 0"><p class="muted small">Loading usage…</p></div>${masterCard}${famCard}<p class="muted small">Save keys from different providers and choose which one your apps use. Keys are kept on your server and never shown again after you save them. You pay your provider for what you use.</p>
     ${st.keys.length ? `<div class="aikeys">${st.keys.map((k) => `<div class="aikey"><div><b>${esc(k.label)}</b>${k.id === st.defaultId ? ' <span class="chip ok">default</span>' : ''}<div class="muted small">${esc((st.providers[k.provider] || {}).label || k.provider)} · ${esc(k.model)} · key ends …${esc(k.last4)}</div></div><div class="row" style="gap:6px"><button class="btn" data-ai="test" data-id="${esc(k.id)}">Test</button><button class="btn danger" data-ai="del" data-id="${esc(k.id)}">Remove</button></div></div>`).join('')}</div>
-    <div class="kv"><label>Default for every app<select id="ai-def">${optsFor(st.defaultId, 'No default (apps use their shared key)')}</select></label></div>
-    <h3>Use a different key for one app</h3><div class="kv">${Object.entries(st.appNames).map(([slug, name]) => `<label>${esc(name)}<select data-ai-app="${esc(slug)}">${optsFor(st.apps[slug], 'Use my default')}</select></label>`).join('')}</div>` : '<p class="muted">No keys saved yet.</p>'}
+    <div class="kv"><label>Default for every app<select id="ai-def">${optsFor(st.defaultId, M.set ? 'Master key (default)' : 'No default (apps use their shared key)')}</select></label></div>
+    <h3>Use a different key for one app</h3><div class="kv">${Object.entries(st.appNames).map(([slug, name]) => `<label>${esc(name)}<select data-ai-app="${esc(slug)}">${optsFor(st.apps[slug], 'Use my default')}</select><select data-ai-model="${esc(slug)}"${st.apps[slug] ? '' : ' hidden'}><option value="">${esc(st.appModels[slug] || 'Key\'s own model')}</option></select></label>`).join('')}</div>` : '<p class="muted">No keys saved yet.</p>'}
     <form id="ai-add"><h3>Add a key</h3><div class="kv"><label>Label<input name="label" maxlength="40" placeholder="Work Claude"></label>
       <label>Provider<select name="provider">${provs}</select></label>
       <label>Model<input name="model" autocomplete="off"></label>
@@ -1424,8 +1435,41 @@ async function aiPane(box) {
   f.onsubmit = guard(async (e) => { e.preventDefault(); await acctFetch('/account/ai', { action: 'add', provider: f.provider.value, label: f.label.value, model: f.model.value, apiKey: f.apiKey.value, baseUrl: f.baseUrl.value }); toast('Key saved'); redo(); });
   if ($('#ai-def')) $('#ai-def').onchange = guard(async () => { await acctFetch('/account/ai', { action: 'select', app: '', id: $('#ai-def').value }); toast('Default saved'); redo(); });
   box.querySelectorAll('[data-ai-app]').forEach((sel) => { sel.onchange = guard(async () => { await acctFetch('/account/ai', { action: 'select', app: sel.dataset.aiApp, id: sel.value }); toast('Saved'); redo(); }); });
+  // a model drop-down per app: loaded from the provider the first time it is opened
+  box.querySelectorAll('[data-ai-model]').forEach((ms) => {
+    const slug = ms.dataset.aiModel, id = st.apps[slug]; let loaded = false;
+    ms.onfocus = ms.onmousedown = guard(async () => { if (loaded || !id) return; loaded = true; try { const r = await acctFetch('/account/ai', { action: 'models', id }), cur = st.appModels[slug] || r.current; ms.innerHTML = r.models.map((m) => `<option${m === cur ? ' selected' : ''}>${esc(m)}</option>`).join(''); } catch (e) { loaded = false; toast(e.message, true); } });
+    ms.onchange = guard(async () => { await acctFetch('/account/ai', { action: 'select', app: slug, id, model: ms.value }); toast('Model saved'); redo(); });
+  });
+  if ($('#ai-fshare')) $('#ai-fshare').onchange = guard(async (e) => { if (!e.target.value) return; if (!confirm('Share this key with your whole family? They can use it for AI in the apps, and you pay your provider for what they use. You can stop any time.')) { e.target.value = ''; return; } await acctFetch('/account/ai', { action: 'family-share', id: e.target.value }); toast('Shared with your family'); redo(); });
+  const fs_ = box.querySelector('[data-ai=fstop]'); if (fs_) fs_.onclick = guard(async () => { await acctFetch('/account/ai', { action: 'family-stop' }); toast('Sharing stopped'); redo(); });
+  aiUsage($('#ai-usage'), '');
+  const mf = $('#ai-master');
+  if (mf) {
+    const mshow = () => { $('#ai-mbase').style.display = mf.provider.value === 'custom' ? '' : 'none'; mf.model.placeholder = (st.providers[mf.provider.value] || {}).model || 'Model name'; };
+    if (M.set) mf.provider.value = M.provider; mf.model.value = M.set ? M.model : ''; mf.provider.onchange = mshow; mshow();
+    mf.onsubmit = guard(async (e) => { e.preventDefault(); await acctFetch('/account/ai', { action: 'master-set', provider: mf.provider.value, model: mf.model.value, apiKey: mf.apiKey.value, baseUrl: mf.baseUrl.value }); toast('Master key saved'); redo(); });
+    box.querySelector('[data-ai=mmodels]').onclick = guard(async () => { if (!M.set || M.provider !== mf.provider.value) { toast('Save the Master key first, then load its models.', true); return; } const r = await acctFetch('/account/ai', { action: 'models', id: 'master' }); $('#ai-mmodels').innerHTML = r.models.map((m) => `<option value="${esc(m)}">`).join(''); toast(r.models.length + ' models'); });
+    const mt = box.querySelector('[data-ai=mtest]'); if (mt) mt.onclick = guard(async () => { mt.disabled = true; const r = await acctFetch('/account/ai', { action: 'test', id: 'master' }); toast(r.ok ? 'The Master key works' : r.message, !r.ok); mt.disabled = false; });
+    const mc = box.querySelector('[data-ai=mclear]'); if (mc) mc.onclick = guard(async () => { if (!confirm('Remove the Master key? Anyone without a key of their own, and free-trial users, will have no AI until you set another.')) return; await acctFetch('/account/ai', { action: 'master-clear' }); toast('Master key removed'); redo(); });
+  }
   box.querySelectorAll('[data-ai=del]').forEach((b) => { b.onclick = guard(async () => { if (!confirm('Remove this key? Apps that used it go back to your default, or their shared key.')) return; await acctFetch('/account/ai', { action: 'remove', id: b.dataset.id }); toast('Key removed'); redo(); }); });
   box.querySelectorAll('[data-ai=test]').forEach((b) => { b.onclick = guard(async () => { b.disabled = true; b.textContent = 'Testing…'; const r = await acctFetch('/account/ai', { action: 'test', id: b.dataset.id }); toast(r.ok ? 'This key works' : r.message, !r.ok); b.disabled = false; b.textContent = 'Test'; }); });
+}
+
+// Monthly AI usage: yours, and (for an adult in a household) each family member's.
+async function aiUsage(box, month) {
+  if (!box) return;
+  let r; try { r = await acctFetch('/account/ai', { action: 'usage', month }); } catch (e) { box.innerHTML = '<p class="muted small">' + esc(e.message) + '</p>'; return; }
+  const APPN = { 'diner-bell': 'Diner Bell', 'jolly-grocer': 'Jolly Grocer', listify: 'ListSnap', shutterworth: 'ShutterWorth', 'project-tracker': 'Project Pilot' }, SRC = { own: 'own key', master: 'free trial', family: 'family key' };
+  const n = (x) => Number(x || 0).toLocaleString(), monthName = (m) => { const d = new Date(m + '-01T00:00:00Z'); return isNaN(d) ? m : d.toLocaleDateString(undefined, { month: 'long', year: 'numeric', timeZone: 'UTC' }); };
+  const tok = (u) => (u.inTokens || u.outTokens) ? ' · ' + n(u.inTokens + u.outTokens) + ' tokens' : '';
+  const split = (u) => Object.entries(u.byApp || {}).map(([a, c]) => (APPN[a] || a) + ' ' + n(c)).join(', ') || 'no AI use';
+  const via = (u) => Object.entries(u.bySource || {}).map(([s, c]) => n(c) + ' ' + (SRC[s] || s)).join(', ');
+  box.innerHTML = `<div class="row spread"><h3 style="margin:0">AI usage</h3><select id="ai-um">${r.months.map((m) => `<option value="${esc(m)}"${m === r.month ? ' selected' : ''}>${esc(monthName(m))}</option>`).join('')}</select></div>
+    <p><b>${n(r.mine.calls)}</b> AI request${r.mine.calls === 1 ? '' : 's'} by you${esc(tok(r.mine))}<br><span class="muted small">${esc(split(r.mine))}${via(r.mine) ? ' · ' + esc(via(r.mine)) : ''}</span></p>
+    ${r.family && r.family.length ? `<h3>Your family this month</h3><div class="aikeys">${r.family.map((f) => `<div class="aikey"><div><b>${esc(f.name || 'Family member')}</b><div class="muted small">${esc(split(f.usage))}${via(f.usage) ? ' · ' + esc(via(f.usage)) : ''}</div></div><div><b>${n(f.usage.calls)}</b> <span class="muted small">request${f.usage.calls === 1 ? '' : 's'}${esc(tok(f.usage))}</span></div></div>`).join('')}</div>` : ''}`;
+  $('#ai-um').onchange = (e) => aiUsage(box, e.target.value);
 }
 
 async function profilePane(uid) {

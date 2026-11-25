@@ -339,7 +339,7 @@ function render() {
     const r = rest();
     h.innerHTML = back('menu') + `<h1>${esc(r.name)} order</h1>`; a.innerHTML = summaryHTML(r);
   } else if (view === 'settings') {
-    h.innerHTML = back('home') + `<h1>Settings</h1>`; a.innerHTML = settingsHTML();
+    h.innerHTML = back('home') + `<h1>Settings</h1>`; a.innerHTML = settingsHTML(); if (window.JZAI) JZAI.mount(a.querySelector('#ai-choice'), { url: 'api/ai/choice' });
   } else if (view === 'orders') {
     h.innerHTML = back('home') + `<h1>All orders</h1>`; a.innerHTML = ordersHTML();
   } else if (view === 'history') {
@@ -365,6 +365,7 @@ function settingsHTML() {
     <div class="chips">${chips}</div>
     <div class="row" style="margin-top:8px"><span class="mute">Custom %</span><input id="dtipc" type="number" inputmode="decimal" min="0" max="100" step="0.5" value="${t}" style="width:90px"></div></div>
     ${accountCardHTML()}
+    <div class="card"><div class="sub-h" style="margin-top:0">AI for reading menus</div><div id="ai-choice"></div></div>
     <div class="card"><div class="sub-h" style="margin-top:0">Restaurants in my app</div>
       <p class="mute">Every menu anyone adds appears for you automatically, marked NEW until you open it. Untick the ones you don't want to see.</p>
       <div class="row" style="gap:8px;margin-bottom:8px"><button class="btn sec" data-a="rest-all">Select all</button><button class="btn sec" data-a="rest-none">Select none</button></div>

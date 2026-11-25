@@ -217,6 +217,7 @@ const PRESETS = {
   gemini: { baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai/", model: "gemini-3.8-flash" },
   openai: { baseUrl: "https://api.openai.com/v1", model: "" },
   openrouter: { baseUrl: "https://openrouter.ai/api/v1", model: "" },
+  nvidia: { baseUrl: "https://integrate.api.nvidia.com/v1", model: "" },
   custom: { baseUrl: "", model: "" },
 };
 function loadAI() {
@@ -235,7 +236,19 @@ function userAI(user) {
   const baseUrl = provider === "custom" ? String(pr["ai.baseUrl"] || "").trim() : pre.baseUrl;
   return baseUrl ? { provider, apiKey: key, baseUrl, model, own: true } : null;
 }
-const aiFor = user => userAI(user) || loadAI();
+// Order: the person's own key -> the Master key while their free trial lasts -> the key a parent shares with the family once it is over -> this app's own shared key.
+// Portal Admin decides (Portal API ai.resolve); the app only says whether the trial is used up. Family keys count as the person's own (no trial counting).
+async function aiFor(user) {
+  const own = userAI(user); if (own) return own;
+  if (user && pb.portalOn && pb.portalOn()) {
+    try {
+      const over = !user.isAdmin && (await pb.trialUsed(user.id)).used >= TRIAL_LIMIT;
+      const r = await pb.portalCall("ai.resolve", [user.id, over]);
+      if (r && PRESETS[r.provider]) { const pre = PRESETS[r.provider]; return { provider: r.provider, apiKey: r.apiKey || "", baseUrl: r.provider === "custom" ? r.baseUrl : pre.baseUrl, model: r.model || pre.model, own: r.source !== "master", source: r.source }; }
+    } catch {}
+  }
+  return loadAI();
+}
 const aiReady = c => !!(c.model && (c.apiKey || c.provider === "openai"));
 class AIError extends Error { constructor(code, msg) { super(msg || code); this.code = code; } }
 async function trialInfo(user, c) {
@@ -250,8 +263,14 @@ async function readAI(r) {
   if (!r.ok) throw new AIError("ai_error", (j.error?.message || body || "HTTP " + r.status).slice(0, 300));
   return j;
 }
+// Tell Portal Admin one AI request happened, so the person (and a parent) can see the month's usage there. Never slows or breaks the request.
+function logAI(user, c) { try { if (user && user.id && pb.portalOn && pb.portalOn()) pb.portalCall("ai.log", [user.id, { source: (c && c.source) || (c && c.own ? "own" : "master") }]).catch(() => {}); } catch {} }
 async function callAI(prompt, images, user) {
-  const c = aiFor(user);
+  const c = await aiFor(user), out = await callAIRaw(prompt, images, user, c);
+  logAI(user, c); return out;
+}
+async function callAIRaw(prompt, images, user, cfg) {
+  const c = cfg || await aiFor(user);
   if (!aiReady(c)) throw new AIError("not_configured", "Photo reading isn't set up yet. Add your own AI key in Portal Admin (My settings), or ask an admin to add a shared one.");
   let r, text;
   if (c.provider === "anthropic") {
@@ -298,7 +317,7 @@ const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, "http://x");
     const p = decodeURIComponent(url.pathname);
     const isPage = p === "/" || p === "/index.html";
-    const isData = p === "/api/state" || p === "/api/prefs" || p === "/api/extract" || p === "/api/ai/status" || p === "/api/receipt";
+    const isData = p === "/api/state" || p === "/api/prefs" || p === "/api/extract" || p === "/api/ai/status" || p.startsWith("/api/ai/choice") || p === "/api/receipt";
 
     // Only signed-in people the admin has let in can open the app (Umbrel's own login is off, so this is the lock).
     let user = null;
@@ -353,8 +372,17 @@ const server = http.createServer(async (req, res) => {
       return send(res, 405, { code: "bad_method" });
     }
 
+    if (p === "/api/ai/choice" || p === "/api/ai/choice/models") {   // this person's AI choice for THIS app (its Settings screen): Master key, own keys and models, through Portal API
+      
+      if (!user || !pb.portalOn || !pb.portalOn()) return send(res, 503, { message: "AI choices need the JoolzApp account." });
+      try {
+        if (p.endsWith("/models")) return send(res, 200, await pb.portalCall("ai.models", [user.id, new URL(req.url, "http://x").searchParams.get("id") || ""]));
+        if (req.method === "POST") { const b = JSON.parse((await readBody(req)).toString() || "{}"); await pb.portalCall("ai.choose", [user.id, String(b.id || ""), String(b.model || "")]); }
+        return send(res, 200, await pb.portalCall("ai.mine", [user.id]));
+      } catch (e) { return send(res, e.status >= 400 && e.status < 600 ? e.status : 502, { message: e.message }); }
+    }
     if (p === "/api/ai/status") {
-      const c = aiFor(user), trial = await trialInfo(user, c);
+      const c = await aiFor(user), trial = await trialInfo(user, c);
       return send(res, 200, { configured: aiReady(c) && !trial.over, own: !!c.own, trial: trial.on ? { limit: TRIAL_LIMIT, used: trial.used } : null, trialOver: trial.over });
     }
     if (p === "/api/extract" && req.method === "POST") {
@@ -363,7 +391,7 @@ const server = http.createServer(async (req, res) => {
       const images = Array.isArray(b.images) ? b.images.slice(0, 4).filter(i => i && typeof i.data === "string" && /^[A-Za-z0-9+/=]+$/.test(i.data)) : [];
       if (!images.length) return send(res, 400, { code: "empty", message: "No photo to read." });
       try {
-        const c = aiFor(user), trial = await trialInfo(user, c);
+        const c = await aiFor(user), trial = await trialInfo(user, c);
         if (trial.over) return send(res, 402, { code: "trial_over", message: `You've used your ${TRIAL_LIMIT} free photo reads. Add your own AI key in Portal Admin (My settings) to keep going.` });
         const receipt = b.kind === "receipt", out = await callAI(receipt ? RECEIPT_PROMPT : LIST_PROMPT, images, user);
         if (trial.on) { try { await pb.trialBump(user.id); } catch {} }

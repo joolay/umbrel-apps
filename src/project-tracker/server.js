@@ -315,9 +315,16 @@ async function listsRoutes(req, res, p, url, user) {
 }
 
 // The built-in chat helper: the person's own AI key, one project at a time. It can only propose changes (see helper.js).
+// Own key first; otherwise the Master key or the family's shared key, as decided by Portal Admin (Project Pilot has no trial, so only the family/Master order matters).
+async function aiConfigFor(user) {
+  const own = makeAi.resolve(user); if (own || !pb.portalOn || !pb.portalOn()) return own;
+  try { const r = await pb.portalCall("ai.resolve", [user.id, user.isAdmin ? false : true]) || (await pb.portalCall("ai.resolve", [user.id, false])); const pre = r && makeAi.PRESETS[r.provider];
+    if (pre) return { source: r.source, provider: r.provider, apiKey: r.apiKey || "", model: r.model || pre.model, baseUrl: (r.provider === "custom" ? r.baseUrl : pre.baseUrl).replace(/\/+$/, ""), last4: String(r.apiKey || "").slice(-4) }; } catch {}
+  return null;
+}
 async function aiChat(req, res, user) {
   if (throttled(req, "aichat:" + user.id, 20, 60e3)) return send(res, 429, { code: "slow_down", message: "That's a lot of messages. Wait a moment." });
-  const b = JSON.parse((await readBody(req)).toString() || "{}"), cfg = makeAi.resolve(user);
+  const b = JSON.parse((await readBody(req)).toString() || "{}"), cfg = await aiConfigFor(user);
   if (!cfg) return send(res, 400, { code: "no_ai_key", message: "No AI key is set for Project Pilot yet. Add one in Portal Admin > My settings > AI." });
   const key = String(b.list || ""), isGh = key === GH_LIST;
   if (!(KEY_RE.test(key) || SHARED_RE.test(key))) return send(res, 400, { code: "bad_list", message: "Unknown list." });
@@ -329,6 +336,7 @@ async function aiChat(req, res, user) {
   try {
     const worked = (await workedMap(list, !isGh))[project.id] || "";
     const out = await helper.run({ ai: aiClient, cfg, list, project, worked, autoGlobal: prefs.auto !== false, days: prefs.days, ghToken: isGh ? conf.token : "", ghRepo: conf.repo }, Array.isArray(b.messages) ? b.messages : []);
+    try { if (pb.portalOn && pb.portalOn()) pb.portalCall("ai.log", [user.id, { source: cfg.source || "own" }]).catch(() => {}); } catch {}
     return send(res, 200, { ...out, model: cfg.model });
   } catch (e) {
     if (e instanceof makeAi.AiError) return send(res, e.status, { code: e.code, message: e.message });
@@ -383,7 +391,16 @@ const server = http.createServer(async (req, res) => {
     if (p === "/api/app-config") return send(res, 200, { accounts: pb.enabled, ...(pb.enabled ? { portalUrl: await pb.portalUrl().catch(() => "") } : {}) });
     if (await accountRoutes(req, res, p)) return;
     if (p === "/api/link" && req.method === "GET") return send(res, 200, feedHandle ? feedHandle.link() : { state: "broken", shaking: false, note: "Not reporting yet." });
-    if (p === "/api/ai/status" && req.method === "GET") { const c = makeAi.resolve(user); return send(res, 200, { ready: !!c, key: makeAi.pub(c) }); }
+    if (p === "/api/ai/choice" || p === "/api/ai/choice/models") {   // this person's AI choice for THIS app (its Settings screen): Master key, own keys and models, through Portal API
+      
+      if (!user || !pb.portalOn || !pb.portalOn()) return send(res, 503, { message: "AI choices need the JoolzApp account." });
+      try {
+        if (p.endsWith("/models")) return send(res, 200, await pb.portalCall("ai.models", [user.id, new URL(req.url, "http://x").searchParams.get("id") || ""]));
+        if (req.method === "POST") { const b = JSON.parse((await readBody(req)).toString() || "{}"); await pb.portalCall("ai.choose", [user.id, String(b.id || ""), String(b.model || "")]); }
+        return send(res, 200, await pb.portalCall("ai.mine", [user.id]));
+      } catch (e) { return send(res, e.status >= 400 && e.status < 600 ? e.status : 502, { message: e.message }); }
+    }
+    if (p === "/api/ai/status" && req.method === "GET") { const c = await aiConfigFor(user); return send(res, 200, { ready: !!c, key: makeAi.pub(c) }); }
     if (p === "/api/ai/chat" && req.method === "POST") return aiChat(req, res, user);
     if (p === "/api/prefs" && req.method === "PUT") {
       const b = JSON.parse((await readBody(req)).toString() || "{}"), prev = (user.portal && user.portal.prefs && user.portal.prefs["project-tracker"]) || {}, next = { ...prev };

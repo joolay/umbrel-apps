@@ -1,1 +1,1 @@
-{ "name": "tv-remote", "version": "0.3.0", "private": true, "main": "server.js" }
+{ "name": "tv-remote", "version": "0.3.1", "private": true, "main": "server.js" }

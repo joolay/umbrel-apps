@@ -2,7 +2,7 @@ manifestVersion: 1
 id: joolay-kiosk-manager
 category: developer
 name: Kiosk Manager
-version: "1.2.0"
+version: "1.2.1"
 tagline: Show Umbrel on the server's own screen
 description: >-
   Installs and controls a fullscreen kiosk browser on the Umbrel device itself, so the dashboard
@@ -21,7 +21,7 @@ path: ""
 defaultUsername: ""
 defaultPassword: ""
 releaseNotes: >-
-  Moved onto the shared JoolzApp template (one jz.js file): same top bar, profile menu, theme switch and sync ticks as the other apps.
+  Shared template update (adds the AI settings component; no change to how this app works).
 submitter: joolay
 submission: https://github.com/joolay/umbrel-apps
 icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-kiosk-manager/icon.svg

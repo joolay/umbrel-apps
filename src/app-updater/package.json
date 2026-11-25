@@ -1,1 +1,1 @@
-{"name": "app-updater", "version": "1.10.0", "private": true, "main": "server.js", "scripts": {"test": "node test-status-feed.js && node test-installer.js && node test-repowatch.js"}}
+{"name": "app-updater", "version": "1.10.1", "private": true, "main": "server.js", "scripts": {"test": "node test-status-feed.js && node test-installer.js && node test-repowatch.js"}}

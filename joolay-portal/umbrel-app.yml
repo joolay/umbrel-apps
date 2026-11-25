@@ -2,7 +2,7 @@ manifestVersion: 1
 id: joolay-portal
 category: social
 name: JoolzApp Dashboard
-version: "0.42.3"
+version: "0.43.0"
 tagline: The JoolzApp home screen for everyone in the family
 description: >-
   The home screen people use for every JoolzApp app: sign in or create an account, open your apps, arrange icons and folders,
@@ -21,7 +21,7 @@ path: ""
 defaultUsername: ""
 defaultPassword: ""
 releaseNotes: >-
-  Remember me now starts ticked on the dashboard sign-in so installed apps keep you signed in. The dashboard can now do the Google step for an app's Continue with Google button and hand you back to it.
+  AI keys: an admin sets one Master key (default and free trial), NVIDIA is a new provider, models are picked from the provider's own list, and a parent can share one of their keys with the whole family (family members use it instead of the free trial). New AI usage panel: your own monthly AI requests, and parents can see each family member's.
 submitter: joolay
 submission: https://github.com/joolay/umbrel-apps
 icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-portal/icon.svg

@@ -1040,7 +1040,12 @@ input,select,textarea{background:var(--glass-strong);border:1px solid var(--glas
   // Settings (the gear in the top bar): shops, categories, data and the account.
   function viewSettings(v) {
     v.appendChild(h('h2', { text: 'Settings', style: 'margin:0 2px' }));
-    viewShops(v); viewData(v);
+    viewShops(v); viewAi(v); viewData(v);
+  }
+  // Which AI reads the receipts and lists: the Master key during the free trial, a key a parent shares with the family, or one of the person's own keys (JZAI is in jz.js).
+  function viewAi(v) {
+    const box = h('div'); v.appendChild(h('div', { class: 'card' }, h('h2', { text: 'AI' }), box));
+    if (window.JZAI) JZAI.mount(box, { url: 'api/ai/choice' });
   }
   function viewData(v) {
     v.appendChild(h('div', { class: 'card' }, h('h3', { text: 'Grocery spend this month' }), h('p', { class: 'big', text: money(monthSpend()) }), h('span', { class: 'delta', text: 'Family groceries, this calendar month. The Spend tab has the weekly and monthly breakdown.' })));

@@ -415,6 +415,7 @@ body.in-list .tot b{font-size:.9rem}
       <div class="list" id="binList"></div>
     </section>
     <section id="setView" hidden>
+      <div class="panel" data-tab="account" id="swAiPanel"><h2>AI for photo identification</h2><div id="swAiChoice"></div></div>
       <div class="panel" id="defRatesPanel">
         <h2>Preferred depreciation rates</h2>
         <p>New lists start with these yearly rates. You can still change the rates on any one list from its options menu; changing these later doesn't alter lists you've already made.</p>
@@ -1339,7 +1340,7 @@ window.addEventListener("scroll", () => { if(railTick) return; railTick = true; 
 
 /* ---------- list options: rates (per list) and sharing ---------- */
 let rateDraft = null;
-function renderSettings(){ $("autoBk").checked = settings.autoBackup !== false; renderDefRates(); }
+function renderSettings(){ if (window.JZAI && !$("swAiChoice").dataset.m) { $("swAiChoice").dataset.m = "1"; JZAI.mount($("swAiChoice"), { url: "api/ai/choice" }); } $("autoBk").checked = settings.autoBackup !== false; renderDefRates(); }
 function renderRates(){
   if(!rateDraft) rateDraft = Object.fromEntries(CATS.map(c=>[c, pct(rateFor(c, currentListId))]));
   const box = $("rates");

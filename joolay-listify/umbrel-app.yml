@@ -2,7 +2,7 @@ manifestVersion: 1
 id: joolay-listify
 category: files
 name: Listify
-version: "1.1.2"
+version: "1.2.0"
 tagline: Checklists that follow your JoolzApp account
 description: >-
   Listify keeps simple checklists: several lists, dates, progress, swipe to delete, reorder, and a one-tap copy of the
@@ -18,7 +18,7 @@ path: ""
 defaultUsername: ""
 defaultPassword: ""
 releaseNotes: >-
-  Stays signed in: Remember me now starts ticked (so an installed app keeps you signed in), and signing in from the dashboard is kept on this device. Added Continue with Google on the sign-in screen (public address only).
+  AI: the Master key covers the free trial, and a key a parent shares with the family replaces the free trial. NVIDIA added. Each AI request now counts towards your monthly AI usage in Portal Admin.
 submitter: joolay
 submission: https://github.com/joolay/umbrel-apps
 icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-listify/icon.svg

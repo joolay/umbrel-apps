@@ -308,4 +308,6 @@ async function memberIdsOf(familyId) {
   try { const r = await pb.asSuper("GET", `${famBase}/records/${encodeURIComponent(clean(familyId))}`); return (await fixup(r)).members.map(m => m.id); }
   catch (e) { if (e.status === 404) return []; throw e; }
 }
-module.exports = { linkCreatedSpouse, spouseCheck, unlinkSpouse, memberIdsOf, circleIds, leaveExtended, setManager, linkedIds, mine, create, invite, respond, drop, setTier, addOrder, listOrders, removeOrder };
+// The household record (id, owner, members with manager flags) of a person, or null: used by the AI key sharing in ai.js.
+async function householdOf(userId) { await ensure(); return familyOf(userId); }
+module.exports = { householdOf, linkCreatedSpouse, spouseCheck, unlinkSpouse, memberIdsOf, circleIds, leaveExtended, setManager, linkedIds, mine, create, invite, respond, drop, setTier, addOrder, listOrders, removeOrder };
