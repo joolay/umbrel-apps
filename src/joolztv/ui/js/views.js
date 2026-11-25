@@ -913,7 +913,7 @@ var Views = (function () {
     series: [[10759, 'Action & Adventure'], [35, 'Comedy'], [18, 'Drama'], [80, 'Crime'], [10765, 'Sci-Fi & Fantasy'], [9648, 'Mystery'], [16, 'Animation'], [10751, 'Family'], [99, 'Documentary'], [10764, 'Reality']]
   };
   function genreKey(type) { return type === 'movie' ? 'genresMovie' : 'genresSeries'; }
-  var KID_HIDE = { 27: 1, 53: 1, 80: 1, 10752: 1 };                       // Horror, Thriller, Crime, War: never offered as a genre row on a profile with an age limit
+  var KID_HIDE = { 27: 1, 53: 1, 80: 1, 10752: 1, 10749: 1 };                     // Horror, Thriller, Crime, War, Romance: never offered as a genre row on a profile with an age limit
   function genreList(type) {
     var l = Api.prefs()[genreKey(type)];
     l = Array.isArray(l) ? l : GENRE_DEFAULTS[type].map(function (g) { return { id: g[0], name: g[1] }; });

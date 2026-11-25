@@ -26,6 +26,6 @@ icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-joolztv/i
 path: ""
 defaultUsername: ""
 defaultPassword: ""
-releaseNotes: "Changes: Profiles with an age limit now get genre rows in Movies (only films rated for their age; Horror, Thriller, Crime and War are never offered). TV Shows stays on the one kids row for those profiles."
+releaseNotes: "Changes: Profiles with an age limit now get genre rows in Movies (only films rated for their age; Horror, Thriller, Crime, War and Romance are never offered). TV Shows stays on the one kids row for those profiles."
 submitter: joolay
 submission: https://github.com/joolay/umbrel-apps
