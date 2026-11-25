@@ -11,22 +11,24 @@ services:
       PROXY_AUTH_ADD: "false"
 
   web:
-    image: ghcr.io/joolay/cctv:1.0.2
+    image: ghcr.io/joolay/cctv:1.0.3
     restart: on-failure
     stop_grace_period: 1m
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    # Public address https://cctv.<tailnet>.ts.net via TSDProxy + Funnel. Safe to publish: everything except /healthz, the page and
-    # sign-in needs a signed-in person who has been granted cameras.
+    # Admin only (24/11/2026 decision): tailnet name, LAN, .local and Tailscale address only, never Funnel (no tailscale_funnel option below),
+    # listed in the Admin folder of the dashboard, and the app itself refuses every account that is not an admin (ADMIN_ONLY).
     ports:
       - "3903:3902"
     labels:
       tsdproxy.enable: "true"
       tsdproxy.name: "cctv"
-      tsdproxy.port.1: "443/https:3903/http, no_autodetect, tailscale_funnel"
+      tsdproxy.port.1: "443/https:3903/http, no_autodetect"
     volumes:
       - ${APP_DATA_DIR}/data:/data
     environment:
       - POCKETBASE_APP_ID=cctv
       - POCKETBASE_APP_NAME=JoolzCCTV
       - REQUIRE_ACCOUNTS=1
+      - ADMIN_ONLY=1
+      - JOOLZAPP_DASHBOARD=hidden
