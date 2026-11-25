@@ -10,7 +10,7 @@ services:
       PROXY_AUTH_ADD: "true"
 
   web:
-    image: ghcr.io/joolay/routing-reporter:1.9.1
+    image: ghcr.io/joolay/routing-reporter:1.10.0
     restart: on-failure
     stop_grace_period: 10s
     # Lets the container reach the Umbrel's own ports (the default "LAN" address is the host itself).
@@ -20,10 +20,7 @@ services:
     # own (it relies on Umbrel's login), so it must NOT be published with Funnel.
     ports:
       - "3907:3000"
-    labels:
-      tsdproxy.enable: "true"
-      tsdproxy.name: "port-master"
-      tsdproxy.port.1: "443/https:3907/http, no_autodetect"
+    # The Tailscale name (and Funnel, if public) is kept by Port Master since 1.10.0 (TSDProxy tab); this app publishes its port for it.
     volumes:
       - ${APP_DATA_DIR}/data:/data
       # Read-only: Umbrel's installed-app folders (umbrel-app.yml and docker-compose.yml) tell it which apps exist, their ports and which are published.

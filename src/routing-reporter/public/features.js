@@ -15,6 +15,9 @@ window.PM_FEATURES = [
     { t: "Add any app to the JoolzApp Store", s: "built", d: "Tap the Portal cell of any installed app that does not use the JoolzApp account (Stremio, OpenClaw...) to put a tile on the store, choosing the address it opens, and tap again to hide it. Choose Admin (only admins see the tile) or Portal (everyone with an account). A Login column shows which apps sit behind the JoolzApp account. JoolzApp apps still get theirs automatically." }
   ]},
   { g: "TSDProxy", items: [
+    { t: "All Tailscale names in one place", s: "built", d: "Every app's name (including our own apps' former built-in names, with the same port and Public/tailnet-only setting) is kept by Port Master: rename, remove, and tick Public (Funnel) per app. OpenClaw stays with Portal Admin's list." },
+    { t: "Restart TSDProxy now", s: "built", d: "A button on the TSDProxy tab; Services Manager restarts the container within a minute." },
+    { t: "Honest https checks", s: "built", d: "Certificate problems are named in plain words, and a route that is up only because TSDProxy reports the proxy running is marked as such." },
     { t: "TSDProxy tab", s: "built", d: "Version, image, whether Port Master can control it, every proxy with its state, and Pause or Resume for each." },
     { t: "Version and automatic updates", s: "built", d: "Services Manager checks for a newer image about every 12 hours and installs it in the nightly window (or on Update now in App Updater), putting the old one back if the new one fails. App Updater shows the version." }
   ]},

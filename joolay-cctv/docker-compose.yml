@@ -11,7 +11,7 @@ services:
       PROXY_AUTH_ADD: "false"
 
   web:
-    image: ghcr.io/joolay/cctv:1.0.2
+    image: ghcr.io/joolay/cctv:1.0.3
     restart: on-failure
     stop_grace_period: 1m
     extra_hosts:
@@ -20,10 +20,7 @@ services:
     # sign-in needs a signed-in person who has been granted cameras.
     ports:
       - "3903:3902"
-    labels:
-      tsdproxy.enable: "true"
-      tsdproxy.name: "cctv"
-      tsdproxy.port.1: "443/https:3903/http, no_autodetect, tailscale_funnel"
+    # The Tailscale name (and Funnel, if public) is kept by Port Master since 1.0.3 (TSDProxy tab); this app publishes its port for it.
     volumes:
       - ${APP_DATA_DIR}/data:/data
     environment:
