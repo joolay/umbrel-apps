@@ -2,7 +2,7 @@ manifestVersion: 1
 id: joolay-joolztv
 category: media
 name: JoolzTV
-version: "1.18.0"
+version: "1.18.1"
 tagline: A glassy, Apple TV style front end for your streaming server, behind your JoolzApp account
 description: >-
   JoolzTV gives your TV, phone and computer a clean, glassy Apple TV style interface. It includes its own Stremio streaming server and replaces the old Stremio app.
@@ -26,6 +26,6 @@ icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-joolztv/i
 path: ""
 defaultUsername: ""
 defaultPassword: ""
-releaseNotes: "Changes: Much bigger text for TV viewing from across the room; a bigger logo with TV in a glass box; a centred, bigger Who's watching screen; descriptions use the full screen width; Movies and TV Shows now scroll through genre rows (common genres on, change them in Settings > Sources); missing age ratings, runtime, genres and cast are filled from a fallback source and replaced by TMDB as soon as it has them, and cached titles with gaps are updated automatically."
+releaseNotes: "Changes: Profiles with an age limit now get genre rows in Movies (only films rated for their age; Horror, Thriller, Crime, War and Romance are never offered). TV Shows stays on the one kids row for those profiles."
 submitter: joolay
 submission: https://github.com/joolay/umbrel-apps
