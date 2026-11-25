@@ -54,7 +54,7 @@ const clean = (b, old) => {
 
 /* ---------- checking and reporting ---------- */
 const NAMES_FILE = path.join(TSD_DIR, names.LIST), TSD_YAML = path.join(TSD_DIR, 'tsdproxy.yaml');
-const monitor = makeMonitor({ dir: APP_DIR, listFile: [{ file: process.env.TSDPROXY_LIST || path.join(TSD_DIR, 'joolz-published.yaml'), source: 'list' }, { file: NAMES_FILE, source: 'names' }], getConfig: () => config });
+const monitor = makeMonitor({ dir: APP_DIR, listFile: [{ file: process.env.TSDPROXY_LIST || path.join(TSD_DIR, 'joolz-published.yaml'), source: 'list' }, { file: NAMES_FILE, source: 'names' }], getConfig: () => config, proxyStatus: (n) => { const p = (((tsdStatus() || {}).proxies) || []).find((x) => x.name === n); return p ? p.status : ''; } });
 
 /* ---------- Tailscale name upkeep (names.js): create, modify and fix the names Port Master gives, kept in TSDProxy's list file joolz-names.yaml ---------- */
 let namesState = { ok: null, error: '', changes: [], at: 0, declared: null };
@@ -164,6 +164,10 @@ const server = http.createServer(async (req, res) => {
       await refreshTiles(); const rep = mark(monitor.last); await sendToPortal(rep); return send(res, 200, { report: rep, tsd: tsdInfo(), portal: { linked: !!portalLink(), ...reportState } });
     }
     if (p === '/api/tsdproxy' && req.method === 'GET') return send(res, 200, tsdInfo());
+    if (p === '/api/tsdproxy/restart' && req.method === 'POST') {   // Restart TSDProxy now: the marker is dated past Services Manager's 30 s wait, so its next check restarts it
+      try { fs.writeFileSync(path.join(TSD_DIR, 'restart-tsdproxy'), new Date(Date.now() - 31000).toISOString() + '\n'); return send(res, 200, { ok: true }); }
+      catch { return send(res, 500, { message: 'Could not write the restart request to the TSDProxy folder.' }); }
+    }
     if (p === '/api/names' && req.method === 'GET') return send(res, 200, namesInfo());
     if (p === '/api/names' && req.method === 'POST') {       // create, rename, remove or auto: the names Port Master keeps in TSDProxy's list
       let b; try { b = JSON.parse((await body(req)) || '{}'); } catch { return send(res, 400, { message: 'Bad request.' }); }

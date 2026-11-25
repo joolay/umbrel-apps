@@ -15,7 +15,7 @@
     });
   }
   // Every column is always shown (for JoolzApp apps and other apps alike); a dash means the app has no such route (for Name and Public: it is not published through TSDProxy).
-  var COLS = [["lan", "LAN"], ["local", ".local"], ["tailscale", "Tailscale"], ["name", "Name"], ["public", "Public"]];
+  var COLS = [["lan", "LAN"], ["local", ".local"], ["tailscale", "TS IP"], ["name", "TS Name"], ["public", "Public"]];
   var PORTAL = '<svg viewBox="0 0 24 24"><rect x="4" y="4" width="6.5" height="6.5" rx="1.6"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.6"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.6"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.6"/></svg>';
   var PLUS = '<svg viewBox="0 0 24 24"><path d="M12 6v12M6 12h12"/></svg>';
   // Portal column: auto = a JoolzApp app (shown by itself), locked = owner-only tool (Admin folder), on / off = any other app: tap to add its tile to the JoolzApp Store or hide it.
@@ -66,10 +66,10 @@
   // One list per group, full width (no side-by-side grid).
   function listHtml(apps) { return tableHtml(apps); }
   function tableHtml(apps) {
-    return '<div class="card tw"><table><thead><tr><th class="app">App</th><th class="pt">Port</th><th class="pc">Portal</th><th class="pc">Login</th>' + COLS.map(function (c) { return "<th>" + c[1] + "</th>"; }).join("") + "</tr></thead><tbody>" +
+    return '<div class="card tw"><table class="rt"><thead><tr><th class="app">App</th><th class="pt">Port</th><th class="pc">Portal</th><th class="pc">Login</th>' + COLS.map(function (c) { return "<th>" + c[1] + "</th>"; }).join("") + "</tr></thead><tbody>" +
       apps.map(function (a) {
         var open = !!S.open[a.id];
-        return '<tr class="ar' + (open ? " open" : "") + '" data-id="' + esc(a.id) + '" tabindex="0" role="button" aria-expanded="' + open + '"><th scope="row" class="app"><b>' + esc(a.name || a.id) + '</b></th><td class="pt mono">' + esc(a.port) + "</td>" + portalCell(a) + loginCell(a) + COLS.map(function (c) { return cell(a, c[0]); }).join("") + "</tr>" + (open ? detail(a, COLS.length + 4) : "");
+        return '<tr class="ar' + (open ? " open" : "") + '" data-id="' + esc(a.id) + '" tabindex="0" role="button" aria-expanded="' + open + '"><th scope="row" class="app"><b>' + esc(a.name || a.id) + '</b><small class="pn">' + esc(a.port) + '</small></th><td class="pt mono">' + esc(a.port) + "</td>" + portalCell(a) + loginCell(a) + COLS.map(function (c) { return cell(a, c[0]); }).join("") + "</tr>" + (open ? detail(a, COLS.length + 4) : "");
       }).join("") + "</tbody></table></div>";
   }
   function problems(r) { var out = []; r.apps.forEach(function (a) { var l = a.routes.filter(function (x) { return x.state === "down" && !x.ignored; }).map(function (x) { return x.label; }); if (l.length) out.push({ name: a.name || a.id, routes: l }); }); return out; }
@@ -99,7 +99,7 @@
     }).join("");
     return '<div class="card"><div class="row"><b>TSDProxy</b><span class="muted small">' + esc(ver ? "version " + ver : "version not reported") + (c.image ? " · " + esc(c.image) + (c.imageId ? " (" + esc(c.imageId) + ")" : "") : "") + '</span></div><div class="row"><span class="chip ' + ctl[0] + '">Control</span> <span class="small">' + esc(ctl[1]) + "</span></div>" + (upd ? '<div class="row">' + upd + "</div>" : "") + last +
       (t.write && t.write.ok === false ? '<div class="small attn">' + esc(t.write.error) + "</div>" : "") +
-      '<p class="muted small">Auto-update and Update now are in App Updater. TSDProxy\'s own dashboard (proxy cards with Pause and Restart) only answers on the Umbrel itself, at port 8088; it is not published on your network.</p></div>' +
+      '<div class="row"><button class="btn" id="tsdrestart">Restart TSDProxy now</button><span class="muted small">Services Manager restarts it within a minute; Tailscale names are unreachable for a few seconds.</span></div><p class="muted small">Auto-update and Update now are in App Updater. TSDProxy\'s own dashboard (proxy cards with Pause and Restart) only answers on the Umbrel itself, at port 8088; it is not published on your network.</p></div>' +
       namesHtml() + '<div class="group"><h2>Proxies</h2><div class="card tw">' + (rows ? "<table><thead><tr><th class=\"app\">Proxy</th><th>State</th><th></th></tr></thead><tbody>" + rows + "</tbody></table>" : '<div class="muted small">No proxies reported yet.</div>') + '</div></div><p><button class="btn" id="feat">Port Master features: now and proposed</button></p>';
   }
   /* ---------- Tailscale names (created, changed and fixed by Port Master) ---------- */
@@ -162,6 +162,7 @@
       $("#list").innerHTML = tsdHtml(); $("#clash").innerHTML = "";
       document.querySelectorAll("[data-tab]").forEach(function (b) { b.setAttribute("aria-selected", b.dataset.tab === "tsd" ? "true" : "false"); });
       var f = $("#feat"); if (f) f.onclick = featuresDialog;
+      var rb = $("#tsdrestart"); if (rb) rb.onclick = function () { if (!confirm("Restart TSDProxy now? Tailscale names stop answering for a few seconds.")) return; rb.disabled = true; call("POST", "api/tsdproxy/restart").then(function () { toast("Restart requested, Services Manager will restart TSDProxy shortly"); }).catch(function (e) { toast(e.message || "Could not request the restart"); }).then(function () { setTimeout(function () { rb.disabled = false; }, 8000); }); };
       var q = function (sel, fn) { $("#list").querySelectorAll(sel).forEach(fn); }, row = function (id) { return S.names.rows.filter(function (x) { return x.appId === id; })[0]; }, names = function (b, body, msg) { b.disabled = true; call("POST", "api/names", body).then(function (j) { take(j); render(); toast(msg); }).catch(function (e) { b.disabled = false; toast(e.message); }); };
       q(".nm", function (b) { b.onclick = function () { nameDialog(row(b.dataset.a)); }; }); q(".nr", function (b) { b.onclick = function () { names(b, { op: "remove", appId: b.dataset.a }, "Name removed"); }; });
       $("#list").querySelectorAll(".px").forEach(function (b) { b.onclick = function () { b.disabled = true; call("POST", "api/proxy", { name: b.dataset.n, paused: b.dataset.p === "1" }).then(function (j) { take(j); render(); toast(b.dataset.p === "1" ? "Pausing (takes up to 15 s)" : "Resuming (takes up to 15 s)"); setTimeout(function () { load().catch(function () {}); }, 17000); }).catch(function (e) { toast(e.message); render(); }); }; });

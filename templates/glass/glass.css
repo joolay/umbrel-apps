@@ -53,9 +53,9 @@ body{margin:0;min-height:100vh;min-height:100dvh;overflow-x:hidden;overflow-x:cl
   font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--text);
   -webkit-font-smoothing:antialiased;
   padding:var(--safe-t) var(--safe-r) var(--safe-b) var(--safe-l);
-  background:radial-gradient(60vmax 45vmax at 12% 8%,var(--g1),transparent 60%),
-    radial-gradient(55vmax 45vmax at 92% 18%,var(--g2),transparent 60%),
-    radial-gradient(60vmax 50vmax at 50% 105%,var(--g3),transparent 60%),var(--bg);
+  background:radial-gradient(min(60vmax,760px) min(45vmax,560px) at 12% 8%,var(--g1),transparent 60%),
+    radial-gradient(min(55vmax,700px) min(45vmax,560px) at 92% 18%,var(--g2),transparent 60%),
+    radial-gradient(min(60vmax,760px) min(50vmax,620px) at 50% 105%,var(--g3),transparent 60%),var(--bg);
   background-attachment:fixed}
 img,svg,video{max-width:100%;height:auto}
 a{color:var(--accent)}
