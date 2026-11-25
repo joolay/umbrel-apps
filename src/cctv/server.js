@@ -26,8 +26,10 @@ const streams = createStreams({
 });
 
 /* ---------- who may open the app ---------- */
+const ADMIN_ONLY = process.env.ADMIN_ONLY === "1";   // admin-only app: every account that is not an admin is refused, whatever access it was granted
 function gateOf(u) {
   if (u.isAdmin) return { ok: true };
+  if (ADMIN_ONLY) return { ok: false, reason: "admin_only", message: "JoolzCCTV is for the admin only." };
   if (u.guard && u.guard.minor && !u.guard.approved) return { ok: false, reason: "guardian_pending", message: "Waiting for approval of your account. Ask a parent or guardian to approve you on the JoolzApp dashboard (Portal Admin), or wait for an admin. Then check again here." };
   if (!u.portal) return u.access ? { ok: true } : { ok: false, reason: "no_access", message: "The admin hasn't opened JoolzCCTV to you yet. Ask them to give you access, then check again." };
   const a = u.portal.app;

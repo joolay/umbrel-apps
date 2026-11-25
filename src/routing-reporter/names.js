@@ -15,7 +15,7 @@ const RESERVED = new Set(['tsdproxy', 'umbrel', 'localhost']);
 // What our own apps carried in their compose labels before Port Master took the names over (1.10.0): their name, the host port TSDProxy points at and whether the name is public (Funnel).
 // Used when such an app has no name any more, so it comes back under the SAME address with the same port and visibility.
 const SEED = {
-  'joolay-cctv': { name: 'cctv', port: 3903, funnel: true }, 'joolay-diner-bell': { name: 'diner-bell', port: 3894, funnel: true }, 'joolay-gatekeeper': { name: 'gatekeeper', port: 3921, funnel: false },
+  'joolay-cctv': { name: 'cctv', port: 3903, funnel: false }, 'joolay-jolly-grocer': { name: 'jolly-grocer', port: 3896, funnel: true }, 'joolay-diner-bell': { name: 'diner-bell', port: 3894, funnel: true }, 'joolay-gatekeeper': { name: 'gatekeeper', port: 3921, funnel: false },
   'joolay-joolztv': { name: 'joolztv', port: 3901, funnel: true }, 'joolay-listify': { name: 'listify', port: 3887, funnel: true }, 'joolay-portal-admin': { name: 'portaladmin', port: 3909, funnel: false },
   'joolay-portal': { name: 'joolzapp', port: 3886, funnel: true }, 'joolay-project-tracker': { name: 'project-tracker', port: 3916, funnel: true },
   'joolay-routing-reporter': { name: 'port-master', port: 3907, funnel: false }, 'joolay-shutterworth': { name: 'shutterworth', port: 3882, funnel: true },

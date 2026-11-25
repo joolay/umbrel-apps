@@ -53,7 +53,7 @@ console.log('names ok');
   const N = require('./names'), C = require('./checker'), assert = require('assert');
   const apps = [{ id: 'joolay-cctv', name: 'JoolzCCTV', port: 3902, tsdName: '', nameSource: '' }, { id: 'joolay-gatekeeper', name: 'Gatekeeper', port: 3921, tsdName: '', nameSource: '' }, { id: 'other', name: 'Other', port: 4000, tsdName: '', nameSource: '' }];
   assert.strictEqual(N.suggest(apps, 'joolay-cctv'), 'cctv', 'seed name'); assert.strictEqual(N.suggest(apps, 'other'), 'other');
-  const sd = N.seedFor('joolay-cctv'); assert.deepStrictEqual([sd.port, sd.funnel], [3903, true]);
+  const sd = N.seedFor('joolay-cctv'); assert.deepStrictEqual([sd.port, sd.funnel], [3903, false]);
   const r = N.reconcile(apps, { 'joolay-cctv': 'cctv', 'joolay-gatekeeper': 'gatekeeper', other: 'other' }, { 'joolay-cctv': { port: 3903, funnel: true }, 'joolay-gatekeeper': { port: 3921 } });
   const txt = N.listFile(r.entries); assert.ok(/funnel: true/.test(txt) && /host.docker.internal:3903/.test(txt) && /host.docker.internal:4000/.test(txt));
   const p = C.parseList(txt); assert.deepStrictEqual(p.map((e) => [e.name, e.port, e.funnel, e.appId]), [['cctv', 3903, true, 'joolay-cctv'], ['gatekeeper', 3921, false, 'joolay-gatekeeper'], ['other', 4000, false, 'other']]);

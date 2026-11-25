@@ -12,11 +12,16 @@ services:
       PROXY_AUTH_ADD: "false"
 
   web:
-    image: ghcr.io/joolay/jolly-grocer:1.4.1
+    image: ghcr.io/joolay/jolly-grocer:1.4.3
     restart: on-failure
     stop_grace_period: 1m
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    # Public address https://jolly-grocer.<tailnet>.ts.net via TSDProxy + Funnel (24/11/2026 decision: every app except the admin tools is public).
+    # Safe to publish: the app locks itself behind the JoolzApp account. Host port 3896 gives it the LAN / Tailscale-address routes like the other apps.
+    ports:
+      - "3896:3897"
+    # The Tailscale name is kept by Port Master since 1.4.3 (TSDProxy tab); this app publishes its port for it.
     volumes:
       - ${APP_DATA_DIR}/data:/data
     environment:
