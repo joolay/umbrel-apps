@@ -12,7 +12,7 @@ services:
       PROXY_AUTH_ADD: "false"
 
   web:
-    image: ghcr.io/joolay/listify:1.1.1
+    image: ghcr.io/joolay/listify:1.1.2
     restart: on-failure
     stop_grace_period: 1m
     extra_hosts:
@@ -22,10 +22,7 @@ services:
     ports:
       # (was 3898, which clashed with App Updater's Umbrel port and stopped whichever of the two started second)
       - "3887:3895"
-    labels:
-      tsdproxy.enable: "true"
-      tsdproxy.name: "listify"
-      tsdproxy.port.1: "443/https:3887/http, no_autodetect, tailscale_funnel"
+    # The Tailscale name (and Funnel, if public) is kept by Port Master since 1.1.2 (TSDProxy tab); this app publishes its port for it.
     volumes:
       - ${APP_DATA_DIR}/data:/data
     environment:

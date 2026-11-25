@@ -92,3 +92,5 @@ table.rt thead th:not(.app),table.rt td{width:auto;padding-left:2px;padding-righ
 table.rt thead th.pt,table.rt thead th.pc{width:auto}
 @media (min-width:700px){table.rt thead th.app,table.rt tbody th.app{width:22%}}
 @media (max-width:699px){table.rt thead th.app,table.rt tbody th.app{width:31%}}
+
+dialog label.ck{display:flex;align-items:center;gap:8px;color:var(--text)}dialog label.ck input{width:auto}

@@ -2,7 +2,7 @@ manifestVersion: 1
 id: joolay-shutterworth
 category: files
 name: ShutterWorth
-version: "1.8.1"
+version: "1.8.2"
 tagline: Photograph your belongings and build an insurance inventory
 description: >-
   Photograph your belongings and build an insurance inventory with replacement and depreciated values.

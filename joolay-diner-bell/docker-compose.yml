@@ -11,7 +11,7 @@ services:
       PROXY_AUTH_ADD: "false"
 
   web:
-    image: ghcr.io/joolay/diner-bell:2.1.1
+    image: ghcr.io/joolay/diner-bell:2.1.2
     restart: on-failure
     stop_grace_period: 1m
     # Lets the container reach the PocketBase app (port 5400) published on this Umbrel.
@@ -21,10 +21,7 @@ services:
     # behind the JoolzApp account, so publishing it directly is safe.
     ports:
       - "3894:3893"
-    labels:
-      tsdproxy.enable: "true"
-      tsdproxy.name: "diner-bell"
-      tsdproxy.port.1: "443/https:3894/http, no_autodetect, tailscale_funnel"
+    # The Tailscale name (and Funnel, if public) is kept by Port Master since 2.1.2 (TSDProxy tab); this app publishes its port for it.
     volumes:
       - ${APP_DATA_DIR}/data:/data
     environment:

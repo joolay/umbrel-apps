@@ -2,7 +2,7 @@ manifestVersion: 1
 id: joolay-listify
 category: files
 name: Listify
-version: "1.1.1"
+version: "1.1.2"
 tagline: Checklists that follow your JoolzApp account
 description: >-
   Listify keeps simple checklists: several lists, dates, progress, swipe to delete, reorder, and a one-tap copy of the

@@ -82,7 +82,13 @@ const C = require('./checker'), { clean } = require('./server');
   require('fs').writeFileSync(dir + '/app-a/umbrel-app.yml', 'id: app-a\nname: A\nversion: "1"\nport: 4101\n'); require('fs').writeFileSync(dir + '/app-a/docker-compose.yml', 'services:\n  web:\n    labels:\n      tsdproxy.enable: "true"\n      tsdproxy.name: "app-a"\n');
   let st = 'Running'; const dnsFail = async (u) => (u.includes('ts.net') ? { ok: false, status: 0, ms: 3, error: 'name not found (DNS)' } : { ok: true, status: 200, ms: 3, error: '' });
   const mon = C.makeMonitor({ dir, getConfig: () => ({ lanHost: 'h', tailscaleIp: '1.2.3.4', tailnet: 'x.ts.net', intervalMin: 5 }), probeImpl: dnsFail, proxyStatus: () => st });
-  let r = await mon.run(); let n = r.apps[0].routes.find((x) => x.key === 'name'); assert.ok(n, 'name route exists'); assert.strictEqual(n.state, 'up', 'Running in TSDProxy: not down');
+  let r = await mon.run(); let n = r.apps[0].routes.find((x) => x.key === 'name'); assert.ok(n, 'name route exists'); assert.strictEqual(n.state, 'up', 'Running in TSDProxy: not down'); assert.strictEqual(n.via, 'tsdproxy', 'and it says so');
   st = 'Paused'; r = await mon.run(); r = await mon.run(); n = r.apps[0].routes.find((x) => x.key === 'name'); assert.strictEqual(n.state, 'down', 'a paused proxy still shows down');
   console.log('tailnet name fallback ok');
 })().catch((e) => { console.error(e); process.exit(1); });
+
+(() => { const C2 = require('./checker'); const tls = require('tls'); assert.ok(typeof C2.probe === 'function');
+  // a self-signed https server must be reported as a certificate problem, not a raw message
+  const https = require('https'), { execSync } = require('child_process'); let key, cert; try { const d = require('fs').mkdtempSync(require('os').tmpdir() + '/pmc-'); execSync(`openssl req -x509 -newkey rsa:2048 -nodes -keyout ${d}/k.pem -out ${d}/c.pem -days 1 -subj /CN=localhost 2>/dev/null`); key = require('fs').readFileSync(d + '/k.pem'); cert = require('fs').readFileSync(d + '/c.pem'); } catch { console.log('certificate label test skipped (no openssl)'); return; }
+  const s = https.createServer({ key, cert }, (q, r) => r.end('x')).listen(0, '127.0.0.1', async () => { const r = await C2.probe('https://127.0.0.1:' + s.address().port + '/'); s.close(); assert.strictEqual(r.ok, false); assert.ok(/certificate/.test(r.error), r.error); console.log('certificate label ok'); });
+})();

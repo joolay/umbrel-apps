@@ -2,7 +2,7 @@ manifestVersion: 1
 id: joolay-gatekeeper
 category: developer
 name: Gatekeeper
-version: "1.0.0"
+version: "1.0.1"
 tagline: One sign-in for every app
 description: >-
   Puts a JoolzApp sign-in in front of the apps on this Umbrel. A protected app's address goes through Gatekeeper, which checks the
@@ -18,7 +18,7 @@ gallery: []
 path: ""
 defaultUsername: ""
 defaultPassword: ""
-releaseNotes: "First release: sign-in with the JoolzApp account, per-app access from Portal Admin, admin-only apps, WebSocket support, and a page where the admin lists the protected apps. Runs beside the current routes, so nothing changes until a name is pointed at it."
+releaseNotes: "Changed: the Tailscale name gatekeeper (tailnet only) is now looked after by Port Master instead of this app's own settings, so you can rename or remove it in Port Master. The address stays the same and may be unreachable for about a minute while the update installs. Before: First release: sign-in with the JoolzApp account, per-app access from Portal Admin, admin-only apps, WebSocket support, and a page where the admin lists the protected apps. Runs beside the current routes, so nothing changes until a name is pointed at it."
 submitter: joolay
 submission: https://github.com/joolay/umbrel-apps
 icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-gatekeeper/icon.svg

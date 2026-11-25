@@ -75,12 +75,14 @@ function resolveLocal(host) {
 // Apps that are not ours can't carry TSDProxy labels (Umbrel rewrites their compose files), so Portal Admin publishes them through a TSDProxy list file
 // (joolz-published.yaml: "<name>:" then a target http://host:<port>). Returns [{ name, port }] (tailnet only: lists written by Portal Admin never use Funnel).
 function parseList(text) {
-  const out = []; let name = '';
+  const out = []; let cur = null, app = '';
   for (const line of String(text || '').split(/\r?\n/)) {
-    const n = /^([a-z0-9-]{1,63}):\s*$/i.exec(line); if (n) { name = n[1].toLowerCase(); continue; }
-    const t = /^\s*-\s*https?:\/\/[^\s:/]+:(\d{2,5})\/?\s*$/.exec(line); if (t && name) out.push({ name, port: Number(t[1]), funnel: false });
+    const a = /^#\s*app:\s*(\S+)\s*$/.exec(line); if (a) { app = a[1]; continue; }
+    const n = /^([a-z0-9-]{1,63}):\s*$/i.exec(line); if (n) { cur = { name: n[1].toLowerCase(), port: 0, funnel: false }; if (app) cur.appId = app; app = ''; out.push(cur); continue; }
+    const t = /^\s*-\s*https?:\/\/[^\s:/]+:(\d{2,5})\/?\s*$/.exec(line); if (t && cur && !cur.port) { cur.port = Number(t[1]); continue; }
+    if (cur && /^\s+funnel:\s*true\s*$/i.test(line)) cur.funnel = true;
   }
-  return out;
+  return out.filter((e) => e.port);
 }
 // listFile: one path (apps Portal Admin published) or [{ file, source }] ("list" = Portal Admin's list, "names" = the names Port Master gives, see names.js).
 function discover(dir, listFile) {
@@ -91,8 +93,8 @@ function discover(dir, listFile) {
     let man; try { man = parseManifest(fs.readFileSync(path.join(dir, d, 'umbrel-app.yml'), 'utf8')); } catch { continue; }
     if (!man.id || !man.port) continue;
     let comp = { tsdproxy: null, hostPorts: [], hidden: false }; try { comp = parseCompose(fs.readFileSync(path.join(dir, d, 'docker-compose.yml'), 'utf8')); } catch { /* no compose: LAN and Tailscale only */ }
-    const via = comp.tsdproxy ? null : listed.find((l) => l.port === man.port);
-    out.push({ ...man, joolzapp: /^joolay-/.test(man.id), tsdproxy: comp.tsdproxy || (via ? { name: via.name, funnel: false } : null), nameSource: comp.tsdproxy ? 'label' : via ? via.source : '', hostPorts: comp.hostPorts, hidden: !!comp.hidden });
+    const via = comp.tsdproxy ? null : listed.find((l) => l.appId ? l.appId === man.id : l.port === man.port);
+    out.push({ ...man, joolzapp: /^joolay-/.test(man.id), tsdproxy: comp.tsdproxy || (via ? { name: via.name, funnel: !!via.funnel } : null), nameSource: comp.tsdproxy ? 'label' : via ? via.source : '', hostPorts: comp.hostPorts, hidden: !!comp.hidden });
   }
   return out;
 }
@@ -139,7 +141,10 @@ function fixHint(app, route, siblings, cfg) {
   if (!anyUp && route.key !== 'lan') steps.push('Every route of this app is failing, so the app is most likely stopped.');
   return steps;
 }
-const FRIENDLY = { ECONNREFUSED: 'connection refused (nothing listening)', ETIMEDOUT: 'timed out', UND_ERR_CONNECT_TIMEOUT: 'timed out', EHOSTUNREACH: 'host unreachable', ENETUNREACH: 'network unreachable', ENOTFOUND: 'name not found (DNS)', LOCALNAME: 'the .local name did not resolve (mDNS/Avahi), the IP address may still work', ECONNRESET: 'connection reset', CERT_HAS_EXPIRED: 'certificate expired', DEPTH_ZERO_SELF_SIGNED_CERT: 'certificate not trusted', UNABLE_TO_VERIFY_LEAF_SIGNATURE: 'certificate not trusted' };
+const CERT = { CERT_HAS_EXPIRED: 'the certificate has expired', CERT_NOT_YET_VALID: 'the certificate is not valid yet', DEPTH_ZERO_SELF_SIGNED_CERT: 'self-signed certificate', SELF_SIGNED_CERT_IN_CHAIN: 'self-signed certificate in the chain',
+  UNABLE_TO_VERIFY_LEAF_SIGNATURE: 'the certificate cannot be verified', UNABLE_TO_GET_ISSUER_CERT_LOCALLY: 'the certificate cannot be verified', ERR_TLS_CERT_ALTNAME_INVALID: 'the certificate is for a different name', ERR_SSL_TLSV1_ALERT_INTERNAL_ERROR: 'the server could not start a secure connection (no certificate yet?)',
+  ERR_SSL_WRONG_VERSION_NUMBER: 'the address answers without https', EPROTO: 'the secure (https) handshake failed' };
+const FRIENDLY = { ...Object.fromEntries(Object.entries(CERT).map(([k, v]) => [k, 'certificate problem: ' + v])), ECONNREFUSED: 'connection refused (nothing listening)', ETIMEDOUT: 'timed out', UND_ERR_CONNECT_TIMEOUT: 'timed out', EHOSTUNREACH: 'host unreachable', ENETUNREACH: 'network unreachable', ENOTFOUND: 'name not found (DNS)', LOCALNAME: 'the .local name did not resolve (mDNS/Avahi), the IP address may still work', ECONNRESET: 'connection reset', CERT_HAS_EXPIRED: 'certificate expired', DEPTH_ZERO_SELF_SIGNED_CERT: 'certificate not trusted', UNABLE_TO_VERIFY_LEAF_SIGNATURE: 'certificate not trusted' };
 // A fresh connection every time (agent: false), so a pooled keep-alive connection can never make a dead app look alive.
 async function probe(url, { timeoutMs = 8000, now = Date.now, resolver = resolveLocal, tailnetResolver = resolveTailnet } = {}) {
   const t0 = now(), mod = /^https:/i.test(url) ? require('https') : require('http');
@@ -191,7 +196,7 @@ function makeMonitor({ dir, listFile, getConfig, probeImpl = probe, now = Date.n
         if (res.ok) { m.fails = 0; if (m.state !== 'up') { m.state = 'up'; m.since = t; } }
         else { m.fails++; if (m.fails >= 2 && m.state !== 'down') { m.state = 'down'; m.since = t; } }
         mem.set(k, m);
-        out[j.i].routes.push({ key: j.r.key, label: j.r.label, url: j.r.url, openUrl: openUrl(j.r, cfg), state: m.state === 'unknown' ? (res.ok ? 'up' : 'checking') : m.state === 'up' && !res.ok ? 'up' : m.state, status: res.status, ms: res.ms, error: res.ok ? '' : res.error, since: m.since, checkedAt: t });
+        out[j.i].routes.push({ key: j.r.key, label: j.r.label, url: j.r.url, openUrl: openUrl(j.r, cfg), state: m.state === 'unknown' ? (res.ok ? 'up' : 'checking') : m.state === 'up' && !res.ok ? 'up' : m.state, status: res.status, ms: res.ms, error: res.ok ? '' : res.error, via: res.viaProxy ? 'tsdproxy' : '', since: m.since, checkedAt: t });
       }
     }));
     const ORDER = { lan: 0, local: 1, tailscale: 2, name: 3, public: 4 };
@@ -208,7 +213,7 @@ function makeMonitor({ dir, listFile, getConfig, probeImpl = probe, now = Date.n
     if (!res.ok && key === 'name' && res.status === 0 && /name not found/.test(res.error || '') && /^running$/i.test(proxyStatus(a.tsdName) || '')) res = { ms: res.ms, ok: true, status: 0, error: '', viaProxy: true };
     const m = mem.get(k) || { state: 'unknown', fails: 0, since: t };
     if (res.ok) { m.fails = 0; if (m.state !== 'up') { m.state = 'up'; m.since = t; } } else { m.fails = Math.max(2, m.fails + 1); if (m.state !== 'down') { m.state = 'down'; m.since = t; } }
-    mem.set(k, m); Object.assign(x, { state: m.state, status: res.status, ms: res.ms, error: res.ok ? '' : res.error, since: m.since, checkedAt: t }); delete x.fix;
+    mem.set(k, m); Object.assign(x, { state: m.state, status: res.status, ms: res.ms, via: res.viaProxy ? 'tsdproxy' : '', error: res.ok ? '' : res.error, since: m.since, checkedAt: t }); delete x.fix;
     for (const r of a.routes) { delete r.fix; if (r.state === 'down') r.fix = fixHint(a, r, a.routes, cfg); }
     return { app: a, route: x };
   }

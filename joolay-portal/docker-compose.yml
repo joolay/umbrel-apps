@@ -11,7 +11,7 @@ services:
       PROXY_AUTH_ADD: "false"
 
   web:
-    image: ghcr.io/joolay/portal-admin:0.42.2
+    image: ghcr.io/joolay/portal-admin:0.42.3
     command: ["node", "portal.js"]
     restart: on-failure
     stop_grace_period: 10s
@@ -22,10 +22,7 @@ services:
     # home network, http://<umbrel>:3886. TSDProxy reads the labels below.
     ports:
       - "3886:3000"
-    labels:
-      tsdproxy.enable: "true"
-      tsdproxy.name: "joolzapp"
-      tsdproxy.port.1: "443/https:3886/http, no_autodetect, tailscale_funnel"
+    # The Tailscale name (and Funnel, if public) is kept by Port Master since 0.42.3 (TSDProxy tab); this app publishes its port for it.
     volumes:
       # Holds one small file, pocketbase.env, with this app's Portal API key. Portal Admin writes it by itself.
       - ${APP_DATA_DIR}/data:/data

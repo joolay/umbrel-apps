@@ -63,12 +63,13 @@ const atomic = (f, txt, mode) => { fs.writeFileSync(f + '.tmp', txt, mode ? { mo
 // Makes the list file match what we want. Returns true when the file or TSDProxy's settings changed (the caller then checks again so the new names show up).
 function syncNames() {
   const apps = monitor.last && monitor.last.apps; if (!apps) return false;
-  const owned = { ...(config.names || {}) };
+  const owned = { ...(config.names || {}) }, opts = { ...(config.nameOpts || {}) };
   const first = !config.namesAdopted;
   if (first) { for (const a of apps) if (a.nameSource === 'names' && a.tsdName && !owned[a.id]) owned[a.id] = a.tsdName; config.namesAdopted = true; }
-  if (config.autoNames !== false) for (const a of apps) if (!a.tsdName && !owned[a.id] && !(config.noNames || {})[a.id]) { const n = names.suggest(apps, a.id); if (n) owned[a.id] = n; }
-  const r = names.reconcile(apps, owned);
-  if (JSON.stringify(r.owned) !== JSON.stringify(config.names || {}) || first) { if (Object.keys(r.owned).length) config.names = r.owned; else delete config.names; saveConfig(); }
+  if (config.autoNames !== false) for (const a of apps) if (!a.tsdName && !owned[a.id] && !(config.noNames || {})[a.id]) { const n = names.suggest(apps, a.id), sd = names.seedFor(a.id); if (n) { owned[a.id] = n; if (sd) opts[a.id] = { port: sd.port, funnel: sd.funnel }; } }
+  const r = names.reconcile(apps, owned, opts);
+  for (const id of Object.keys(opts)) if (!r.owned[id]) delete opts[id];
+  if (JSON.stringify(r.owned) !== JSON.stringify(config.names || {}) || JSON.stringify(opts) !== JSON.stringify(config.nameOpts || {}) || first) { if (Object.keys(r.owned).length) config.names = r.owned; else delete config.names; if (Object.keys(opts).length) config.nameOpts = opts; else delete config.nameOpts; saveConfig(); }
   let changed = false, error = '', declared = null;
   const text = names.listFile(r.entries), cur = readText(NAMES_FILE);
   try {
@@ -85,7 +86,7 @@ function syncNames() {
   return changed;
 }
 const namesInfo = () => { const apps = monitor.last ? monitor.last.apps : [], ts = tsdStatus(), live = !!(ts && ts.at && Date.now() - ts.at < 90e3 && ts.api && ts.api.reachable);
-  return { rows: names.review(apps, config.names || {}, live ? ts.proxies || [] : null), auto: config.autoNames !== false, write: namesState, owned: Object.keys(config.names || {}).length }; };
+  return { rows: names.review(apps, config.names || {}, live ? ts.proxies || [] : null, config.nameOpts || {}), auto: config.autoNames !== false, write: namesState, owned: Object.keys(config.names || {}).length }; };
 // The hidden list of official Umbrel store ports (see official.js): fetched about once a week, kept in the data folder, used only to find clashes.
 const registry = makeRegistry({ file: path.join(DATA_DIR, 'official-ports.json'), url: process.env.OFFICIAL_STORE_URL || undefined });
 const officialInfo = () => ({ count: registry.count, at: registry.at, error: registry.error });
@@ -171,19 +172,22 @@ const server = http.createServer(async (req, res) => {
     if (p === '/api/names' && req.method === 'GET') return send(res, 200, namesInfo());
     if (p === '/api/names' && req.method === 'POST') {       // create, rename, remove or auto: the names Port Master keeps in TSDProxy's list
       let b; try { b = JSON.parse((await body(req)) || '{}'); } catch { return send(res, 400, { message: 'Bad request.' }); }
-      const apps = monitor.last ? monitor.last.apps : [], op = String(b.op || ''), id = String(b.appId || ''), owned = { ...(config.names || {}) };
+      const apps = monitor.last ? monitor.last.apps : [], op = String(b.op || ''), id = String(b.appId || ''), owned = { ...(config.names || {}) }, opts = { ...(config.nameOpts || {}) };
       try {
         if (op === 'create' || op === 'rename') {
           const a = apps.find((x) => x.id === id); if (!a) return send(res, 404, { message: 'That app is not in the latest check.' });
           if (op === 'create' && a.tsdName) return send(res, 400, { message: (a.name || a.id) + ' already has the name ' + a.tsdName + '.' });
           if (config.noNames) { delete config.noNames[id]; if (!Object.keys(config.noNames).length) delete config.noNames; }
           owned[id] = names.validate(apps, id, b.name !== undefined && String(b.name).trim() ? b.name : names.suggest(apps, id));
-        } else if (op === 'remove') { if (!owned[id]) return send(res, 404, { message: 'Port Master did not give that app a name.' }); delete owned[id]; config.noNames = { ...(config.noNames || {}), [id]: true }; }   // removed by hand: automatic naming leaves it alone
-        else if (op === 'create-all') { delete config.noNames; apps.forEach((a) => { if (!a.tsdName && !owned[a.id]) { const n = names.suggest(apps, a.id); if (n) owned[a.id] = n; } }); }
+          const sd = names.seedFor(id), o = { ...(opts[id] || (op === 'create' && sd ? { port: sd.port, funnel: sd.funnel } : {})) };
+          if (b.funnel !== undefined) o.funnel = !!b.funnel; else if (op === 'create' && sd) o.funnel = sd.funnel;
+          if (o.port || o.funnel) opts[id] = o; else delete opts[id];
+        } else if (op === 'remove') { if (!owned[id]) return send(res, 404, { message: 'Port Master did not give that app a name.' }); delete owned[id]; delete opts[id]; config.noNames = { ...(config.noNames || {}), [id]: true }; }   // removed by hand: automatic naming leaves it alone
+        else if (op === 'create-all') { delete config.noNames; apps.forEach((a) => { if (!a.tsdName && !owned[a.id]) { const n = names.suggest(apps, a.id), sd = names.seedFor(a.id); if (n) { owned[a.id] = n; if (sd) opts[a.id] = { port: sd.port, funnel: sd.funnel }; } } }); }
         else if (op === 'auto') config.autoNames = !!b.on;
         else return send(res, 400, { message: 'Unknown change.' });
       } catch (e) { return send(res, e.status || 400, { message: e.message }); }
-      if (Object.keys(owned).length) config.names = owned; else delete config.names; config.namesAdopted = true; saveConfig();
+      if (Object.keys(owned).length) config.names = owned; else delete config.names; if (Object.keys(opts).length) config.nameOpts = opts; else delete config.nameOpts; config.namesAdopted = true; saveConfig();
       const rep = await checkNow(); return send(res, 200, { report: rep, names: namesInfo(), tsd: tsdInfo(), portal: { linked: !!portalLink(), ...reportState } });
     }
     if ((p === '/api/route' || p === '/api/proxy') && req.method === 'POST') {       // a tick (route) or a proxy button: turn a route on or off for real where it can be, else just stop counting it

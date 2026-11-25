@@ -1,6 +1,6 @@
 {
   "name": "project-tracker",
-  "version": "1.9.1",
+  "version": "1.9.2",
   "private": true,
   "description": "Project Pilot: lists of projects with status, priority, archive and a recycle bin, signed in with the JoolzApp account.",
   "main": "server.js",
