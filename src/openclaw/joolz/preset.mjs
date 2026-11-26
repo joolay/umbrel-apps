@@ -7,12 +7,27 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import os from 'node:os';
 import { createRequire } from 'node:module';
 
 const list = (s) => String(s || '').split(',').map((x) => x.trim()).filter(Boolean);
 const host = (s) => String(s || '').trim().toLowerCase().replace(/^https?:\/\//, '').replace(/[/.]+$/, '');
 
-export function settings(env) {
+// The networks this container is attached to (its own Docker network, where Umbrel's app proxy lives), as network/prefix. Docker hands out 172.x, then 192.168.x
+// and other ranges as an Umbrel gets more apps, so these are read from the container instead of guessed.
+export function ownNetworks(ifaces = os.networkInterfaces()) {
+  const out = [];
+  for (const list of Object.values(ifaces || {})) for (const a of list || []) {
+    if (a.internal || !(a.family === 'IPv4' || a.family === 4) || !a.netmask) continue;
+    const ip = a.address.split('.').map(Number), m = a.netmask.split('.').map(Number);
+    const prefix = m.reduce((n, o) => n + o.toString(2).replace(/0/g, '').length, 0);
+    if (prefix < 8) continue;   // never trust something as wide as a /7
+    out.push(ip.map((o, i) => o & m[i]).join('.') + '/' + prefix);
+  }
+  return [...new Set(out)];
+}
+
+export function settings(env, ifaces) {
   const port = String(env.APP_PORT || '3927');
   const tailnet = host(env.TAILNET), name = host(env.TS_NAME || 'openclaw'), ip = host(env.TAILSCALE_IP), lan = host(env.LAN_HOST || 'umbrel.local');
   const publicOrigin = tailnet ? `https://${name}.${tailnet}` : '';
@@ -25,8 +40,9 @@ export function settings(env) {
   ].filter(Boolean);
   return {
     publicOrigin,
-    // Same range Umbrel's apps use, plus Docker's default bridge range: that is where TSDProxy and Umbrel's app proxy reach us from. Tailnet-only, never Funnel.
-    trustedProxies: list(env.TRUSTED_PROXIES || '10.21.0.0/16,172.16.0.0/12'),
+    // Umbrel's app proxy (which TSDProxy and the app's port 3927 both go through) reaches us over this container's own network, and nothing else can: the gateway's port is not
+    // published on the host. TRUSTED_PROXIES adds more. Tailnet-only, never Funnel.
+    trustedProxies: [...new Set([...ownNetworks(ifaces), ...list(env.TRUSTED_PROXIES)])],
     allowedOrigins: [...new Set(origins)],
   };
 }

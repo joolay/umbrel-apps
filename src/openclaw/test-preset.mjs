@@ -3,13 +3,17 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { settings, apply, main } from './joolz/preset.mjs';
+import { settings, apply, main, ownNetworks } from './joolz/preset.mjs';
 
 const env = { TAILNET: 'macaw-chroma.ts.net', TS_NAME: 'openclaw', TAILSCALE_IP: '100.118.10.62', LAN_HOST: 'umbrel.local', APP_PORT: '3927' };
-const s = settings(env);
+const ifaces = { lo: [{ address: '127.0.0.1', netmask: '255.0.0.0', family: 'IPv4', internal: true }], eth0: [{ address: '192.168.64.5', netmask: '255.255.240.0', family: 'IPv4', internal: false }, { address: 'fe80::1', netmask: 'ffff:ffff:ffff:ffff::', family: 'IPv6', internal: false }] };
+assert.deepEqual(ownNetworks(ifaces), ['192.168.64.0/20'], 'own network, network address (not host), no loopback, no IPv6');
+assert.deepEqual(ownNetworks({ x: [{ address: '1.2.3.4', netmask: '128.0.0.0', family: 'IPv4', internal: false }] }), [], 'too wide is ignored');
+const s = settings(env, ifaces);
 assert.equal(s.publicOrigin, 'https://openclaw.macaw-chroma.ts.net');
 assert.deepEqual(s.allowedOrigins, ['https://openclaw.macaw-chroma.ts.net', 'http://100.118.10.62:3927', 'http://umbrel.local:3927', 'http://localhost:3927', 'http://127.0.0.1:3927']);
-assert.deepEqual(s.trustedProxies, ['10.21.0.0/16', '172.16.0.0/12']);
+assert.deepEqual(s.trustedProxies, ['192.168.64.0/20']);
+assert.deepEqual(settings({ ...env, TRUSTED_PROXIES: '10.0.0.1' }, ifaces).trustedProxies, ['192.168.64.0/20', '10.0.0.1']);
 // tolerant input: scheme, trailing dot, case, extra origins
 assert.equal(settings({ ...env, TAILNET: 'https://Macaw-Chroma.ts.net.' }).publicOrigin, 'https://openclaw.macaw-chroma.ts.net');
 assert.ok(settings({ ...env, EXTRA_ORIGINS: 'https://a.example, https://b.example' }).allowedOrigins.includes('https://b.example'));

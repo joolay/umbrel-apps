@@ -13,7 +13,7 @@ The build checks out the upstream release tag in `OPENCLAW_REF`, uses upstream's
 Written into `<app data>/data/state/openclaw.json`; everything else in that file is left as OpenClaw or the owner wrote it:
 - `gateway.publicOrigin` = `https://<TS_NAME>.<TAILNET>` (the Tailscale name; TSDProxy ends the TLS, so the Control UI's WebSocket is **wss://**),
 - `gateway.controlUi.allowedOrigins` = that name, `http://<TAILSCALE_IP>:3927` (ws://), `http://<LAN_HOST>:3927` and loopback,
-- `gateway.trustedProxies` = Umbrel's app network and Docker's bridge range (where TSDProxy and Umbrel's proxy reach it from; `TRUSTED_PROXIES` overrides),
+- `gateway.trustedProxies` = the container's own Docker network, read at start (Umbrel's app proxy, which TSDProxy and port 3927 both go through, sits on it; the gateway's port is not published on the host). `TRUSTED_PROXIES` adds more. Without this the gateway answers `proxy_attribution_required`.
 - `gateway.mode=local`, `bind=lan` (inside the container only), `port=18789`, `tailscale.mode=off` (the name is TSDProxy's job, never OpenClaw's own Serve/Funnel).
 The values come from the compose environment (`OPENCLAW_TAILNET`, `OPENCLAW_TS_NAME`, `OPENCLAW_TAILSCALE_IP`, `OPENCLAW_LAN_HOST` override the defaults for this Umbrel). `EXTRA_ORIGINS` adds more.
 A config that is not valid JSON/JSON5 is never overwritten: the container logs why and stops.
@@ -28,7 +28,7 @@ It finds `joolay-openclaw` (or the Umbrel store's `openclaw`) and rewrites a sta
 
 ## Updating OpenClaw
 1. Pick the new upstream tag, put it in `OPENCLAW_REF` (`vYYYY.M.D`).
-2. Bump `version` in `joolay-openclaw/umbrel-app.yml` AND the image tag in its `docker-compose.yml` (version = tag without the `v`), update `releaseNotes`.
+2. Bump `version` in `joolay-openclaw/umbrel-app.yml` AND the image tag in its `docker-compose.yml` (our version is `YYYY.MMDD.n`: the upstream release's date plus our own revision `n`, e.g. `2026.1110.1`; Umbrel only offers an update when it is higher, and the Docker tag is the same string), update `releaseNotes`.
 3. Push on a `claude/...` branch, wait for the green build, merge to `main`. Config and token in the data folder carry over.
 
 ## Test
