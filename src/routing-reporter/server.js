@@ -65,6 +65,8 @@ function syncNames() {
   const apps = monitor.last && monitor.last.apps; if (!apps) return false;
   const owned = { ...(config.names || {}) }, opts = { ...(config.nameOpts || {}) };
   const first = !config.namesAdopted;
+  // 1.10.1, once: apps whose label was removed before Port Master 1.10.0 was running were given a default name, port and visibility. Put our own apps back on what they had before (name, host port, Public).
+  if (config.seedAligned !== 1) { for (const a of apps) { const sd = names.seedFor(a.id); if (sd && owned[a.id]) { owned[a.id] = sd.name; opts[a.id] = { port: sd.port, funnel: sd.funnel }; delete (config.noNames || {})[a.id]; } } config.seedAligned = 1; saveConfig(); }
   if (first) { for (const a of apps) if (a.nameSource === 'names' && a.tsdName && !owned[a.id]) owned[a.id] = a.tsdName; config.namesAdopted = true; }
   if (config.autoNames !== false) for (const a of apps) if (!a.tsdName && !owned[a.id] && !(config.noNames || {})[a.id]) { const n = names.suggest(apps, a.id), sd = names.seedFor(a.id); if (n) { owned[a.id] = n; if (sd) opts[a.id] = { port: sd.port, funnel: sd.funnel }; } }
   const r = names.reconcile(apps, owned, opts);
@@ -83,7 +85,19 @@ function syncNames() {
     }
   } catch (e) { error = "TSDProxy's folder is not writable from Port Master (" + String(e.code || e.message).slice(0, 60) + ')'; }
   namesState = { ok: !error, error, changes: r.changes.slice(0, 20), at: Date.now(), declared };
+  try { autoRestartIfUnregistered(changed); } catch { /* best effort */ }
   return changed;
+}
+// TSDProxy only reads the names list when it starts. When names we wrote are still missing from its proxy list after ~6 minutes, ask Services Manager to restart it (at most 3 tries, 30 minutes apart; a changed list starts over).
+let unregSince = 0, lastAuto = 0, autoTries = 0;
+function autoRestartIfUnregistered(listChanged) {
+  if (listChanged) { autoTries = 0; unregSince = 0; }
+  const bad = namesInfo().rows.filter((x) => x.state === 'unregistered');
+  if (!bad.length) { unregSince = 0; autoTries = 0; return; }
+  const now = Date.now(); if (!unregSince) { unregSince = now; return; }
+  if (now - unregSince < 6 * 60e3 || now - lastAuto < 30 * 60e3 || autoTries >= 3) return;
+  fs.writeFileSync(path.join(TSD_DIR, 'restart-tsdproxy'), new Date(now - 31000).toISOString() + '\n'); lastAuto = now; autoTries++;
+  namesState.note = 'Restarted TSDProxy automatically (try ' + autoTries + ') because ' + bad.length + ' name(s) were not registered: ' + bad.map((x) => x.tsdName).join(', ');
 }
 const namesInfo = () => { const apps = monitor.last ? monitor.last.apps : [], ts = tsdStatus(), live = !!(ts && ts.at && Date.now() - ts.at < 90e3 && ts.api && ts.api.reachable);
   return { rows: names.review(apps, config.names || {}, live ? ts.proxies || [] : null, config.nameOpts || {}), auto: config.autoNames !== false, write: namesState, owned: Object.keys(config.names || {}).length }; };
@@ -131,7 +145,7 @@ const feedPayload = async () => {
   const conflicts = Object.keys(by).filter((p) => by[p].size > 1).map((p) => ({ port: Number(p), apps: [...by[p]] }));
   const t = tsdInfo(), ts = t.status || {};
   return { tsdproxy: { fresh: t.fresh, apiReachable: !!(ts.api && ts.api.reachable), apiError: ts.api && ts.api.error || '', version: ts.api && ts.api.version || ts.container && ts.container.version || '', image: ts.container && ts.container.image || '', updateAvailable: !!(ts.update && ts.update.available), lastUpdate: ts.update && ts.update.last || null, pausedByPortMaster: t.paused, writeError: t.write.error, proxies: (ts.proxies || []).map((p) => ({ name: p.name, status: p.status })) },
-    names: (() => { const n = namesInfo(); return { auto: n.auto, keptByPortMaster: n.owned, withoutName: n.rows.filter((x) => x.state === 'none').length, problems: n.rows.filter((x) => x.state === 'clash' || x.state === 'unregistered').map((x) => ({ app: x.appId, name: x.tsdName, state: x.state })), lastError: n.write.error, fixed: n.write.changes }; })(),
+    names: (() => { const n = namesInfo(); return { auto: n.auto, keptByPortMaster: n.owned, withoutName: n.rows.filter((x) => x.state === 'none').length, problems: n.rows.filter((x) => x.state === 'clash' || x.state === 'unregistered').map((x) => ({ app: x.appId, name: x.tsdName, state: x.state })), lastError: n.write.error, note: n.write.note || '', fixed: n.write.changes }; })(),
     intervalMin: r.intervalMin, config: r.config, reportedToPortalAdmin: reportState.ok, reportError: reportState.error, routesDown: down, portConflicts: conflicts,
     // Clashes with official Umbrel apps (installed or not): the official app keeps the port, the app listed under change should move (suggestedPort is free). The official list itself is not included, only its size.
     portClashes: clashes().map((c) => ({ port: c.port, keep: c.keep.map((p) => ({ id: p.id, source: p.source, installed: p.installed })), change: c.change.map((p) => ({ id: p.id, source: p.source, kind: p.kind, suggestedPort: p.suggestedPort || null })) })), officialPorts: officialInfo(), ports,
