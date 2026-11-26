@@ -55,6 +55,9 @@ special={
  'settings':('#475569','#9aa7bd',line24(GEAR,10,4),['src/portal-admin/public/icons/settings.svg'],None),
 }
 
+# OpenClaw (third-party source built into our store, src/openclaw): a lobster claw. It has no public/ folder of its own, so only the store icon is written.
+special['openclaw']=('#9f1239','#f43f5e',line24('<path d="M12.5 11.5 20 5.2C14.6 2 7.2 3.4 5.2 9.6c-1.6 5 .8 9.6 5.6 10.6 3.8.8 7.2-1 8.8-4.6z"/>',11,4),['joolay-openclaw/icon.svg'],None)
+
 # ---- Portal Admin's admin tools and the shortcut tiles on its home screen (same glass tile as every app) ----
 TOOLS={
  'overview':('#5b8cff','#7c5cf0','<rect x="4" y="4" width="7" height="7" rx="2"/><rect x="13" y="4" width="7" height="7" rx="2"/><rect x="4" y="13" width="7" height="7" rx="2"/><rect x="13" y="13" width="7" height="7" rx="2"/>'),

@@ -38,13 +38,25 @@ jobs:
           ver=$(sed -n 's/^version: *"\{0,1\}\([^"]*\)"\{0,1\} *$/\1/p' "$m" | head -1)
           grep -q "ghcr.io/joolay/${{ matrix.app }}:$ver" "$c" || { echo "::error::$c image tag must equal version $ver"; exit 1; }
           echo "version=$ver" >> "$GITHUB_OUTPUT"
+      # An app that is built from someone else's source (src/<app>/prepare.sh) gets its build context made first: the script prints the
+      # context folder and may print a platforms list in src/<app>/platforms (default amd64 + arm64). See src/openclaw/README.md.
+      - id: prep
+        run: |
+          ctx="src/${{ matrix.app }}"; plat="linux/amd64,linux/arm64"
+          if [ -f "$ctx/prepare.sh" ]; then
+            sh "$ctx/prepare.sh" "$RUNNER_TEMP/${{ matrix.app }}-ctx"
+            ctx="$RUNNER_TEMP/${{ matrix.app }}-ctx"
+          fi
+          [ -f "src/${{ matrix.app }}/platforms" ] && plat=$(tr -d ' \n' < "src/${{ matrix.app }}/platforms")
+          echo "context=$ctx" >> "$GITHUB_OUTPUT"; echo "platforms=$plat" >> "$GITHUB_OUTPUT"
       - uses: docker/setup-qemu-action@v3
+        if: contains(steps.prep.outputs.platforms, 'arm64')
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
         with: { registry: ghcr.io, username: "${{ github.actor }}", password: "${{ secrets.GITHUB_TOKEN }}" }
       - uses: docker/build-push-action@v6
         with:
-          context: src/${{ matrix.app }}
-          platforms: linux/amd64,linux/arm64
+          context: ${{ steps.prep.outputs.context }}
+          platforms: ${{ steps.prep.outputs.platforms }}
           push: true
           tags: ghcr.io/joolay/${{ matrix.app }}:${{ steps.v.outputs.version }}

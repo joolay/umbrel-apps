@@ -1,0 +1,31 @@
+# OpenClaw gateway, built from the upstream source (src/openclaw: prepare.sh + .github/workflows/build-images.yml). Keep the image tag equal to `version` in umbrel-app.yml.
+# Its settings live in <app data>/data/state/openclaw.json; the access settings below are written into it on every start (src/openclaw/joolz/preset.mjs), the rest is left alone.
+services:
+  app_proxy:
+    environment:
+      APP_HOST: joolay-openclaw_web_1
+      APP_PORT: 18789
+      # No Umbrel login in front: OpenClaw's own gateway token and device pairing protect it, and its native clients and WebSockets cannot pass Umbrel's login page.
+      PROXY_AUTH_ADD: "false"
+
+  web:
+    image: ghcr.io/joolay/openclaw:2026.11.10
+    restart: on-failure
+    stop_grace_period: 1m
+    # Starts as root only to hand the data folder to OpenClaw's own `node` user, then drops to it (joolz/start.sh).
+    user: "0:0"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ${APP_DATA_DIR}/data:/data
+    environment:
+      # Where the browser reaches the gateway. The Tailscale name is published by Portal Admin (Changes > "Tailnet address for OpenClaw"), tailnet only, never Funnel.
+      # The https name makes the Control UI's WebSocket wss://; the Tailscale address and the Umbrel's own address are plain http/ws.
+      - TAILNET=${OPENCLAW_TAILNET:-macaw-chroma.ts.net}
+      - TS_NAME=${OPENCLAW_TS_NAME:-openclaw}
+      - TAILSCALE_IP=${OPENCLAW_TAILSCALE_IP:-100.118.10.62}
+      - LAN_HOST=${OPENCLAW_LAN_HOST:-umbrel.local}
+      # This app's own address (umbrel-app.yml `port`), used to build the http origins above.
+      - APP_PORT=3927
+      # Owner-only tool, opened from Umbrel or the Admin folder of the JoolzApp Store: no icon on the normal home screen.
+      - JOOLZAPP_DASHBOARD=hidden

@@ -18,6 +18,11 @@ Everything is managed here; never create a separate repo for a new app.
 Apps backed by PocketBase should read config via the Portal Admin settings (`src/portal-admin`).
 ShutterWorth (`src/shutterworth`) and Portal Admin (`src/portal-admin`) both follow this layout.
 
+## Apps built from someone else's source (OpenClaw)
+Third-party open source apps we want compiled by our own build live in `src/<name>/` like any app, but the folder holds no copy of their code: `prepare.sh <folder>` checks out the upstream release tag pinned in the app's `OPENCLAW_REF` file, adds our `joolz/` startup files and appends our `Dockerfile`
+(a last stage that starts `FROM` upstream's final stage) to upstream's own `Dockerfile`; `.github/workflows/build-images.yml` runs it when it exists and builds only the architectures in `src/<name>/platforms` (default both). OpenClaw (`src/openclaw`, `joolay-openclaw`, port 3927, tailnet only) is the first;
+its Tailscale name is published by Portal Admin's change `014-tsdproxy-published`. Details and the update steps: `src/openclaw/README.md`.
+
 ## JoolzApp Dashboard and Portal Admin: two apps, one image
 The home screen people use is its own store app, `joolay-portal` ("JoolzApp Dashboard"), and it is the one that faces the internet.
 It has no `src/portal` folder: its compose file runs the **Portal Admin image** with `command: ["node", "portal.js"]` (source `src/portal-admin/portal.js`),
