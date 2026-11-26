@@ -1,0 +1,27 @@
+manifestVersion: 1
+id: joolay-gym-guru
+category: files
+name: Gym Guru
+version: "1.0.0"
+tagline: Your camera counts your reps
+description: >-
+  Gym Guru uses your phone's camera to count your reps live while you train. Pick an exercise (bicep curl, shoulder press, lateral raise,
+  push-up, pull-up), prop the phone up and start your set: pose tracking runs on the phone itself, so no video or picture ever leaves it.
+  For machines and exercises that are not on the list, Learn mode watches you do two or three slow reps and then counts that movement.
+  Every set is saved to your JoolzApp account with the weight you used, so your history and settings follow you across devices.
+  The camera needs a secure (https) address, so open Gym Guru through its Tailscale or public address.
+developer: joolay
+website: https://github.com/joolay/umbrel-apps/tree/main/src/gym-guru
+dependencies: []
+repo: https://github.com/joolay/umbrel-apps
+support: https://github.com/joolay/umbrel-apps/issues
+port: 3925
+gallery: []
+path: ""
+defaultUsername: ""
+defaultPassword: ""
+releaseNotes: >-
+  First release: live rep counting for bicep curls, shoulder presses, lateral raises, push-ups and pull-ups, Learn mode for machines, set history saved to your account.
+submitter: joolay
+submission: https://github.com/joolay/umbrel-apps
+icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-gym-guru/icon.svg

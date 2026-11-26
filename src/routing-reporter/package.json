@@ -1,1 +1,1 @@
-{ "name": "routing-reporter", "version": "1.10.2", "private": true, "main": "server.js", "scripts": { "start": "node server.js", "test": "node test-checker.js && node test-clashes.js && node test-feed.js && node test-control.js && node test-names.js && node test-names-flow.js" } }
+{ "name": "routing-reporter", "version": "1.10.3", "private": true, "main": "server.js", "scripts": { "start": "node server.js", "test": "node test-checker.js && node test-clashes.js && node test-feed.js && node test-control.js && node test-names.js && node test-names-flow.js" } }

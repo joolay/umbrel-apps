@@ -1,0 +1,8 @@
+{
+  "id": "install-gym-guru",
+  "title": "Install Gym Guru",
+  "summary": "Adds Gym Guru, the camera rep counter, to your Umbrel. App Updater installs it once umbrelOS lists it.",
+  "ops": [
+    { "op": "install-app", "id": "joolay-gym-guru" }
+  ]
+}

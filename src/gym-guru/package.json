@@ -1,0 +1,9 @@
+{
+  "name": "gym-guru",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Gym Guru: counts reps with the phone's camera, saves workouts to the JoolzApp account.",
+  "main": "server.js",
+  "scripts": { "start": "node server.js", "test": "node test-engine.js && node test-server.js" },
+  "license": "MIT"
+}
