@@ -125,15 +125,13 @@ Copy `install-help.js` (from `src/portal-admin/public/`) and `installbtn.js` nex
 and load both scripts at the end of `<body>` (`install-help.js` first). The icon shows in any normal browser tab, never inside the installed app. On an http address (home network, Tailscale IP) it opens a note saying installing needs the https address. Chromium browsers install in one tap;
 iPhone, iPad, Safari and Firefox get a sheet with the steps for that device. Project Pilot is the first app to use it.
 
-## Connected icon and the Claude link (top bar)
-The connected icon is a pair of **sync ticks** (WhatsApp style): one green tick = recorded to PocketBase, two green ticks = read by all shared parties (second tick amber while only some have read it), grey = saving or on this device only, a red cross = not connected or the save failed (two tightly overlapping ticks, the second one a faint ghost until read; saving pulses grey). Apps that keep data on the account report it with `JZLink.sync({ saved: "saving"|"saved"|"error"|"local", parties, read })`; an app that reports nothing shows one green tick while its server answers. Jolly Grocer is the first app to report.
-
-**Claude link = the same ticks, no separate chain-link icon.** An app with `data-claude` (on the `jz.js` tag) reads `GET api/link` and shows it on the ticks: two green = Claude has read the last change, one green = this app wrote something Claude has not read yet, amber second tick = Claude wrote something the app has not read yet, red cross = the link is broken (a report has not come through).
-
-Copy `linkstatus.js` next to `index.html` and load it last in `<body>`: `<script src="linkstatus.js"></script>` (connected icon only) or `<script src="linkstatus.js" data-claude></script>` (adds the Claude handshake; the app must serve `GET /api/link`, see `src/app-updater/status-feed.js`). Rules and protocol: CLAUDE.md, "Connected icon and Claude handshake".
+## Sync ticks and the Claude link (removed from the template 26/11/2026)
+The WhatsApp-style **sync ticks** (one green tick = recorded to PocketBase, two green = read by all shared parties, amber second tick = only some have read it, red cross = not connected, grey pulsing = saving) and the **Claude link ticks** (`data-claude`, reading `GET api/link`) are no longer in `jz.js`: no app shows them by default.
+`jz.js` still checks that the server answers (it colours the dot on the profile icon) and `JZLink.sync()` / `JZLink.link()` still exist and do nothing, so apps that call them keep working.
+To bring the ticks back in one app: copy `templates/glass/optional/synctick.js` next to its `index.html` and load it last in `<body>` (`<script src="synctick.js"></script>`, or with `data-claude` to add the Claude link). It is the complete old script, including the AI sparkle, so do not load it in an app that also loads the new `jz.js` sparkle without removing one of them.
 
 ## AI sparkle (top bar, apps with AI features)
-A sparkle that breathes and tilts, shown beside the sync ticks only while the AI is working. It is in `jz.js` already; an app with AI features just calls `JZLink.aiWhile(promise)` around the AI request
+A sparkle that breathes and tilts, shown in the top bar only while the AI is working. It is in `jz.js` already; an app with AI features just calls `JZLink.aiWhile(promise)` around the AI request
 (several at once are counted) or `JZLink.ai(true)` / `JZLink.ai(false)`. Nothing to add to the markup. It follows "reduce motion" (then it glows without moving).
 
 ## Drag handle (reordering tiles and rows)

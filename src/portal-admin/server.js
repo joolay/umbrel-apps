@@ -681,7 +681,7 @@ function fromPortal(req, res) {
 const linkPortal = () => { try { const r = changes.linkPortal(); if (r) console.log('JoolzApp Dashboard: ' + r); } catch (e) { console.error('JoolzApp Dashboard link:', e.message); } };
 const linkNew = () => changes.linkNewApps().then((d) => { if (d.length) console.log('Linked new app(s) to Portal API with their own limited login: ' + d.join(', ')); }).catch((e) => console.error('Linking new apps:', e.message));
 // Keeps the app list tidy by itself (about every 10 minutes): an app whose list entry is just its slug (e.g. "project-tracker") gets the app's own name (POCKETBASE_APP_NAME or its store name),
-// and an app marked JOOLZAPP_DASHBOARD=hidden is admin-only on the home screen (the Admin folder has it; everyone else never sees a tile).
+// an app with no description gets its tagline from umbrel-app.yml, and an app marked JOOLZAPP_DASHBOARD=hidden is admin-only on the home screen (the Admin folder has it; everyone else never sees a tile).
 let lastTidy = 0;
 async function tidyAppList() {
   if (Date.now() - lastTidy < 600e3) return; lastTidy = Date.now();
@@ -692,6 +692,8 @@ async function tidyAppList() {
     const slug = a.slug || String(a.id).replace(/^joolay-/, ''), row = rows.find((r) => r.slug === slug); if (!row) continue;
     const want = a.pbName || a.name;
     if (want && row.name !== want && String(row.name || '').toLowerCase() === slug.toLowerCase()) { await pbx.asSuper('PATCH', APPC + '/' + row.id, { name: want }); console.log('App list: renamed ' + slug + ' to ' + want); }
+    const tag = String(a.tagline || '').replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, 200);
+    if (tag && !String(row.description || '').trim()) { await pbx.asSuper('PATCH', APPC + '/' + row.id, { description: tag }); console.log('App list: gave ' + slug + ' its description'); }   // a tile with no description shows the app's own tagline (an admin can change it afterwards)
     if (a.noDash && !locked.has(slug)) { await pbx.asSuper('POST', SETC, { scope: 'app', user: '', app: slug, key: 'app.adminOnly', value: true, secret: false, note: 'Hidden app (JOOLZAPP_DASHBOARD=hidden): admin only on the home screen' }); console.log('App list: ' + slug + ' is admin-only'); }
   }
 }
