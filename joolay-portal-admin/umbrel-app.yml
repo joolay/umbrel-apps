@@ -2,7 +2,7 @@ manifestVersion: 1
 id: joolay-portal-admin
 category: developer
 name: Portal Admin
-version: "0.43.0"
+version: "0.43.1"
 tagline: One admin panel for all your custom PocketBase apps
 description: >-
   A central admin panel for your custom apps that use PocketBase. Register each app, then manage
@@ -22,7 +22,7 @@ path: ""
 defaultUsername: ""
 defaultPassword: ""
 releaseNotes: >-
-  AI keys: an admin sets one Master key (default and free trial), NVIDIA is a new provider, models are picked from the provider's own list, and a parent can share one of their keys with the whole family (family members use it instead of the free trial). New AI usage panel: your own monthly AI requests, and parents can see each family member's.
+  Changed: the dock at the bottom of the home screen is gone. Family and Settings are now ordinary icons at the end of the home screen (move them like any other icon); anything an older layout kept in the dock moves there too. New: the Tiles/Icons button is on phones too, and the home screen starts as tiles everywhere (tap the button for the plain icon grid). Fix: an owner-only app such as JoolzCCTV no longer also shows as a plain icon next to the Admin folder (and is admin-only for everyone else); an app listed under just its slug, such as project-tracker, gets its real name (Project Pilot). Before: AI keys: an admin sets one Master key (default and free trial), NVIDIA is a new provider, models are picked from the provider's own list, and a parent can share one of their keys with the whole family (family members use it instead of the free trial). New AI usage panel: your own monthly AI requests, and parents can see each family member's.
 submitter: joolay
 submission: https://github.com/joolay/umbrel-apps
 icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-portal-admin/icon.svg

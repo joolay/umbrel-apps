@@ -1697,6 +1697,7 @@ async function homeModel() {
   }
   let adminApps = [];
   if (!onlyTools && sl && sl.admin) { const aa = await acctFetch('/admin/apps').catch(() => null); adminApps = aa && Array.isArray(aa.apps) ? aa.apps : []; }
+  adminApps.forEach((x) => { delete items['app:' + x.slug]; });   // an owner-only app lives in the Admin folder only, never also as a plain tile
   if (adminApps.length) {
     const urlFor = appUrlFinder([]);
     for (const a of adminApps) items['adm:' + a.slug] = { id: 'adm:' + a.slug, kind: 'sys', ext: true, name: a.name, app: { slug: a.slug, name: a.name, enabled: true }, grad: GRADS[hashN(a.slug) % GRADS.length], letter: (a.name || '?').trim().charAt(0).toUpperCase(), href: urlFor(a) || '#', desc: a.tagline || '' };
@@ -1718,9 +1719,9 @@ async function homeModel() {
   }
   for (const fid of Object.keys(folders)) folders[fid].items = keep((saved.folders[fid] || {}).items, (id) => canFolder(id));
   if (adminApps.length) { folders[ADMIN_FID] = { name: 'Admin', desc: 'Owner-only apps', items: adminApps.map((a) => 'adm:' + a.slug), fixed: true }; adminApps.forEach((a) => seen.add('adm:' + a.slug)); }
-  const dock = onlyTools ? [] : keep(saved.dock).slice(0, 4);   // Portal Admin has no dock
+  const dockIds = onlyTools ? [] : keep(saved.dock), dock = [];   // no dock any more (26/11/2026): what an older layout kept there (Family, Settings) goes to the end of the grid
   const hidden = keep(saved.hidden, (id) => !PROTECTED.has(id));
-  const order = keep(saved.order);
+  const order = keep(saved.order).concat(dockIds);
   Object.keys(items).forEach((id) => { if (!seen.has(id)) { order.push(id); seen.add(id); } });
   if (adminApps.length && !order.includes('folder:' + ADMIN_FID) && !dock.includes('folder:' + ADMIN_FID)) order.push('folder:' + ADMIN_FID);   // new apps appear at the end
   return { apps, reqs, items, ssoSlugs, isAdmin, uid, layout: { order, dock, hidden, folders, names, descs: saved.descs && typeof saved.descs === 'object' ? saved.descs : {}, view: saved.view === 'icons' || saved.view === 'tiles' ? saved.view : '' }, canEdit, viaStore, lrow: lrows[0] || null, fresh, pend, pw };
@@ -1777,7 +1778,7 @@ function tileText(it) {
   else d = it.id === 'sys:family' ? 'Your household and relatives' : it.id === 'sys:adminlink' ? 'Portal Admin (home network or tailnet)' : 'Your preferences and account';
   return `<span class="ic-desc">${esc(d)}</span><span class="ic-state">${esc(st || 'Open')}</span>`;
 }
-const homeView = () => (HM && HM.layout.view) || (matchMedia('(min-width:900px)').matches ? 'tiles' : 'icons');
+const homeView = () => (HM && HM.layout.view) || 'tiles';
 function applyView() {
   const sb = $('#sb'), v = homeView();
   if (sb) sb.classList.toggle('tiles', v === 'tiles');
@@ -1812,13 +1813,7 @@ function renderSb() {
   sb.innerHTML = HM.layout.order.map((id) => iconHTML(HM.items[id])).join('') || '<p class="muted">No apps have been added yet.</p>';
   applyView(); renderTray();
 }
-function renderDock() {
-  const d = $('#dock'); if (!d) return;
-  d.hidden = adminMode();   // Portal Admin has no dock
-  if (d.hidden) { d.innerHTML = ''; return; }
-  const l = HM && HM.layout; d.innerHTML = l ? l.dock.map((id) => iconHTML(HM.items[id])).join('') : '';
-  d.classList.toggle('few', !!l && l.dock.length < 4);
-}
+function renderDock() { /* the dock is gone: Family and Settings are ordinary icons on the grid */ }
 function setEditing(on) {
   editing = !!on && !!$('#sb') && !!(HM && HM.canEdit);
   document.body.classList.toggle('editing', editing);
@@ -1844,15 +1839,6 @@ function startDrag(e) {
 function moveDrag(e) {
   drag.clone.style.transform = `translate3d(${e.clientX - drag.ox}px,${e.clientY - drag.oy}px,0)`;
   if (e.clientY > innerHeight - 130) scrollBy(0, 12); else if (e.clientY < 110) scrollBy(0, -12);
-  const dock = $('#dock'), dr = dock.getBoundingClientRect(), inDock = e.clientX > dr.left - 8 && e.clientX < dr.right + 8 && e.clientY > dr.top - 14 && e.clientY < dr.bottom + 14;
-  const inDockNow = drag.ic.parentElement === dock, dockCount = [...dock.children].filter((c) => c !== drag.ic).length;
-  if (inDock && dockCount < 4) {
-    const sibs = [...dock.children].filter((c) => c !== drag.ic); let ref = null;
-    for (const s of sibs) { const r = s.getBoundingClientRect(); if (e.clientX < r.left + r.width / 2) { ref = s; break; } }
-    if (drag.ic.parentElement !== dock || drag.ic.nextSibling !== ref) flip(() => dock.insertBefore(drag.ic, ref));
-    return;
-  }
-  if (inDock && !inDockNow) return;
   const sb = $('#sb'); let best = null, bd = 1e9;
   for (const el of sb.querySelectorAll('.ic')) { if (el === drag.ic) continue; const r = el.getBoundingClientRect(), d = Math.hypot(e.clientX - (r.left + r.width / 2), e.clientY - (r.top + r.height / 2)); if (d < bd) { bd = d; best = { el, r }; } }
   // Hold an icon over the middle of another for a moment to make a folder (or drop it into one), like on a phone.
@@ -1871,7 +1857,7 @@ function endDrag() {
   if (drag) {
     drag.clone.remove(); drag.ic.classList.remove('ghost');
     const ids = (sel) => [...document.querySelectorAll(sel)].map((e) => e.dataset.id);
-    HM.layout.order = ids('#sb .ic'); HM.layout.dock = ids('#dock .ic').slice(0, 4);
+    HM.layout.order = ids('#sb .ic'); HM.layout.dock = [];
     if (drag.into) mergeInto(drag.ic.dataset.id, drag.into);
     clearTimeout(drag.candT); document.querySelectorAll('.drop-into').forEach((x) => x.classList.remove('drop-into'));
     renderSb(); renderDock(); saveLayout();
@@ -2058,7 +2044,7 @@ document.addEventListener('click', (e) => {
   const t = w.querySelector('.ic-tile'); if (t) t.click();
 });
 $('#tb-done').onclick = () => setEditing(false);
-// Dock icons grow as the mouse nears them (mouse only; neighbours slide aside so nothing overlaps).
+// (The dock magnify effect went with the dock.)
 (() => {
   const d = $('#dock'); if (!d || !matchMedia('(hover:hover)').matches) return;
   const reset = () => d.querySelectorAll('.ic-w').forEach((w) => { w.style.transform = ''; });

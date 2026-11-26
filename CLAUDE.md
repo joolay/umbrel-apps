@@ -44,7 +44,7 @@ accounts are off, call `pb.reload()` on each request (it re-reads the file, at m
 
 ## JoolzApp Dashboard is the App Store
 The Portal home screen IS the app store: every app is a tile, tapping one opens a sheet with **View on web** (signs the person in) and **Install** (steps for their device; installing is
-done by the browser from the app's own address, so a page cannot do it for another address). Apps are grouped in folders. ONE shared layout (order, dock, hidden apps, folders with names and
+done by the browser from the app's own address, so a page cannot do it for another address). Apps are grouped in folders. ONE shared layout (order, hidden apps, folders with names and
 descriptions, app names and descriptions) is stored as the global `store.layout` row in `portal_settings`; everyone reads it (`GET /store/layout`) and only an admin saves it (`POST /store/layout`,
 checked server-side against `user.isAdmin`, cleaned by `src/portal-admin/storelayout.js`). Admins edit it in place (long-press, drag, rename, folder and app descriptions); nobody else gets edit mode.
 Keep `/store/layout` in both route lists (see the Portal section above).

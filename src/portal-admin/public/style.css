@@ -13,7 +13,7 @@ details.ai-setup{margin:10px 0}details.ai-setup summary{cursor:pointer;color:var
 .tile-body .req-row{flex-wrap:wrap}
 .tile-body .btn{border-radius:99px;padding:7px 18px}
 
-/* ---- iPhone-style home screen: top bar, icon grid, dock, jiggle mode ---- */
+/* ---- iPhone-style home screen: top bar, icon grid, jiggle mode ---- */
 html,body{overflow-x:clip}
 body{padding-top:0}
 .login{padding-top:calc(16px + var(--safe-t))}
@@ -28,7 +28,7 @@ body{padding-top:0}
 .tb-btn:active{transform:scale(.94)}
 .topbar>*{margin:0}.topbar{justify-content:flex-start}
 .sub-page main>h1:first-child{display:none}
-main{margin:0 auto;padding-bottom:calc(120px + var(--safe-b))}
+main{margin:0 auto;padding-bottom:calc(32px + var(--safe-b))}
 .sub-page main{max-width:1100px}.home-page main{max-width:760px}
 
 .sb{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:22px 6px;padding:18px 2px 10px;justify-items:center}
@@ -61,7 +61,7 @@ main{margin:0 auto;padding-bottom:calc(120px + var(--safe-b))}
 .ic-rn{left:auto;right:0}
 .ic-ed + .ic-rn{right:28px}
 .editing .ic-badge,.editing .ic-st{display:none}
-.editing .sb .ic,.editing .dock .ic{touch-action:none}
+.editing .sb .ic{touch-action:none}
 @keyframes jig{0%{transform:rotate(-1.7deg) translate(.5px,0)}50%{transform:rotate(1.4deg) translate(-.5px,.6px)}100%{transform:rotate(-1.2deg) translate(.4px,-.5px)}}
 .editing .ic:not(.ghost) .ic-w{animation:jig .27s ease-in-out infinite alternate;animation-delay:var(--d,0ms)}
 .ic.ghost{opacity:.25}
@@ -69,14 +69,6 @@ main{margin:0 auto;padding-bottom:calc(120px + var(--safe-b))}
 .ic.drag-clone .ic-w{animation:none}
 .ic.drag-clone .ic-tile{transform:scale(1.14)}
 
-.dock{position:fixed;z-index:15;left:0;right:0;margin:0 auto;bottom:calc(10px + var(--safe-b));width:min(calc(100% - 20px),420px);min-height:84px;
-  display:flex;justify-content:center;align-items:center;gap:14px;padding:11px 14px;border-radius:30px;
-  background:var(--glass);-webkit-backdrop-filter:blur(26px) saturate(180%);backdrop-filter:blur(26px) saturate(180%);
-  border:1px solid var(--glass-line);box-shadow:var(--shadow)}
-.dock .ic{width:62px;flex:none}.dock .ic-label{display:none}
-.dock:empty::after{content:"Dock";color:var(--muted);font-size:13px;opacity:0}
-.editing .dock:empty::after{opacity:1;content:"Drag up to 4 apps here"}
-.dock .hint{display:none}
 .hid{margin:18px 0 0;padding:14px;border-radius:var(--r);background:var(--glass);border:1px solid var(--glass-line)}
 .hid h2{font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:0 0 10px}
 .hid .sb{padding:4px 0 0}
@@ -95,15 +87,14 @@ dialog#sheet,dialog#acct{position:fixed;margin:auto;width:min(440px,calc(100vw -
 .sheet-in .btn{border-radius:99px;padding:8px 18px}
 .sheet-in .btn.small{padding:6px 14px}
 
-/* Tile view: on desktop the apps can show as cards with a description and status. The toggle only exists on wide screens. */
-#tb-view{display:none}
+/* Tile view: the apps show as cards with a description and status (the start view everywhere); the toggle switches to the plain icon grid, on phones too. */
+#tb-view{display:grid}
+#tb-view[hidden]{display:none}
 #tb-view .v-icons,#tb-view .v-tiles{display:none}
 #tb-view[data-v="tiles"] .v-icons,#tb-view[data-v="icons"] .v-tiles{display:block}
 .ic-desc,.ic-state{display:none}
-@media (min-width:900px){
-  #tb-view{display:grid}
-  #tb-view[hidden]{display:none}
-  .sb.tiles{grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px;padding:22px 2px;justify-items:stretch}
+@media screen{
+  .sb.tiles{grid-template-columns:repeat(auto-fill,minmax(min(300px,100%),1fr));gap:16px;padding:22px 2px;justify-items:stretch}
   .sb.tiles .ic{max-width:none}
   .sb.tiles .ic-w{flex-direction:row;align-items:center;gap:16px;text-align:left;padding:16px 18px;border-radius:22px;
     background:var(--glass);border:1px solid var(--glass-line);-webkit-backdrop-filter:blur(18px) saturate(1.4);backdrop-filter:blur(18px) saturate(1.4);
@@ -118,9 +109,9 @@ dialog#sheet,dialog#acct{position:fixed;margin:auto;width:min(440px,calc(100vw -
   .sb.tiles .ic-tile{grid-row:1/4;grid-column:1}
   .sb.tiles .ic-label,.sb.tiles .ic-desc,.sb.tiles .ic-state{grid-column:2}
   .sb.tiles .ic-st,.sb.tiles .ic-badge{top:12px;right:14px;left:auto;bottom:auto}
-  .home-page main{max-width:1100px}
   .editing .sb.tiles .ic-w{cursor:grab}
 }
+@media (min-width:900px){.home-page main{max-width:1100px}}
 
 .login-card label:not(.inline){width:100%;box-sizing:border-box}.login-card label:not(.inline)>input{width:100%;box-sizing:border-box}
 
@@ -148,7 +139,7 @@ dialog#sheet,dialog#acct{position:fixed;margin:auto;width:min(440px,calc(100vw -
 .tk-track.still{animation:none}
 
 
-/* ---- Your folders, dock magnify, animated backdrop ---- */
+/* ---- Your folders, animated backdrop ---- */
 .ic-tile.folder .mini i{position:relative;overflow:hidden}
 .ic-tile.folder .mini i b{font-size:11px;text-shadow:none}
 .ic-tile.folder .mini:empty::after{content:"";width:100%;height:100%}
@@ -156,8 +147,6 @@ dialog#sheet,dialog#acct{position:fixed;margin:auto;width:min(440px,calc(100vw -
 .folder-name{display:block;width:100%;box-sizing:border-box;margin:0 0 6px;padding:8px 12px;border:1px solid transparent;border-radius:12px;background:transparent;color:var(--text);font:700 20px/1.2 inherit;text-align:center}
 .folder-name:focus{background:var(--glass-strong);border-color:var(--glass-line);outline:0}
 .ic-out{margin-top:6px;border:0;border-radius:99px;padding:3px 10px;font-size:11px;cursor:pointer;color:var(--text);background:var(--glass-strong);border:1px solid var(--glass-line)}
-.dock .ic-w{transform-origin:50% 100%;transition:transform .09s ease-out}
-.editing .dock .ic-w{transition:none}
 
 /* An Umbrel-style backdrop: soft colour glows drifting slowly behind everything. */
 #bg{position:fixed;inset:0;z-index:-1;overflow:hidden;pointer-events:none;
@@ -201,7 +190,7 @@ dialog#sheet,dialog#acct{position:fixed;margin:auto;width:min(440px,calc(100vw -
 .brand img{border-radius:24%;box-shadow:0 2px 6px rgba(15,23,42,.22)}   /* the icon file is a full square (the system rounds it on a phone); round it here too */
 
 /* Phones: whatever the browser shows outside the page (above, below, while bouncing) is the page colour, never the browser's grey,
-   and the page doesn't rubber-band away from the top bar and dock. */
+   and the page doesn't rubber-band away from the top bar . */
 html{background:var(--bg);overscroll-behavior-y:none}
 body{overscroll-behavior-y:none}
 
@@ -234,7 +223,6 @@ body{overscroll-behavior-y:none}
 
 .grp{margin:18px 4px 8px;font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}.routedown{margin-top:10px;padding-top:10px;border-top:1px solid var(--line,rgba(128,128,128,.25))}.routedown p{margin:0 0 8px}
 
-.dock[hidden]{display:none}
 
 /* Tiles = one family (v0.42): every tile is the same solid gradient as the app icons. Folders are the same tile with the first four icons inside, no frosted glass.
    Tiles with no artwork (a new app that has no icon yet) are the solid gradient with a bold white letter, never tinted glass. */
