@@ -108,20 +108,13 @@ Same rules as any push: show the owner what it will do and wait for his confirma
 ## Paid apps
 Admin > Paid apps (Yoco) locks an app behind payment using the existing `portal.access` rows, so apps need no changes. Details: `src/portal-admin/README.md`, "Paid apps (Yoco)".
 
-## Connected icon and Claude handshake (top bar, every app)
-`templates/glass/linkstatus.js` (copy into `public/`, load last in `<body>`) adds the sync ticks (plus the Claude link for Claude apps) to the top bar (`.topbar`, else the first `<header>`/`#bar`), just before the Install/theme buttons:
-- **Sync ticks** (every app, WhatsApp style; replaces the old green/red dot): red cross = not connected or the last save failed; pulsing grey tick = saving / kept on this device only; **one green tick = recorded to PocketBase** (the person's JoolzApp account);
-  **two green ticks = read by all shared parties** (second tick amber while only some have read it; data nobody else shares counts as read once recorded). The server is checked every 15 s (HEAD) plus online/offline events.
-  An app that says nothing shows one green tick while its server answers. An app that keeps data on the account reports its state: `JZLink.sync({ saved: "saving"|"saved"|"error"|"local", parties: <others it is shared with>, read: <how many have read the latest> })` (Jolly Grocer does this from its save routine).
-- **Claude link = the same ticks** (only apps that talk to Claude: App Updater, Services Manager, Kiosk Manager, Port Master, Project Pilot; add `data-claude` to the `jz.js` tag). There is no separate chain-link or handshake icon any more:
-  two green ticks = Claude has read the last change; one green tick = the app wrote something Claude has not read; amber second tick = Claude wrote something the app has not read; red cross = broken (a report the app should have made has not come through, nothing for 35 minutes).
-  It reads `GET /api/link` on the app's own server, which returns `feed.link()` from `status-feed.js` (the state Portal Admin sent back with the last report).
-- Protocol (state logic and tests: `src/portal-admin/claudelink.js`, `test-claudelink.js`): `status/<app>.json` now carries `rev` (counts real changes, a heartbeat does not), `changedAt`, `sig` and `seenClaude` (the newest Claude message rev the app has read).
-  Claude's side is `status/claude-<app>.json`, written ONLY by Claude when it changes something for that app: `{ "toApp": { "rev": <n+1>, "at": "<ISO>", "note": "<what changed>" }, "seen": { "deviceRev": <the app's rev just read>, "at": "<ISO>" } }`.
-  After reading `status/<app>.json`, set `seen.deviceRev` to its `rev` (that turns the app's hand into "read"); after a change, bump `toApp.rev` (the app marks it read on its next report, normally within a minute or two).
-  Fresh read before every write, change only that file.
-- **AI sparkle** (every app with AI features, e.g. ones that call a model): `JZLink.aiWhile(promise)` (or `JZLink.ai(true|false)`) shows a breathing sparkle beside the ticks while the AI is working and hides it afterwards. Part of `jz.js`; see `templates/glass/README.md`, "AI sparkle".
-- New apps that talk to Claude: copy `status-feed.js`, keep the handle (`feedHandle = require('./status-feed')(...)`), serve `/api/link`, add `data-claude`.
+## Sync ticks and Claude handshake (removed from the template 26/11/2026)
+The WhatsApp-style sync ticks and the Claude-link ticks are NO LONGER part of `jz.js` or shown in apps by default (owner decision: not needed). The full old script is kept, unused and not built in, at `templates/glass/optional/synctick.js`;
+add it to an app (copy next to `index.html`, `<script src="synctick.js"></script>` last in `<body>`, `data-claude` for the Claude link) only when the owner asks for ticks in that app. Style to reproduce: one green tick = recorded to PocketBase,
+two green = read by all shared parties (second tick amber while only some have read it), red cross = not connected, grey pulsing = saving. `jz.js` keeps the server reachability dot on the profile icon and the **AI sparkle** (`JZLink.aiWhile(promise)` / `JZLink.ai(true|false)`);
+`JZLink.sync()` / `JZLink.link()` are harmless no-ops.
+The status-feed protocol itself is unchanged (`status/<app>.json` with `rev`, `changedAt`, `sig`, `seenClaude`; Claude's side `status/claude-<app>.json`; `src/portal-admin/claudelink.js`, `GET /api/link` from `status-feed.js`): it still works for Claude and Portal Admin, there is just no tick UI reading it.
+Fresh read before every write, change only that file. New apps that talk to Claude still copy `status-feed.js` and serve `/api/link`.
 - JoolzTV (TV UI) has no top bar and is left out on purpose; see the TV rules.
 
 ## Look for an existing community add-on or service first
