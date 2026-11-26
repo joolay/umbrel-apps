@@ -2,7 +2,7 @@ manifestVersion: 1
 id: joolay-portal-admin
 category: developer
 name: Portal Admin
-version: "0.43.3"
+version: "0.43.4"
 tagline: One admin panel for all your custom PocketBase apps
 description: >-
   A central admin panel for your custom apps that use PocketBase. Register each app, then manage
@@ -22,6 +22,7 @@ path: ""
 defaultUsername: ""
 defaultPassword: ""
 releaseNotes: >-
+  Fix: saving the home screen layout no longer fails with "Could not save your layout: Failed to create record" (it now updates the saved layout instead of creating it a second time). Before:
   Fix: apps opened from the dashboard now use their public Tailscale link (https://<name>.<tailnet>.ts.net) instead of the Umbrel address and port (Project Pilot opened on the Tailscale IP and showed Not found). Addresses already saved as a plain http:// IP address are corrected by themselves; an address you typed yourself is never changed. Before: Changed: the sync ticks (and Claude-link ticks) are gone from the top bar; the AI sparkle and the connection dot stay. New: a tile with no description now shows the app's own tagline (an admin can still change it). Before: Changed: the dock at the bottom of the home screen is gone. Family and Settings are now ordinary icons at the end of the home screen (move them like any other icon); anything an older layout kept in the dock moves there too. New: the Tiles/Icons button is on phones too, and the home screen starts as tiles everywhere (tap the button for the plain icon grid). Fix: an owner-only app such as JoolzCCTV no longer also shows as a plain icon next to the Admin folder (and is admin-only for everyone else); an app listed under just its slug, such as project-tracker, gets its real name (Project Pilot). Before: AI keys: an admin sets one Master key (default and free trial), NVIDIA is a new provider, models are picked from the provider's own list, and a parent can share one of their keys with the whole family (family members use it instead of the free trial). New AI usage panel: your own monthly AI requests, and parents can see each family member's.
 submitter: joolay
 submission: https://github.com/joolay/umbrel-apps
