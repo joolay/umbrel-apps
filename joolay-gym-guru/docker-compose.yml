@@ -1,0 +1,26 @@
+# Gym Guru runs here as a real Umbrel app. Source: src/gym-guru in this repo, built by .github/workflows/build-images.yml.
+# Keep the image tag equal to `version` in umbrel-app.yml.
+# Each person's sets and learned machines are kept in PocketBase (gymguru_data); the app reads <app data>/data/pocketbase.env, which Portal Admin writes by itself.
+services:
+  app_proxy:
+    environment:
+      APP_HOST: joolay-gym-guru_web_1
+      APP_PORT: 3925
+      # No Umbrel login for this app: Gym Guru locks itself behind the JoolzApp account.
+      PROXY_AUTH_ADD: "false"
+
+  web:
+    image: ghcr.io/joolay/gym-guru:1.0.0
+    restart: on-failure
+    stop_grace_period: 1m
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    # Host port 3926 gives it the LAN / Tailscale-address routes like the other apps, and lets Port Master keep its Tailscale name.
+    # The camera only works on an https address, so people use the Tailscale name (or the public one), not the plain LAN address.
+    ports:
+      - "3926:3925"
+    volumes:
+      - ${APP_DATA_DIR}/data:/data
+    environment:
+      - POCKETBASE_APP_ID=gym-guru
+      - POCKETBASE_APP_NAME=Gym Guru

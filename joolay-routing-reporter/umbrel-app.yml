@@ -2,7 +2,7 @@ manifestVersion: 1
 id: joolay-routing-reporter
 category: developer
 name: Port Master
-version: "1.10.2"
+version: "1.10.3"
 tagline: Checks every app's LAN, Tailscale and Public routes and tells Portal Admin
 description: >-
   Finds every app installed on this Umbrel and checks, every few minutes, that it answers on the home network (LAN), on your Tailscale address and,
@@ -20,7 +20,7 @@ gallery: []
 path: ""
 defaultUsername: ""
 defaultPassword: ""
-releaseNotes: "Fix: apps whose name moved to Port Master got a default name, port and no Public setting (for example portal and project-pilot, and the missing Public address for Project Pilot and ShutterWorth). Once, on this update, our own apps are put back on their old name, port and Public setting. Fix: when names Port Master wrote are still not known to TSDProxy after about 6 minutes, Port Master now asks for the TSDProxy restart itself (up to 3 tries). Before: Shared template update (adds the AI settings component; no change to how this app works)."
+releaseNotes: "New: Gym Guru gets its public Tailscale name (gym-guru, port 3926) from the start, like the other JoolzApp-account apps. Nothing else changes."
 submitter: joolay
 submission: https://github.com/joolay/umbrel-apps
 icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-routing-reporter/icon.svg

@@ -19,6 +19,7 @@ const SEED = {
   'joolay-joolztv': { name: 'joolztv', port: 3901, funnel: true }, 'joolay-listify': { name: 'listify', port: 3887, funnel: true }, 'joolay-portal-admin': { name: 'portaladmin', port: 3909, funnel: false },
   'joolay-portal': { name: 'joolzapp', port: 3886, funnel: true }, 'joolay-project-tracker': { name: 'project-tracker', port: 3916, funnel: true },
   'joolay-routing-reporter': { name: 'port-master', port: 3907, funnel: false }, 'joolay-shutterworth': { name: 'shutterworth', port: 3882, funnel: true },
+  'joolay-gym-guru': { name: 'gym-guru', port: 3926, funnel: true },   // new app (26/11/2026): public like the other JoolzApp-account apps; its camera needs the https name
 };
 const seedFor = (id) => SEED[id] || null;
 const slugFor = (id) => String(id || '').toLowerCase().replace(/^joolay-/, '').replace(/[^a-z0-9-]+/g, '-').replace(/-{2,}/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
