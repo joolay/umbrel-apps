@@ -1398,9 +1398,12 @@ async function viewMe() {
 
 
 // ---- Account details and family: the one place they are managed. The apps only link here. ----
-const acctFetch = async (path, body) => {
+const acctFetch = async (path, body, retried) => {
   const r = await fetch(path, { method: body === undefined ? 'GET' : 'POST', headers: { authorization: state.token, 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body), cache: 'no-store' });
-  const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.message || 'That did not work.'); return j;
+  const j = await r.json().catch(() => ({}));
+  // A 401 on an admin screen means the admin session ran out (PocketBase admin tokens expire). Get a fresh one by itself where Umbrel's login is in front, then try once more.
+  if (r.status === 401 && !retried && state.role !== 'user') { autoTried = 0; if (await autoLogin()) return acctFetch(path, body, true); throw new Error('Your admin session has ended. Sign out and sign in again with your admin login.'); }
+  if (!r.ok) throw new Error(j.message || 'That did not work.'); return j;
 };
 const fmtDob = (d) => { const x = new Date(d + 'T00:00:00'); return isNaN(x) ? d : x.toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' }); };
 const ageFrom = (d) => { const b = new Date(d + 'T00:00:00'), n = new Date(); let a = n.getFullYear() - b.getFullYear(); if (n.getMonth() < b.getMonth() || (n.getMonth() === b.getMonth() && n.getDate() < b.getDate())) a--; return a; };
@@ -1738,10 +1741,18 @@ function saveLayout() {
     return;
   }
   store.lset((adminMode() ? 'pa.adminlayout.' : 'pa.layout.') + uid, JSON.stringify(l));
+  const key = layoutKey(), base = '/api/collections/portal_settings/records';
+  // Save = update the row if there is one, create it only when there really is none. A row can exist even when this screen has not seen it yet (a second save before the first
+  // finished, another device, a reload): creating it again hits PocketBase's unique rule and fails with a bare "Failed to create record.", so look for it first.
+  const findRow = async () => (await api('GET', `${base}?perPage=1&filter=${q(`scope = "user" && user = ${fq(uid)} && app = "" && key = ${fq(key)}`)}`)).items[0] || null;
   saveChain = saveChain.then(async () => {
     try {
-      if (HM.lrow) HM.lrow = await api('PATCH', `/api/collections/portal_settings/records/${HM.lrow.id}`, { value: l });
-      else HM.lrow = await api('POST', '/api/collections/portal_settings/records', { scope: 'user', user: uid, app: '', key: layoutKey(), value: l, secret: false });
+      let row = HM.lrow || await findRow().catch(() => null);
+      if (!row) {
+        try { HM.lrow = await api('POST', base, { scope: 'user', user: uid, app: '', key, value: l, secret: false }); return; }
+        catch (e) { row = await findRow().catch(() => null); if (!row) throw e; }   // created by someone else a moment ago: update it instead
+      }
+      HM.lrow = await api('PATCH', `${base}/${row.id}`, { value: l });
     } catch (e) { toast('Could not save your layout: ' + e.message, true); }
   });
 }
