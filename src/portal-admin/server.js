@@ -680,7 +680,23 @@ function fromPortal(req, res) {
 // The Portal app's key is handed over without a Changes card: it is our own app and no PocketBase change is involved.
 const linkPortal = () => { try { const r = changes.linkPortal(); if (r) console.log('JoolzApp Dashboard: ' + r); } catch (e) { console.error('JoolzApp Dashboard link:', e.message); } };
 const linkNew = () => changes.linkNewApps().then((d) => { if (d.length) console.log('Linked new app(s) to Portal API with their own limited login: ' + d.join(', ')); }).catch((e) => console.error('Linking new apps:', e.message));
-setTimeout(() => { linkPortal(); linkNew(); }, 3000).unref(); setInterval(() => { linkPortal(); linkNew(); }, 30e3).unref();
+// Keeps the app list tidy by itself (about every 10 minutes): an app whose list entry is just its slug (e.g. "project-tracker") gets the app's own name (POCKETBASE_APP_NAME or its store name),
+// and an app marked JOOLZAPP_DASHBOARD=hidden is admin-only on the home screen (the Admin folder has it; everyone else never sees a tile).
+let lastTidy = 0;
+async function tidyAppList() {
+  if (Date.now() - lastTidy < 600e3) return; lastTidy = Date.now();
+  const SETC = '/api/collections/portal_settings/records', APPC = '/api/collections/portal_apps/records', qq = encodeURIComponent;
+  const rows = ((await pbx.asSuper('GET', APPC + '?perPage=200')).items || []);
+  const locked = new Set((((await pbx.asSuper('GET', SETC + '?perPage=200&filter=' + qq("scope = 'app' && key = 'app.adminOnly'"))).items) || []).map((r) => r.app));
+  for (const a of installedApps().apps) {
+    const slug = a.slug || String(a.id).replace(/^joolay-/, ''), row = rows.find((r) => r.slug === slug); if (!row) continue;
+    const want = a.pbName || a.name;
+    if (want && row.name !== want && String(row.name || '').toLowerCase() === slug.toLowerCase()) { await pbx.asSuper('PATCH', APPC + '/' + row.id, { name: want }); console.log('App list: renamed ' + slug + ' to ' + want); }
+    if (a.noDash && !locked.has(slug)) { await pbx.asSuper('POST', SETC, { scope: 'app', user: '', app: slug, key: 'app.adminOnly', value: true, secret: false, note: 'Hidden app (JOOLZAPP_DASHBOARD=hidden): admin only on the home screen' }); console.log('App list: ' + slug + ' is admin-only'); }
+  }
+}
+const tidy = () => tidyAppList().catch((e) => console.error('Tidying the app list:', e.message));
+setTimeout(() => { linkPortal(); linkNew(); tidy(); }, 3000).unref(); setInterval(() => { linkPortal(); linkNew(); tidy(); }, 30e3).unref();
 
 // Listeners. PORT is the normal one (Umbrel's app address, behind Umbrel's login): the admin's own.
 const server = http.createServer(handle);

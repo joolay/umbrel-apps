@@ -1,6 +1,6 @@
 'use strict';
 // The App Store layout everyone sees on the JoolzApp Dashboard: which apps sit in which folder, folder names and descriptions, the order,
-// the dock, hidden apps and the names shown. One shared row (portal_settings, scope global, key store.layout). Everyone may read it;
+// hidden apps and the names shown. One shared row (portal_settings, scope global, key store.layout). Everyone may read it;
 // only an admin may change it (checked in server.js against the signed-in person, never trusted from the browser). Whatever an admin
 // sends is cleaned here first, so a bad or oversized layout can never be saved.
 const SET = '/api/collections/portal_settings/records', KEY = 'store.layout';
@@ -23,8 +23,9 @@ function clean(raw) {
   for (const [k, v] of Object.entries(raw.descs && typeof raw.descs === 'object' ? raw.descs : {}).slice(0, 200)) { const c = txt(v, 300); if (c && /^[a-z0-9][a-z0-9_-]{0,60}$/.test(k)) descs[k] = c; }
   const inFolder = new Set(Object.values(folders).flatMap((f) => f.items));
   const known = (x) => !x.startsWith('folder:') || !!folders[x.slice(7)];
-  const order = ids(raw.order, 300).filter((x) => known(x) && !inFolder.has(x));
-  const dock = ids(raw.dock, 4).filter((x) => known(x) && !inFolder.has(x));
+  // There is no dock any more (26/11/2026): icons an older layout kept in it (Family, Settings...) go to the end of the grid.
+  const order = [...new Set([...ids(raw.order, 300), ...ids(raw.dock, 12)])].filter((x) => known(x) && !inFolder.has(x));
+  const dock = [];
   const hidden = ids(raw.hidden, 300).filter((x) => !x.startsWith('folder:'));
   return { order, dock, hidden, folders, names, descs, view: raw.view === 'icons' || raw.view === 'tiles' ? raw.view : '' };
 }

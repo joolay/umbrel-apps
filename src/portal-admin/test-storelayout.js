@@ -13,8 +13,8 @@ const S = require('./storelayout')(pb);
     folders: { abc: { name: '  <b>Media</b>\u0000 ', desc: 'Watch and listen', items: ['app:in-folder', 'folder:abc', 'bad id'] }, 'BAD ID': { name: 'x', items: [] } },
     names: { joolztv: ' Telly ', 'bad key!': 'x', listify: '' }, descs: { joolztv: ' Watch <TV> ', 'bad key!': 'x', listify: '' }, view: 'weird' };
   const c = S.clean(raw);
-  assert.deepStrictEqual(c.order, ['app:joolztv', 'folder:abc'], 'ids are checked, duplicates and apps already in a folder dropped');
-  assert.deepStrictEqual(c.dock, ['sys:family', 'sys:me', 'sys:xx', 'sys:a'], 'the dock holds at most four');
+  assert.deepStrictEqual(c.order, ['app:joolztv', 'folder:abc', 'sys:family', 'sys:me', 'sys:xx', 'sys:a', 'sys:b', 'sys:c'], 'ids are checked, duplicates and apps already in a folder dropped; an old dock moves to the end of the grid');
+  assert.deepStrictEqual(c.dock, [], 'there is no dock any more');
   assert.deepStrictEqual(c.hidden, ['app:old'], 'folders are never hidden');
   assert.deepStrictEqual(Object.keys(c.folders), ['abc']); assert.strictEqual(c.folders.abc.name, 'bMedia/b', 'markup characters are stripped');
   assert.strictEqual(c.folders.abc.desc, 'Watch and listen'); assert.deepStrictEqual(c.folders.abc.items, ['app:in-folder'], 'folders never nest');
