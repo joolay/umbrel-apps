@@ -187,11 +187,27 @@ function xPocketbaseFile(dir) {
   try { const v = JSON.parse(txt); return v && typeof v === 'object' && !Array.isArray(v) ? v : { error: 'pocketbase.json must be a JSON object' }; }
   catch { return { error: "pocketbase.json isn't valid JSON" }; }
 }
+// Tailscale (TSDProxy) names. Our apps no longer carry them in their compose labels (Port Master owns them since 1.10.0), so the dashboard reads them from
+// Port Master's list file (joolz-names.yaml, "# app: <id>" then "<name>:") and, failing that, from the names the apps always had. Without this an app's address
+// fell back to <Umbrel address>:<port> (e.g. the Tailscale IP), which is not the public link.
+const SEED_NAMES = { 'joolay-cctv': 'cctv', 'joolay-jolly-grocer': 'jolly-grocer', 'joolay-diner-bell': 'diner-bell', 'joolay-gatekeeper': 'gatekeeper', 'joolay-joolztv': 'joolztv', 'joolay-listify': 'listify', 'joolay-portal-admin': 'portaladmin', 'joolay-portal': 'joolzapp', 'joolay-project-tracker': 'project-tracker', 'joolay-routing-reporter': 'port-master', 'joolay-shutterworth': 'shutterworth' };
+function tsdNamesFromFile() {
+  const out = {};
+  try {
+    const txt = fs.readFileSync(path.join(process.env.TSDPROXY_CONFIG_DIR || '/tsdproxy-config', 'joolz-names.yaml'), 'utf8');
+    let app = '';
+    for (const line of txt.split(/\r?\n/)) {
+      const a = /^#\s*app:\s*(\S+)/.exec(line); if (a) { app = a[1]; continue; }
+      const n = /^([a-z0-9][a-z0-9-]{0,61}):\s*$/.exec(line); if (n && app) { out[app] = n[1]; app = ''; }
+    }
+  } catch {}
+  return out;
+}
 function installedApps() {
   if (appsCache.v && Date.now() - appsCache.at < 15000) return appsCache.v;
   let out;
   try {
-    const apps = [];
+    const apps = [], fileNames = tsdNamesFromFile();
     for (const dir of fs.readdirSync(APPS_DIR)) {
       if (!/^[a-z0-9][a-z0-9_.-]{0,80}$/.test(dir) || dir === SELF_ID) continue;
       let yml; try { yml = fs.readFileSync(path.join(APPS_DIR, dir, 'umbrel-app.yml'), 'utf8'); } catch { continue; }
@@ -204,7 +220,7 @@ function installedApps() {
       const dataDir = path.join(APPS_DIR, dir, 'data');
       let env = 'no-data-dir';
       try { if (fs.statSync(dataDir).isDirectory()) env = fs.existsSync(path.join(dataDir, 'pocketbase.env')) ? 'present' : 'missing'; } catch {}
-      apps.push({ dir, env, noDash, id, name: yamlKey(yml, 'name') || id, version: yamlKey(yml, 'version'), tagline: yamlKey(yml, 'tagline'), category: yamlKey(yml, 'category'), port: Number(yamlKey(yml, 'port')) || 0, funnel: ((compose.match(/tsdproxy\.name["']?\s*[=:]\s*["']?([a-z0-9-]{1,63})/i) || [])[1] || '').toLowerCase(), slug, pbName, pocketbase: xPocketbaseFile(path.join(APPS_DIR, dir)) || xPocketbase(compose) });
+      apps.push({ dir, env, noDash, id, name: yamlKey(yml, 'name') || id, version: yamlKey(yml, 'version'), tagline: yamlKey(yml, 'tagline'), category: yamlKey(yml, 'category'), port: Number(yamlKey(yml, 'port')) || 0, funnel: (((compose.match(/tsdproxy\.name["']?\s*[=:]\s*["']?([a-z0-9-]{1,63})/i) || [])[1] || fileNames[id] || SEED_NAMES[id] || '')).toLowerCase(), slug, pbName, pocketbase: xPocketbaseFile(path.join(APPS_DIR, dir)) || xPocketbase(compose) });
     }
     out = { available: true, apps: apps.sort((a, b) => a.name.localeCompare(b.name)) };
   } catch { out = { available: false, apps: [] }; }
