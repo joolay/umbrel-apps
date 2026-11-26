@@ -1,10 +1,11 @@
 'use strict';
 // Publishes apps that are NOT ours (and so can't carry TSDProxy labels: Umbrel rewrites their compose files on every update) on the tailnet,
-// through a TSDProxy "list" file. Today: OpenClaw (the gateway). Tailnet only, never Funnel, so it works on every device that has Tailscale.
+// through a TSDProxy "list" file. Today: OpenClaw (the gateway: our own build `joolay-openclaw` from src/openclaw, or the Umbrel store's `openclaw` if that is what is installed).
+// Tailnet only, never Funnel, so it works on every device that has Tailscale.
 // Needs TSDProxy's config folder mounted at /tsdproxy-config (joolay-portal-admin compose). TSDProxy reloads the list file by itself; only the one-time
 // "lists:" line in tsdproxy.yaml needs a TSDProxy restart: Apply leaves a request file and Services Manager restarts TSDProxy 30 s later.
 const fs = require('fs'), path = require('path');
-const PUBLISH = [{ id: 'openclaw', name: 'openclaw', title: 'OpenClaw' }];   // add more third-party apps here (tailnet only)
+const PUBLISH = [{ id: 'joolay-openclaw', alt: ['openclaw'], name: 'openclaw', title: 'OpenClaw' }];   // add more third-party apps here (tailnet only); `alt` = other app ids that may carry the same name
 const LIST = 'joolz-published.yaml', DECL = '  joolz:\n    filename: /config/' + LIST + '\n';
 
 const withList = (txt) => {
@@ -15,7 +16,7 @@ const withList = (txt) => {
 };
 const listFile = (apps) => '# Written by Portal Admin (Changes). Tailnet-only addresses for apps that are not ours. TSDProxy reloads this file by itself.\n' +
   apps.map((a) => `${a.name}:\n  ports:\n    443/https:\n      targets:\n        - http://host.docker.internal:${a.port}\n`).join('');
-const targets = (c) => PUBLISH.map((p) => { const a = c.installedApps().apps.find((x) => x.id === p.id && x.port); return a ? { ...p, port: a.port } : null; }).filter(Boolean);
+const targets = (c) => PUBLISH.map((p) => { const a = c.installedApps().apps.find((x) => (x.id === p.id || (p.alt || []).includes(x.id)) && x.port); return a ? { ...p, port: a.port } : null; }).filter(Boolean);
 const read = (f) => { try { return fs.readFileSync(f, 'utf8'); } catch { return null; } };
 
 module.exports = {

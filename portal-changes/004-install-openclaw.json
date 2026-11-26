@@ -1,0 +1,8 @@
+{
+  "id": "install-openclaw",
+  "title": "Install OpenClaw (built from source)",
+  "summary": "Adds OpenClaw, compiled from the upstream source and set up for your Tailscale name and address, to your Umbrel. App Updater installs it once umbrelOS lists it. Then apply \"Tailnet address for OpenClaw\" to publish https://openclaw.<your tailnet>.",
+  "ops": [
+    { "op": "install-app", "id": "joolay-openclaw" }
+  ]
+}
