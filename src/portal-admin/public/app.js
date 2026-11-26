@@ -560,7 +560,9 @@ async function detectApps() {
     // A name that only differs from the app's own name by capital letters (an older "joolztv") is tidied up; a name you chose yourself is never changed.
     for (const e of existing) { const m = d.apps.find((x) => x.slug === e.slug), mn = m && (m.pbName || m.name); if (mn && e.name && e.name !== mn && e.name.toLowerCase() === mn.toLowerCase()) { await api('PATCH', `/api/collections/portal_apps/records/${e.id}`, { name: mn }).catch(() => {}); e.name = mn; HM = null; } }
     // Apps added before their address was known get it filled in now (an address you set yourself is never changed).
-    for (const e of existing) { if (e.url) continue; const m = d.apps.find((x) => x.slug === e.slug), u = m && urlFor(m); if (u) { await api('PATCH', `/api/collections/portal_apps/records/${e.id}`, { url: u }).catch(() => {}); await audit('app.url', e.slug, { url: u, detected: true }); } }
+    // An address that is only a home-network / Tailscale-IP address (http://100.x.x.x:3915) is replaced by the app's Tailscale name address; an address you set yourself (https://...) is never changed.
+    const isRaw = (u) => !u || (/^http:\/\//i.test(u) && !/\.ts\.net/i.test(u));
+    for (const e of existing) { if (!isRaw(e.url)) continue; const m = d.apps.find((x) => x.slug === e.slug), u = m && urlFor(m); if (u && u !== e.url && /^https:/.test(u)) { await api('PATCH', `/api/collections/portal_apps/records/${e.id}`, { url: u }).catch(() => {}); await audit('app.url', e.slug, { url: u, detected: true }); } }
     const added = [], pending = [];
     // Owner-only tools (JOOLZAPP_DASHBOARD=hidden in their compose file) have no icon on the home screen: never added, and taken off if they were added before.
     for (const a of d.apps) { if (!a.noDash || !a.slug) continue; const e = existing.find((x) => x.slug === a.slug); if (e) { await api('DELETE', `/api/collections/portal_apps/records/${e.id}`).catch(() => {}); await audit('app.hidden', a.slug, { reason: 'owner-only tool' }); HM = null; } }
