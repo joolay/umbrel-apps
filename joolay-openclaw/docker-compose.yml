@@ -9,7 +9,7 @@ services:
       PROXY_AUTH_ADD: "false"
 
   web:
-    image: ghcr.io/joolay/openclaw:2026.11.10
+    image: ghcr.io/joolay/openclaw:2026.1110.1
     restart: on-failure
     stop_grace_period: 1m
     # Starts as root only to hand the data folder to OpenClaw's own `node` user, then drops to it (joolz/start.sh).

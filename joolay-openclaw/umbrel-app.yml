@@ -2,7 +2,7 @@ manifestVersion: 1
 id: joolay-openclaw
 category: developer
 name: OpenClaw
-version: "2026.11.10"
+version: "2026.1110.1"
 tagline: The OpenClaw gateway, built from source and set up for your Tailscale addresses
 description: >-
   OpenClaw's own open source gateway and Control UI (MIT licence), compiled from the upstream release tag by this store's build instead of using a ready-made image.
@@ -22,6 +22,7 @@ path: ""
 defaultUsername: ""
 defaultPassword: ""
 releaseNotes: >-
+  Fix: opening OpenClaw through Umbrel (umbrel.local:3927 or the Tailscale name) no longer fails with "Proxy client attribution is required": the gateway now trusts the app proxy on its own Docker network. Before:
   First release: OpenClaw 2026.11.10 built from the upstream source, with the Tailscale name, Tailscale address and home-network address preconfigured for the browser WebSocket.
 submitter: joolay
 submission: https://github.com/joolay/umbrel-apps
