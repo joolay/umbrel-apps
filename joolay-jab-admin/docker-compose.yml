@@ -1,0 +1,26 @@
+# JAB Admin: people, roles and settings for JoolzApp Biz. Same image as the JAB dashboard, started with `node admin.js`.
+# It mounts the JAB dashboard's data folder (users.json, jab.json) and shares nothing with the family Portal Admin or PocketBase.
+# Keep the image tag equal to `version` in umbrel-app.yml AND to the JAB dashboard's version.
+services:
+  app_proxy:
+    environment:
+      APP_HOST: joolay-jab-admin_web_1
+      APP_PORT: 3929
+      # Umbrel's own login stays ON: this is an admin panel, like Portal Admin, so it has no sign-in page of its own.
+      PROXY_AUTH_ADD: "true"
+
+  web:
+    image: ghcr.io/joolay/jab:1.1.0
+    command: ["node", "admin.js"]
+    restart: on-failure
+    stop_grace_period: 10s
+    # Host port 3930 gives it the LAN / Tailscale-address routes like the other apps (Tailscale only, never public).
+    ports:
+      - "3930:3929"
+    volumes:
+      # The JAB dashboard's own data folder: the one place JAB's people and settings live.
+      - ${UMBREL_ROOT}/app-data/joolay-jab/data:/data
+    environment:
+      - PORT=3929
+      # Owner-only tool: no icon on the family JoolzApp home screen.
+      - JOOLZAPP_DASHBOARD=hidden

@@ -20,7 +20,7 @@
     spark: '<path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/>'
   };
   window.JZGate = function (o) {
-    var TOKEN = o.tokenKey || "gd.token", HEAD = o.tokenHeader || "x-gd-token", NAME = o.name || "JoolzApp";
+    var TOKEN = o.tokenKey || "gd.token", HEAD = o.tokenHeader || "x-gd-token", NAME = o.name || "JoolzApp", ACCT = o.account || "JoolzApp";   // o.account: another network (JoolzApp Biz) names its own accounts
     var cfg = {}, view = document.getElementById("view"), sub = document.getElementById("sub"), card = document.getElementById("card");
     document.body.classList.add("jz-gate");
     function tok() { try { return sessionStorage.getItem(TOKEN) || localStorage.getItem(TOKEN) || ""; } catch (e) { return ""; } }
@@ -46,7 +46,7 @@
       if (o.welcome && o.welcome.length) return o.welcome;
       return [
         { icon: "spark", title: "Welcome to " + NAME, text: o.tagline || "Part of your JoolzApp family of apps." },
-        { icon: "account", title: "One account, every app", text: "Your JoolzApp account signs you in to all of your JoolzApps. Your settings follow you." },
+        { icon: "account", title: "One account, every app", text: "Your " + ACCT + " account signs you in to all of your apps here. Your settings follow you." },
         { icon: "lock", title: "Quick and private", text: "After your first sign-in you can switch to a PIN or pattern on this device." }
       ];
     }
@@ -71,7 +71,7 @@
     // ---- Sign in ----
     function quickFirst() { QA.signIn().then(function (j) { if (j) { setTok(j.token, true); open(j.user); } else form(); }); }
     function form() {
-      view.textContent = ""; heading(true); sub.hidden = false; sub.textContent = "Sign in with your JoolzApp account";
+      view.textContent = ""; heading(true); sub.hidden = false; sub.textContent = "Sign in with your " + ACCT + " account";
       var f = el("form", "jz-form"), email = field("Email", "email", "email"), pass = field("Password", "password", "current-password");
       email.i.required = true; pass.i.required = true; f.append(email.l, pass.l);
       var opts = el("div", "jz-opts"), rl = el("label", "inline"), remember = el("input"), forgot = el("a", "", "Forgot password?"), ok = el("p", "jz-ok"), err = el("p", "jz-err");
@@ -105,7 +105,7 @@
       if (QA && QA.has()) { var qb = el("button", "jz-alt", "Use my PIN or pattern"); qb.type = "button"; qb.onclick = quickFirst; view.appendChild(qb); }
       if (cfg.signups !== false) {
         // One JoolzApp sign-up page, in Portal Admin. It sends the person back here when the account is made.
-        var alt = el("button", "jz-alt", "Create a JoolzApp account"); alt.type = "button";
+        var alt = el("button", "jz-alt", "Create a " + ACCT + " account"); alt.type = "button";
         alt.onclick = function () { if (cfg.portalUrl) location.href = cfg.portalUrl.replace(/\/+$/, "") + "/?signup=1&app=" + encodeURIComponent(o.app); else err.textContent = "Sign-up lives in Portal Admin, but its address isn't set yet. Ask the admin."; };
         view.appendChild(alt);
       }
