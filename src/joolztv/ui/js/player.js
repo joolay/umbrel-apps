@@ -27,7 +27,7 @@ var Player = (function () {
       '<div class="pctl"><div class="pz l">' +
       '<span class="cbtn ic f" data-pact="sources" aria-label="Sources" title="Sources">' + ICON2.src + '</span><span class="cbtn ic f" data-pact="subs" aria-label="Subtitles and subtitle sync" title="Subtitles">' + ICON2.subs + '</span><span class="cbtn ic f" data-pact="async" aria-label="Audio sync" title="Audio sync">' + ICON2.asy + '</span><span class="cbtn ic f" data-pact="speed" aria-label="Playback speed" title="Speed">' + ICON2.speed + '<b class="rt">1x</b></span></div>' +
       '<div class="pz c"><span class="cbtn ic f" data-pact="back10" aria-label="Back 10 seconds">' + ICON.back + '</span><span class="cbtn ic big f" data-pact="toggle" id="bplay" aria-label="Play or pause">' + ICON.pause + '</span><span class="cbtn ic f" data-pact="fwd10" aria-label="Forward 10 seconds">' + ICON.fwd + '</span></div>' +
-      '<div class="pz r"><span class="cbtn ic f" data-pact="aspect" aria-label="Aspect ratio" title="Aspect ratio">' + ICON2.asp + '<b class="rt">Auto</b></span><span class="cbtn ic f" data-pact="fill" aria-label="Fill the screen" title="Fill the screen">' + ICON2.fill + '</span></div></div></div></div>';
+      '<div class="pz r"><span class="cbtn ic f" data-pact="aspect" aria-label="Picture shape" title="Picture shape">' + ICON2.asp + '</span></div></div></div></div>';
     var el = Views.mount('player', h, { cls: 'player', onBack: function () { close(); Views.pop(); return true; }, onClose: cleanup });
     S = { el: el, info: info, v: el.querySelector('#pv'), learnedFor: {}, buf: { speed: 0, peers: 0, len: 0, fill: null }, hold: false, streams: [], groups: [], idx: -1, tried: {}, rate: 1, subs: null, ui: true, uiT: null, lastSave: 0, tick: null, buffT: null, ended: false, gotTime: false };
     keepPitch(S.v);
@@ -77,19 +77,23 @@ var Player = (function () {
     var a = Api.assess(s);
     return a.transcode ? { hls: true, label: 'Transcoding: ' + a.reason } : { hls: false, label: 'Direct play' };
   }
+  /* a short notice that goes away by itself (used when the TV cannot read a file and the server converts it instead) */
+  function notice(msg, ms) { say(msg); clearTimeout(S && S.noticeT); var sess = S; if (sess) sess.noticeT = setTimeout(function () { if (S === sess) say(''); }, ms || 4000); }
   function setMode(label) { var m = $('#pmode'); if (m) { m.textContent = label; m.style.display = label ? 'inline-block' : 'none'; } }
   function start(i, forceHls, safe) {
     if (!S) return;
     var s = S.streams[i]; if (!s) return;
     S.idx = i; S.ended = false; S.gotTime = false;
-    clearTimeout(S.decodeT1); clearTimeout(S.decodeT2); clearTimeout(S.okT); clearTimeout(S.flowT); S.metaOk = false;
+    clearTimeout(S.decodeT1); clearTimeout(S.decodeT2); clearTimeout(S.okT); clearTimeout(S.flowT); clearTimeout(S.noticeT); S.metaOk = false;
     var d = decide(s), hls = forceHls || d.hls;
     var url = s._direct || (hls ? Api.hlsUrl(s, safe) : Api.directUrl(s));
     if (!url) { return next('Unsupported source'); }
     S.hls = !!hls; S.safe = !!safe; S.tried[i] = (S.tried[i] || 0) + 1;
-    setMode(forceHls ? 'Transcoding: ' + (S.why || 'compatibility') : d.label);
-    spin((hls ? 'Starting transcoded stream…' : 'Starting stream…') + (s._q && s._q.quality ? ' (' + s._q.quality + ')' : ''));
+    var chosen = playMode(s) === 'transcode', auto = hls && !chosen && !s._direct;       // the server converts it because the TV cannot read the file, not because it was asked to
+    setMode(auto ? '' : d.label);
+    spin('Starting stream…' + (s._q && s._q.quality ? ' (' + s._q.quality + ')' : ''));
     say('');
+    if (auto) notice('Your TV cannot read this file', 4000);
     var v = S.v;
     try { v.pause(); } catch (e) {}
     v.src = url; v.playbackRate = 1; S.rate = 1;
@@ -114,8 +118,8 @@ var Player = (function () {
     var i = S.idx, s = S.streams[i];
     S.why = why || 'playback problem';
     if (strong && !S.hls && s && !s._direct) Api.learn(s, false);          // the decoder failed on this kind of file: remember it for next time
-    if (!S.hls && s && !s._direct) { say((why || 'Playback problem') + ' – trying transcoding…'); return start(i, true, false); }
-    if (S.hls && !S.safe && s && !s._direct) { say((why || 'Playback problem') + ' – trying safer transcoding…'); return start(i, true, true); }
+    if (!S.hls && s && !s._direct) return start(i, true, false);
+    if (S.hls && !S.safe && s && !s._direct) return start(i, true, true);
     for (var j = i + 1; j < S.streams.length && j < i + 6; j++) { if (!S.tried[j]) { say((why || 'Playback problem') + ' – trying another source…'); return start(j); } }
     spin(''); say((why || 'Playback failed') + '.\nPress OK to choose another source.');
     S.failed = true;
@@ -125,7 +129,7 @@ var Player = (function () {
     var v = S.v, sess = S;
     function alive() { return S === sess; }
     v.addEventListener('loadedmetadata', function () {
-      if (S && (S.fillOn || S.aspect)) applyShape();
+      if (S && S.shape) applyShape();
       if (!alive()) return;
       sess.metaOk = true;
       var st = (sess.info.startMs || 0) / 1000;
@@ -508,22 +512,23 @@ var Player = (function () {
     }, missing ? 'Nothing was started. These are the files that exist, most seeds first in each resolution.' : 'If a source will not play, try a different resolution.');
   }
 
-  /* ---- picture shape: Aspect cycles the common shapes; Fill scales the picture (at its current shape) until it covers the screen, so there are no black bars ---- */
-  var ASPECTS = [['Auto', null], ['16:9', 16 / 9], ['4:3', 4 / 3], ['21:9', 21 / 9], ['1:1', 1]];
+  /* ---- picture shape: ONE button cycles Original -> Fill (crops the edges so there are no black bars) -> Stretch -> 4:3 -> 21:9 -> 1:1 -> back to Original ---- */
+  var SHAPES = [
+    { name: 'Original', r: null, fill: false, note: 'the picture as it is' },
+    { name: 'Fill the screen', r: null, fill: true, note: 'no black bars, the edges are cropped' },
+    { name: 'Stretch', r: 16 / 9, fill: false, note: 'stretched to the whole screen' },
+    { name: '4:3', r: 4 / 3, fill: false }, { name: '21:9', r: 21 / 9, fill: false }, { name: '1:1', r: 1, fill: false }
+  ];
   function applyShape() {
     var v = S && S.v; if (!v) return;
-    var mode = ASPECTS[S.aspect || 0], r = mode[1] || ((v.videoWidth && v.videoHeight) ? v.videoWidth / v.videoHeight : 16 / 9), W = 1920, H = 1080;
+    var mode = SHAPES[S.shape || 0], r = mode.r || ((v.videoWidth && v.videoHeight) ? v.videoWidth / v.videoHeight : 16 / 9), W = 1920, H = 1080;
     var w = Math.min(W, H * r), h = w / r;
-    if (!S.aspect && !S.fillOn) { v.style.cssText = ''; return; }                  // untouched: the normal full-screen video
-    var k = S.fillOn ? Math.max(W / w, H / h) : 1;
+    if (!S.shape) { v.style.cssText = ''; return; }                                 // untouched: the normal full-screen video
+    var k = mode.fill ? Math.max(W / w, H / h) : 1;
     v.style.cssText = 'position:absolute;object-fit:fill;width:' + Math.round(w) + 'px;height:' + Math.round(h) + 'px;left:' + Math.round((W - w) / 2) + 'px;top:' + Math.round((H - h) / 2) + 'px;-webkit-transform:scale(' + k + ');transform:scale(' + k + ');';
   }
-  function shapeLabels() {
-    var a = $('[data-pact=aspect] .rt'); if (a) a.textContent = ASPECTS[S.aspect || 0][0];
-    var f = $('[data-pact=fill]'); if (f) f.classList.toggle('on', !!S.fillOn);
-  }
-  function cycleAspect() { S.aspect = ((S.aspect || 0) + 1) % ASPECTS.length; applyShape(); shapeLabels(); Views.toast('Aspect ratio: ' + ASPECTS[S.aspect][0], 1800); }
-  function toggleFill() { S.fillOn = !S.fillOn; applyShape(); shapeLabels(); Views.toast(S.fillOn ? 'Filling the screen (edges are cropped)' : 'Fill off', 2000); }
+  function shapeLabels() { var a = $('[data-pact=aspect]'); if (a) a.classList.toggle('on', !!S.shape); }
+  function cycleAspect() { S.shape = ((S.shape || 0) + 1) % SHAPES.length; applyShape(); shapeLabels(); var m = SHAPES[S.shape]; Views.toast(m.name + (m.note ? ': ' + m.note : ''), 2200); }
 
   /* ---- audio sync: delays the sound (0 to 5 s) when it arrives before the picture; a browser cannot play sound earlier than the picture ---- */
   function setAudioDelay(ms) {
@@ -661,7 +666,7 @@ var Player = (function () {
     if ((a === 'back10' || a === 'fwd10') && holdOn) { holdOn = false; return; }      // the click that ends a screen hold is not another jump
     if ((a === 'back10' || a === 'fwd10') && rep && S.lastJump && Date.now() - S.lastJump < 1000) return;
     if (a === 'toggle') toggle(); else if (a === 'back10') seekBy(-10, rep); else if (a === 'fwd10') seekBy(10, rep);
-    else if (a === 'speed') pickSpeed(); else if (a === 'aspect') cycleAspect(); else if (a === 'fill') toggleFill(); else if (a === 'async') pickAudioSync(); else if (a === 'subs') pickSubs(); else if (a === 'sources') pickSource();
+    else if (a === 'speed') pickSpeed(); else if (a === 'aspect') cycleAspect(); else if (a === 'async') pickAudioSync(); else if (a === 'subs') pickSubs(); else if (a === 'sources') pickSource();
     showUi(true);
   });
   /* the bar's inner parts (buffer, position, knob) sit on top of it, so the pointer is usually over one of them: find the bar from any of them */
