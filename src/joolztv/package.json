@@ -1,6 +1,6 @@
 {
   "name": "joolztv",
-  "version": "1.18.2",
+  "version": "1.18.3",
   "private": true,
   "description": "JoolzTV: TV-style front end for the Stremio streaming server, behind JoolzApp accounts",
   "main": "server.js",

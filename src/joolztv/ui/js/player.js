@@ -77,19 +77,23 @@ var Player = (function () {
     var a = Api.assess(s);
     return a.transcode ? { hls: true, label: 'Transcoding: ' + a.reason } : { hls: false, label: 'Direct play' };
   }
+  /* a short notice that goes away by itself (used when the TV cannot read a file and the server converts it instead) */
+  function notice(msg, ms) { say(msg); clearTimeout(S && S.noticeT); var sess = S; if (sess) sess.noticeT = setTimeout(function () { if (S === sess) say(''); }, ms || 4000); }
   function setMode(label) { var m = $('#pmode'); if (m) { m.textContent = label; m.style.display = label ? 'inline-block' : 'none'; } }
   function start(i, forceHls, safe) {
     if (!S) return;
     var s = S.streams[i]; if (!s) return;
     S.idx = i; S.ended = false; S.gotTime = false;
-    clearTimeout(S.decodeT1); clearTimeout(S.decodeT2); clearTimeout(S.okT); clearTimeout(S.flowT); S.metaOk = false;
+    clearTimeout(S.decodeT1); clearTimeout(S.decodeT2); clearTimeout(S.okT); clearTimeout(S.flowT); clearTimeout(S.noticeT); S.metaOk = false;
     var d = decide(s), hls = forceHls || d.hls;
     var url = s._direct || (hls ? Api.hlsUrl(s, safe) : Api.directUrl(s));
     if (!url) { return next('Unsupported source'); }
     S.hls = !!hls; S.safe = !!safe; S.tried[i] = (S.tried[i] || 0) + 1;
-    setMode(forceHls ? 'Transcoding: ' + (S.why || 'compatibility') : d.label);
-    spin((hls ? 'Starting transcoded stream…' : 'Starting stream…') + (s._q && s._q.quality ? ' (' + s._q.quality + ')' : ''));
+    var chosen = playMode(s) === 'transcode', auto = hls && !chosen && !s._direct;       // the server converts it because the TV cannot read the file, not because it was asked to
+    setMode(auto ? '' : d.label);
+    spin('Starting stream…' + (s._q && s._q.quality ? ' (' + s._q.quality + ')' : ''));
     say('');
+    if (auto) notice('Your TV cannot read this file', 4000);
     var v = S.v;
     try { v.pause(); } catch (e) {}
     v.src = url; v.playbackRate = 1; S.rate = 1;
@@ -114,8 +118,8 @@ var Player = (function () {
     var i = S.idx, s = S.streams[i];
     S.why = why || 'playback problem';
     if (strong && !S.hls && s && !s._direct) Api.learn(s, false);          // the decoder failed on this kind of file: remember it for next time
-    if (!S.hls && s && !s._direct) { say((why || 'Playback problem') + ' – trying transcoding…'); return start(i, true, false); }
-    if (S.hls && !S.safe && s && !s._direct) { say((why || 'Playback problem') + ' – trying safer transcoding…'); return start(i, true, true); }
+    if (!S.hls && s && !s._direct) return start(i, true, false);
+    if (S.hls && !S.safe && s && !s._direct) return start(i, true, true);
     for (var j = i + 1; j < S.streams.length && j < i + 6; j++) { if (!S.tried[j]) { say((why || 'Playback problem') + ' – trying another source…'); return start(j); } }
     spin(''); say((why || 'Playback failed') + '.\nPress OK to choose another source.');
     S.failed = true;
