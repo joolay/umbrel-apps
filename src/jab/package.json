@@ -1,0 +1,9 @@
+{
+  "name": "jab",
+  "version": "1.1.0",
+  "private": true,
+  "description": "JoolzApp Biz (JAB): the private dashboard for the dental practice's apps.",
+  "main": "server.js",
+  "scripts": { "start": "node server.js", "test": "node test-server.js" },
+  "license": "MIT"
+}

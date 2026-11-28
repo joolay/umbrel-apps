@@ -1,0 +1,26 @@
+manifestVersion: 1
+id: joolay-jab
+category: productivity
+name: JoolzApp Biz
+version: "1.1.0"
+tagline: The private dashboard for the practice's apps
+description: >-
+  JoolzApp Biz (JAB) is the private home screen for the dental practice's own apps: patient records, the shop display and whatever else the practice runs.
+  It looks and works like the JoolzApp Dashboard (same glass theme, press and hold to rearrange) but it is a separate network: its own people, roles
+  (Admin, Editor, Member, View-only), passwords and PIN or pattern sign-in, none of it shared with your JoolzApp accounts or PocketBase.
+  People are added in JAB Admin (install it too). Admins get an Admin folder on the dashboard with JAB Admin and any app marked admin only.
+  The admin groups the apps, links each one to its address and picks its icon and colours right on the dashboard.
+developer: joolay
+website: https://github.com/joolay/umbrel-apps/tree/main/src/jab
+dependencies: []
+repo: https://github.com/joolay/umbrel-apps
+support: https://github.com/joolay/umbrel-apps/issues
+port: 3927
+gallery: []
+path: ""
+defaultUsername: ""
+defaultPassword: ""
+releaseNotes: "JAB is now its own network: its own people, roles and passwords (made in the new JAB Admin app), nothing shared with your JoolzApp accounts. New Admin folder on the dashboard for admins."
+submitter: joolay
+submission: https://github.com/joolay/umbrel-apps
+icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-jab/icon.svg

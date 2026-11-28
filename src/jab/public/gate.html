@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>JoolzApp Biz</title>
+<meta name="theme-color" content="#7e22ce">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="JAB">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="glass.css">
+<link rel="stylesheet" href="gate.css">
+<style>
+/* Brand tokens only (see templates/glass/README.md) */
+:root{--accent:#7e22ce;--accent-2:#e879f9;--accent-t:#fff}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--accent:#c084fc;--accent-2:#e9d5ff;--accent-t:#2e0a4a}}
+:root[data-theme="dark"]{--accent:#c084fc;--accent-2:#e9d5ff;--accent-t:#2e0a4a}
+</style>
+<script src="theme-global.js"></script>
+</head>
+<body>
+<main class="jz-card" id="card">
+  <img class="jz-logo" src="icon.svg" alt="">
+  <h1>JoolzApp Biz</h1>
+  <p class="jz-sub" id="sub">Sign in with your JoolzApp Biz account</p>
+  <div id="view"></div>
+</main>
+<script src="pwtoggle.js"></script>
+<script src="quick-ui.js"></script>
+<script src="gate.js"></script>
+<script>
+JZGate({ app: "jab", name: "JoolzApp Biz", account: "JoolzApp Biz", tokenKey: "gd.token", tokenHeader: "x-gd-token", clear: ["jab_prefs"], tagline: "The private dashboard for the practice's apps", welcome: false });
+</script>
+</body>
+</html>

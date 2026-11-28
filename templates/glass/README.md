@@ -47,6 +47,7 @@ One look for every JoolzApp: soft gradient backdrop, frosted panels, rounded cor
 | Listify | #0A6C8F / #3FB0D6 | #4DB6DD / #7FD0EE |
 | Diner Bell | #d9480f / #ff8a4c | #ff8a4c / #ffb27d |
 | ShutterWorth | #145f4f / #2f8571 | #3FBF9F / #7FD6BD |
+| JoolzApp Biz (JAB) | #7e22ce / #e879f9 | #c084fc / #e9d5ff |
 | JoolzCCTV | #3d2fb8 / #8b7dff | #8b7dff / #c0a6ff |
 | JoolzTV (own TV glass styling in `src/joolztv/ui/css/app.css`; icon uses these) | #0a63c9 / #64d2ff | #0a84ff / #64d2ff |
 | New apps | pick one accent, then an `--accent-2` 20-30° hue away | a lighter pair |

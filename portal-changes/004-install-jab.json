@@ -1,0 +1,9 @@
+{
+  "id": "install-jab",
+  "title": "Install JoolzApp Biz (JAB) and JAB Admin",
+  "summary": "Adds JoolzApp Biz, the practice's own private dashboard, and JAB Admin, where its people are managed. JAB has its own accounts and shares nothing with JoolzApp accounts. App Updater installs them once umbrelOS lists them.",
+  "ops": [
+    { "op": "install-app", "id": "joolay-jab" },
+    { "op": "install-app", "id": "joolay-jab-admin" }
+  ]
+}

@@ -1,0 +1,24 @@
+# JoolzApp Biz (JAB): the private dashboard for the dental practice's apps. Source: src/jab in this repo, built by .github/workflows/build-images.yml.
+# JAB is its OWN network: its people, passwords and settings live in <app data>/data (users.json, jab.json). It uses no PocketBase and no JoolzApp account,
+# so it declares no POCKETBASE_APP_ID and Portal Admin does not link it. JAB Admin (joolay-jab-admin, same image) mounts this same folder.
+# Keep the image tag equal to `version` in umbrel-app.yml AND to JAB Admin's version.
+services:
+  app_proxy:
+    environment:
+      APP_HOST: joolay-jab_web_1
+      APP_PORT: 3927
+      # No Umbrel login for this app: JAB locks itself behind its own accounts (made in JAB Admin).
+      PROXY_AUTH_ADD: "false"
+
+  web:
+    image: ghcr.io/joolay/jab:1.1.0
+    restart: on-failure
+    stop_grace_period: 10s
+    # Host port 3928 gives it the LAN / Tailscale-address routes like the other apps, and lets Port Master keep its Tailscale name.
+    ports:
+      - "3928:3927"
+    volumes:
+      - ${APP_DATA_DIR}/data:/data
+    environment:
+      # Not on the family's JoolzApp home screen: practice staff open it from their own address.
+      - JOOLZAPP_DASHBOARD=hidden

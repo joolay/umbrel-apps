@@ -1,0 +1,26 @@
+manifestVersion: 1
+id: joolay-jab-admin
+category: productivity
+name: JAB Admin
+version: "1.1.0"
+tagline: People and settings for JoolzApp Biz
+description: >-
+  JAB Admin is the admin panel for JoolzApp Biz (JAB), the practice's private dashboard. Add and remove people, give them a role
+  (Admin, Editor, Member or View-only), set or reset passwords, sign someone out everywhere and set the practice name.
+  It is separate from the family Portal Admin: JAB has its own accounts and shares nothing with your JoolzApp accounts or PocketBase.
+  It shares only a data folder with the JAB dashboard, so install JoolzApp Biz first. Umbrel's own login protects it.
+developer: joolay
+website: https://github.com/joolay/umbrel-apps/tree/main/src/jab
+dependencies:
+  - joolay-jab
+repo: https://github.com/joolay/umbrel-apps
+support: https://github.com/joolay/umbrel-apps/issues
+port: 3929
+gallery: []
+path: ""
+defaultUsername: ""
+defaultPassword: ""
+releaseNotes: "First release: people and roles, password reset, sign out everywhere, practice name, and the link for the dashboard's Admin folder."
+submitter: joolay
+submission: https://github.com/joolay/umbrel-apps
+icon: https://raw.githubusercontent.com/joolay/umbrel-apps/main/joolay-jab-admin/icon.svg
